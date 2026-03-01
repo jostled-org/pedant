@@ -5,8 +5,10 @@ use crate::violation::Violation;
 /// Output format for violation reports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum OutputFormat {
+    /// Human-readable text, one violation per line.
     #[default]
     Text,
+    /// JSON array of violation objects.
     Json,
 }
 
@@ -17,10 +19,12 @@ pub struct Reporter {
 }
 
 impl Reporter {
+    /// Creates a reporter with the given format and quiet mode.
     pub fn new(format: OutputFormat, quiet: bool) -> Self {
         Self { format, quiet }
     }
 
+    /// Writes all violations to the given writer in the configured format.
     pub fn report<W: Write>(&self, violations: &[Violation], writer: &mut W) -> io::Result<()> {
         match self.format {
             OutputFormat::Text => self.report_text(violations, writer),

@@ -13,11 +13,17 @@
 //! assert!(!violations.is_empty());
 //! ```
 
+/// Check metadata catalog used by `--list-checks` and `--explain`.
 pub mod checks;
+/// CLI argument parsing and TOML config file loading.
 pub mod config;
+/// Glob-style pattern matching for AST node text.
 pub mod pattern;
+/// Violation output formatting (text and JSON).
 pub mod reporter;
+/// Violation types, rationale, and the `Violation` struct.
 pub mod violation;
+/// AST visitor that performs all checks in a single pass.
 pub mod visitor;
 
 use std::fs;

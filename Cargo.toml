@@ -25,4 +25,5 @@ quote = "1"
 tempfile = "3"
 
 [package.metadata.docs.rs]
-features = ["full"]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

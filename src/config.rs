@@ -8,6 +8,7 @@ use serde::Deserialize;
 use crate::reporter::OutputFormat;
 use crate::visitor::CheckConfig;
 
+/// Command-line arguments for the pedant binary.
 #[derive(Parser, Debug)]
 #[command(name = "pedant")]
 #[command(about = "An opinionated Rust linter, with special focus on AI-generated code")]
@@ -70,8 +71,10 @@ pub struct Cli {
 #[derive(Debug, Deserialize, Default, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct PatternCheck {
+    /// Whether this pattern check is active.
     #[serde(default)]
     pub enabled: bool,
+    /// Glob-style patterns to match against AST node text.
     #[serde(default)]
     pub patterns: Vec<String>,
 }
@@ -79,48 +82,70 @@ pub struct PatternCheck {
 /// Deserialized `.pedant.toml` configuration.
 #[derive(Debug, Deserialize, Default)]
 pub struct ConfigFile {
+    /// Maximum allowed nesting depth (default: 3).
     #[serde(default = "default_max_depth")]
     pub max_depth: usize,
+    /// Flag `if` inside `if`.
     #[serde(default = "default_true")]
     pub check_nested_if: bool,
+    /// Flag `if` inside `match` arm.
     #[serde(default = "default_true")]
     pub check_if_in_match: bool,
+    /// Flag `match` inside `match`.
     #[serde(default = "default_true")]
     pub check_nested_match: bool,
+    /// Flag `match` inside `if` branch.
     #[serde(default = "default_true")]
     pub check_match_in_if: bool,
+    /// Flag long `if/else if` chains.
     #[serde(default = "default_true")]
     pub check_else_chain: bool,
+    /// Minimum branches to trigger `else-chain` (default: 3).
     #[serde(default = "default_else_chain_threshold")]
     pub else_chain_threshold: usize,
+    /// Banned attribute patterns (e.g., `allow(dead_code)`).
     #[serde(default)]
     pub forbid_attributes: PatternCheck,
+    /// Banned type patterns (e.g., `Arc<String>`).
     #[serde(default)]
     pub forbid_types: PatternCheck,
+    /// Banned method call patterns (e.g., `.unwrap()`).
     #[serde(default)]
     pub forbid_calls: PatternCheck,
+    /// Banned macro patterns (e.g., `panic!`).
     #[serde(default)]
     pub forbid_macros: PatternCheck,
+    /// Flag any use of the `else` keyword.
     #[serde(default)]
     pub forbid_else: bool,
+    /// Flag any `unsafe` block.
     #[serde(default = "default_true")]
     pub forbid_unsafe: bool,
+    /// Flag `Box<dyn T>` / `Arc<dyn T>` in return types.
     #[serde(default)]
     pub check_dyn_return: bool,
+    /// Flag `&dyn T` / `Box<dyn T>` in function parameters.
     #[serde(default)]
     pub check_dyn_param: bool,
+    /// Flag `Vec<Box<dyn T>>` anywhere.
     #[serde(default)]
     pub check_vec_box_dyn: bool,
+    /// Flag `Box<dyn T>` / `Arc<dyn T>` in struct fields.
     #[serde(default)]
     pub check_dyn_field: bool,
+    /// Flag `.clone()` inside loop bodies.
     #[serde(default)]
     pub check_clone_in_loop: bool,
+    /// Flag `HashMap`/`HashSet` with default SipHash hasher.
     #[serde(default)]
     pub check_default_hasher: bool,
+    /// Flag disconnected type groups in a single file.
     #[serde(default)]
     pub check_mixed_concerns: bool,
+    /// Flag `#[cfg(test)] mod` blocks embedded in source files.
     #[serde(default)]
     pub check_inline_tests: bool,
+    /// Per-path configuration overrides keyed by glob pattern.
     #[serde(default)]
     pub overrides: BTreeMap<String, PathOverride>,
 }
@@ -128,29 +153,49 @@ pub struct ConfigFile {
 /// Per-path override for a pattern check.
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct PatternOverride {
+    /// Override the enabled state. `None` inherits from the base config.
     pub enabled: Option<bool>,
+    /// Replacement patterns. Empty inherits from the base config.
     #[serde(default)]
     pub patterns: Vec<String>,
 }
 
 /// Per-path configuration overrides (e.g., for `tests/**`).
+///
+/// All fields are `Option` — `None` inherits from the base config.
 #[derive(Debug, Deserialize, Default)]
 pub struct PathOverride {
+    /// Disable all checks for matched paths when `false`.
     pub enabled: Option<bool>,
+    /// Override maximum nesting depth.
     pub max_depth: Option<usize>,
+    /// Override forbidden attribute patterns.
     pub forbid_attributes: Option<PatternOverride>,
+    /// Override forbidden type patterns.
     pub forbid_types: Option<PatternOverride>,
+    /// Override forbidden call patterns.
     pub forbid_calls: Option<PatternOverride>,
+    /// Override forbidden macro patterns.
     pub forbid_macros: Option<PatternOverride>,
+    /// Override the `else` keyword ban.
     pub forbid_else: Option<bool>,
+    /// Override the `unsafe` block ban.
     pub forbid_unsafe: Option<bool>,
+    /// Override dynamic dispatch return check.
     pub check_dyn_return: Option<bool>,
+    /// Override dynamic dispatch parameter check.
     pub check_dyn_param: Option<bool>,
+    /// Override `Vec<Box<dyn T>>` check.
     pub check_vec_box_dyn: Option<bool>,
+    /// Override dynamic dispatch field check.
     pub check_dyn_field: Option<bool>,
+    /// Override clone-in-loop check.
     pub check_clone_in_loop: Option<bool>,
+    /// Override default hasher check.
     pub check_default_hasher: Option<bool>,
+    /// Override mixed concerns check.
     pub check_mixed_concerns: Option<bool>,
+    /// Override inline tests check.
     pub check_inline_tests: Option<bool>,
 }
 
@@ -195,6 +240,7 @@ fn find_global_config_file() -> Option<std::path::PathBuf> {
 }
 
 impl Cli {
+    /// Parses the `--format` flag into an [`OutputFormat`].
     pub fn output_format(&self) -> OutputFormat {
         match self.format.to_lowercase().as_str() {
             "json" => OutputFormat::Json,
@@ -202,6 +248,7 @@ impl Cli {
         }
     }
 
+    /// Builds a [`CheckConfig`] by merging CLI flags with an optional file config.
     pub fn to_check_config(&self, file_config: Option<&ConfigFile>) -> CheckConfig {
         let base = file_config.map_or_else(CheckConfig::default, |fc| CheckConfig {
             max_depth: fc.max_depth,
@@ -253,7 +300,7 @@ impl Cli {
     }
 }
 
-/// Find the first matching path override for a file.
+/// Returns the first path override whose glob matches `file_path`, or `None`.
 pub fn check_path_override<'a>(
     file_path: &str,
     config: &'a ConfigFile,

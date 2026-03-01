@@ -1,13 +1,13 @@
-/// Information about a check for listing purposes.
+/// Metadata about a single check, used by `--list-checks` and `--explain`.
 #[derive(Debug, Clone, Copy)]
 pub struct CheckInfo {
-    /// The check code (e.g., "max-depth").
+    /// Short code string (e.g., `"max-depth"`).
     pub code: &'static str,
-    /// Brief description of what the check detects.
+    /// One-line description of what the check detects.
     pub description: &'static str,
-    /// The check category.
+    /// Category grouping (e.g., `"nesting"`, `"dispatch"`, `"structure"`).
     pub category: &'static str,
-    /// Whether this is LLM-specific.
+    /// Whether this pattern is particularly common in LLM-generated code.
     pub llm_specific: bool,
 }
 

@@ -43,29 +43,54 @@ pub fn lookup_rationale(code: &str) -> Option<CheckRationale> {
 /// The kind of violation detected.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ViolationType {
+    /// Nesting depth exceeds the configured limit.
     MaxDepth,
+    /// `if` nested inside another `if`.
     NestedIf,
+    /// `if` inside a `match` arm.
     IfInMatch,
+    /// `match` nested inside another `match`.
     NestedMatch,
+    /// `match` inside an `if` branch.
     MatchInIf,
+    /// Long `if/else if` chain exceeding the threshold.
     ElseChain,
-    ForbiddenAttribute { pattern: String },
-    ForbiddenType { pattern: String },
-    ForbiddenCall { pattern: String },
-    ForbiddenMacro { pattern: String },
+    /// Attribute matching a forbidden pattern.
+    ForbiddenAttribute { /// The pattern that matched.
+        pattern: String },
+    /// Type matching a forbidden pattern.
+    ForbiddenType { /// The pattern that matched.
+        pattern: String },
+    /// Method call matching a forbidden pattern.
+    ForbiddenCall { /// The pattern that matched.
+        pattern: String },
+    /// Macro matching a forbidden pattern.
+    ForbiddenMacro { /// The pattern that matched.
+        pattern: String },
+    /// Use of the `else` keyword.
     ForbiddenElse,
+    /// Use of an `unsafe` block.
     ForbiddenUnsafe,
+    /// Dynamic dispatch (`Box<dyn T>`, `Arc<dyn T>`) in a return type.
     DynReturn,
+    /// Dynamic dispatch (`&dyn T`, `Box<dyn T>`) in a function parameter.
     DynParam,
+    /// `Vec<Box<dyn T>>` preventing cache locality.
     VecBoxDyn,
+    /// Dynamic dispatch in a struct field.
     DynField,
+    /// `.clone()` called inside a loop body.
     CloneInLoop,
+    /// `HashMap`/`HashSet` using the default SipHash hasher.
     DefaultHasher,
+    /// Disconnected type groups in a single file.
     MixedConcerns,
+    /// `#[cfg(test)] mod` block embedded in a source file.
     InlineTests,
 }
 
 impl ViolationType {
+    /// Returns the short code string used in output (e.g., `"max-depth"`).
     pub fn code(&self) -> &'static str {
         match self {
             Self::MaxDepth => "max-depth",
@@ -91,6 +116,7 @@ impl ViolationType {
         }
     }
 
+    /// Returns the check category name (e.g., `"nesting"`, `"dispatch"`).
     pub fn check_name(&self) -> &'static str {
         match self {
             Self::MaxDepth
@@ -111,6 +137,7 @@ impl ViolationType {
         }
     }
 
+    /// Returns the matched pattern for pattern-based violations, or `None`.
     pub fn pattern(&self) -> Option<&str> {
         match self {
             Self::ForbiddenAttribute { pattern }
@@ -121,6 +148,7 @@ impl ViolationType {
         }
     }
 
+    /// Returns the detailed rationale explaining why this check exists.
     pub fn rationale(&self) -> CheckRationale {
         match self {
             Self::MaxDepth => CheckRationale {
@@ -251,6 +279,7 @@ pub struct Violation {
 }
 
 impl Violation {
+    /// Creates a new violation at the given source location.
     pub fn new(
         violation_type: ViolationType,
         file_path: String,

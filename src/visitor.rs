@@ -23,26 +23,47 @@ enum BranchContext {
 /// Configuration controlling which checks are enabled and their thresholds.
 #[derive(Debug, Clone)]
 pub struct CheckConfig {
+    /// Maximum allowed nesting depth.
     pub max_depth: usize,
+    /// Flag `if` inside `if`.
     pub check_nested_if: bool,
+    /// Flag `if` inside `match` arm.
     pub check_if_in_match: bool,
+    /// Flag `match` inside `match`.
     pub check_nested_match: bool,
+    /// Flag `match` inside `if` branch.
     pub check_match_in_if: bool,
+    /// Flag long `if/else if` chains.
     pub check_else_chain: bool,
+    /// Minimum branches to trigger `else-chain`.
     pub else_chain_threshold: usize,
+    /// Banned attribute patterns.
     pub forbid_attributes: PatternCheck,
+    /// Banned type patterns.
     pub forbid_types: PatternCheck,
+    /// Banned method call patterns.
     pub forbid_calls: PatternCheck,
+    /// Banned macro patterns.
     pub forbid_macros: PatternCheck,
+    /// Flag any use of the `else` keyword.
     pub forbid_else: bool,
+    /// Flag any `unsafe` block.
     pub forbid_unsafe: bool,
+    /// Flag dynamic dispatch in return types.
     pub check_dyn_return: bool,
+    /// Flag dynamic dispatch in function parameters.
     pub check_dyn_param: bool,
+    /// Flag `Vec<Box<dyn T>>`.
     pub check_vec_box_dyn: bool,
+    /// Flag dynamic dispatch in struct fields.
     pub check_dyn_field: bool,
+    /// Flag `.clone()` inside loop bodies.
     pub check_clone_in_loop: bool,
+    /// Flag `HashMap`/`HashSet` with default hasher.
     pub check_default_hasher: bool,
+    /// Flag disconnected type groups in a single file.
     pub check_mixed_concerns: bool,
+    /// Flag `#[cfg(test)] mod` blocks in source files.
     pub check_inline_tests: bool,
 }
 
@@ -88,6 +109,7 @@ pub struct NestingVisitor<'a> {
 }
 
 impl<'a> NestingVisitor<'a> {
+    /// Creates a visitor for the given file path and config.
     pub fn new(file_path: &'a str, config: &'a CheckConfig) -> Self {
         Self {
             file_path,
@@ -102,6 +124,7 @@ impl<'a> NestingVisitor<'a> {
         }
     }
 
+    /// Consumes the visitor and returns all collected violations.
     pub fn violations(self) -> Vec<Violation> {
         self.violations
     }

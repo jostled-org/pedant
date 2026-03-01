@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2](https://github.com/jostled-org/pedant/compare/v0.2.1...v0.2.2) - 2026-03-01
+
+### Other
+
+- add rustdoc comments to all public items and fix docs.rs config
+- added docs.rs config
+
 ## [0.2.1](https://github.com/jostled-org/pedant/compare/v0.2.0...v0.2.1) - 2026-03-01
 
 ### Other

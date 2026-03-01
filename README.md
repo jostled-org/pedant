@@ -35,7 +35,7 @@ These patterns pass `cargo check` and often slip through code review. pedant cat
 ## Installation
 
 ```bash
-cargo install --path .
+cargo install pedant
 ```
 
 ## Usage

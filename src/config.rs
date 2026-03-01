@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
@@ -68,6 +68,7 @@ pub struct Cli {
 
 /// A set of glob-style patterns to match against AST nodes.
 #[derive(Debug, Deserialize, Default, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct PatternCheck {
     #[serde(default)]
     pub enabled: bool,
@@ -119,7 +120,9 @@ pub struct ConfigFile {
     #[serde(default)]
     pub check_mixed_concerns: bool,
     #[serde(default)]
-    pub overrides: HashMap<String, PathOverride>,
+    pub check_inline_tests: bool,
+    #[serde(default)]
+    pub overrides: BTreeMap<String, PathOverride>,
 }
 
 /// Per-path override for a pattern check.
@@ -148,6 +151,7 @@ pub struct PathOverride {
     pub check_clone_in_loop: Option<bool>,
     pub check_default_hasher: Option<bool>,
     pub check_mixed_concerns: Option<bool>,
+    pub check_inline_tests: Option<bool>,
 }
 
 fn default_max_depth() -> usize {
@@ -220,6 +224,7 @@ impl Cli {
             check_clone_in_loop: fc.check_clone_in_loop,
             check_default_hasher: fc.check_default_hasher,
             check_mixed_concerns: fc.check_mixed_concerns,
+            check_inline_tests: fc.check_inline_tests,
         });
 
         CheckConfig {
@@ -243,6 +248,7 @@ impl Cli {
             check_clone_in_loop: base.check_clone_in_loop,
             check_default_hasher: base.check_default_hasher,
             check_mixed_concerns: base.check_mixed_concerns,
+            check_inline_tests: base.check_inline_tests,
         }
     }
 }

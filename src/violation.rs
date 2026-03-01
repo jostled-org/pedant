@@ -13,137 +13,6 @@ pub struct CheckRationale {
     pub llm_specific: bool,
 }
 
-/// Information about a check for listing purposes.
-#[derive(Debug, Clone, Copy)]
-pub struct CheckInfo {
-    /// The check code (e.g., "max-depth").
-    pub code: &'static str,
-    /// Brief description of what the check detects.
-    pub description: &'static str,
-    /// The check category.
-    pub category: &'static str,
-    /// Whether this is LLM-specific.
-    pub llm_specific: bool,
-}
-
-/// All available checks.
-pub const ALL_CHECKS: &[CheckInfo] = &[
-    CheckInfo {
-        code: "max-depth",
-        description: "Excessive nesting depth",
-        category: "nesting",
-        llm_specific: false,
-    },
-    CheckInfo {
-        code: "nested-if",
-        description: "If nested inside if",
-        category: "nesting",
-        llm_specific: false,
-    },
-    CheckInfo {
-        code: "if-in-match",
-        description: "If inside match arm",
-        category: "nesting",
-        llm_specific: false,
-    },
-    CheckInfo {
-        code: "nested-match",
-        description: "Match nested inside match",
-        category: "nesting",
-        llm_specific: false,
-    },
-    CheckInfo {
-        code: "match-in-if",
-        description: "Match inside if branch",
-        category: "nesting",
-        llm_specific: false,
-    },
-    CheckInfo {
-        code: "else-chain",
-        description: "Long if/else if chain",
-        category: "nesting",
-        llm_specific: false,
-    },
-    CheckInfo {
-        code: "forbidden-attribute",
-        description: "Forbidden attribute pattern",
-        category: "forbid_attributes",
-        llm_specific: true,
-    },
-    CheckInfo {
-        code: "forbidden-type",
-        description: "Forbidden type pattern",
-        category: "forbid_types",
-        llm_specific: true,
-    },
-    CheckInfo {
-        code: "forbidden-call",
-        description: "Forbidden method call pattern",
-        category: "forbid_calls",
-        llm_specific: true,
-    },
-    CheckInfo {
-        code: "forbidden-macro",
-        description: "Forbidden macro pattern",
-        category: "forbid_macros",
-        llm_specific: true,
-    },
-    CheckInfo {
-        code: "forbidden-else",
-        description: "Use of `else` keyword (style preference)",
-        category: "forbid_else",
-        llm_specific: false,
-    },
-    CheckInfo {
-        code: "forbidden-unsafe",
-        description: "Use of `unsafe` keyword",
-        category: "forbid_unsafe",
-        llm_specific: false,
-    },
-    CheckInfo {
-        code: "dyn-return",
-        description: "Dynamic dispatch in return type (Box<dyn T>, Arc<dyn T>)",
-        category: "dispatch",
-        llm_specific: true,
-    },
-    CheckInfo {
-        code: "dyn-param",
-        description: "Dynamic dispatch in function parameter (&dyn T, Box<dyn T>)",
-        category: "dispatch",
-        llm_specific: true,
-    },
-    CheckInfo {
-        code: "vec-box-dyn",
-        description: "Vec<Box<dyn T>> prevents cache locality and inlining",
-        category: "dispatch",
-        llm_specific: true,
-    },
-    CheckInfo {
-        code: "dyn-field",
-        description: "Dynamic dispatch in struct field (Box<dyn T>, Arc<dyn T>)",
-        category: "dispatch",
-        llm_specific: true,
-    },
-    CheckInfo {
-        code: "clone-in-loop",
-        description: "clone() called inside loop body",
-        category: "performance",
-        llm_specific: true,
-    },
-    CheckInfo {
-        code: "default-hasher",
-        description: "HashMap/HashSet with default SipHash hasher",
-        category: "performance",
-        llm_specific: true,
-    },
-    CheckInfo {
-        code: "mixed-concerns",
-        description: "Disconnected type groups indicate mixed concerns",
-        category: "structure",
-        llm_specific: true,
-    },
-];
-
 /// Look up a ViolationType by its code string for rationale display.
 pub fn lookup_rationale(code: &str) -> Option<CheckRationale> {
     match code {
@@ -166,6 +35,7 @@ pub fn lookup_rationale(code: &str) -> Option<CheckRationale> {
         "clone-in-loop" => Some(ViolationType::CloneInLoop.rationale()),
         "default-hasher" => Some(ViolationType::DefaultHasher.rationale()),
         "mixed-concerns" => Some(ViolationType::MixedConcerns.rationale()),
+        "inline-tests" => Some(ViolationType::InlineTests.rationale()),
         _ => None,
     }
 }
@@ -192,6 +62,7 @@ pub enum ViolationType {
     CloneInLoop,
     DefaultHasher,
     MixedConcerns,
+    InlineTests,
 }
 
 impl ViolationType {
@@ -216,14 +87,18 @@ impl ViolationType {
             Self::CloneInLoop => "clone-in-loop",
             Self::DefaultHasher => "default-hasher",
             Self::MixedConcerns => "mixed-concerns",
+            Self::InlineTests => "inline-tests",
         }
     }
 
     pub fn check_name(&self) -> &'static str {
         match self {
-            Self::MaxDepth => "nesting",
-            Self::NestedIf | Self::IfInMatch | Self::NestedMatch | Self::MatchInIf => "nesting",
-            Self::ElseChain => "nesting",
+            Self::MaxDepth
+            | Self::NestedIf
+            | Self::IfInMatch
+            | Self::NestedMatch
+            | Self::MatchInIf
+            | Self::ElseChain => "nesting",
             Self::ForbiddenAttribute { .. } => "forbid_attributes",
             Self::ForbiddenType { .. } => "forbid_types",
             Self::ForbiddenCall { .. } => "forbid_calls",
@@ -232,7 +107,7 @@ impl ViolationType {
             Self::ForbiddenUnsafe => "forbid_unsafe",
             Self::DynReturn | Self::DynParam | Self::VecBoxDyn | Self::DynField => "dispatch",
             Self::CloneInLoop | Self::DefaultHasher => "performance",
-            Self::MixedConcerns => "structure",
+            Self::MixedConcerns | Self::InlineTests => "structure",
         }
     }
 
@@ -242,21 +117,7 @@ impl ViolationType {
             | Self::ForbiddenType { pattern }
             | Self::ForbiddenCall { pattern }
             | Self::ForbiddenMacro { pattern } => Some(pattern),
-            Self::MaxDepth
-            | Self::NestedIf
-            | Self::IfInMatch
-            | Self::NestedMatch
-            | Self::MatchInIf
-            | Self::ElseChain
-            | Self::ForbiddenElse
-            | Self::ForbiddenUnsafe
-            | Self::DynReturn
-            | Self::DynParam
-            | Self::VecBoxDyn
-            | Self::DynField
-            | Self::CloneInLoop
-            | Self::DefaultHasher
-            | Self::MixedConcerns => None,
+            _ => None,
         }
     }
 
@@ -356,6 +217,12 @@ impl ViolationType {
                 problem: "Disconnected type groups in a single file indicate mixed concerns. Types that share no fields, trait bounds, or function signatures belong in separate modules.",
                 fix: "Split the file along connected components. Each group of related types becomes its own module.",
                 exception: "Re-export modules or files that intentionally collect small, independent items (e.g., error enums).",
+                llm_specific: true,
+            },
+            Self::InlineTests => CheckRationale {
+                problem: "Test modules embedded in source files mix production code with test code. This inflates source files and makes test organization harder to navigate.",
+                fix: "Move tests to the tests/ directory as integration tests, or to a separate test file alongside the source.",
+                exception: "Small utility modules where colocated unit tests are preferred for locality.",
                 llm_specific: true,
             },
         }

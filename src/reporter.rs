@@ -44,7 +44,10 @@ impl Reporter {
     fn report_json<W: Write>(&self, violations: &[Violation], writer: &mut W) -> io::Result<()> {
         writeln!(writer, "[")?;
         for (i, v) in violations.iter().enumerate() {
-            let comma = if i + 1 < violations.len() { "," } else { "" };
+            let comma = match i + 1 < violations.len() {
+                true => ",",
+                false => "",
+            };
             let pattern_field = v.violation_type.pattern()
                 .map(|p| format!(r#", "pattern": "{}""#, escape_json(p)))
                 .unwrap_or_default();

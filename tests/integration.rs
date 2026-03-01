@@ -445,3 +445,27 @@ fn test_mixed_concerns_disabled() {
 
     assert!(violations.iter().all(|v| !matches!(v.violation_type, ViolationType::MixedConcerns)));
 }
+
+#[test]
+fn test_inline_tests_detection() {
+    let source = include_str!("fixtures/inline_tests.rs");
+    let config = CheckConfig {
+        check_inline_tests: true,
+        ..permissive_config()
+    };
+    let violations = analyze("inline_tests.rs", source, &config).unwrap();
+
+    let it_violations: Vec<_> = violations.iter()
+        .filter(|v| matches!(v.violation_type, ViolationType::InlineTests))
+        .collect();
+    assert_eq!(it_violations.len(), 1);
+    assert!(it_violations[0].message.contains("tests"));
+}
+
+#[test]
+fn test_inline_tests_disabled() {
+    let source = include_str!("fixtures/inline_tests.rs");
+    let violations = analyze("inline_tests.rs", source, &permissive_config()).unwrap();
+
+    assert!(violations.iter().all(|v| !matches!(v.violation_type, ViolationType::InlineTests)));
+}

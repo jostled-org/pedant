@@ -9,7 +9,8 @@ use pedant::config::{
     PatternOverride,
 };
 use pedant::reporter::Reporter;
-use pedant::violation::{lookup_rationale, Violation, ALL_CHECKS};
+use pedant::checks::ALL_CHECKS;
+use pedant::violation::{lookup_rationale, Violation};
 use pedant::visitor::{analyze, CheckConfig};
 
 fn main() -> ExitCode {
@@ -130,6 +131,9 @@ fn resolve_config_for_path(
     }
     if let Some(v) = override_cfg.check_mixed_concerns {
         config.check_mixed_concerns = v;
+    }
+    if let Some(v) = override_cfg.check_inline_tests {
+        config.check_inline_tests = v;
     }
 
     Some(config)

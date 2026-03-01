@@ -13,6 +13,7 @@
 //! assert!(!violations.is_empty());
 //! ```
 
+pub mod checks;
 pub mod config;
 pub mod pattern;
 pub mod reporter;
@@ -22,11 +23,10 @@ pub mod visitor;
 use std::fs;
 use std::path::Path;
 
+pub use checks::{CheckInfo, ALL_CHECKS};
 pub use config::{Cli, ConfigFile, PatternCheck, PatternOverride};
 pub use reporter::{OutputFormat, Reporter};
-pub use violation::{
-    lookup_rationale, CheckInfo, CheckRationale, Violation, ViolationType, ALL_CHECKS,
-};
+pub use violation::{lookup_rationale, CheckRationale, Violation, ViolationType};
 pub use visitor::{analyze, CheckConfig};
 
 /// Type alias for the configuration used by the linter.

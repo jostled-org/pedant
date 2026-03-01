@@ -1,4 +1,5 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::rc::Rc;
 
 use proc_macro2::LineColumn;
 use syn::visit::Visit;
@@ -42,6 +43,7 @@ pub struct CheckConfig {
     pub check_clone_in_loop: bool,
     pub check_default_hasher: bool,
     pub check_mixed_concerns: bool,
+    pub check_inline_tests: bool,
 }
 
 impl Default for CheckConfig {
@@ -67,6 +69,7 @@ impl Default for CheckConfig {
             check_clone_in_loop: false,
             check_default_hasher: false,
             check_mixed_concerns: false,
+            check_inline_tests: false,
         }
     }
 }
@@ -79,8 +82,8 @@ pub struct NestingVisitor<'a> {
     loop_depth: usize,
     branch_context: Option<BranchContext>,
     item_depth: usize,
-    defined_types: HashSet<String>,
-    type_edges: Vec<(String, String)>,
+    defined_types: BTreeSet<Rc<str>>,
+    type_edges: Vec<(Rc<str>, Rc<str>)>,
     violations: Vec<Violation>,
 }
 
@@ -93,7 +96,7 @@ impl<'a> NestingVisitor<'a> {
             loop_depth: 0,
             branch_context: None,
             item_depth: 0,
-            defined_types: HashSet::new(),
+            defined_types: BTreeSet::new(),
             type_edges: Vec::new(),
             violations: Vec::new(),
         }
@@ -265,6 +268,25 @@ impl<'a> NestingVisitor<'a> {
         );
     }
 
+    fn check_inline_tests(&mut self, node: &syn::ItemMod) {
+        if !self.config.check_inline_tests {
+            return;
+        }
+        let has_cfg_test = node.attrs.iter().any(|attr| {
+            let text = extract_attribute_text(attr);
+            text == "cfg(test)"
+        });
+        if !has_cfg_test {
+            return;
+        }
+        let span_start = node.mod_token.span.start();
+        self.report(
+            span_start,
+            ViolationType::InlineTests,
+            format!("test module `{}` should be in tests/ directory", node.ident),
+        );
+    }
+
     fn check_mixed_concerns(&mut self) {
         if !self.config.check_mixed_concerns || self.defined_types.len() < 2 {
             return;
@@ -280,26 +302,27 @@ impl<'a> NestingVisitor<'a> {
     }
 
     fn find_disconnected_groups(&self) -> Option<String> {
-        let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();
+        let mut adj: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
         for name in &self.defined_types {
-            adj.entry(name.as_str()).or_default();
+            adj.entry(name).or_default();
         }
         for (a, b) in &self.type_edges {
+            let (a, b) = (a.as_ref(), b.as_ref());
             if a == b || !self.defined_types.contains(a) || !self.defined_types.contains(b) {
                 continue;
             }
-            adj.entry(a.as_str()).or_default().push(b.as_str());
-            adj.entry(b.as_str()).or_default().push(a.as_str());
+            adj.entry(a).or_default().push(b);
+            adj.entry(b).or_default().push(a);
         }
 
-        let mut visited: HashSet<&str> = HashSet::new();
+        let mut visited: BTreeSet<&str> = BTreeSet::new();
         let mut components: Vec<Vec<&str>> = Vec::new();
 
         for name in &self.defined_types {
-            if visited.contains(name.as_str()) {
+            if visited.contains(name.as_ref()) {
                 continue;
             }
-            components.push(bfs_component(name.as_str(), &adj, &mut visited));
+            components.push(bfs_component(name, &adj, &mut visited));
         }
 
         if components.len() < 2 {
@@ -467,8 +490,8 @@ fn collect_signature_type_names(sig: &Signature) -> Vec<String> {
 
 fn bfs_component<'a>(
     start: &'a str,
-    adj: &HashMap<&'a str, Vec<&'a str>>,
-    visited: &mut HashSet<&'a str>,
+    adj: &BTreeMap<&'a str, Vec<&'a str>>,
+    visited: &mut BTreeSet<&'a str>,
 ) -> Vec<&'a str> {
     let mut component = Vec::new();
     let mut queue = VecDeque::new();
@@ -600,6 +623,27 @@ fn get_type_param_bound_span(bound: &syn::TypeParamBound) -> LineColumn {
     }
 }
 
+fn edges_from_names(owner: &Rc<str>, type_names: Vec<String>) -> Vec<(Rc<str>, Rc<str>)> {
+    type_names.into_iter()
+        .map(|tn| (Rc::clone(owner), Rc::from(tn)))
+        .collect()
+}
+
+fn signature_edge_pairs(sig: &Signature) -> Vec<(Rc<str>, Rc<str>)> {
+    let names: Vec<Rc<str>> = collect_signature_type_names(sig)
+        .into_iter()
+        .map(Rc::from)
+        .collect();
+    let mut pairs = Vec::new();
+    let len = names.len();
+    (0..len).for_each(|i| {
+        ((i + 1)..len).for_each(|j| {
+            pairs.push((Rc::clone(&names[i]), Rc::clone(&names[j])));
+        });
+    });
+    pairs
+}
+
 impl<'ast> Visit<'ast> for NestingVisitor<'_> {
     fn visit_expr_if(&mut self, node: &'ast ExprIf) {
         let span_start = node.if_token.span.start();
@@ -721,15 +765,15 @@ impl<'ast> Visit<'ast> for NestingVisitor<'_> {
         syn::visit::visit_attribute(self, node);
     }
 
+    fn visit_item_mod(&mut self, node: &'ast syn::ItemMod) {
+        self.check_inline_tests(node);
+        syn::visit::visit_item_mod(self, node);
+    }
+
     fn visit_item_fn(&mut self, node: &'ast syn::ItemFn) {
         self.check_fn_signature(&node.sig);
         if self.item_depth == 0 {
-            let names: Vec<String> = collect_signature_type_names(&node.sig);
-            for i in 0..names.len() {
-                for j in (i + 1)..names.len() {
-                    self.type_edges.push((names[i].clone(), names[j].clone()));
-                }
-            }
+            self.type_edges.extend(signature_edge_pairs(&node.sig));
         }
         self.item_depth += 1;
         syn::visit::visit_item_fn(self, node);
@@ -737,66 +781,67 @@ impl<'ast> Visit<'ast> for NestingVisitor<'_> {
     }
 
     fn visit_item_struct(&mut self, node: &'ast syn::ItemStruct) {
-        let name = node.ident.to_string();
-        self.defined_types.insert(name.clone());
-        for field in &node.fields {
-            for type_name in collect_type_names(&field.ty) {
-                self.type_edges.push((name.clone(), type_name));
-            }
-        }
+        let name: Rc<str> = Rc::from(node.ident.to_string());
+        self.defined_types.insert(Rc::clone(&name));
+        let edges: Vec<_> = node.fields.iter()
+            .flat_map(|field| edges_from_names(&name, collect_type_names(&field.ty)))
+            .collect();
+        self.type_edges.extend(edges);
         self.item_depth += 1;
         syn::visit::visit_item_struct(self, node);
         self.item_depth -= 1;
     }
 
     fn visit_item_enum(&mut self, node: &'ast syn::ItemEnum) {
-        let name = node.ident.to_string();
-        self.defined_types.insert(name.clone());
-        for variant in &node.variants {
-            for field in &variant.fields {
-                for type_name in collect_type_names(&field.ty) {
-                    self.type_edges.push((name.clone(), type_name));
-                }
-            }
-        }
+        let name: Rc<str> = Rc::from(node.ident.to_string());
+        self.defined_types.insert(Rc::clone(&name));
+        let edges: Vec<_> = node.variants.iter()
+            .flat_map(|variant| &variant.fields)
+            .flat_map(|field| edges_from_names(&name, collect_type_names(&field.ty)))
+            .collect();
+        self.type_edges.extend(edges);
         self.item_depth += 1;
         syn::visit::visit_item_enum(self, node);
         self.item_depth -= 1;
     }
 
     fn visit_item_trait(&mut self, node: &'ast syn::ItemTrait) {
-        let name = node.ident.to_string();
-        self.defined_types.insert(name.clone());
-        for item in &node.items {
-            if let syn::TraitItem::Fn(method) = item {
-                for type_name in collect_signature_type_names(&method.sig) {
-                    self.type_edges.push((name.clone(), type_name));
-                }
-            }
-        }
+        let name: Rc<str> = Rc::from(node.ident.to_string());
+        self.defined_types.insert(Rc::clone(&name));
+        let edges: Vec<_> = node.items.iter()
+            .filter_map(|item| match item {
+                syn::TraitItem::Fn(method) => Some(method),
+                _ => None,
+            })
+            .flat_map(|method| edges_from_names(&name, collect_signature_type_names(&method.sig)))
+            .collect();
+        self.type_edges.extend(edges);
         self.item_depth += 1;
         syn::visit::visit_item_trait(self, node);
         self.item_depth -= 1;
     }
 
     fn visit_item_impl(&mut self, node: &'ast syn::ItemImpl) {
-        let self_name = collect_type_names(&node.self_ty)
-            .into_iter()
-            .next()
-            .unwrap_or_default();
+        let self_name: Rc<str> = Rc::from(
+            collect_type_names(&node.self_ty)
+                .into_iter()
+                .next()
+                .unwrap_or_default(),
+        );
         if let Some(trait_name) = node.trait_.as_ref()
             .and_then(|(_, path, _)| path.segments.last())
             .map(|seg| seg.ident.to_string())
         {
-            self.type_edges.push((self_name.clone(), trait_name));
+            self.type_edges.push((Rc::clone(&self_name), Rc::from(trait_name)));
         }
-        for item in &node.items {
-            if let syn::ImplItem::Fn(method) = item {
-                for type_name in collect_signature_type_names(&method.sig) {
-                    self.type_edges.push((self_name.clone(), type_name));
-                }
-            }
-        }
+        let edges: Vec<_> = node.items.iter()
+            .filter_map(|item| match item {
+                syn::ImplItem::Fn(method) => Some(method),
+                _ => None,
+            })
+            .flat_map(|method| edges_from_names(&self_name, collect_signature_type_names(&method.sig)))
+            .collect();
+        self.type_edges.extend(edges);
         self.item_depth += 1;
         syn::visit::visit_item_impl(self, node);
         self.item_depth -= 1;

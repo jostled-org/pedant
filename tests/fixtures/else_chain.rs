@@ -1,0 +1,11 @@
+fn example(x: i32) {
+    if x == 1 {
+        println!("one");
+    } else if x == 2 {
+        println!("two");
+    } else if x == 3 {
+        println!("three");
+    } else {
+        println!("other");
+    }
+}

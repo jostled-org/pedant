@@ -113,14 +113,25 @@ fi
 | Check | Config key | Description |
 |-------|-----------|-------------|
 | `mixed-concerns` | `check_mixed_concerns` | Disconnected type groups in a single file |
+| `inline-tests` | `check_inline_tests` | `#[cfg(test)] mod tests` embedded in source files |
 
 Use `pedant --explain <CHECK>` for detailed rationale and fix guidance.
 
 ## Configuration
 
-Optional `.pedant.toml` in project root:
+pedant loads config from two locations, in order of priority:
+
+1. **Project config** — `.pedant.toml` in the current directory
+2. **Global config** — `$XDG_CONFIG_HOME/pedant/config.toml` (defaults to `~/.config/pedant/config.toml`)
+
+If a project config exists, it is used and the global config is ignored. If neither exists, built-in defaults apply. Use `-c <path>` to specify an explicit config file.
+
+The global config is where you set your personal defaults (coding style preferences, which checks to enable). The project config overrides those defaults for a specific repo.
 
 ```toml
+# All scalar keys must appear before any [table] sections.
+# TOML assigns bare keys after a [table] header to that table.
+
 max_depth = 3
 check_nested_if = true
 check_if_in_match = true
@@ -128,6 +139,20 @@ check_nested_match = true
 check_match_in_if = true
 check_else_chain = true
 else_chain_threshold = 3
+forbid_else = false
+forbid_unsafe = true
+
+# Performance and dispatch checks — off by default
+check_dyn_return = false
+check_dyn_param = false
+check_vec_box_dyn = false
+check_dyn_field = false
+check_clone_in_loop = false
+check_default_hasher = false
+
+# Structure checks — off by default
+check_mixed_concerns = false
+check_inline_tests = false
 
 # Pattern checks — disabled by default, enable with patterns
 [forbid_attributes]
@@ -144,22 +169,9 @@ patterns = [".unwrap()", ".expect(*)", ".clone()"]
 
 [forbid_macros]
 enabled = true
-patterns = ["panic!", "todo!", "dbg!", "println!"]
+patterns = ["panic!", "todo!", "dbg!", "println!", "eprintln!"]
 
-forbid_else = false
-forbid_unsafe = true
-
-# Performance and dispatch checks — off by default
-check_dyn_return = false
-check_dyn_param = false
-check_vec_box_dyn = false
-check_dyn_field = false
-check_clone_in_loop = false
-check_default_hasher = false
-
-# Structure checks — off by default
-check_mixed_concerns = false
-
+# Per-path overrides
 [overrides."tests/**"]
 max_depth = 4
 

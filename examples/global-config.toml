@@ -1,0 +1,105 @@
+# pedant global config — all checks enabled
+# Place at: ~/.config/pedant/config.toml
+# Project-level .pedant.toml overrides this entirely when present
+
+max_depth = 2
+check_nested_if = true
+check_if_in_match = true
+check_nested_match = true
+check_match_in_if = true
+forbid_else = true
+forbid_unsafe = true
+check_dyn_return = true
+check_dyn_param = true
+check_vec_box_dyn = true
+check_dyn_field = true
+check_clone_in_loop = true
+check_default_hasher = true
+check_mixed_concerns = true
+check_inline_tests = true
+
+# Forbidden attributes
+[forbid_attributes]
+enabled = true
+patterns = [
+    "allow(dead_code)",
+    "allow(unused*)",
+    "allow(clippy::*)",
+]
+
+# Forbidden types
+[forbid_types]
+enabled = true
+patterns = [
+    "Arc<String>",
+    "Arc<Vec<*>>",
+    "Box<dyn*Error*>",
+]
+
+# Forbidden calls
+[forbid_calls]
+enabled = true
+patterns = [
+    ".unwrap()",
+    ".expect(*)",
+]
+
+# Forbidden macros
+[forbid_macros]
+enabled = true
+patterns = [
+    "panic!",
+    "todo!",
+    "unimplemented!",
+    "dbg!",
+    "println!",
+    "eprintln!",
+]
+
+# Relax rules for tests
+[overrides."tests/**"]
+max_depth = 5
+forbid_unsafe = false
+
+[overrides."tests/**".forbid_calls]
+enabled = false
+
+[overrides."tests/**".forbid_macros]
+enabled = false
+
+[overrides."**/tests/**"]
+max_depth = 5
+forbid_unsafe = false
+
+[overrides."**/tests/**".forbid_calls]
+enabled = false
+
+[overrides."**/tests/**".forbid_macros]
+enabled = false
+
+[overrides."**/test_*.rs"]
+max_depth = 5
+forbid_unsafe = false
+
+[overrides."**/test_*.rs".forbid_calls]
+enabled = false
+
+[overrides."**/test_*.rs".forbid_macros]
+enabled = false
+
+[overrides."**/tests.rs"]
+max_depth = 5
+forbid_unsafe = false
+
+[overrides."**/tests.rs".forbid_calls]
+enabled = false
+
+[overrides."**/tests.rs".forbid_macros]
+enabled = false
+
+# Skip generated code entirely
+[overrides."**/generated.rs"]
+enabled = false
+
+[overrides."target/**"]
+enabled = false

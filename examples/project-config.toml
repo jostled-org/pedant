@@ -1,0 +1,69 @@
+# pedant project config — CLI binary, so eprintln! is allowed
+# Place at: .pedant.toml in project root
+
+max_depth = 2
+check_nested_if = true
+check_if_in_match = true
+check_nested_match = true
+check_match_in_if = true
+forbid_else = true
+forbid_unsafe = true
+check_dyn_return = true
+check_dyn_param = true
+check_vec_box_dyn = true
+check_dyn_field = true
+check_clone_in_loop = true
+check_default_hasher = true
+check_mixed_concerns = true
+check_inline_tests = true
+
+[forbid_attributes]
+enabled = true
+patterns = [
+    "allow(dead_code)",
+    "allow(unused*)",
+    "allow(clippy::*)",
+]
+
+[forbid_types]
+enabled = true
+patterns = [
+    "Arc<String>",
+    "Arc<Vec<*>>",
+    "Box<dyn*Error*>",
+]
+
+[forbid_calls]
+enabled = true
+patterns = [
+    ".unwrap()",
+    ".expect(*)",
+]
+
+# No eprintln! — this is a CLI tool
+[forbid_macros]
+enabled = true
+patterns = [
+    "panic!",
+    "todo!",
+    "unimplemented!",
+    "dbg!",
+    "println!",
+]
+
+# Relax rules for test fixtures (deliberately bad code)
+[overrides."tests/fixtures/**"]
+enabled = false
+
+[overrides."tests/**"]
+max_depth = 5
+forbid_unsafe = false
+
+[overrides."tests/**".forbid_calls]
+enabled = false
+
+[overrides."tests/**".forbid_macros]
+enabled = false
+
+[overrides."target/**"]
+enabled = false

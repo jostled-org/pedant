@@ -6,10 +6,16 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --check
       - run: cargo clippy -- -D warnings
+      - run: cargo install --path . && pedant src/
+      - run: cargo test
+      - run: RUSTDOCFLAGS="-D missing_docs" cargo doc --no-deps
+      - run: cargo install cargo-deny && cargo deny check

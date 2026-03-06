@@ -4,14 +4,14 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use clap::Parser;
+use pedant::checks::ALL_CHECKS;
 use pedant::config::{
-    check_path_override, find_config_file, load_config_file, Cli, ConfigFile, PatternCheck,
-    PatternOverride,
+    Cli, ConfigFile, NamingOverride, PatternCheck, PatternOverride, check_path_override,
+    find_config_file, load_config_file,
 };
 use pedant::reporter::Reporter;
-use pedant::checks::ALL_CHECKS;
-use pedant::violation::{lookup_rationale, Violation};
-use pedant::visitor::{analyze, CheckConfig};
+use pedant::violation::{Violation, lookup_rationale};
+use pedant::visitor::{CheckConfig, analyze};
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
@@ -67,7 +67,11 @@ fn main() -> ExitCode {
 }
 
 fn load_file_config(cli: &Cli) -> Option<ConfigFile> {
-    let config_path = cli.config.as_ref().map(Path::new).map(Path::to_path_buf)
+    let config_path = cli
+        .config
+        .as_ref()
+        .map(Path::new)
+        .map(Path::to_path_buf)
         .or_else(find_config_file)?;
 
     match load_config_file(&config_path) {
@@ -101,7 +105,10 @@ fn resolve_config_for_path(
         config.max_depth = max_depth;
     }
 
-    apply_pattern_override(&mut config.forbid_attributes, &override_cfg.forbid_attributes);
+    apply_pattern_override(
+        &mut config.forbid_attributes,
+        &override_cfg.forbid_attributes,
+    );
     apply_pattern_override(&mut config.forbid_types, &override_cfg.forbid_types);
     apply_pattern_override(&mut config.forbid_calls, &override_cfg.forbid_calls);
     apply_pattern_override(&mut config.forbid_macros, &override_cfg.forbid_macros);
@@ -135,6 +142,7 @@ fn resolve_config_for_path(
     if let Some(v) = override_cfg.check_inline_tests {
         config.check_inline_tests = v;
     }
+    apply_naming_override(&mut config.check_naming, &override_cfg.check_naming);
 
     Some(config)
 }
@@ -151,22 +159,39 @@ fn apply_pattern_override(check: &mut PatternCheck, override_opt: &Option<Patter
     }
 }
 
+fn apply_naming_override(
+    check: &mut pedant::config::NamingCheck,
+    override_opt: &Option<NamingOverride>,
+) {
+    let Some(ovr) = override_opt else { return };
+
+    if let Some(enabled) = ovr.enabled {
+        check.enabled = enabled;
+    }
+    if let Some(ref names) = ovr.generic_names {
+        check.generic_names = names.clone();
+    }
+    if let Some(ratio) = ovr.max_generic_ratio {
+        check.max_generic_ratio = ratio;
+    }
+    if let Some(count) = ovr.min_generic_count {
+        check.min_generic_count = count;
+    }
+}
+
 fn process_stdin(config: &CheckConfig) -> Result<Vec<Violation>, String> {
     let mut source = String::new();
     io::stdin()
         .read_to_string(&mut source)
         .map_err(|e| format!("failed to read stdin: {e}"))?;
 
-    analyze("<stdin>", &source, config)
-        .map_err(|e| format!("parse error: {e}"))
+    analyze("<stdin>", &source, config).map_err(|e| format!("parse error: {e}"))
 }
 
 fn process_file(file_path: &str, config: &CheckConfig) -> Result<Vec<Violation>, String> {
-    let source = fs::read_to_string(file_path)
-        .map_err(|e| format!("failed to read file: {e}"))?;
+    let source = fs::read_to_string(file_path).map_err(|e| format!("failed to read file: {e}"))?;
 
-    analyze(file_path, &source, config)
-        .map_err(|e| format!("parse error: {e}"))
+    analyze(file_path, &source, config).map_err(|e| format!("parse error: {e}"))
 }
 
 fn handle_result(
@@ -195,7 +220,11 @@ fn print_checks_list() {
             true => "yes",
             false => "",
         };
-        let _ = writeln!(stdout, "{:<20} {:<8} {}", check.code, llm_marker, check.description);
+        let _ = writeln!(
+            stdout,
+            "{:<20} {:<8} {}",
+            check.code, llm_marker, check.description
+        );
     }
 
     let _ = writeln!(stdout);

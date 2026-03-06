@@ -133,4 +133,10 @@ pub const ALL_CHECKS: &[CheckInfo] = &[
         category: "structure",
         llm_specific: true,
     },
+    CheckInfo {
+        code: "generic-naming",
+        description: "High ratio of generic variable names in a function",
+        category: "naming",
+        llm_specific: true,
+    },
 ];

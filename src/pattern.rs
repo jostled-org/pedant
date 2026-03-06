@@ -38,7 +38,13 @@ enum PartMatch {
     Ok,
 }
 
-fn try_match_part(text: &str, pos: &mut usize, part: &str, index: usize, total: usize) -> PartMatch {
+fn try_match_part(
+    text: &str,
+    pos: &mut usize,
+    part: &str,
+    index: usize,
+    total: usize,
+) -> PartMatch {
     match (part.is_empty(), text[*pos..].find(part)) {
         (true, _) => PartMatch::Continue,
         (false, None) => PartMatch::Fail,

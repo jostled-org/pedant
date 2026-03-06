@@ -7,7 +7,7 @@ use syn::{
     Attribute, Expr, ExprIf, ExprMethodCall, ExprUnsafe, FnArg, Macro, ReturnType, Signature, Type,
 };
 
-use crate::config::PatternCheck;
+use crate::config::{NamingCheck, PatternCheck};
 use crate::pattern::{
     extract_attribute_text, extract_macro_text, extract_method_call_text, extract_type_text,
     matches_pattern,
@@ -65,6 +65,8 @@ pub struct CheckConfig {
     pub check_mixed_concerns: bool,
     /// Flag `#[cfg(test)] mod` blocks in source files.
     pub check_inline_tests: bool,
+    /// Generic naming check configuration.
+    pub check_naming: NamingCheck,
 }
 
 impl Default for CheckConfig {
@@ -91,8 +93,23 @@ impl Default for CheckConfig {
             check_default_hasher: false,
             check_mixed_concerns: false,
             check_inline_tests: false,
+            check_naming: NamingCheck::default(),
         }
     }
+}
+
+/// A recorded binding with the loop depth at time of capture.
+#[derive(Clone)]
+struct RecordedBinding {
+    name: String,
+    loop_depth: usize,
+}
+
+/// Saved naming state for function entry/exit.
+struct NamingState {
+    bindings: Vec<RecordedBinding>,
+    has_arithmetic: bool,
+    fn_span: Option<LineColumn>,
 }
 
 /// AST visitor that collects violations during a single-pass walk.
@@ -106,6 +123,9 @@ pub struct NestingVisitor<'a> {
     defined_types: BTreeSet<Rc<str>>,
     type_edges: Vec<(Rc<str>, Rc<str>)>,
     violations: Vec<Violation>,
+    naming_bindings: Vec<RecordedBinding>,
+    naming_has_arithmetic: bool,
+    naming_fn_span: Option<LineColumn>,
 }
 
 impl<'a> NestingVisitor<'a> {
@@ -121,7 +141,111 @@ impl<'a> NestingVisitor<'a> {
             defined_types: BTreeSet::new(),
             type_edges: Vec::new(),
             violations: Vec::new(),
+            naming_bindings: Vec::new(),
+            naming_has_arithmetic: false,
+            naming_fn_span: None,
         }
+    }
+
+    fn save_naming_state(&self) -> NamingState {
+        NamingState {
+            bindings: self.naming_bindings.clone(),
+            has_arithmetic: self.naming_has_arithmetic,
+            fn_span: self.naming_fn_span,
+        }
+    }
+
+    fn restore_naming_state(&mut self, state: NamingState) {
+        self.naming_bindings = state.bindings;
+        self.naming_has_arithmetic = state.has_arithmetic;
+        self.naming_fn_span = state.fn_span;
+    }
+
+    fn reset_naming_state(&mut self, fn_span: LineColumn) {
+        self.naming_bindings.clear();
+        self.naming_has_arithmetic = false;
+        self.naming_fn_span = Some(fn_span);
+    }
+
+    fn record_binding(&mut self, name: String) {
+        if name.starts_with('_') {
+            return;
+        }
+        self.naming_bindings.push(RecordedBinding {
+            name,
+            loop_depth: self.loop_depth,
+        });
+    }
+
+    fn extract_pat_names(&mut self, pat: &syn::Pat) {
+        match pat {
+            syn::Pat::Ident(pi) => self.record_binding(pi.ident.to_string()),
+            syn::Pat::Tuple(pt) => pt.elems.iter().for_each(|p| self.extract_pat_names(p)),
+            syn::Pat::TupleStruct(pts) => pts.elems.iter().for_each(|p| self.extract_pat_names(p)),
+            syn::Pat::Struct(ps) => ps
+                .fields
+                .iter()
+                .for_each(|fp| self.extract_pat_names(&fp.pat)),
+            syn::Pat::Slice(psl) => psl.elems.iter().for_each(|p| self.extract_pat_names(p)),
+            syn::Pat::Or(po) => po.cases.iter().for_each(|p| self.extract_pat_names(p)),
+            syn::Pat::Reference(pr) => self.extract_pat_names(&pr.pat),
+            _ => {}
+        }
+    }
+
+    fn count_fn_params(&mut self, sig: &Signature) {
+        for input in &sig.inputs {
+            match input {
+                FnArg::Typed(pt) => self.extract_pat_names(&pt.pat),
+                FnArg::Receiver(_) => {}
+            }
+        }
+    }
+
+    fn classify_binding(
+        binding: &RecordedBinding,
+        has_arithmetic: bool,
+        generic_names: &[String],
+    ) -> bool {
+        classify_single_char(&binding.name, binding.loop_depth, has_arithmetic)
+            .unwrap_or_else(|| generic_names.iter().any(|g| g == &binding.name))
+    }
+
+    fn check_naming_entropy(&mut self) {
+        if !self.config.check_naming.enabled {
+            return;
+        }
+        let total = self.naming_bindings.len();
+        if total == 0 {
+            return;
+        }
+        let has_arithmetic = self.naming_has_arithmetic;
+        let generic_names = &self.config.check_naming.generic_names;
+        let offenders: Vec<&str> = self
+            .naming_bindings
+            .iter()
+            .filter(|b| Self::classify_binding(b, has_arithmetic, generic_names))
+            .map(|b| b.name.as_str())
+            .collect();
+        let generic_count = offenders.len();
+        if generic_count < self.config.check_naming.min_generic_count {
+            return;
+        }
+        let ratio = generic_count as f64 / total as f64;
+        if ratio <= self.config.check_naming.max_generic_ratio {
+            return;
+        }
+        let Some(span) = self.naming_fn_span else {
+            return;
+        };
+        let offender_list = offenders.join(", ");
+        self.report(
+            span,
+            ViolationType::GenericNaming,
+            format!(
+                "{generic_count}/{total} bindings are generic ({offender_list}), use domain-specific names",
+            ),
+        );
     }
 
     /// Consumes the visitor and returns all collected violations.
@@ -329,13 +453,14 @@ impl<'a> NestingVisitor<'a> {
         for name in &self.defined_types {
             adj.entry(name).or_default();
         }
-        for (a, b) in &self.type_edges {
-            let (a, b) = (a.as_ref(), b.as_ref());
-            if a == b || !self.defined_types.contains(a) || !self.defined_types.contains(b) {
+        for (src, dst) in &self.type_edges {
+            let (src, dst) = (src.as_ref(), dst.as_ref());
+            if src == dst || !self.defined_types.contains(src) || !self.defined_types.contains(dst)
+            {
                 continue;
             }
-            adj.entry(a).or_default().push(b);
-            adj.entry(b).or_default().push(a);
+            adj.entry(src).or_default().push(dst);
+            adj.entry(dst).or_default().push(src);
         }
 
         let mut visited: BTreeSet<&str> = BTreeSet::new();
@@ -467,6 +592,17 @@ impl<'a> NestingVisitor<'a> {
     }
 }
 
+/// Classifies a single-character binding name. Returns `Some(true)` if generic,
+/// `Some(false)` if contextually allowed, `None` if the name is multi-character.
+fn classify_single_char(name: &str, loop_depth: usize, has_arithmetic: bool) -> Option<bool> {
+    match name {
+        "i" | "j" | "k" | "n" => Some(loop_depth == 0),
+        "x" | "y" | "z" => Some(!has_arithmetic),
+        s if s.len() == 1 => Some(true),
+        _ => None,
+    }
+}
+
 fn collect_type_names(ty: &Type) -> Vec<String> {
     match ty {
         Type::Path(tp) => {
@@ -573,8 +709,7 @@ fn involves_dyn_dispatch(ty: &Type) -> bool {
             };
             let name = seg.ident.to_string();
             matches!(name.as_str(), "Box" | "Arc" | "Rc")
-                && first_type_arg(seg)
-                    .is_some_and(|inner| matches!(inner, Type::TraitObject(_)))
+                && first_type_arg(seg).is_some_and(|inner| matches!(inner, Type::TraitObject(_)))
         }
     }
 }
@@ -612,7 +747,10 @@ fn is_default_hasher(ty: &Type) -> bool {
 
 fn get_type_span_start(ty: &Type) -> LineColumn {
     match ty {
-        Type::Path(tp) => tp.path.segments.first()
+        Type::Path(tp) => tp
+            .path
+            .segments
+            .first()
             .map(|s| s.ident.span().start())
             .unwrap_or_else(|| LineColumn { line: 1, column: 0 }),
         Type::Reference(tr) => tr.and_token.span.start(),
@@ -623,13 +761,19 @@ fn get_type_span_start(ty: &Type) -> LineColumn {
         Type::Group(tg) => tg.group_token.span.start(),
         Type::Paren(tp) => tp.paren_token.span.open().start(),
         Type::ImplTrait(ti) => ti.impl_token.span.start(),
-        Type::TraitObject(to) => to.bounds.first()
+        Type::TraitObject(to) => to
+            .bounds
+            .first()
             .map(get_type_param_bound_span)
             .unwrap_or_else(|| LineColumn { line: 1, column: 0 }),
         Type::BareFn(bf) => bf.fn_token.span.start(),
         Type::Never(tn) => tn.bang_token.span.start(),
         Type::Infer(ti) => ti.underscore_token.span.start(),
-        Type::Macro(tm) => tm.mac.path.segments.first()
+        Type::Macro(tm) => tm
+            .mac
+            .path
+            .segments
+            .first()
             .map(|s| s.ident.span().start())
             .unwrap_or_else(|| LineColumn { line: 1, column: 0 }),
         _ => LineColumn { line: 1, column: 0 },
@@ -638,7 +782,10 @@ fn get_type_span_start(ty: &Type) -> LineColumn {
 
 fn get_type_param_bound_span(bound: &syn::TypeParamBound) -> LineColumn {
     match bound {
-        syn::TypeParamBound::Trait(tb) => tb.path.segments.first()
+        syn::TypeParamBound::Trait(tb) => tb
+            .path
+            .segments
+            .first()
             .map(|s| s.ident.span().start())
             .unwrap_or_else(|| LineColumn { line: 1, column: 0 }),
         syn::TypeParamBound::Lifetime(lt) => lt.apostrophe.start(),
@@ -647,7 +794,8 @@ fn get_type_param_bound_span(bound: &syn::TypeParamBound) -> LineColumn {
 }
 
 fn edges_from_names(owner: &Rc<str>, type_names: Vec<String>) -> Vec<(Rc<str>, Rc<str>)> {
-    type_names.into_iter()
+    type_names
+        .into_iter()
         .map(|tn| (Rc::clone(owner), Rc::from(tn)))
         .collect()
 }
@@ -750,6 +898,7 @@ impl<'ast> Visit<'ast> for NestingVisitor<'_> {
         self.depth += 1;
         self.loop_depth += 1;
         self.check_max_depth(span_start);
+        self.extract_pat_names(&node.pat);
         syn::visit::visit_expr_for_loop(self, node);
         self.loop_depth -= 1;
         self.depth -= 1;
@@ -798,15 +947,22 @@ impl<'ast> Visit<'ast> for NestingVisitor<'_> {
         if self.item_depth == 0 {
             self.type_edges.extend(signature_edge_pairs(&node.sig));
         }
+        let saved = self.save_naming_state();
+        self.reset_naming_state(node.sig.ident.span().start());
+        self.count_fn_params(&node.sig);
         self.item_depth += 1;
         syn::visit::visit_item_fn(self, node);
         self.item_depth -= 1;
+        self.check_naming_entropy();
+        self.restore_naming_state(saved);
     }
 
     fn visit_item_struct(&mut self, node: &'ast syn::ItemStruct) {
         let name: Rc<str> = Rc::from(node.ident.to_string());
         self.defined_types.insert(Rc::clone(&name));
-        let edges: Vec<_> = node.fields.iter()
+        let edges: Vec<_> = node
+            .fields
+            .iter()
             .flat_map(|field| edges_from_names(&name, collect_type_names(&field.ty)))
             .collect();
         self.type_edges.extend(edges);
@@ -818,7 +974,9 @@ impl<'ast> Visit<'ast> for NestingVisitor<'_> {
     fn visit_item_enum(&mut self, node: &'ast syn::ItemEnum) {
         let name: Rc<str> = Rc::from(node.ident.to_string());
         self.defined_types.insert(Rc::clone(&name));
-        let edges: Vec<_> = node.variants.iter()
+        let edges: Vec<_> = node
+            .variants
+            .iter()
             .flat_map(|variant| &variant.fields)
             .flat_map(|field| edges_from_names(&name, collect_type_names(&field.ty)))
             .collect();
@@ -831,7 +989,9 @@ impl<'ast> Visit<'ast> for NestingVisitor<'_> {
     fn visit_item_trait(&mut self, node: &'ast syn::ItemTrait) {
         let name: Rc<str> = Rc::from(node.ident.to_string());
         self.defined_types.insert(Rc::clone(&name));
-        let edges: Vec<_> = node.items.iter()
+        let edges: Vec<_> = node
+            .items
+            .iter()
             .filter_map(|item| match item {
                 syn::TraitItem::Fn(method) => Some(method),
                 _ => None,
@@ -851,18 +1011,25 @@ impl<'ast> Visit<'ast> for NestingVisitor<'_> {
                 .next()
                 .unwrap_or_default(),
         );
-        if let Some(trait_name) = node.trait_.as_ref()
+        if let Some(trait_name) = node
+            .trait_
+            .as_ref()
             .and_then(|(_, path, _)| path.segments.last())
             .map(|seg| seg.ident.to_string())
         {
-            self.type_edges.push((Rc::clone(&self_name), Rc::from(trait_name)));
+            self.type_edges
+                .push((Rc::clone(&self_name), Rc::from(trait_name)));
         }
-        let edges: Vec<_> = node.items.iter()
+        let edges: Vec<_> = node
+            .items
+            .iter()
             .filter_map(|item| match item {
                 syn::ImplItem::Fn(method) => Some(method),
                 _ => None,
             })
-            .flat_map(|method| edges_from_names(&self_name, collect_signature_type_names(&method.sig)))
+            .flat_map(|method| {
+                edges_from_names(&self_name, collect_signature_type_names(&method.sig))
+            })
             .collect();
         self.type_edges.extend(edges);
         self.item_depth += 1;
@@ -884,12 +1051,32 @@ impl<'ast> Visit<'ast> for NestingVisitor<'_> {
 
     fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
         self.check_fn_signature(&node.sig);
+        let saved = self.save_naming_state();
+        self.reset_naming_state(node.sig.ident.span().start());
+        self.count_fn_params(&node.sig);
         syn::visit::visit_impl_item_fn(self, node);
+        self.check_naming_entropy();
+        self.restore_naming_state(saved);
     }
 
     fn visit_trait_item_fn(&mut self, node: &'ast syn::TraitItemFn) {
         self.check_fn_signature(&node.sig);
         syn::visit::visit_trait_item_fn(self, node);
+    }
+
+    fn visit_local(&mut self, node: &'ast syn::Local) {
+        self.extract_pat_names(&node.pat);
+        syn::visit::visit_local(self, node);
+    }
+
+    fn visit_expr_binary(&mut self, node: &'ast syn::ExprBinary) {
+        if matches!(
+            node.op,
+            syn::BinOp::Add(_) | syn::BinOp::Sub(_) | syn::BinOp::Mul(_) | syn::BinOp::Div(_)
+        ) {
+            self.naming_has_arithmetic = true;
+        }
+        syn::visit::visit_expr_binary(self, node);
     }
 
     fn visit_field(&mut self, node: &'ast syn::Field) {
@@ -912,7 +1099,10 @@ impl<'ast> Visit<'ast> for NestingVisitor<'_> {
     }
 
     fn visit_macro(&mut self, node: &'ast Macro) {
-        let span_start = node.path.segments.first()
+        let span_start = node
+            .path
+            .segments
+            .first()
             .map(|s| s.ident.span().start())
             .unwrap_or_else(|| LineColumn { line: 1, column: 0 });
         self.check_macro(node, span_start);
@@ -921,7 +1111,11 @@ impl<'ast> Visit<'ast> for NestingVisitor<'_> {
 }
 
 /// Parse and analyze a Rust source string, returning all detected violations.
-pub fn analyze(file_path: &str, source: &str, config: &CheckConfig) -> Result<Vec<Violation>, syn::Error> {
+pub fn analyze(
+    file_path: &str,
+    source: &str,
+    config: &CheckConfig,
+) -> Result<Vec<Violation>, syn::Error> {
     let syntax = syn::parse_file(source)?;
     let mut visitor = NestingVisitor::new(file_path, config);
     visitor.visit_file(&syntax);

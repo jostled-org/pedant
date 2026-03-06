@@ -1,7 +1,7 @@
-use pedant::visitor::{analyze, CheckConfig};
+use pedant::config::{NamingCheck, PatternCheck};
 use pedant::violation::ViolationType;
-use pedant::config::PatternCheck;
-use pedant::{lint_str, lint_file, Config};
+use pedant::visitor::{CheckConfig, analyze};
+use pedant::{Config, lint_file, lint_str};
 
 fn default_config() -> CheckConfig {
     CheckConfig::default()
@@ -88,7 +88,11 @@ fn test_disabled_checks() {
     };
     let violations = analyze("nested_if.rs", source, &config).unwrap();
 
-    assert!(violations.iter().all(|v| v.violation_type != ViolationType::NestedIf));
+    assert!(
+        violations
+            .iter()
+            .all(|v| v.violation_type != ViolationType::NestedIf)
+    );
 }
 
 #[test]
@@ -96,7 +100,11 @@ fn test_custom_max_depth() {
     let source = include_str!("fixtures/deep_nesting.rs");
     let violations = analyze("deep_nesting.rs", source, &permissive_config()).unwrap();
 
-    assert!(violations.iter().all(|v| v.violation_type != ViolationType::MaxDepth));
+    assert!(
+        violations
+            .iter()
+            .all(|v| v.violation_type != ViolationType::MaxDepth)
+    );
 }
 
 #[test]
@@ -116,7 +124,11 @@ fn test_forbidden_attribute_detection() {
     let violations = analyze("forbidden_attr.rs", source, &config).unwrap();
 
     assert_eq!(violations.len(), 3);
-    assert!(violations.iter().all(|v| matches!(v.violation_type, ViolationType::ForbiddenAttribute { .. })));
+    assert!(
+        violations
+            .iter()
+            .all(|v| matches!(v.violation_type, ViolationType::ForbiddenAttribute { .. }))
+    );
 }
 
 #[test]
@@ -131,7 +143,11 @@ fn test_forbidden_attribute_disabled() {
     };
     let violations = analyze("forbidden_attr.rs", source, &config).unwrap();
 
-    assert!(violations.iter().all(|v| !matches!(v.violation_type, ViolationType::ForbiddenAttribute { .. })));
+    assert!(
+        violations
+            .iter()
+            .all(|v| !matches!(v.violation_type, ViolationType::ForbiddenAttribute { .. }))
+    );
 }
 
 #[test]
@@ -150,7 +166,8 @@ fn test_forbidden_type_detection() {
     };
     let violations = analyze("forbidden_types.rs", source, &config).unwrap();
 
-    let type_violations: Vec<_> = violations.iter()
+    let type_violations: Vec<_> = violations
+        .iter()
         .filter(|v| matches!(v.violation_type, ViolationType::ForbiddenType { .. }))
         .collect();
     assert_eq!(type_violations.len(), 4);
@@ -168,7 +185,11 @@ fn test_forbidden_type_disabled() {
     };
     let violations = analyze("forbidden_types.rs", source, &config).unwrap();
 
-    assert!(violations.iter().all(|v| !matches!(v.violation_type, ViolationType::ForbiddenType { .. })));
+    assert!(
+        violations
+            .iter()
+            .all(|v| !matches!(v.violation_type, ViolationType::ForbiddenType { .. }))
+    );
 }
 
 #[test]
@@ -187,7 +208,8 @@ fn test_forbidden_call_detection() {
     };
     let violations = analyze("forbidden_calls.rs", source, &config).unwrap();
 
-    let call_violations: Vec<_> = violations.iter()
+    let call_violations: Vec<_> = violations
+        .iter()
         .filter(|v| matches!(v.violation_type, ViolationType::ForbiddenCall { .. }))
         .collect();
     assert_eq!(call_violations.len(), 3);
@@ -211,7 +233,8 @@ fn test_forbidden_macro_detection() {
     };
     let violations = analyze("forbidden_macros.rs", source, &config).unwrap();
 
-    let macro_violations: Vec<_> = violations.iter()
+    let macro_violations: Vec<_> = violations
+        .iter()
         .filter(|v| matches!(v.violation_type, ViolationType::ForbiddenMacro { .. }))
         .collect();
     assert_eq!(macro_violations.len(), 5);
@@ -232,7 +255,11 @@ fn nested() {
     let violations = lint_str(source, &config).unwrap();
 
     assert!(!violations.is_empty());
-    assert!(violations.iter().any(|v| v.violation_type == ViolationType::NestedIf));
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.violation_type == ViolationType::NestedIf)
+    );
 }
 
 #[test]
@@ -247,7 +274,11 @@ fn test_lint_file_api() {
     let violations = lint_file(path, &config).unwrap();
 
     assert!(!violations.is_empty());
-    assert!(violations.iter().any(|v| v.violation_type == ViolationType::NestedIf));
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.violation_type == ViolationType::NestedIf)
+    );
 }
 
 #[test]
@@ -259,7 +290,8 @@ fn test_forbidden_else() {
     };
     let violations = analyze("forbidden_keywords.rs", source, &config).unwrap();
 
-    let else_violations: Vec<_> = violations.iter()
+    let else_violations: Vec<_> = violations
+        .iter()
         .filter(|v| matches!(v.violation_type, ViolationType::ForbiddenElse))
         .collect();
     assert_eq!(else_violations.len(), 1);
@@ -274,7 +306,8 @@ fn test_forbidden_unsafe() {
     };
     let violations = analyze("forbidden_keywords.rs", source, &config).unwrap();
 
-    let unsafe_violations: Vec<_> = violations.iter()
+    let unsafe_violations: Vec<_> = violations
+        .iter()
         .filter(|v| matches!(v.violation_type, ViolationType::ForbiddenUnsafe))
         .collect();
     assert_eq!(unsafe_violations.len(), 1);
@@ -289,7 +322,8 @@ fn test_dyn_return_detection() {
     };
     let violations = analyze("dyn_return.rs", source, &config).unwrap();
 
-    let dyn_violations: Vec<_> = violations.iter()
+    let dyn_violations: Vec<_> = violations
+        .iter()
         .filter(|v| matches!(v.violation_type, ViolationType::DynReturn))
         .collect();
     assert_eq!(dyn_violations.len(), 2);
@@ -300,7 +334,11 @@ fn test_dyn_return_disabled() {
     let source = include_str!("fixtures/dyn_return.rs");
     let violations = analyze("dyn_return.rs", source, &permissive_config()).unwrap();
 
-    assert!(violations.iter().all(|v| !matches!(v.violation_type, ViolationType::DynReturn)));
+    assert!(
+        violations
+            .iter()
+            .all(|v| !matches!(v.violation_type, ViolationType::DynReturn))
+    );
 }
 
 #[test]
@@ -312,7 +350,8 @@ fn test_dyn_param_detection() {
     };
     let violations = analyze("dyn_param.rs", source, &config).unwrap();
 
-    let dyn_violations: Vec<_> = violations.iter()
+    let dyn_violations: Vec<_> = violations
+        .iter()
         .filter(|v| matches!(v.violation_type, ViolationType::DynParam))
         .collect();
     assert_eq!(dyn_violations.len(), 2);
@@ -323,7 +362,11 @@ fn test_dyn_param_disabled() {
     let source = include_str!("fixtures/dyn_param.rs");
     let violations = analyze("dyn_param.rs", source, &permissive_config()).unwrap();
 
-    assert!(violations.iter().all(|v| !matches!(v.violation_type, ViolationType::DynParam)));
+    assert!(
+        violations
+            .iter()
+            .all(|v| !matches!(v.violation_type, ViolationType::DynParam))
+    );
 }
 
 #[test]
@@ -335,7 +378,8 @@ fn test_vec_box_dyn_detection() {
     };
     let violations = analyze("vec_box_dyn.rs", source, &config).unwrap();
 
-    let vbd_violations: Vec<_> = violations.iter()
+    let vbd_violations: Vec<_> = violations
+        .iter()
         .filter(|v| matches!(v.violation_type, ViolationType::VecBoxDyn))
         .collect();
     assert_eq!(vbd_violations.len(), 2);
@@ -350,7 +394,8 @@ fn test_dyn_field_detection() {
     };
     let violations = analyze("dyn_field.rs", source, &config).unwrap();
 
-    let field_violations: Vec<_> = violations.iter()
+    let field_violations: Vec<_> = violations
+        .iter()
         .filter(|v| matches!(v.violation_type, ViolationType::DynField))
         .collect();
     assert_eq!(field_violations.len(), 3);
@@ -361,7 +406,11 @@ fn test_dyn_field_disabled() {
     let source = include_str!("fixtures/dyn_field.rs");
     let violations = analyze("dyn_field.rs", source, &permissive_config()).unwrap();
 
-    assert!(violations.iter().all(|v| !matches!(v.violation_type, ViolationType::DynField)));
+    assert!(
+        violations
+            .iter()
+            .all(|v| !matches!(v.violation_type, ViolationType::DynField))
+    );
 }
 
 #[test]
@@ -373,7 +422,8 @@ fn test_clone_in_loop_detection() {
     };
     let violations = analyze("clone_in_loop.rs", source, &config).unwrap();
 
-    let clone_violations: Vec<_> = violations.iter()
+    let clone_violations: Vec<_> = violations
+        .iter()
         .filter(|v| matches!(v.violation_type, ViolationType::CloneInLoop))
         .collect();
     assert_eq!(clone_violations.len(), 3);
@@ -384,7 +434,11 @@ fn test_clone_in_loop_disabled() {
     let source = include_str!("fixtures/clone_in_loop.rs");
     let violations = analyze("clone_in_loop.rs", source, &permissive_config()).unwrap();
 
-    assert!(violations.iter().all(|v| !matches!(v.violation_type, ViolationType::CloneInLoop)));
+    assert!(
+        violations
+            .iter()
+            .all(|v| !matches!(v.violation_type, ViolationType::CloneInLoop))
+    );
 }
 
 #[test]
@@ -396,7 +450,8 @@ fn test_default_hasher_detection() {
     };
     let violations = analyze("default_hasher.rs", source, &config).unwrap();
 
-    let hasher_violations: Vec<_> = violations.iter()
+    let hasher_violations: Vec<_> = violations
+        .iter()
         .filter(|v| matches!(v.violation_type, ViolationType::DefaultHasher))
         .collect();
     assert_eq!(hasher_violations.len(), 4);
@@ -407,7 +462,11 @@ fn test_default_hasher_disabled() {
     let source = include_str!("fixtures/default_hasher.rs");
     let violations = analyze("default_hasher.rs", source, &permissive_config()).unwrap();
 
-    assert!(violations.iter().all(|v| !matches!(v.violation_type, ViolationType::DefaultHasher)));
+    assert!(
+        violations
+            .iter()
+            .all(|v| !matches!(v.violation_type, ViolationType::DefaultHasher))
+    );
 }
 
 #[test]
@@ -419,11 +478,16 @@ fn test_mixed_concerns_detection() {
     };
     let violations = analyze("mixed_concerns.rs", source, &config).unwrap();
 
-    let mc_violations: Vec<_> = violations.iter()
+    let mc_violations: Vec<_> = violations
+        .iter()
         .filter(|v| matches!(v.violation_type, ViolationType::MixedConcerns))
         .collect();
     assert_eq!(mc_violations.len(), 1);
-    assert!(mc_violations[0].message.contains("disconnected type groups"));
+    assert!(
+        mc_violations[0]
+            .message
+            .contains("disconnected type groups")
+    );
 }
 
 #[test]
@@ -435,7 +499,11 @@ fn test_mixed_concerns_clean() {
     };
     let violations = analyze("mixed_concerns_clean.rs", source, &config).unwrap();
 
-    assert!(violations.iter().all(|v| !matches!(v.violation_type, ViolationType::MixedConcerns)));
+    assert!(
+        violations
+            .iter()
+            .all(|v| !matches!(v.violation_type, ViolationType::MixedConcerns))
+    );
 }
 
 #[test]
@@ -443,7 +511,11 @@ fn test_mixed_concerns_disabled() {
     let source = include_str!("fixtures/mixed_concerns.rs");
     let violations = analyze("mixed_concerns.rs", source, &permissive_config()).unwrap();
 
-    assert!(violations.iter().all(|v| !matches!(v.violation_type, ViolationType::MixedConcerns)));
+    assert!(
+        violations
+            .iter()
+            .all(|v| !matches!(v.violation_type, ViolationType::MixedConcerns))
+    );
 }
 
 #[test]
@@ -455,7 +527,8 @@ fn test_inline_tests_detection() {
     };
     let violations = analyze("inline_tests.rs", source, &config).unwrap();
 
-    let it_violations: Vec<_> = violations.iter()
+    let it_violations: Vec<_> = violations
+        .iter()
         .filter(|v| matches!(v.violation_type, ViolationType::InlineTests))
         .collect();
     assert_eq!(it_violations.len(), 1);
@@ -467,5 +540,70 @@ fn test_inline_tests_disabled() {
     let source = include_str!("fixtures/inline_tests.rs");
     let violations = analyze("inline_tests.rs", source, &permissive_config()).unwrap();
 
-    assert!(violations.iter().all(|v| !matches!(v.violation_type, ViolationType::InlineTests)));
+    assert!(
+        violations
+            .iter()
+            .all(|v| !matches!(v.violation_type, ViolationType::InlineTests))
+    );
+}
+
+fn naming_config() -> CheckConfig {
+    CheckConfig {
+        check_naming: NamingCheck {
+            enabled: true,
+            ..NamingCheck::default()
+        },
+        ..permissive_config()
+    }
+}
+
+#[test]
+fn test_generic_naming_detection() {
+    let source = include_str!("fixtures/generic_naming.rs");
+    let violations = analyze("generic_naming.rs", source, &naming_config()).unwrap();
+
+    let naming_violations: Vec<_> = violations
+        .iter()
+        .filter(|v| matches!(v.violation_type, ViolationType::GenericNaming))
+        .collect();
+    // bad() and non_math() should be flagged
+    assert_eq!(naming_violations.len(), 2);
+}
+
+#[test]
+fn test_generic_naming_disabled() {
+    let source = include_str!("fixtures/generic_naming.rs");
+    let violations = analyze("generic_naming.rs", source, &permissive_config()).unwrap();
+
+    assert!(
+        violations
+            .iter()
+            .all(|v| !matches!(v.violation_type, ViolationType::GenericNaming))
+    );
+}
+
+#[test]
+fn test_generic_naming_custom_config() {
+    let source = include_str!("fixtures/generic_naming.rs");
+    let config = CheckConfig {
+        check_naming: NamingCheck {
+            enabled: true,
+            generic_names: vec!["config".to_string()],
+            min_generic_count: 1,
+            ..NamingCheck::default()
+        },
+        ..permissive_config()
+    };
+    let violations = analyze("generic_naming.rs", source, &config).unwrap();
+
+    let naming_violations: Vec<_> = violations
+        .iter()
+        .filter(|v| matches!(v.violation_type, ViolationType::GenericNaming))
+        .collect();
+    // mostly_clean() has "config" param + "tmp" won't match custom list, so only 1 generic / 2 total = 50%
+    assert!(
+        naming_violations
+            .iter()
+            .any(|v| v.message.contains("config"))
+    );
 }

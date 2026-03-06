@@ -79,6 +79,70 @@ pub struct PatternCheck {
     pub patterns: Vec<String>,
 }
 
+/// Default list of generic variable names that LLMs overuse.
+const DEFAULT_GENERIC_NAMES: &[&str] = &[
+    "tmp", "temp", "data", "val", "value", "result", "res", "ret", "buf", "buffer", "item", "elem",
+    "obj", "input", "output", "info", "ctx", "args", "params", "thing", "stuff", "foo", "bar",
+    "baz",
+];
+
+/// Configuration for the generic-naming check.
+#[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct NamingCheck {
+    /// Whether this check is active.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Words considered generic. Overrides the default list when provided.
+    #[serde(default = "default_generic_names")]
+    pub generic_names: Vec<String>,
+    /// Maximum ratio of generic names to total bindings before flagging.
+    #[serde(default = "default_max_generic_ratio")]
+    pub max_generic_ratio: f64,
+    /// Minimum count of generic names before the ratio check applies.
+    #[serde(default = "default_min_generic_count")]
+    pub min_generic_count: usize,
+}
+
+impl Default for NamingCheck {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            generic_names: default_generic_names(),
+            max_generic_ratio: default_max_generic_ratio(),
+            min_generic_count: default_min_generic_count(),
+        }
+    }
+}
+
+/// Per-path override for the naming check.
+#[derive(Debug, Deserialize, Default, Clone)]
+pub struct NamingOverride {
+    /// Override the enabled state.
+    pub enabled: Option<bool>,
+    /// Override generic names list.
+    pub generic_names: Option<Vec<String>>,
+    /// Override maximum generic ratio.
+    pub max_generic_ratio: Option<f64>,
+    /// Override minimum generic count.
+    pub min_generic_count: Option<usize>,
+}
+
+fn default_generic_names() -> Vec<String> {
+    DEFAULT_GENERIC_NAMES
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect()
+}
+
+fn default_max_generic_ratio() -> f64 {
+    0.3
+}
+
+fn default_min_generic_count() -> usize {
+    2
+}
+
 /// Deserialized `.pedant.toml` configuration.
 #[derive(Debug, Deserialize, Default)]
 pub struct ConfigFile {
@@ -145,6 +209,9 @@ pub struct ConfigFile {
     /// Flag `#[cfg(test)] mod` blocks embedded in source files.
     #[serde(default)]
     pub check_inline_tests: bool,
+    /// Generic naming check configuration.
+    #[serde(default)]
+    pub check_naming: NamingCheck,
     /// Per-path configuration overrides keyed by glob pattern.
     #[serde(default)]
     pub overrides: BTreeMap<String, PathOverride>,
@@ -197,6 +264,8 @@ pub struct PathOverride {
     pub check_mixed_concerns: Option<bool>,
     /// Override inline tests check.
     pub check_inline_tests: Option<bool>,
+    /// Override generic naming check.
+    pub check_naming: Option<NamingOverride>,
 }
 
 fn default_max_depth() -> usize {
@@ -213,10 +282,9 @@ fn default_true() -> bool {
 
 /// Load and parse a `.pedant.toml` configuration file.
 pub fn load_config_file(path: &Path) -> Result<ConfigFile, String> {
-    let content = fs::read_to_string(path)
-        .map_err(|e| format!("failed to read config file: {e}"))?;
-    toml::from_str(&content)
-        .map_err(|e| format!("failed to parse config file: {e}"))
+    let content =
+        fs::read_to_string(path).map_err(|e| format!("failed to read config file: {e}"))?;
+    toml::from_str(&content).map_err(|e| format!("failed to parse config file: {e}"))
 }
 
 /// Search for a config file: `.pedant.toml` in the project root, then `$XDG_CONFIG_HOME/pedant/config.toml`.
@@ -272,6 +340,7 @@ impl Cli {
             check_default_hasher: fc.check_default_hasher,
             check_mixed_concerns: fc.check_mixed_concerns,
             check_inline_tests: fc.check_inline_tests,
+            check_naming: fc.check_naming.clone(),
         });
 
         CheckConfig {
@@ -296,6 +365,7 @@ impl Cli {
             check_default_hasher: base.check_default_hasher,
             check_mixed_concerns: base.check_mixed_concerns,
             check_inline_tests: base.check_inline_tests,
+            check_naming: base.check_naming,
         }
     }
 }

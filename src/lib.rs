@@ -29,11 +29,11 @@ pub mod visitor;
 use std::fs;
 use std::path::Path;
 
-pub use checks::{CheckInfo, ALL_CHECKS};
-pub use config::{Cli, ConfigFile, PatternCheck, PatternOverride};
+pub use checks::{ALL_CHECKS, CheckInfo};
+pub use config::{Cli, ConfigFile, NamingCheck, PatternCheck, PatternOverride};
 pub use reporter::{OutputFormat, Reporter};
-pub use violation::{lookup_rationale, CheckRationale, Violation, ViolationType};
-pub use visitor::{analyze, CheckConfig};
+pub use violation::{CheckRationale, Violation, ViolationType, lookup_rationale};
+pub use visitor::{CheckConfig, analyze};
 
 /// Type alias for the configuration used by the linter.
 pub type Config = CheckConfig;

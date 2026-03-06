@@ -22,10 +22,30 @@ pub fn lookup_rationale(code: &str) -> Option<CheckRationale> {
         "nested-match" => Some(ViolationType::NestedMatch.rationale()),
         "match-in-if" => Some(ViolationType::MatchInIf.rationale()),
         "else-chain" => Some(ViolationType::ElseChain.rationale()),
-        "forbidden-attribute" => Some(ViolationType::ForbiddenAttribute { pattern: String::new() }.rationale()),
-        "forbidden-type" => Some(ViolationType::ForbiddenType { pattern: String::new() }.rationale()),
-        "forbidden-call" => Some(ViolationType::ForbiddenCall { pattern: String::new() }.rationale()),
-        "forbidden-macro" => Some(ViolationType::ForbiddenMacro { pattern: String::new() }.rationale()),
+        "forbidden-attribute" => Some(
+            ViolationType::ForbiddenAttribute {
+                pattern: String::new(),
+            }
+            .rationale(),
+        ),
+        "forbidden-type" => Some(
+            ViolationType::ForbiddenType {
+                pattern: String::new(),
+            }
+            .rationale(),
+        ),
+        "forbidden-call" => Some(
+            ViolationType::ForbiddenCall {
+                pattern: String::new(),
+            }
+            .rationale(),
+        ),
+        "forbidden-macro" => Some(
+            ViolationType::ForbiddenMacro {
+                pattern: String::new(),
+            }
+            .rationale(),
+        ),
         "forbidden-else" => Some(ViolationType::ForbiddenElse.rationale()),
         "forbidden-unsafe" => Some(ViolationType::ForbiddenUnsafe.rationale()),
         "dyn-return" => Some(ViolationType::DynReturn.rationale()),
@@ -36,6 +56,7 @@ pub fn lookup_rationale(code: &str) -> Option<CheckRationale> {
         "default-hasher" => Some(ViolationType::DefaultHasher.rationale()),
         "mixed-concerns" => Some(ViolationType::MixedConcerns.rationale()),
         "inline-tests" => Some(ViolationType::InlineTests.rationale()),
+        "generic-naming" => Some(ViolationType::GenericNaming.rationale()),
         _ => None,
     }
 }
@@ -56,17 +77,25 @@ pub enum ViolationType {
     /// Long `if/else if` chain exceeding the threshold.
     ElseChain,
     /// Attribute matching a forbidden pattern.
-    ForbiddenAttribute { /// The pattern that matched.
-        pattern: String },
+    ForbiddenAttribute {
+        /// The pattern that matched.
+        pattern: String,
+    },
     /// Type matching a forbidden pattern.
-    ForbiddenType { /// The pattern that matched.
-        pattern: String },
+    ForbiddenType {
+        /// The pattern that matched.
+        pattern: String,
+    },
     /// Method call matching a forbidden pattern.
-    ForbiddenCall { /// The pattern that matched.
-        pattern: String },
+    ForbiddenCall {
+        /// The pattern that matched.
+        pattern: String,
+    },
     /// Macro matching a forbidden pattern.
-    ForbiddenMacro { /// The pattern that matched.
-        pattern: String },
+    ForbiddenMacro {
+        /// The pattern that matched.
+        pattern: String,
+    },
     /// Use of the `else` keyword.
     ForbiddenElse,
     /// Use of an `unsafe` block.
@@ -87,6 +116,8 @@ pub enum ViolationType {
     MixedConcerns,
     /// `#[cfg(test)] mod` block embedded in a source file.
     InlineTests,
+    /// High ratio of generic/meaningless variable names in a function.
+    GenericNaming,
 }
 
 impl ViolationType {
@@ -113,6 +144,7 @@ impl ViolationType {
             Self::DefaultHasher => "default-hasher",
             Self::MixedConcerns => "mixed-concerns",
             Self::InlineTests => "inline-tests",
+            Self::GenericNaming => "generic-naming",
         }
     }
 
@@ -134,6 +166,7 @@ impl ViolationType {
             Self::DynReturn | Self::DynParam | Self::VecBoxDyn | Self::DynField => "dispatch",
             Self::CloneInLoop | Self::DefaultHasher => "performance",
             Self::MixedConcerns | Self::InlineTests => "structure",
+            Self::GenericNaming => "naming",
         }
     }
 
@@ -157,12 +190,14 @@ impl ViolationType {
                 exception: "Complex parsers or state machines may need deeper nesting locally.",
                 llm_specific: false,
             },
-            Self::NestedIf | Self::IfInMatch | Self::NestedMatch | Self::MatchInIf => CheckRationale {
-                problem: "Conditional-in-conditional creates combinatorial complexity. A 2-branch if inside a 3-branch match is 6 paths. Hard to ensure all paths are tested.",
-                fix: "Use tuple patterns `match (a, b) { ... }`, match guards `Some(x) if x > 0 => ...`, or extract to functions.",
-                exception: "None. Refactoring is always possible.",
-                llm_specific: false,
-            },
+            Self::NestedIf | Self::IfInMatch | Self::NestedMatch | Self::MatchInIf => {
+                CheckRationale {
+                    problem: "Conditional-in-conditional creates combinatorial complexity. A 2-branch if inside a 3-branch match is 6 paths. Hard to ensure all paths are tested.",
+                    fix: "Use tuple patterns `match (a, b) { ... }`, match guards `Some(x) if x > 0 => ...`, or extract to functions.",
+                    exception: "None. Refactoring is always possible.",
+                    llm_specific: false,
+                }
+            }
             Self::ElseChain => CheckRationale {
                 problem: "Long if/else if/else if chains are unordered match arms in disguise. Easy to miss cases, hard to verify exhaustiveness.",
                 fix: "Use `match` on boolean tuples. Precedence becomes explicit, compiler checks exhaustiveness.",
@@ -251,6 +286,12 @@ impl ViolationType {
                 problem: "Test modules embedded in source files mix production code with test code. This inflates source files and makes test organization harder to navigate.",
                 fix: "Move tests to the tests/ directory as integration tests, or to a separate test file alongside the source.",
                 exception: "Small utility modules where colocated unit tests are preferred for locality.",
+                llm_specific: true,
+            },
+            Self::GenericNaming => CheckRationale {
+                problem: "LLMs generate generic names like `tmp`, `data`, `val` because training data is saturated with them. System prompt rules like 'use descriptive names' compete with this statistical bias and lose.",
+                fix: "Use domain-specific names that describe what the value represents: `user_id` not `val`, `retry_count` not `tmp`, `response_body` not `data`.",
+                exception: "Small utility functions (fewer than 2 generic names) where short names are conventional.",
                 llm_specific: true,
             },
         }

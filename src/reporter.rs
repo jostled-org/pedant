@@ -52,7 +52,9 @@ impl Reporter {
                 true => ",",
                 false => "",
             };
-            let pattern_field = v.violation_type.pattern()
+            let pattern_field = v
+                .violation_type
+                .pattern()
                 .map(|p| format!(r#", "pattern": "{}""#, escape_json(p)))
                 .unwrap_or_default();
             let rationale = v.violation_type.rationale();

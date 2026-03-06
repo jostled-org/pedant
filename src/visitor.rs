@@ -112,6 +112,7 @@ struct FnSavedState {
     fn_span: Option<LineColumn>,
     refcounted_bindings: BTreeSet<String>,
     refcounted_containers: BTreeSet<String>,
+    fn_body_types: BTreeSet<Rc<str>>,
 }
 
 /// AST visitor that collects violations during a single-pass walk.
@@ -126,6 +127,7 @@ pub struct NestingVisitor<'a> {
     refcounted_containers: BTreeSet<String>,
     defined_types: BTreeSet<Rc<str>>,
     type_edges: Vec<(Rc<str>, Rc<str>)>,
+    fn_body_types: BTreeSet<Rc<str>>,
     violations: Vec<Violation>,
     naming_bindings: Vec<RecordedBinding>,
     naming_has_arithmetic: bool,
@@ -146,6 +148,7 @@ impl<'a> NestingVisitor<'a> {
             refcounted_containers: BTreeSet::new(),
             defined_types: BTreeSet::new(),
             type_edges: Vec::new(),
+            fn_body_types: BTreeSet::new(),
             violations: Vec::new(),
             naming_bindings: Vec::new(),
             naming_has_arithmetic: false,
@@ -160,6 +163,7 @@ impl<'a> NestingVisitor<'a> {
             fn_span: self.naming_fn_span,
             refcounted_bindings: self.refcounted_bindings.clone(),
             refcounted_containers: self.refcounted_containers.clone(),
+            fn_body_types: self.fn_body_types.clone(),
         }
     }
 
@@ -169,14 +173,44 @@ impl<'a> NestingVisitor<'a> {
         self.naming_fn_span = state.fn_span;
         self.refcounted_bindings = state.refcounted_bindings;
         self.refcounted_containers = state.refcounted_containers;
+        self.fn_body_types = state.fn_body_types;
     }
 
     fn reset_fn_state(&mut self, fn_span: LineColumn) {
         self.naming_bindings.clear();
         self.refcounted_bindings.clear();
         self.refcounted_containers.clear();
+        self.fn_body_types.clear();
         self.naming_has_arithmetic = false;
         self.naming_fn_span = Some(fn_span);
+    }
+
+    fn collect_body_type_from_path(&mut self, path: &syn::Path) {
+        if let (false, Some(seg)) = (
+            self.naming_fn_span.is_none() || self.item_depth == 0,
+            path.segments.last(),
+        ) {
+            self.fn_body_types.insert(Rc::from(seg.ident.to_string()));
+        }
+    }
+
+    fn collect_body_type_from_type(&mut self, ty: &Type) {
+        if let (false, Type::Path(tp)) = (self.naming_fn_span.is_none() || self.item_depth == 0, ty)
+        {
+            self.collect_body_type_from_path(&tp.path);
+        }
+    }
+
+    fn fn_body_type_edges(&self) -> Vec<(Rc<str>, Rc<str>)> {
+        let names: Vec<_> = self.fn_body_types.iter().cloned().collect();
+        let mut pairs = Vec::new();
+        let len = names.len();
+        (0..len).for_each(|i| {
+            ((i + 1)..len).for_each(|j| {
+                pairs.push((Rc::clone(&names[i]), Rc::clone(&names[j])));
+            });
+        });
+        pairs
     }
 
     fn record_binding(&mut self, name: String) {
@@ -1089,6 +1123,9 @@ impl<'ast> Visit<'ast> for NestingVisitor<'_> {
         self.record_refcounted_params(&node.sig);
         self.item_depth += 1;
         syn::visit::visit_item_fn(self, node);
+        if self.item_depth == 1 {
+            self.type_edges.extend(self.fn_body_type_edges());
+        }
         self.item_depth -= 1;
         self.check_naming_entropy();
         self.restore_fn_state(saved);
@@ -1193,6 +1230,9 @@ impl<'ast> Visit<'ast> for NestingVisitor<'_> {
         self.count_fn_params(&node.sig);
         self.record_refcounted_params(&node.sig);
         syn::visit::visit_impl_item_fn(self, node);
+        if self.item_depth == 1 {
+            self.type_edges.extend(self.fn_body_type_edges());
+        }
         self.check_naming_entropy();
         self.restore_fn_state(saved);
     }
@@ -1228,7 +1268,13 @@ impl<'ast> Visit<'ast> for NestingVisitor<'_> {
         self.check_type(node, span_start);
         self.check_vec_box_dyn(node, span_start);
         self.check_default_hasher(node, span_start);
+        self.collect_body_type_from_type(node);
         syn::visit::visit_type(self, node);
+    }
+
+    fn visit_expr_struct(&mut self, node: &'ast syn::ExprStruct) {
+        self.collect_body_type_from_path(&node.path);
+        syn::visit::visit_expr_struct(self, node);
     }
 
     fn visit_expr_method_call(&mut self, node: &'ast ExprMethodCall) {

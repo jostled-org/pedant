@@ -507,6 +507,22 @@ fn test_mixed_concerns_clean() {
 }
 
 #[test]
+fn test_mixed_concerns_body_coupling() {
+    let source = include_str!("fixtures/mixed_concerns_body.rs");
+    let config = CheckConfig {
+        check_mixed_concerns: true,
+        ..permissive_config()
+    };
+    let violations = analyze("mixed_concerns_body.rs", source, &config).unwrap();
+
+    assert!(
+        violations
+            .iter()
+            .all(|v| !matches!(v.violation_type, ViolationType::MixedConcerns))
+    );
+}
+
+#[test]
 fn test_mixed_concerns_disabled() {
     let source = include_str!("fixtures/mixed_concerns.rs");
     let violations = analyze("mixed_concerns.rs", source, &permissive_config()).unwrap();

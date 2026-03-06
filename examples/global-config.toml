@@ -18,6 +18,10 @@ check_default_hasher = true
 check_mixed_concerns = true
 check_inline_tests = true
 
+# Generic naming — flag functions saturated with tmp, data, val, etc.
+[check_naming]
+enabled = true
+
 # Forbidden attributes
 [forbid_attributes]
 enabled = true

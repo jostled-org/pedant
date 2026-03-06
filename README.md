@@ -76,6 +76,9 @@ forbid_unsafe = true
 check_clone_in_loop = true
 check_inline_tests = true
 
+[check_naming]
+enabled = true
+
 [forbid_calls]
 enabled = true
 patterns = [".unwrap()", ".expect(*)"]
@@ -101,7 +104,7 @@ See `examples/` for a full global config and a project-level override.
 
 ## Checks
 
-20 checks across four categories. Nesting checks run by default. Everything else requires a config file.
+21 checks across five categories. Nesting checks run by default. Everything else requires a config file.
 
 | Category | Checks |
 |----------|--------|
@@ -109,6 +112,7 @@ See `examples/` for a full global config and a project-level override.
 | Forbidden patterns | `forbidden-attribute`, `forbidden-type`, `forbidden-call`, `forbidden-macro`, `forbidden-else`, `forbidden-unsafe` |
 | Performance & dispatch | `dyn-return`, `dyn-param`, `vec-box-dyn`, `dyn-field`, `clone-in-loop`, `default-hasher` |
 | Structure | `mixed-concerns`, `inline-tests` |
+| Naming | `generic-naming` |
 
 Run `pedant --list-checks` to see all checks, or `pedant --explain <check>` for detailed rationale and fix guidance.
 

@@ -17,6 +17,9 @@ check_default_hasher = true
 check_mixed_concerns = true
 check_inline_tests = true
 
+[check_naming]
+enabled = true
+
 [forbid_attributes]
 enabled = true
 patterns = [

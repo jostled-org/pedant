@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/jostled-org/pedant/compare/v0.2.3...v0.3.0) - 2026-03-06
+
+### Added
+
+- [**breaking**] add generic-naming check and full CI quality pipeline
+
+### Other
+
+- add generic-naming to README, examples, and fix CI glob
+
 ## [0.2.3](https://github.com/jostled-org/pedant/compare/v0.2.2...v0.2.3) - 2026-03-04
 
 ### Other

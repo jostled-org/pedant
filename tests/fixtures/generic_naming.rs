@@ -24,9 +24,9 @@ fn math(x: f64, y: f64) -> f64 {
     z
 }
 
-// Flagged: no arithmetic, x/y are generic
-fn non_math(x: i32, y: i32) -> String {
-    format!("{x}{y}")
+// Flagged: 2/3 generic names (val, data), above threshold
+fn sloppy(val: i32, data: i32, count: i32) -> String {
+    format!("{val}{data}{count}")
 }
 
 // Clean: _-prefixed names skipped
@@ -37,4 +37,9 @@ fn underscored(_tmp: i32, _data: i32) -> i32 {
 // Clean: descriptive names
 fn descriptive(user_id: u64, retry_count: usize) -> String {
     format!("{user_id}:{retry_count}")
+}
+
+// Clean: domain-standard single-letter names (color channels, algorithm vars)
+fn color_math(r: f64, g: f64, b: f64, p: f64, q: f64, t: f64) -> f64 {
+    r + g + b + p + q + t
 }

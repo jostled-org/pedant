@@ -598,7 +598,6 @@ fn classify_single_char(name: &str, loop_depth: usize, has_arithmetic: bool) -> 
     match name {
         "i" | "j" | "k" | "n" => Some(loop_depth == 0),
         "x" | "y" | "z" => Some(!has_arithmetic),
-        s if s.len() == 1 => Some(true),
         _ => None,
     }
 }

@@ -426,7 +426,7 @@ fn test_clone_in_loop_detection() {
         .iter()
         .filter(|v| matches!(v.violation_type, ViolationType::CloneInLoop))
         .collect();
-    assert_eq!(clone_violations.len(), 3);
+    assert_eq!(clone_violations.len(), 4);
 }
 
 #[test]

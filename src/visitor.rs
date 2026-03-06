@@ -120,6 +120,7 @@ pub struct NestingVisitor<'a> {
     loop_depth: usize,
     branch_context: Option<BranchContext>,
     item_depth: usize,
+    refcounted_bindings: BTreeSet<String>,
     defined_types: BTreeSet<Rc<str>>,
     type_edges: Vec<(Rc<str>, Rc<str>)>,
     violations: Vec<Violation>,
@@ -138,6 +139,7 @@ impl<'a> NestingVisitor<'a> {
             loop_depth: 0,
             branch_context: None,
             item_depth: 0,
+            refcounted_bindings: BTreeSet::new(),
             defined_types: BTreeSet::new(),
             type_edges: Vec::new(),
             violations: Vec::new(),
@@ -199,6 +201,41 @@ impl<'a> NestingVisitor<'a> {
                 FnArg::Typed(pt) => self.extract_pat_names(&pt.pat),
                 FnArg::Receiver(_) => {}
             }
+        }
+    }
+
+    fn record_refcounted_params(&mut self, sig: &Signature) {
+        for input in &sig.inputs {
+            let FnArg::Typed(pt) = input else {
+                continue;
+            };
+            if !is_refcounted_type(&pt.ty) {
+                continue;
+            }
+            let syn::Pat::Ident(pi) = pt.pat.as_ref() else {
+                continue;
+            };
+            self.refcounted_bindings.insert(pi.ident.to_string());
+        }
+    }
+
+    fn record_refcounted_from_pat(&mut self, pat: &syn::Pat) {
+        let syn::Pat::Type(pt) = pat else {
+            return;
+        };
+        if !is_refcounted_type(&pt.ty) {
+            return;
+        }
+        match pt.pat.as_ref() {
+            syn::Pat::Ident(pi) => {
+                self.refcounted_bindings.insert(pi.ident.to_string());
+            }
+            syn::Pat::Tuple(tuple) => {
+                for elem in &tuple.elems {
+                    self.record_refcounted_from_pat(elem);
+                }
+            }
+            _ => {}
         }
     }
 
@@ -568,6 +605,11 @@ impl<'a> NestingVisitor<'a> {
         if call.method != "clone" {
             return;
         }
+        let is_refcounted = receiver_ident(&call.receiver)
+            .is_some_and(|ident| self.refcounted_bindings.contains(&ident));
+        if is_refcounted {
+            return;
+        }
         let span_start = call.dot_token.span.start();
         self.report(
             span_start,
@@ -665,6 +707,26 @@ fn bfs_component<'a>(
     }
     component.sort_unstable();
     component
+}
+
+fn receiver_ident(expr: &Expr) -> Option<String> {
+    let Expr::Path(ep) = expr else {
+        return None;
+    };
+    match ep.path.segments.len() {
+        1 => Some(ep.path.segments[0].ident.to_string()),
+        _ => None,
+    }
+}
+
+fn is_refcounted_type(ty: &Type) -> bool {
+    let ty = match ty {
+        Type::Reference(r) => &r.elem,
+        _ => ty,
+    };
+    type_path_last_segment(ty)
+        .map(|seg| seg.ident == "Arc" || seg.ident == "Rc")
+        .unwrap_or(false)
 }
 
 fn type_path_last_segment(ty: &Type) -> Option<&syn::PathSegment> {
@@ -949,6 +1011,7 @@ impl<'ast> Visit<'ast> for NestingVisitor<'_> {
         let saved = self.save_naming_state();
         self.reset_naming_state(node.sig.ident.span().start());
         self.count_fn_params(&node.sig);
+        self.record_refcounted_params(&node.sig);
         self.item_depth += 1;
         syn::visit::visit_item_fn(self, node);
         self.item_depth -= 1;
@@ -1053,6 +1116,7 @@ impl<'ast> Visit<'ast> for NestingVisitor<'_> {
         let saved = self.save_naming_state();
         self.reset_naming_state(node.sig.ident.span().start());
         self.count_fn_params(&node.sig);
+        self.record_refcounted_params(&node.sig);
         syn::visit::visit_impl_item_fn(self, node);
         self.check_naming_entropy();
         self.restore_naming_state(saved);
@@ -1065,6 +1129,7 @@ impl<'ast> Visit<'ast> for NestingVisitor<'_> {
 
     fn visit_local(&mut self, node: &'ast syn::Local) {
         self.extract_pat_names(&node.pat);
+        self.record_refcounted_from_pat(&node.pat);
         syn::visit::visit_local(self, node);
     }
 

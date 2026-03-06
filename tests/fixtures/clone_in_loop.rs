@@ -55,10 +55,28 @@ fn arc_let_clone() {
     }
 }
 
-// Still flagged: item is inferred from iterator, no explicit type
+// Clean: param contains Arc in generic args, loop bindings inferred refcounted
 fn arc_iter_clone(items: &[Arc<str>]) {
     for item in items {
         let cloned = item.clone();
         drop(cloned);
+    }
+}
+
+// Clean: destructuring a container with Arc type args
+fn arc_destructure_clone(pairs: &[(Arc<str>, Arc<str>)]) {
+    for (key, value) in pairs {
+        let k = key.clone();
+        let v = value.clone();
+        drop(k);
+        drop(v);
+    }
+}
+
+// Still flagged: inferred type, no Arc/Rc in param
+fn inferred_clone_in_loop(items: &[String]) {
+    for item in items {
+        let owned = item.clone();
+        drop(owned);
     }
 }

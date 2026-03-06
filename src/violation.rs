@@ -265,7 +265,7 @@ impl ViolationType {
                 llm_specific: true,
             },
             Self::CloneInLoop => CheckRationale {
-                problem: ".clone() inside a loop body means N heap allocations where N is the iteration count. LLMs add .clone() to satisfy the borrow checker without considering the per-iteration cost.",
+                problem: ".clone() inside a loop body means N heap allocations where N is the iteration count. LLMs add .clone() to satisfy the borrow checker without considering the per-iteration cost. Arc/Rc clones are automatically suppressed when the type is visible (explicit type annotations or containers with Arc/Rc generic args). Type aliases that hide Arc/Rc (e.g., type MyMap = BTreeMap<Arc<str>, Arc<str>>) cannot be resolved and may cause false positives.",
                 fix: "Borrow instead of cloning. Use Cow<T> for conditional ownership. Use Rc/Arc for shared ownership. Restructure to move ownership before the loop.",
                 exception: "When the cloned value is mutated independently per iteration and borrowing is not possible.",
                 llm_specific: true,

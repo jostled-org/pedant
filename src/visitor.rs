@@ -105,11 +105,13 @@ struct RecordedBinding {
     loop_depth: usize,
 }
 
-/// Saved naming state for function entry/exit.
-struct NamingState {
+/// Saved per-function state for entry/exit.
+struct FnSavedState {
     bindings: Vec<RecordedBinding>,
     has_arithmetic: bool,
     fn_span: Option<LineColumn>,
+    refcounted_bindings: BTreeSet<String>,
+    refcounted_containers: BTreeSet<String>,
 }
 
 /// AST visitor that collects violations during a single-pass walk.
@@ -121,6 +123,7 @@ pub struct NestingVisitor<'a> {
     branch_context: Option<BranchContext>,
     item_depth: usize,
     refcounted_bindings: BTreeSet<String>,
+    refcounted_containers: BTreeSet<String>,
     defined_types: BTreeSet<Rc<str>>,
     type_edges: Vec<(Rc<str>, Rc<str>)>,
     violations: Vec<Violation>,
@@ -140,6 +143,7 @@ impl<'a> NestingVisitor<'a> {
             branch_context: None,
             item_depth: 0,
             refcounted_bindings: BTreeSet::new(),
+            refcounted_containers: BTreeSet::new(),
             defined_types: BTreeSet::new(),
             type_edges: Vec::new(),
             violations: Vec::new(),
@@ -149,22 +153,28 @@ impl<'a> NestingVisitor<'a> {
         }
     }
 
-    fn save_naming_state(&self) -> NamingState {
-        NamingState {
+    fn save_fn_state(&self) -> FnSavedState {
+        FnSavedState {
             bindings: self.naming_bindings.clone(),
             has_arithmetic: self.naming_has_arithmetic,
             fn_span: self.naming_fn_span,
+            refcounted_bindings: self.refcounted_bindings.clone(),
+            refcounted_containers: self.refcounted_containers.clone(),
         }
     }
 
-    fn restore_naming_state(&mut self, state: NamingState) {
+    fn restore_fn_state(&mut self, state: FnSavedState) {
         self.naming_bindings = state.bindings;
         self.naming_has_arithmetic = state.has_arithmetic;
         self.naming_fn_span = state.fn_span;
+        self.refcounted_bindings = state.refcounted_bindings;
+        self.refcounted_containers = state.refcounted_containers;
     }
 
-    fn reset_naming_state(&mut self, fn_span: LineColumn) {
+    fn reset_fn_state(&mut self, fn_span: LineColumn) {
         self.naming_bindings.clear();
+        self.refcounted_bindings.clear();
+        self.refcounted_containers.clear();
         self.naming_has_arithmetic = false;
         self.naming_fn_span = Some(fn_span);
     }
@@ -209,13 +219,19 @@ impl<'a> NestingVisitor<'a> {
             let FnArg::Typed(pt) = input else {
                 continue;
             };
-            if !is_refcounted_type(&pt.ty) {
-                continue;
-            }
             let syn::Pat::Ident(pi) = pt.pat.as_ref() else {
                 continue;
             };
-            self.refcounted_bindings.insert(pi.ident.to_string());
+            let name = pi.ident.to_string();
+            match (is_refcounted_type(&pt.ty), contains_refcounted_type(&pt.ty)) {
+                (true, _) => {
+                    self.refcounted_bindings.insert(name);
+                }
+                (false, true) => {
+                    self.refcounted_containers.insert(name);
+                }
+                _ => {}
+            }
         }
     }
 
@@ -223,19 +239,30 @@ impl<'a> NestingVisitor<'a> {
         let syn::Pat::Type(pt) = pat else {
             return;
         };
-        if !is_refcounted_type(&pt.ty) {
+        let syn::Pat::Ident(pi) = pt.pat.as_ref() else {
             return;
-        }
-        match pt.pat.as_ref() {
-            syn::Pat::Ident(pi) => {
-                self.refcounted_bindings.insert(pi.ident.to_string());
+        };
+        let name = pi.ident.to_string();
+        match (is_refcounted_type(&pt.ty), contains_refcounted_type(&pt.ty)) {
+            (true, _) => {
+                self.refcounted_bindings.insert(name);
             }
-            syn::Pat::Tuple(tuple) => {
-                for elem in &tuple.elems {
-                    self.record_refcounted_from_pat(elem);
-                }
+            (false, true) => {
+                self.refcounted_containers.insert(name);
             }
             _ => {}
+        }
+    }
+
+    fn record_refcounted_loop_bindings(&mut self, pat: &syn::Pat, iter_expr: &Expr) {
+        let Some(ident) = iter_expr_ident(iter_expr) else {
+            return;
+        };
+        if !self.refcounted_containers.contains(&ident) {
+            return;
+        }
+        for name in collect_pat_idents(pat) {
+            self.refcounted_bindings.insert(name);
         }
     }
 
@@ -709,6 +736,53 @@ fn bfs_component<'a>(
     component
 }
 
+fn contains_refcounted_type(ty: &Type) -> bool {
+    match ty {
+        Type::Path(tp) => path_contains_refcounted(tp),
+        Type::Reference(r) => contains_refcounted_type(&r.elem),
+        Type::Slice(s) => contains_refcounted_type(&s.elem),
+        Type::Array(a) => contains_refcounted_type(&a.elem),
+        Type::Tuple(t) => t.elems.iter().any(contains_refcounted_type),
+        _ => false,
+    }
+}
+
+fn path_contains_refcounted(tp: &syn::TypePath) -> bool {
+    let Some(seg) = tp.path.segments.last() else {
+        return false;
+    };
+    if seg.ident == "Arc" || seg.ident == "Rc" {
+        return true;
+    }
+    let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
+        return false;
+    };
+    args.args.iter().any(
+        |arg| matches!(arg, syn::GenericArgument::Type(inner) if contains_refcounted_type(inner)),
+    )
+}
+
+fn iter_expr_ident(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Path(ep) if ep.path.segments.len() == 1 => {
+            Some(ep.path.segments[0].ident.to_string())
+        }
+        Expr::Reference(er) => iter_expr_ident(&er.expr),
+        _ => None,
+    }
+}
+
+fn collect_pat_idents(pat: &syn::Pat) -> Vec<String> {
+    match pat {
+        syn::Pat::Ident(pi) => vec![pi.ident.to_string()],
+        syn::Pat::Tuple(pt) => pt.elems.iter().flat_map(collect_pat_idents).collect(),
+        syn::Pat::TupleStruct(pts) => pts.elems.iter().flat_map(collect_pat_idents).collect(),
+        syn::Pat::Reference(pr) => collect_pat_idents(&pr.pat),
+        syn::Pat::Type(pt) => collect_pat_idents(&pt.pat),
+        _ => vec![],
+    }
+}
+
 fn receiver_ident(expr: &Expr) -> Option<String> {
     let Expr::Path(ep) = expr else {
         return None;
@@ -960,6 +1034,7 @@ impl<'ast> Visit<'ast> for NestingVisitor<'_> {
         self.loop_depth += 1;
         self.check_max_depth(span_start);
         self.extract_pat_names(&node.pat);
+        self.record_refcounted_loop_bindings(&node.pat, &node.expr);
         syn::visit::visit_expr_for_loop(self, node);
         self.loop_depth -= 1;
         self.depth -= 1;
@@ -1008,15 +1083,15 @@ impl<'ast> Visit<'ast> for NestingVisitor<'_> {
         if self.item_depth == 0 {
             self.type_edges.extend(signature_edge_pairs(&node.sig));
         }
-        let saved = self.save_naming_state();
-        self.reset_naming_state(node.sig.ident.span().start());
+        let saved = self.save_fn_state();
+        self.reset_fn_state(node.sig.ident.span().start());
         self.count_fn_params(&node.sig);
         self.record_refcounted_params(&node.sig);
         self.item_depth += 1;
         syn::visit::visit_item_fn(self, node);
         self.item_depth -= 1;
         self.check_naming_entropy();
-        self.restore_naming_state(saved);
+        self.restore_fn_state(saved);
     }
 
     fn visit_item_struct(&mut self, node: &'ast syn::ItemStruct) {
@@ -1113,13 +1188,13 @@ impl<'ast> Visit<'ast> for NestingVisitor<'_> {
 
     fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
         self.check_fn_signature(&node.sig);
-        let saved = self.save_naming_state();
-        self.reset_naming_state(node.sig.ident.span().start());
+        let saved = self.save_fn_state();
+        self.reset_fn_state(node.sig.ident.span().start());
         self.count_fn_params(&node.sig);
         self.record_refcounted_params(&node.sig);
         syn::visit::visit_impl_item_fn(self, node);
         self.check_naming_entropy();
-        self.restore_naming_state(saved);
+        self.restore_fn_state(saved);
     }
 
     fn visit_trait_item_fn(&mut self, node: &'ast syn::TraitItemFn) {

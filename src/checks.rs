@@ -111,7 +111,7 @@ pub const ALL_CHECKS: &[CheckInfo] = &[
     },
     CheckInfo {
         code: "clone-in-loop",
-        description: "clone() called inside loop body",
+        description: "clone() called inside loop body (Arc/Rc suppressed when type is visible)",
         category: "performance",
         llm_specific: true,
     },

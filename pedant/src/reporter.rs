@@ -1,5 +1,6 @@
 use std::io::{self, Write};
 
+use crate::json_format::JsonViolation;
 use crate::violation::Violation;
 
 /// Output format for violation reports.
@@ -46,37 +47,10 @@ impl Reporter {
     }
 
     fn report_json<W: Write>(&self, violations: &[Violation], writer: &mut W) -> io::Result<()> {
-        writeln!(writer, "[")?;
-        for (i, v) in violations.iter().enumerate() {
-            let comma = match i + 1 < violations.len() {
-                true => ",",
-                false => "",
-            };
-            let pattern_field = v
-                .violation_type
-                .pattern()
-                .map(|p| format!(r#", "pattern": "{}""#, escape_json(p)))
-                .unwrap_or_default();
-            let rationale = v.violation_type.rationale();
-            writeln!(
-                writer,
-                r#"  {{"type": "{}", "check": "{}", "file": "{}", "line": {}, "column": {}, "message": "{}", "fix": "{}"{}}}{}"#,
-                v.violation_type,
-                v.violation_type.check_name(),
-                escape_json(&v.file_path),
-                v.line,
-                v.column,
-                escape_json(&v.message),
-                escape_json(rationale.fix),
-                pattern_field,
-                comma
-            )?;
-        }
-        writeln!(writer, "]")?;
+        let json_violations: Vec<JsonViolation<'_>> =
+            violations.iter().map(JsonViolation::from).collect();
+        serde_json::to_writer_pretty(&mut *writer, &json_violations).map_err(io::Error::other)?;
+        writeln!(writer)?;
         Ok(())
     }
-}
-
-fn escape_json(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
 }

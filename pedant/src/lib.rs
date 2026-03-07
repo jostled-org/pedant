@@ -17,6 +17,8 @@
 pub mod checks;
 /// CLI argument parsing and TOML config file loading.
 pub mod config;
+/// JSON serialization types for violation output.
+pub(crate) mod json_format;
 /// Glob-style pattern matching for AST node text.
 pub mod pattern;
 /// Violation output formatting (text and JSON).

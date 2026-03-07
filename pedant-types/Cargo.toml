@@ -6,6 +6,7 @@ rust-version = "1.85"
 description = "Shared types for pedant capability analysis"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/jostled-org/pedant"
+readme = "README.md"
 
 [dependencies]
 serde = { version = "1", features = ["derive", "rc"] }

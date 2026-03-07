@@ -4,6 +4,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use clap::Parser;
+use pedant::AnalysisResult;
 use pedant::checks::ALL_CHECKS;
 use pedant::config::{
     Cli, ConfigFile, NamingOverride, PatternCheck, PatternOverride, check_path_override,
@@ -12,6 +13,7 @@ use pedant::config::{
 use pedant::reporter::Reporter;
 use pedant::violation::{Violation, lookup_rationale};
 use pedant::visitor::{CheckConfig, analyze};
+use pedant_types::CapabilityFinding;
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
@@ -29,6 +31,7 @@ fn main() -> ExitCode {
     let base_config = cli.to_check_config(file_config.as_ref());
 
     let mut all_violations: Vec<Violation> = Vec::new();
+    let mut all_findings: Vec<CapabilityFinding> = Vec::new();
     let mut had_error = false;
 
     match cli.stdin {
@@ -36,6 +39,7 @@ fn main() -> ExitCode {
             process_stdin(&base_config),
             "error",
             &mut all_violations,
+            &mut all_findings,
             &mut had_error,
         ),
         false => {
@@ -46,6 +50,7 @@ fn main() -> ExitCode {
                     process_file(file_path, &cfg),
                     file_path,
                     &mut all_violations,
+                    &mut all_findings,
                     &mut had_error,
                 );
             }
@@ -57,6 +62,14 @@ fn main() -> ExitCode {
     if let Err(e) = reporter.report(&all_violations, &mut stdout) {
         eprintln!("error writing output: {e}");
         return ExitCode::from(2);
+    }
+
+    let cap_err = cli
+        .capabilities
+        .then(|| write_capabilities(&mut stdout, all_findings))
+        .flatten();
+    if let Some(exit) = cap_err {
+        return exit;
     }
 
     match (had_error, all_violations.is_empty()) {
@@ -179,7 +192,7 @@ fn apply_naming_override(
     }
 }
 
-fn process_stdin(config: &CheckConfig) -> Result<Vec<Violation>, String> {
+fn process_stdin(config: &CheckConfig) -> Result<AnalysisResult, String> {
     let mut source = String::new();
     io::stdin()
         .read_to_string(&mut source)
@@ -188,25 +201,42 @@ fn process_stdin(config: &CheckConfig) -> Result<Vec<Violation>, String> {
     analyze("<stdin>", &source, config).map_err(|e| format!("parse error: {e}"))
 }
 
-fn process_file(file_path: &str, config: &CheckConfig) -> Result<Vec<Violation>, String> {
+fn process_file(file_path: &str, config: &CheckConfig) -> Result<AnalysisResult, String> {
     let source = fs::read_to_string(file_path).map_err(|e| format!("failed to read file: {e}"))?;
 
     analyze(file_path, &source, config).map_err(|e| format!("parse error: {e}"))
 }
 
 fn handle_result(
-    result: Result<Vec<Violation>, String>,
+    result: Result<AnalysisResult, String>,
     context: &str,
     violations: &mut Vec<Violation>,
+    findings: &mut Vec<CapabilityFinding>,
     had_error: &mut bool,
 ) {
     match result {
-        Ok(v) => violations.extend(v),
+        Ok(r) => {
+            violations.extend(r.violations);
+            findings.extend(r.capabilities.findings);
+        }
         Err(e) => {
             eprintln!("{context}: {e}");
             *had_error = true;
         }
     }
+}
+
+fn write_capabilities(
+    stdout: &mut impl Write,
+    findings: Vec<CapabilityFinding>,
+) -> Option<ExitCode> {
+    let profile = pedant_types::CapabilityProfile { findings };
+    if let Err(e) = serde_json::to_writer_pretty(&mut *stdout, &profile) {
+        eprintln!("error writing capabilities: {e}");
+        return Some(ExitCode::from(2));
+    }
+    let _ = writeln!(stdout);
+    None
 }
 
 fn print_checks_list() {

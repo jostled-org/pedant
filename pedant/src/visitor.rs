@@ -7,6 +7,8 @@ use syn::{
     Attribute, Expr, ExprIf, ExprMethodCall, ExprUnsafe, FnArg, Macro, ReturnType, Signature, Type,
 };
 
+use crate::analysis_result::AnalysisResult;
+use crate::capability_visitor::CapabilityVisitor;
 use crate::config::{NamingCheck, PatternCheck};
 use crate::pattern::{
     extract_attribute_text, extract_macro_text, extract_method_call_text, extract_type_text,
@@ -1295,15 +1297,23 @@ impl<'ast> Visit<'ast> for NestingVisitor<'_> {
     }
 }
 
-/// Parse and analyze a Rust source string, returning all detected violations.
+/// Parse and analyze a Rust source string, returning violations and capability findings.
 pub fn analyze(
     file_path: &str,
     source: &str,
     config: &CheckConfig,
-) -> Result<Vec<Violation>, syn::Error> {
+) -> Result<AnalysisResult, syn::Error> {
     let syntax = syn::parse_file(source)?;
+
     let mut visitor = NestingVisitor::new(file_path, config);
     visitor.visit_file(&syntax);
     visitor.check_mixed_concerns();
-    Ok(visitor.violations())
+
+    let mut cap_visitor = CapabilityVisitor::new(file_path);
+    cap_visitor.visit_file(&syntax);
+
+    Ok(AnalysisResult {
+        violations: visitor.violations(),
+        capabilities: cap_visitor.into_profile(),
+    })
 }

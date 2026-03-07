@@ -255,6 +255,7 @@ name = "pedant"
 version = "0.4.1"
 dependencies = [
  "clap",
+ "pedant-types",
  "proc-macro2",
  "quote",
  "serde",

@@ -65,6 +65,10 @@ pub struct Cli {
     /// Disable else-chain check
     #[arg(long)]
     pub no_else_chain: bool,
+
+    /// Output capability profile as JSON
+    #[arg(long)]
+    pub capabilities: bool,
 }
 
 /// A set of glob-style patterns to match against AST nodes.

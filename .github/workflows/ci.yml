@@ -15,7 +15,7 @@ jobs:
           components: rustfmt, clippy
       - run: cargo fmt --check
       - run: cargo clippy -- -D warnings
-      - run: cargo install --path . && pedant src/*.rs
+      - run: cargo install --path pedant && pedant pedant/src/*.rs
       - run: cargo test
       - run: RUSTDOCFLAGS="-D missing_docs" cargo doc --no-deps
       - run: cargo install cargo-deny && cargo deny check

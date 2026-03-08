@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0](https://github.com/jostled-org/pedant/compare/pedant-v0.5.0...pedant-v0.6.0) - 2026-03-08
+
+### Added
+
+- *(pedant)* [**breaking**] add capability detection for unsafe, ffi, crypto, time, proc macros, and string literals
+
 ## [0.5.0](https://github.com/jostled-org/pedant/compare/pedant-v0.4.1...pedant-v0.5.0) - 2026-03-07
 
 ### Added

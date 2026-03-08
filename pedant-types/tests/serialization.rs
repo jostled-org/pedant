@@ -30,6 +30,9 @@ fn capability_serializes_to_snake_case() {
 
     let json = serde_json::to_string(&Capability::SystemTime).unwrap();
     assert_eq!(json, "\"system_time\"");
+
+    let json = serde_json::to_string(&Capability::ProcMacro).unwrap();
+    assert_eq!(json, "\"proc_macro\"");
 }
 
 #[test]
@@ -44,6 +47,7 @@ fn capability_round_trip() {
         Capability::Ffi,
         Capability::Crypto,
         Capability::SystemTime,
+        Capability::ProcMacro,
     ];
     for cap in variants {
         let json = serde_json::to_string(&cap).unwrap();

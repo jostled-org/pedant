@@ -35,11 +35,39 @@ const ENV_PREFIXES: &[(&str, Capability)] = &[
     ("envy", Capability::EnvAccess),
 ];
 
+const FFI_PREFIXES: &[(&str, Capability)] = &[
+    ("libc", Capability::Ffi),
+    ("nix", Capability::Ffi),
+    ("winapi", Capability::Ffi),
+    ("windows_sys", Capability::Ffi),
+];
+
+const CRYPTO_PREFIXES: &[(&str, Capability)] = &[
+    ("ring", Capability::Crypto),
+    ("rustls", Capability::Crypto),
+    ("openssl", Capability::Crypto),
+    ("aes", Capability::Crypto),
+    ("sha2", Capability::Crypto),
+    ("hmac", Capability::Crypto),
+    ("ed25519_dalek", Capability::Crypto),
+    ("x25519_dalek", Capability::Crypto),
+];
+
+const SYSTEM_TIME_PREFIXES: &[(&str, Capability)] = &[
+    ("std::time::SystemTime", Capability::SystemTime),
+    ("std::time::Instant", Capability::SystemTime),
+    ("chrono", Capability::SystemTime),
+    ("time", Capability::SystemTime),
+];
+
 const ALL_PREFIX_TABLES: &[&[(&str, Capability)]] = &[
     NETWORK_PREFIXES,
     FILESYSTEM_PREFIXES,
     PROCESS_PREFIXES,
     ENV_PREFIXES,
+    FFI_PREFIXES,
+    CRYPTO_PREFIXES,
+    SYSTEM_TIME_PREFIXES,
 ];
 
 /// Specific function-level overrides for filesystem capability splitting.
@@ -88,16 +116,45 @@ impl CapabilityVisitor {
     fn match_path(&mut self, path: &str, line: usize, column: usize) {
         let capabilities = resolve_capabilities(path);
         for capability in capabilities {
-            self.findings.push(CapabilityFinding {
-                capability,
-                location: SourceLocation {
-                    file: Arc::clone(&self.file_path),
-                    line,
-                    column,
-                },
-                evidence: Arc::from(path),
-            });
+            self.record_finding(capability, path, line, column);
         }
+    }
+
+    fn check_string_literal(&mut self, lit_str: &syn::LitStr) {
+        let value = lit_str.value();
+        let start = lit_str.span().start();
+        let line = start.line;
+        let column = start.column + 1;
+        let is_endpoint = check_string_for_endpoint(&value);
+        let is_pem = check_string_for_pem(&value);
+
+        match (is_endpoint, is_pem) {
+            (true, true) => {
+                self.record_finding(Capability::Network, &value, line, column);
+                self.record_finding(Capability::Crypto, &value, line, column);
+            }
+            (true, false) => self.record_finding(Capability::Network, &value, line, column),
+            (false, true) => self.record_finding(Capability::Crypto, &value, line, column),
+            (false, false) => {}
+        }
+    }
+
+    fn record_finding(
+        &mut self,
+        capability: Capability,
+        evidence: &str,
+        line: usize,
+        column: usize,
+    ) {
+        self.findings.push(CapabilityFinding {
+            capability,
+            location: SourceLocation {
+                file: Arc::clone(&self.file_path),
+                line,
+                column,
+            },
+            evidence: Arc::from(evidence),
+        });
     }
 }
 
@@ -152,6 +209,68 @@ fn match_glob_path(path: &str) -> Option<&str> {
     path.strip_suffix("::*")
 }
 
+const URL_SCHEMES: &[&str] = &["http://", "https://", "ws://", "wss://"];
+
+fn attribute_path_string(attr: &syn::Attribute) -> String {
+    attr.path()
+        .segments
+        .iter()
+        .map(|s| s.ident.to_string())
+        .collect::<Vec<_>>()
+        .join("::")
+}
+
+fn check_string_for_endpoint(value: &str) -> bool {
+    if value.len() < 8 {
+        return false;
+    }
+    for scheme in URL_SCHEMES {
+        if value.starts_with(scheme) {
+            return true;
+        }
+    }
+    looks_like_ipv4(value) || looks_like_ipv6(value)
+}
+
+fn strip_port_suffix(s: &str) -> Option<&str> {
+    let pos = s.rfind(':')?;
+    let (host, port) = s.split_at(pos);
+    port[1..].parse::<u16>().ok().map(|_| host)
+}
+
+fn looks_like_ipv4(s: &str) -> bool {
+    let host = match (s.rfind(':'), strip_port_suffix(s)) {
+        (Some(_), Some(h)) => h,
+        (Some(_), None) => return false,
+        (None, _) => s,
+    };
+    let parts: Vec<&str> = host.split('.').collect();
+    parts.len() == 4 && parts.iter().all(|p| p.parse::<u8>().is_ok())
+}
+
+fn extract_ipv6_body(s: &str) -> &str {
+    s.strip_prefix('[')
+        .and_then(|inner| {
+            inner
+                .strip_suffix(']')
+                .or_else(|| inner.rfind("]:").map(|pos| &inner[..pos]))
+        })
+        .unwrap_or(s)
+}
+
+fn looks_like_ipv6(s: &str) -> bool {
+    let trimmed = extract_ipv6_body(s);
+    let groups: Vec<&str> = trimmed.split(':').collect();
+    groups.len() > 2
+        && groups
+            .iter()
+            .all(|g| g.is_empty() || g.chars().all(|c| c.is_ascii_hexdigit()))
+}
+
+fn check_string_for_pem(value: &str) -> bool {
+    value.contains("-----BEGIN ")
+}
+
 impl<'ast> Visit<'ast> for CapabilityVisitor {
     fn visit_item_use(&mut self, node: &'ast syn::ItemUse) {
         let span = node.use_token.span.start();
@@ -192,5 +311,97 @@ impl<'ast> Visit<'ast> for CapabilityVisitor {
         }
 
         syn::visit::visit_expr_path(self, node);
+    }
+
+    fn visit_expr_unsafe(&mut self, node: &'ast syn::ExprUnsafe) {
+        let start = node.unsafe_token.span.start();
+        self.record_finding(
+            Capability::UnsafeCode,
+            "unsafe block",
+            start.line,
+            start.column + 1,
+        );
+        syn::visit::visit_expr_unsafe(self, node);
+    }
+
+    fn visit_item_fn(&mut self, node: &'ast syn::ItemFn) {
+        if let Some(token) = node.sig.unsafety {
+            let start = token.span.start();
+            self.record_finding(
+                Capability::UnsafeCode,
+                "unsafe fn",
+                start.line,
+                start.column + 1,
+            );
+        }
+        syn::visit::visit_item_fn(self, node);
+    }
+
+    fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
+        if let Some(token) = node.sig.unsafety {
+            let start = token.span.start();
+            self.record_finding(
+                Capability::UnsafeCode,
+                "unsafe fn",
+                start.line,
+                start.column + 1,
+            );
+        }
+        syn::visit::visit_impl_item_fn(self, node);
+    }
+
+    fn visit_item_impl(&mut self, node: &'ast syn::ItemImpl) {
+        if let Some(token) = node.unsafety {
+            let start = token.span.start();
+            self.record_finding(
+                Capability::UnsafeCode,
+                "unsafe impl",
+                start.line,
+                start.column + 1,
+            );
+        }
+        syn::visit::visit_item_impl(self, node);
+    }
+
+    fn visit_item_foreign_mod(&mut self, node: &'ast syn::ItemForeignMod) {
+        let start = node.abi.extern_token.span.start();
+        self.record_finding(
+            Capability::Ffi,
+            "extern block",
+            start.line,
+            start.column + 1,
+        );
+        syn::visit::visit_item_foreign_mod(self, node);
+    }
+
+    fn visit_attribute(&mut self, node: &'ast syn::Attribute) {
+        let path = attribute_path_string(node);
+        let start = node.pound_token.spans[0].start();
+        let line = start.line;
+        let column = start.column + 1;
+
+        match path.as_str() {
+            "link" => self.record_finding(Capability::Ffi, "#[link]", line, column),
+            "proc_macro" => {
+                self.record_finding(Capability::ProcMacro, "#[proc_macro]", line, column)
+            }
+            "proc_macro_derive" => {
+                self.record_finding(Capability::ProcMacro, "#[proc_macro_derive]", line, column)
+            }
+            "proc_macro_attribute" => self.record_finding(
+                Capability::ProcMacro,
+                "#[proc_macro_attribute]",
+                line,
+                column,
+            ),
+            _ => {}
+        }
+    }
+
+    fn visit_expr_lit(&mut self, node: &'ast syn::ExprLit) {
+        if let syn::Lit::Str(ref lit_str) = node.lit {
+            self.check_string_literal(lit_str);
+        }
+        syn::visit::visit_expr_lit(self, node);
     }
 }

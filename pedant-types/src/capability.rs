@@ -22,4 +22,6 @@ pub enum Capability {
     Crypto,
     /// System clock or time access
     SystemTime,
+    /// Proc macro definition (compile-time code execution)
+    ProcMacro,
 }

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1](https://github.com/jostled-org/pedant/compare/pedant-types-v0.2.0...pedant-types-v0.2.1) - 2026-03-08
+
+### Other
+
+- add capability detection guide and update READMEs
+
 ## [0.2.0](https://github.com/jostled-org/pedant/compare/pedant-types-v0.1.2...pedant-types-v0.2.0) - 2026-03-08
 
 ### Added

@@ -116,6 +116,10 @@ See `examples/` for a full global config and a project-level override.
 
 Run `pedant --list-checks` to see all checks, or `pedant --explain <check>` for detailed rationale and fix guidance.
 
+## Capability Detection
+
+Pedant also detects what a crate can do — network, filesystem, unsafe, FFI, crypto, and more — by scanning imports, attributes, and string literals. See the [capability detection guide](examples/capability-detection.md).
+
 ## License
 
 [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.

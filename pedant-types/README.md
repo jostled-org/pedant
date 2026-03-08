@@ -11,7 +11,7 @@ You want to consume pedant's capability analysis output without pulling in the l
 
 | Type | Purpose |
 |------|---------|
-| `Capability` | Enum of 9 capabilities a crate may exercise (network, file I/O, process exec, etc.) |
+| `Capability` | Enum of 10 capabilities a crate may exercise (network, file I/O, process exec, etc.) |
 | `CapabilityFinding` | A capability detected at a specific `SourceLocation` with evidence |
 | `CapabilityProfile` | Collection of findings with dedup and filtering |
 | `AttestationContent` | Full attestation: source hash, crate identity, analysis tier, profile |

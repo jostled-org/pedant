@@ -45,6 +45,10 @@ cargo install pedant
 
 ## Usage
 
+pedant has two modes: **linting** enforces style rules, **capability detection** audits what a crate can do. Linting is fast enough to run on every edit. Capability detection is for CI and audits.
+
+### Linting
+
 ```bash
 # Check files
 pedant src/**/*.rs
@@ -54,15 +58,36 @@ pedant -d 2 src/lib.rs
 
 # Pipe generated code
 echo "$generated_code" | pedant --stdin -f json
-
-# Capability detection
-pedant --capabilities src/**/*.rs
-
-# Attestation (includes source hash, crate identity, and capability profile)
-pedant --attestation --crate-name my-crate --crate-version 0.1.0 src/**/*.rs
 ```
 
 Exit codes: `0` clean, `1` violations, `2` error.
+
+To run pedant as a [Claude Code hook](examples/pedant-claude-code-hook.md) that blocks AI-generated code on every edit:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [{ "type": "command", "command": "~/.claude/hooks/pedant-check.sh" }]
+      }
+    ]
+  }
+}
+```
+
+### Capability Detection
+
+```bash
+# Scan for capabilities (network, filesystem, unsafe, FFI, crypto, etc.)
+pedant --capabilities src/**/*.rs
+
+# Attestation (adds source hash and crate identity for reproducibility)
+pedant --attestation --crate-name my-crate --crate-version 0.1.0 src/**/*.rs
+```
+
+See the [capability detection guide](examples/capability-detection.md) for output format, supported capabilities, and attestation details.
 
 ## Configuration
 
@@ -121,10 +146,6 @@ See `examples/` for a full global config and a project-level override.
 | Naming | `generic-naming` |
 
 Run `pedant --list-checks` to see all checks, or `pedant --explain <check>` for detailed rationale and fix guidance.
-
-## Capability Detection
-
-Pedant detects what a crate can do — network, filesystem, unsafe, FFI, crypto, and more — by scanning imports, attributes, and string literals. Use `--capabilities` for a raw profile or `--attestation` for a signed-format output with source hash and crate identity. See the [capability detection guide](examples/capability-detection.md).
 
 ## License
 

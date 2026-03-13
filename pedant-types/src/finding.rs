@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::Capability;
 
 /// A source code location.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SourceLocation {
     /// File path relative to the crate root.
     pub file: Arc<str>,
@@ -16,7 +16,7 @@ pub struct SourceLocation {
 }
 
 /// A single capability finding at a specific location.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CapabilityFinding {
     /// The capability detected.
     pub capability: Capability,

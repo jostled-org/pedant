@@ -1,4 +1,5 @@
 /// Errors from type serialization/deserialization.
+/// Single variant today; enum allows adding variants without breaking callers.
 #[derive(Debug, thiserror::Error)]
 pub enum TypeError {
     /// JSON serialization or deserialization failed.

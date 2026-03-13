@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use pedant::reporter::{OutputFormat, Reporter};
 use pedant::violation::{Violation, ViolationType};
 
@@ -5,16 +7,16 @@ fn make_violations() -> Vec<Violation> {
     vec![
         Violation::new(
             ViolationType::MaxDepth,
-            "foo.rs".to_string(),
+            Arc::from("foo.rs"),
             5,
             1,
             "nesting depth 4 exceeds limit 3".to_string(),
         ),
         Violation::new(
             ViolationType::ForbiddenCall {
-                pattern: "unwrap".to_string(),
+                pattern: Arc::from("unwrap"),
             },
-            "bar.rs".to_string(),
+            Arc::from("bar.rs"),
             10,
             8,
             "forbidden call: unwrap".to_string(),

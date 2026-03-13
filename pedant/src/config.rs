@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 
 use clap::Parser;
 use serde::Deserialize;
@@ -69,6 +70,18 @@ pub struct Cli {
     /// Output capability profile as JSON
     #[arg(long)]
     pub capabilities: bool,
+
+    /// Output capability attestation as JSON (implies --capabilities)
+    #[arg(long, requires_all = ["crate_name", "crate_version"])]
+    pub attestation: bool,
+
+    /// Crate name for attestation output
+    #[arg(long, value_name = "NAME")]
+    pub crate_name: Option<String>,
+
+    /// Crate version for attestation output
+    #[arg(long, value_name = "VERSION")]
+    pub crate_version: Option<String>,
 }
 
 /// A set of glob-style patterns to match against AST nodes.
@@ -79,8 +92,15 @@ pub struct PatternCheck {
     #[serde(default)]
     pub enabled: bool,
     /// Glob-style patterns to match against AST node text.
-    #[serde(default)]
-    pub patterns: Vec<String>,
+    #[serde(default, deserialize_with = "deserialize_arc_str_vec")]
+    pub patterns: Vec<Arc<str>>,
+}
+
+fn deserialize_arc_str_vec<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<Arc<str>>, D::Error> {
+    let strings: Vec<String> = Vec::deserialize(deserializer)?;
+    Ok(strings.into_iter().map(Arc::from).collect())
 }
 
 /// Default list of generic variable names that LLMs overuse.
@@ -98,8 +118,11 @@ pub struct NamingCheck {
     #[serde(default)]
     pub enabled: bool,
     /// Words considered generic. Overrides the default list when provided.
-    #[serde(default = "default_generic_names")]
-    pub generic_names: Vec<String>,
+    #[serde(
+        default = "default_generic_names",
+        deserialize_with = "deserialize_arc_str_vec"
+    )]
+    pub generic_names: Vec<Arc<str>>,
     /// Maximum ratio of generic names to total bindings before flagging.
     #[serde(default = "default_max_generic_ratio")]
     pub max_generic_ratio: f64,
@@ -125,18 +148,26 @@ pub struct NamingOverride {
     /// Override the enabled state.
     pub enabled: Option<bool>,
     /// Override generic names list.
-    pub generic_names: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "deserialize_option_arc_str_vec")]
+    pub generic_names: Option<Vec<Arc<str>>>,
     /// Override maximum generic ratio.
     pub max_generic_ratio: Option<f64>,
     /// Override minimum generic count.
     pub min_generic_count: Option<usize>,
 }
 
-fn default_generic_names() -> Vec<String> {
+fn default_generic_names() -> Vec<Arc<str>> {
     DEFAULT_GENERIC_NAMES
         .iter()
-        .map(|s| (*s).to_string())
+        .map(|s| Arc::from(*s))
         .collect()
+}
+
+fn deserialize_option_arc_str_vec<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Vec<Arc<str>>>, D::Error> {
+    let opt: Option<Vec<String>> = Option::deserialize(deserializer)?;
+    Ok(opt.map(|v| v.into_iter().map(Arc::from).collect()))
 }
 
 fn default_max_generic_ratio() -> f64 {
@@ -227,8 +258,8 @@ pub struct PatternOverride {
     /// Override the enabled state. `None` inherits from the base config.
     pub enabled: Option<bool>,
     /// Replacement patterns. Empty inherits from the base config.
-    #[serde(default)]
-    pub patterns: Vec<String>,
+    #[serde(default, deserialize_with = "deserialize_arc_str_vec")]
+    pub patterns: Vec<Arc<str>>,
 }
 
 /// Per-path configuration overrides (e.g., for `tests/**`).
@@ -284,11 +315,21 @@ fn default_true() -> bool {
     true
 }
 
+/// Error loading or parsing a configuration file.
+#[derive(Debug, thiserror::Error)]
+pub enum ConfigError {
+    /// Failed to read the config file from disk.
+    #[error("failed to read config file: {0}")]
+    Read(#[from] std::io::Error),
+    /// Failed to parse the TOML config file.
+    #[error("failed to parse config file: {0}")]
+    Parse(#[from] toml::de::Error),
+}
+
 /// Load and parse a `.pedant.toml` configuration file.
-pub fn load_config_file(path: &Path) -> Result<ConfigFile, String> {
-    let content =
-        fs::read_to_string(path).map_err(|e| format!("failed to read config file: {e}"))?;
-    toml::from_str(&content).map_err(|e| format!("failed to parse config file: {e}"))
+pub fn load_config_file(path: &Path) -> Result<ConfigFile, ConfigError> {
+    let content = fs::read_to_string(path)?;
+    Ok(toml::from_str(&content)?)
 }
 
 /// Search for a config file: `.pedant.toml` in the project root, then `$XDG_CONFIG_HOME/pedant/config.toml`.
@@ -389,8 +430,8 @@ pub fn check_path_override<'a>(
 
 fn matches_glob(pattern: &str, path: &str) -> bool {
     let path = path.strip_prefix("./").unwrap_or(path);
-    let pattern_parts: Vec<&str> = pattern.split('/').collect();
-    let path_parts: Vec<&str> = path.split('/').collect();
+    let pattern_parts: Box<[&str]> = pattern.split('/').collect();
+    let path_parts: Box<[&str]> = path.split('/').collect();
     matches_glob_parts(&pattern_parts, &path_parts)
 }
 

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use pedant::config::{NamingCheck, PatternCheck};
 use pedant::violation::ViolationType;
 use pedant::visitor::{CheckConfig, analyze};
@@ -128,9 +130,9 @@ fn test_forbidden_attribute_detection() {
         forbid_attributes: PatternCheck {
             enabled: true,
             patterns: vec![
-                "allow(dead_code)".to_string(),
-                "allow(unused*)".to_string(),
-                "allow(clippy::*)".to_string(),
+                Arc::from("allow(dead_code)"),
+                Arc::from("allow(unused*)"),
+                Arc::from("allow(clippy::*)"),
             ],
         },
         ..permissive_config()
@@ -153,7 +155,7 @@ fn test_forbidden_attribute_disabled() {
     let config = CheckConfig {
         forbid_attributes: PatternCheck {
             enabled: false,
-            patterns: vec!["allow(dead_code)".to_string()],
+            patterns: vec![Arc::from("allow(dead_code)")],
         },
         ..permissive_config()
     };
@@ -175,9 +177,9 @@ fn test_forbidden_type_detection() {
         forbid_types: PatternCheck {
             enabled: true,
             patterns: vec![
-                "Arc<String>".to_string(),
-                "Arc<Vec<*>>".to_string(),
-                "Box<dyn*Error*>".to_string(),
+                Arc::from("Arc<String>"),
+                Arc::from("Arc<Vec<*>>"),
+                Arc::from("Box<dyn*Error*>"),
             ],
         },
         ..permissive_config()
@@ -199,7 +201,7 @@ fn test_forbidden_type_disabled() {
     let config = CheckConfig {
         forbid_types: PatternCheck {
             enabled: false,
-            patterns: vec!["Arc<String>".to_string()],
+            patterns: vec![Arc::from("Arc<String>")],
         },
         ..permissive_config()
     };
@@ -221,9 +223,9 @@ fn test_forbidden_call_detection() {
         forbid_calls: PatternCheck {
             enabled: true,
             patterns: vec![
-                ".unwrap()".to_string(),
-                ".expect(*)".to_string(),
-                ".clone()".to_string(),
+                Arc::from(".unwrap()"),
+                Arc::from(".expect(*)"),
+                Arc::from(".clone()"),
             ],
         },
         ..permissive_config()
@@ -246,11 +248,11 @@ fn test_forbidden_macro_detection() {
         forbid_macros: PatternCheck {
             enabled: true,
             patterns: vec![
-                "panic!".to_string(),
-                "todo!".to_string(),
-                "unimplemented!".to_string(),
-                "dbg!".to_string(),
-                "println!".to_string(),
+                Arc::from("panic!"),
+                Arc::from("todo!"),
+                Arc::from("unimplemented!"),
+                Arc::from("dbg!"),
+                Arc::from("println!"),
             ],
         },
         ..permissive_config()
@@ -668,7 +670,7 @@ fn test_generic_naming_custom_config() {
     let config = CheckConfig {
         check_naming: NamingCheck {
             enabled: true,
-            generic_names: vec!["config".to_string()],
+            generic_names: vec![Arc::from("config")],
             min_generic_count: 1,
             ..NamingCheck::default()
         },

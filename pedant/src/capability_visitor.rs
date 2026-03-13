@@ -159,7 +159,9 @@ impl CapabilityVisitor {
 }
 
 fn path_matches_prefix(path: &str, prefix: &str) -> bool {
-    path == prefix || path.starts_with(&format!("{prefix}::"))
+    path == prefix
+        || (path.starts_with(prefix)
+            && path.as_bytes().get(prefix.len()..prefix.len() + 2) == Some(b"::"))
 }
 
 fn resolve_capabilities(path: &str) -> Vec<Capability> {
@@ -172,8 +174,6 @@ fn resolve_capabilities(path: &str) -> Vec<Capability> {
         .flat_map(|table| table.iter())
         .filter(|(prefix, _)| path_matches_prefix(path, prefix))
         .map(|(_, capability)| *capability)
-        .collect::<Vec<_>>()
-        .into_iter()
         .fold(Vec::new(), |mut acc, cap| {
             if !acc.contains(&cap) {
                 acc.push(cap);
@@ -189,17 +189,22 @@ fn join_path(prefix: &str, segment: &str) -> String {
     }
 }
 
-fn flatten_use_tree(tree: &UseTree, prefix: &str) -> Vec<String> {
+const MAX_USE_TREE_DEPTH: usize = 32;
+
+fn flatten_use_tree(tree: &UseTree, prefix: &str, depth: usize) -> Vec<String> {
+    if depth > MAX_USE_TREE_DEPTH {
+        return Vec::new();
+    }
     match tree {
         UseTree::Path(UsePath { ident, tree, .. }) => {
-            flatten_use_tree(tree, &join_path(prefix, &ident.to_string()))
+            flatten_use_tree(tree, &join_path(prefix, &ident.to_string()), depth + 1)
         }
         UseTree::Name(UseName { ident, .. }) => vec![join_path(prefix, &ident.to_string())],
         UseTree::Rename(UseRename { ident, .. }) => vec![join_path(prefix, &ident.to_string())],
         UseTree::Glob(UseGlob { .. }) => vec![join_path(prefix, "*")],
         UseTree::Group(UseGroup { items, .. }) => items
             .iter()
-            .flat_map(|item| flatten_use_tree(item, prefix))
+            .flat_map(|item| flatten_use_tree(item, prefix, depth + 1))
             .collect(),
     }
 }
@@ -212,24 +217,24 @@ fn match_glob_path(path: &str) -> Option<&str> {
 const URL_SCHEMES: &[&str] = &["http://", "https://", "ws://", "wss://"];
 
 fn attribute_path_string(attr: &syn::Attribute) -> String {
-    attr.path()
-        .segments
-        .iter()
-        .map(|s| s.ident.to_string())
-        .collect::<Vec<_>>()
-        .join("::")
+    let mut segs = attr.path().segments.iter();
+    let Some(first) = segs.next() else {
+        return String::new();
+    };
+    segs.fold(first.ident.to_string(), |mut acc, s| {
+        acc.push_str("::");
+        acc.push_str(&s.ident.to_string());
+        acc
+    })
 }
 
 fn check_string_for_endpoint(value: &str) -> bool {
     if value.len() < 8 {
         return false;
     }
-    for scheme in URL_SCHEMES {
-        if value.starts_with(scheme) {
-            return true;
-        }
-    }
-    looks_like_ipv4(value) || looks_like_ipv6(value)
+    URL_SCHEMES.iter().any(|s| value.starts_with(s))
+        || looks_like_ipv4(value)
+        || looks_like_ipv6(value)
 }
 
 fn strip_port_suffix(s: &str) -> Option<&str> {
@@ -244,8 +249,13 @@ fn looks_like_ipv4(s: &str) -> bool {
         (Some(_), None) => return false,
         (None, _) => s,
     };
-    let parts: Vec<&str> = host.split('.').collect();
-    parts.len() == 4 && parts.iter().all(|p| p.parse::<u8>().is_ok())
+    let mut parts = host.split('.');
+    let mut count = 0;
+    let valid = parts.all(|p| {
+        count += 1;
+        p.parse::<u8>().is_ok()
+    });
+    valid && count == 4
 }
 
 fn extract_ipv6_body(s: &str) -> &str {
@@ -260,11 +270,13 @@ fn extract_ipv6_body(s: &str) -> &str {
 
 fn looks_like_ipv6(s: &str) -> bool {
     let trimmed = extract_ipv6_body(s);
-    let groups: Vec<&str> = trimmed.split(':').collect();
-    groups.len() > 2
-        && groups
-            .iter()
-            .all(|g| g.is_empty() || g.chars().all(|c| c.is_ascii_hexdigit()))
+    let mut groups = trimmed.split(':');
+    let mut count = 0;
+    let valid = groups.all(|g| {
+        count += 1;
+        g.is_empty() || g.chars().all(|c| c.is_ascii_hexdigit())
+    });
+    valid && count > 2
 }
 
 fn check_string_for_pem(value: &str) -> bool {
@@ -277,7 +289,7 @@ impl<'ast> Visit<'ast> for CapabilityVisitor {
         let line = span.line;
         let column = span.column + 1;
 
-        let paths = flatten_use_tree(&node.tree, "");
+        let paths = flatten_use_tree(&node.tree, "", 0);
         for path in paths {
             match match_glob_path(&path) {
                 Some(prefix) => self.match_path(prefix, line, column),

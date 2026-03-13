@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::mem;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use proc_macro2::LineColumn;
 use syn::visit::Visit;
@@ -103,7 +105,7 @@ impl Default for CheckConfig {
 /// A recorded binding with the loop depth at time of capture.
 #[derive(Clone)]
 struct RecordedBinding {
-    name: String,
+    name: Box<str>,
     loop_depth: usize,
 }
 
@@ -112,21 +114,21 @@ struct FnSavedState {
     bindings: Vec<RecordedBinding>,
     has_arithmetic: bool,
     fn_span: Option<LineColumn>,
-    refcounted_bindings: BTreeSet<String>,
-    refcounted_containers: BTreeSet<String>,
+    refcounted_bindings: BTreeSet<Box<str>>,
+    refcounted_containers: BTreeSet<Box<str>>,
     fn_body_types: BTreeSet<Rc<str>>,
 }
 
 /// AST visitor that collects violations during a single-pass walk.
 pub struct NestingVisitor<'a> {
-    file_path: &'a str,
+    file_path: Arc<str>,
     config: &'a CheckConfig,
     depth: usize,
     loop_depth: usize,
     branch_context: Option<BranchContext>,
     item_depth: usize,
-    refcounted_bindings: BTreeSet<String>,
-    refcounted_containers: BTreeSet<String>,
+    refcounted_bindings: BTreeSet<Box<str>>,
+    refcounted_containers: BTreeSet<Box<str>>,
     defined_types: BTreeSet<Rc<str>>,
     type_edges: Vec<(Rc<str>, Rc<str>)>,
     fn_body_types: BTreeSet<Rc<str>>,
@@ -138,9 +140,9 @@ pub struct NestingVisitor<'a> {
 
 impl<'a> NestingVisitor<'a> {
     /// Creates a visitor for the given file path and config.
-    pub fn new(file_path: &'a str, config: &'a CheckConfig) -> Self {
+    pub fn new(file_path: &str, config: &'a CheckConfig) -> Self {
         Self {
-            file_path,
+            file_path: Arc::from(file_path),
             config,
             depth: 0,
             loop_depth: 0,
@@ -158,14 +160,14 @@ impl<'a> NestingVisitor<'a> {
         }
     }
 
-    fn save_fn_state(&self) -> FnSavedState {
+    fn save_fn_state(&mut self) -> FnSavedState {
         FnSavedState {
-            bindings: self.naming_bindings.clone(),
+            bindings: mem::take(&mut self.naming_bindings),
             has_arithmetic: self.naming_has_arithmetic,
             fn_span: self.naming_fn_span,
-            refcounted_bindings: self.refcounted_bindings.clone(),
-            refcounted_containers: self.refcounted_containers.clone(),
-            fn_body_types: self.fn_body_types.clone(),
+            refcounted_bindings: mem::take(&mut self.refcounted_bindings),
+            refcounted_containers: mem::take(&mut self.refcounted_containers),
+            fn_body_types: mem::take(&mut self.fn_body_types),
         }
     }
 
@@ -205,14 +207,7 @@ impl<'a> NestingVisitor<'a> {
 
     fn fn_body_type_edges(&self) -> Vec<(Rc<str>, Rc<str>)> {
         let names: Vec<_> = self.fn_body_types.iter().cloned().collect();
-        let mut pairs = Vec::new();
-        let len = names.len();
-        (0..len).for_each(|i| {
-            ((i + 1)..len).for_each(|j| {
-                pairs.push((Rc::clone(&names[i]), Rc::clone(&names[j])));
-            });
-        });
-        pairs
+        pairwise_edges(&names)
     }
 
     fn record_binding(&mut self, name: String) {
@@ -220,7 +215,7 @@ impl<'a> NestingVisitor<'a> {
             return;
         }
         self.naming_bindings.push(RecordedBinding {
-            name,
+            name: name.into_boxed_str(),
             loop_depth: self.loop_depth,
         });
     }
@@ -252,13 +247,11 @@ impl<'a> NestingVisitor<'a> {
 
     fn record_refcounted_params(&mut self, sig: &Signature) {
         for input in &sig.inputs {
-            let FnArg::Typed(pt) = input else {
-                continue;
-            };
+            let FnArg::Typed(pt) = input else { continue };
             let syn::Pat::Ident(pi) = pt.pat.as_ref() else {
                 continue;
             };
-            let name = pi.ident.to_string();
+            let name: Box<str> = pi.ident.to_string().into_boxed_str();
             match (is_refcounted_type(&pt.ty), contains_refcounted_type(&pt.ty)) {
                 (true, _) => {
                     self.refcounted_bindings.insert(name);
@@ -278,7 +271,7 @@ impl<'a> NestingVisitor<'a> {
         let syn::Pat::Ident(pi) = pt.pat.as_ref() else {
             return;
         };
-        let name = pi.ident.to_string();
+        let name: Box<str> = pi.ident.to_string().into_boxed_str();
         match (is_refcounted_type(&pt.ty), contains_refcounted_type(&pt.ty)) {
             (true, _) => {
                 self.refcounted_bindings.insert(name);
@@ -294,21 +287,21 @@ impl<'a> NestingVisitor<'a> {
         let Some(ident) = iter_expr_ident(iter_expr) else {
             return;
         };
-        if !self.refcounted_containers.contains(&ident) {
+        if !self.refcounted_containers.contains(ident.as_str()) {
             return;
         }
         for name in collect_pat_idents(pat) {
-            self.refcounted_bindings.insert(name);
+            self.refcounted_bindings.insert(name.into_boxed_str());
         }
     }
 
     fn classify_binding(
         binding: &RecordedBinding,
         has_arithmetic: bool,
-        generic_names: &[String],
+        generic_names: &[Arc<str>],
     ) -> bool {
         classify_single_char(&binding.name, binding.loop_depth, has_arithmetic)
-            .unwrap_or_else(|| generic_names.iter().any(|g| g == &binding.name))
+            .unwrap_or_else(|| generic_names.iter().any(|g| g.as_ref() == &*binding.name))
     }
 
     fn check_naming_entropy(&mut self) {
@@ -325,7 +318,7 @@ impl<'a> NestingVisitor<'a> {
             .naming_bindings
             .iter()
             .filter(|b| Self::classify_binding(b, has_arithmetic, generic_names))
-            .map(|b| b.name.as_str())
+            .map(|b| &*b.name)
             .collect();
         let generic_count = offenders.len();
         if generic_count < self.config.check_naming.min_generic_count {
@@ -356,7 +349,7 @@ impl<'a> NestingVisitor<'a> {
     fn report(&mut self, span_start: LineColumn, violation_type: ViolationType, message: String) {
         self.violations.push(Violation::new(
             violation_type,
-            self.file_path.to_string(),
+            Arc::clone(&self.file_path),
             span_start.line,
             span_start.column + 1,
             message,
@@ -411,86 +404,57 @@ impl<'a> NestingVisitor<'a> {
         count
     }
 
-    fn check_attribute(&mut self, attr: &Attribute) {
-        if !self.config.forbid_attributes.enabled {
+    fn check_forbidden(
+        &mut self,
+        check: &PatternCheck,
+        text: String,
+        span_start: LineColumn,
+        make_violation: impl Fn(Arc<str>) -> ViolationType,
+    ) {
+        if !check.enabled {
             return;
         }
+        let matched = check
+            .patterns
+            .iter()
+            .find(|p| matches_pattern(&text, p))
+            .map(Arc::clone);
+        let Some(pattern) = matched else { return };
+        self.report(span_start, make_violation(pattern), text);
+    }
 
-        let attr_text = extract_attribute_text(attr);
-        for pattern in &self.config.forbid_attributes.patterns {
-            if matches_pattern(&attr_text, pattern) {
-                let span_start = attr.pound_token.span.start();
-                self.report(
-                    span_start,
-                    ViolationType::ForbiddenAttribute {
-                        pattern: pattern.to_owned(),
-                    },
-                    attr_text,
-                );
-                return;
-            }
-        }
+    fn check_attribute(&mut self, attr: &Attribute) {
+        let text = extract_attribute_text(attr);
+        let span_start = attr.pound_token.span.start();
+        let check = self.config.forbid_attributes.clone();
+        self.check_forbidden(&check, text, span_start, |p| {
+            ViolationType::ForbiddenAttribute { pattern: p }
+        });
     }
 
     fn check_type(&mut self, ty: &Type, span_start: LineColumn) {
-        if !self.config.forbid_types.enabled {
-            return;
-        }
-
-        let type_text = extract_type_text(ty);
-        for pattern in &self.config.forbid_types.patterns {
-            if matches_pattern(&type_text, pattern) {
-                self.report(
-                    span_start,
-                    ViolationType::ForbiddenType {
-                        pattern: pattern.to_owned(),
-                    },
-                    type_text,
-                );
-                return;
-            }
-        }
+        let text = extract_type_text(ty);
+        let check = self.config.forbid_types.clone();
+        self.check_forbidden(&check, text, span_start, |p| ViolationType::ForbiddenType {
+            pattern: p,
+        });
     }
 
     fn check_call(&mut self, call: &ExprMethodCall) {
-        if !self.config.forbid_calls.enabled {
-            return;
-        }
-
-        let call_text = extract_method_call_text(call);
-        for pattern in &self.config.forbid_calls.patterns {
-            if matches_pattern(&call_text, pattern) {
-                let span_start = call.dot_token.span.start();
-                self.report(
-                    span_start,
-                    ViolationType::ForbiddenCall {
-                        pattern: pattern.to_owned(),
-                    },
-                    call_text,
-                );
-                return;
-            }
-        }
+        let text = extract_method_call_text(call);
+        let span_start = call.dot_token.span.start();
+        let check = self.config.forbid_calls.clone();
+        self.check_forbidden(&check, text, span_start, |p| ViolationType::ForbiddenCall {
+            pattern: p,
+        });
     }
 
     fn check_macro(&mut self, mac: &Macro, span_start: LineColumn) {
-        if !self.config.forbid_macros.enabled {
-            return;
-        }
-
-        let macro_text = extract_macro_text(mac);
-        for pattern in &self.config.forbid_macros.patterns {
-            if matches_pattern(&macro_text, pattern) {
-                self.report(
-                    span_start,
-                    ViolationType::ForbiddenMacro {
-                        pattern: pattern.to_owned(),
-                    },
-                    macro_text,
-                );
-                return;
-            }
-        }
+        let text = extract_macro_text(mac);
+        let check = self.config.forbid_macros.clone();
+        self.check_forbidden(&check, text, span_start, |p| {
+            ViolationType::ForbiddenMacro { pattern: p }
+        });
     }
 
     fn check_else(&mut self, span_start: LineColumn) {
@@ -669,7 +633,7 @@ impl<'a> NestingVisitor<'a> {
             return;
         }
         let is_refcounted = receiver_ident(&call.receiver)
-            .is_some_and(|ident| self.refcounted_bindings.contains(&ident));
+            .is_some_and(|ident| self.refcounted_bindings.contains(ident.as_str()));
         if is_refcounted {
             return;
         }
@@ -878,8 +842,7 @@ fn involves_dyn_dispatch(ty: &Type) -> bool {
             let Some(seg) = type_path_last_segment(ty) else {
                 return false;
             };
-            let name = seg.ident.to_string();
-            matches!(name.as_str(), "Box" | "Arc" | "Rc")
+            (seg.ident == "Box" || seg.ident == "Arc" || seg.ident == "Rc")
                 && first_type_arg(seg).is_some_and(|inner| matches!(inner, Type::TraitObject(_)))
         }
     }
@@ -908,11 +871,10 @@ fn is_default_hasher(ty: &Type) -> bool {
     let Some(seg) = type_path_last_segment(ty) else {
         return false;
     };
-    let name = seg.ident.to_string();
-    match name.as_str() {
-        "HashMap" => count_type_args(seg) == 2,
-        "HashSet" => count_type_args(seg) == 1,
-        _ => false,
+    match () {
+        () if seg.ident == "HashMap" => count_type_args(seg) == 2,
+        () if seg.ident == "HashSet" => count_type_args(seg) == 1,
+        () => false,
     }
 }
 
@@ -971,19 +933,23 @@ fn edges_from_names(owner: &Rc<str>, type_names: Vec<String>) -> Vec<(Rc<str>, R
         .collect()
 }
 
-fn signature_edge_pairs(sig: &Signature) -> Vec<(Rc<str>, Rc<str>)> {
-    let names: Vec<Rc<str>> = collect_signature_type_names(sig)
-        .into_iter()
-        .map(Rc::from)
-        .collect();
-    let mut pairs = Vec::new();
+fn pairwise_edges(names: &[Rc<str>]) -> Vec<(Rc<str>, Rc<str>)> {
     let len = names.len();
+    let mut pairs = Vec::with_capacity(len * len.saturating_sub(1) / 2);
     (0..len).for_each(|i| {
         ((i + 1)..len).for_each(|j| {
             pairs.push((Rc::clone(&names[i]), Rc::clone(&names[j])));
         });
     });
     pairs
+}
+
+fn signature_edge_pairs(sig: &Signature) -> Vec<(Rc<str>, Rc<str>)> {
+    let names: Vec<Rc<str>> = collect_signature_type_names(sig)
+        .into_iter()
+        .map(Rc::from)
+        .collect();
+    pairwise_edges(&names)
 }
 
 impl<'ast> Visit<'ast> for NestingVisitor<'_> {
@@ -1181,12 +1147,13 @@ impl<'ast> Visit<'ast> for NestingVisitor<'_> {
     }
 
     fn visit_item_impl(&mut self, node: &'ast syn::ItemImpl) {
-        let self_name: Rc<str> = Rc::from(
-            collect_type_names(&node.self_ty)
-                .into_iter()
-                .next()
-                .unwrap_or_default(),
-        );
+        let Some(first_name) = collect_type_names(&node.self_ty).into_iter().next() else {
+            self.item_depth += 1;
+            syn::visit::visit_item_impl(self, node);
+            self.item_depth -= 1;
+            return;
+        };
+        let self_name: Rc<str> = Rc::from(first_name);
         if let Some(trait_name) = node
             .trait_
             .as_ref()

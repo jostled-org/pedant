@@ -1,4 +1,5 @@
 use std::fmt;
+use std::sync::Arc;
 
 /// Rationale explaining why a check exists and how to address it.
 #[derive(Debug, Clone, Copy)]
@@ -24,25 +25,25 @@ pub fn lookup_rationale(code: &str) -> Option<CheckRationale> {
         "else-chain" => Some(ViolationType::ElseChain.rationale()),
         "forbidden-attribute" => Some(
             ViolationType::ForbiddenAttribute {
-                pattern: String::new(),
+                pattern: Arc::from(""),
             }
             .rationale(),
         ),
         "forbidden-type" => Some(
             ViolationType::ForbiddenType {
-                pattern: String::new(),
+                pattern: Arc::from(""),
             }
             .rationale(),
         ),
         "forbidden-call" => Some(
             ViolationType::ForbiddenCall {
-                pattern: String::new(),
+                pattern: Arc::from(""),
             }
             .rationale(),
         ),
         "forbidden-macro" => Some(
             ViolationType::ForbiddenMacro {
-                pattern: String::new(),
+                pattern: Arc::from(""),
             }
             .rationale(),
         ),
@@ -79,22 +80,22 @@ pub enum ViolationType {
     /// Attribute matching a forbidden pattern.
     ForbiddenAttribute {
         /// The pattern that matched.
-        pattern: String,
+        pattern: Arc<str>,
     },
     /// Type matching a forbidden pattern.
     ForbiddenType {
         /// The pattern that matched.
-        pattern: String,
+        pattern: Arc<str>,
     },
     /// Method call matching a forbidden pattern.
     ForbiddenCall {
         /// The pattern that matched.
-        pattern: String,
+        pattern: Arc<str>,
     },
     /// Macro matching a forbidden pattern.
     ForbiddenMacro {
         /// The pattern that matched.
-        pattern: String,
+        pattern: Arc<str>,
     },
     /// Use of the `else` keyword.
     ForbiddenElse,
@@ -310,20 +311,20 @@ pub struct Violation {
     /// What kind of violation this is.
     pub violation_type: ViolationType,
     /// Path to the file containing the violation.
-    pub file_path: String,
+    pub file_path: Arc<str>,
     /// Line number (1-based).
     pub line: usize,
     /// Column number (1-based).
     pub column: usize,
     /// Human-readable description of the violation.
-    pub message: String,
+    pub message: Box<str>,
 }
 
 impl Violation {
     /// Creates a new violation at the given source location.
     pub fn new(
         violation_type: ViolationType,
-        file_path: String,
+        file_path: Arc<str>,
         line: usize,
         column: usize,
         message: String,
@@ -333,7 +334,7 @@ impl Violation {
             file_path,
             line,
             column,
-            message,
+            message: message.into_boxed_str(),
         }
     }
 }

@@ -20,10 +20,10 @@ impl<'a> From<&'a Violation> for JsonViolation<'a> {
         Self {
             r#type: v.violation_type.code(),
             check: v.violation_type.check_name(),
-            file: &v.file_path,
+            file: &*v.file_path,
             line: v.line,
             column: v.column,
-            message: &v.message,
+            message: &*v.message,
             fix: v.violation_type.rationale().fix,
             pattern: v.violation_type.pattern(),
         }

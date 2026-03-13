@@ -11,6 +11,7 @@ pub struct CapabilityProfile {
 
 impl CapabilityProfile {
     /// Returns deduplicated, sorted set of capabilities present in the profile.
+    /// Recomputes on each call; callers needing repeated access should cache the result.
     pub fn capabilities(&self) -> Vec<Capability> {
         let mut caps: Vec<Capability> = self.findings.iter().map(|f| f.capability).collect();
         caps.sort();

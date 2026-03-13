@@ -66,6 +66,35 @@ Beyond import scanning, pedant inspects string literals for:
 - **Hardcoded endpoints** — URLs (`http://`, `https://`, `ws://`, `wss://`), IPv4 addresses (e.g. `192.168.1.1:8080`), and IPv6 addresses (e.g. `[::1]:8080`). These produce `network` findings. Strings shorter than 8 characters are skipped to reduce false positives.
 - **Key material** — PEM-encoded keys and certificates (`-----BEGIN PRIVATE KEY-----`, `-----BEGIN CERTIFICATE-----`, etc.). These produce `crypto` findings.
 
+## Attestation
+
+Attestation wraps a capability profile with crate identity and a SHA-256 source hash for reproducibility:
+
+```bash
+pedant --attestation --crate-name my-crate --crate-version 0.1.0 src/**/*.rs
+
+# From stdin
+echo 'use std::net::TcpStream;' | pedant --stdin --attestation --crate-name test --crate-version 0.1.0
+```
+
+Output:
+
+```json
+{
+  "spec_version": "0.1.0",
+  "source_hash": "a1b2c3...",
+  "crate_name": "my-crate",
+  "crate_version": "0.1.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1741737600,
+  "profile": {
+    "findings": [...]
+  }
+}
+```
+
+The source hash covers all analyzed file contents in deterministic (sorted path) order. Re-running against the same source produces the same hash.
+
 ## Build Scripts
 
 Capability detection applies to `build.rs` files the same as any other source file. The `location.file` field in findings identifies which file triggered each finding.

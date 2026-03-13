@@ -54,6 +54,12 @@ pedant -d 2 src/lib.rs
 
 # Pipe generated code
 echo "$generated_code" | pedant --stdin -f json
+
+# Capability detection
+pedant --capabilities src/**/*.rs
+
+# Attestation (includes source hash, crate identity, and capability profile)
+pedant --attestation --crate-name my-crate --crate-version 0.1.0 src/**/*.rs
 ```
 
 Exit codes: `0` clean, `1` violations, `2` error.
@@ -118,7 +124,7 @@ Run `pedant --list-checks` to see all checks, or `pedant --explain <check>` for 
 
 ## Capability Detection
 
-Pedant also detects what a crate can do — network, filesystem, unsafe, FFI, crypto, and more — by scanning imports, attributes, and string literals. See the [capability detection guide](examples/capability-detection.md).
+Pedant detects what a crate can do — network, filesystem, unsafe, FFI, crypto, and more — by scanning imports, attributes, and string literals. Use `--capabilities` for a raw profile or `--attestation` for a signed-format output with source hash and crate identity. See the [capability detection guide](examples/capability-detection.md).
 
 ## License
 

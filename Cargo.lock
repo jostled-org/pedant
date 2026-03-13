@@ -300,7 +300,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "pedant"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "clap",
  "pedant-types",
@@ -317,7 +317,7 @@ dependencies = [
 
 [[package]]
 name = "pedant-types"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "rustc-hash",
  "serde",

@@ -16,7 +16,7 @@ use crate::visitor::CheckConfig;
 #[command(version)]
 pub struct Cli {
     /// Files to check
-    #[arg(required_unless_present_any = ["stdin", "list_checks", "explain"])]
+    #[arg(required_unless_present_any = ["stdin", "list_checks", "explain", "diff"])]
     pub files: Vec<String>,
 
     /// Read from stdin
@@ -70,6 +70,10 @@ pub struct Cli {
     /// Output capability profile as JSON
     #[arg(long)]
     pub capabilities: bool,
+
+    /// Compare two capability profiles and output the diff
+    #[arg(long, num_args = 2, value_names = ["OLD", "NEW"], conflicts_with_all = ["stdin", "capabilities", "attestation"])]
+    pub diff: Vec<String>,
 
     /// Output capability attestation as JSON (implies --capabilities)
     #[arg(long, requires_all = ["crate_name", "crate_version"])]

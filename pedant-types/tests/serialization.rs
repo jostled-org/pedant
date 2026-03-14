@@ -165,8 +165,8 @@ fn diff_overlapping_profiles() {
     assert_eq!(diff.added[0].capability, Capability::Crypto);
     assert_eq!(diff.removed.len(), 1);
     assert_eq!(diff.removed[0].capability, Capability::FileRead);
-    assert_eq!(diff.new_capabilities, vec![Capability::Crypto]);
-    assert_eq!(diff.dropped_capabilities, vec![Capability::FileRead]);
+    assert_eq!(&*diff.new_capabilities, &[Capability::Crypto]);
+    assert_eq!(&*diff.dropped_capabilities, &[Capability::FileRead]);
 }
 
 #[test]
@@ -180,8 +180,8 @@ fn diff_disjoint_profiles() {
     let diff = CapabilityDiff::compute(&old, &new);
     assert_eq!(diff.added.len(), 1);
     assert_eq!(diff.removed.len(), 1);
-    assert_eq!(diff.new_capabilities, vec![Capability::FileWrite]);
-    assert_eq!(diff.dropped_capabilities, vec![Capability::Network]);
+    assert_eq!(&*diff.new_capabilities, &[Capability::FileWrite]);
+    assert_eq!(&*diff.dropped_capabilities, &[Capability::Network]);
 }
 
 #[test]

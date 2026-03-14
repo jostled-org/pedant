@@ -85,9 +85,14 @@ pedant --capabilities src/**/*.rs
 
 # Attestation (adds source hash and crate identity for reproducibility)
 pedant --attestation --crate-name my-crate --crate-version 0.1.0 src/**/*.rs
+
+# Diff two profiles or attestations
+pedant --diff old.json new.json
 ```
 
-See the [capability detection guide](examples/capability-detection.md) for output format, supported capabilities, and attestation details.
+Exit codes for `--diff`: `0` no changes, `1` differences found, `2` error.
+
+See the [capability detection guide](examples/capability-detection.md) for output format, supported capabilities, attestation details, and diffing.
 
 ## Configuration
 

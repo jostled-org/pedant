@@ -1,32 +1,10 @@
 use std::collections::BTreeMap;
-use std::io::Write;
-use std::process::{Command, Stdio};
 use std::sync::Arc;
 
 use pedant::hash::compute_source_hash;
 use pedant_types::{AnalysisTier, AttestationContent, CapabilityProfile};
 
-fn run_pedant(args: &[&str], stdin_data: Option<&str>) -> std::process::Output {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_pedant"));
-    cmd.env_remove("RUST_LOG").args(args);
-
-    match stdin_data {
-        Some(data) => {
-            cmd.stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
-            let mut child = cmd.spawn().expect("failed to spawn pedant");
-            child
-                .stdin
-                .take()
-                .expect("stdin not available")
-                .write_all(data.as_bytes())
-                .expect("failed to write stdin");
-            child.wait_with_output().expect("failed to wait")
-        }
-        None => cmd.output().expect("failed to run pedant"),
-    }
-}
+mod common;
 
 // --- Hash unit tests ---
 
@@ -85,13 +63,13 @@ fn test_source_hash_empty() {
 
 #[test]
 fn test_attestation_cli_missing_args() {
-    let output = run_pedant(&["--stdin", "--attestation"], None);
+    let output = common::run_pedant(&["--stdin", "--attestation"], None);
     assert!(!output.status.success());
 }
 
 #[test]
 fn test_attestation_cli_output_structure() {
-    let output = run_pedant(
+    let output = common::run_pedant(
         &[
             "--stdin",
             "--attestation",
@@ -127,7 +105,7 @@ fn test_attestation_cli_output_structure() {
 
 #[test]
 fn test_attestation_has_findings() {
-    let output = run_pedant(
+    let output = common::run_pedant(
         &[
             "--stdin",
             "--attestation",
@@ -158,7 +136,7 @@ fn test_attestation_has_findings() {
 
 #[test]
 fn test_capabilities_flag_unchanged() {
-    let output = run_pedant(
+    let output = common::run_pedant(
         &["--stdin", "--capabilities"],
         Some("use std::net::TcpStream;\n"),
     );
@@ -173,7 +151,7 @@ fn test_capabilities_flag_unchanged() {
 
 #[test]
 fn test_attestation_timestamp_reasonable() {
-    let output = run_pedant(
+    let output = common::run_pedant(
         &[
             "--stdin",
             "--attestation",

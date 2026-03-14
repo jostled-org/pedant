@@ -17,7 +17,9 @@ use pedant::hash::compute_source_hash;
 use pedant::reporter::Reporter;
 use pedant::violation::{Violation, lookup_rationale};
 use pedant::visitor::{CheckConfig, analyze};
-use pedant_types::{AnalysisTier, AttestationContent, CapabilityFinding, CapabilityProfile};
+use pedant_types::{
+    AnalysisTier, AttestationContent, CapabilityDiff, CapabilityFinding, CapabilityProfile,
+};
 
 #[derive(Debug, thiserror::Error)]
 enum ProcessError {
@@ -30,6 +32,18 @@ enum ProcessError {
         path: String,
         #[source]
         source: std::io::Error,
+    },
+    #[error("failed to read diff input {path}: {source}")]
+    DiffRead {
+        path: Box<str>,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("failed to parse diff input {path}: {source}")]
+    DiffParse {
+        path: Box<str>,
+        #[source]
+        source: serde_json::Error,
     },
 }
 
@@ -81,6 +95,10 @@ fn main() -> ExitCode {
 
     if let Some(ref code) = cli.explain {
         return print_explain(code, &mut stderr);
+    }
+
+    if cli.diff.len() == 2 {
+        return run_diff(&cli.diff, &mut stderr);
     }
 
     let file_config = load_file_config(&cli, &mut stderr);
@@ -457,6 +475,68 @@ fn print_explain(code: &str, stderr: &mut impl Write) -> ExitCode {
             report_error(stderr, format_args!("error writing output: {e}"));
             ExitCode::from(2)
         }
+    }
+}
+
+fn load_profile(path: &str) -> Result<CapabilityProfile, ProcessError> {
+    let data = fs::read_to_string(path).map_err(|e| ProcessError::DiffRead {
+        path: path.into(),
+        source: e,
+    })?;
+
+    let value: serde_json::Value =
+        serde_json::from_str(&data).map_err(|e| ProcessError::DiffParse {
+            path: path.into(),
+            source: e,
+        })?;
+
+    match value.get("spec_version") {
+        Some(_) => {
+            let att: AttestationContent =
+                serde_json::from_value(value).map_err(|e| ProcessError::DiffParse {
+                    path: path.into(),
+                    source: e,
+                })?;
+            Ok(att.profile)
+        }
+        None => serde_json::from_value(value).map_err(|e| ProcessError::DiffParse {
+            path: path.into(),
+            source: e,
+        }),
+    }
+}
+
+fn load_diff_profiles(
+    old_path: &str,
+    new_path: &str,
+    stderr: &mut impl Write,
+) -> Option<(CapabilityProfile, CapabilityProfile)> {
+    let old = load_profile(old_path)
+        .map_err(|e| report_error(stderr, format_args!("{e}")))
+        .ok()?;
+    let new = load_profile(new_path)
+        .map_err(|e| report_error(stderr, format_args!("{e}")))
+        .ok()?;
+    Some((old, new))
+}
+
+fn run_diff(paths: &[String], stderr: &mut impl Write) -> ExitCode {
+    let Some((old, new)) = load_diff_profiles(&paths[0], &paths[1], stderr) else {
+        return ExitCode::from(2);
+    };
+
+    let diff = CapabilityDiff::compute(&old, &new);
+    let mut stdout = io::stdout().lock();
+
+    if let Err(e) = serde_json::to_writer_pretty(&mut stdout, &diff) {
+        report_error(stderr, format_args!("error writing diff: {e}"));
+        return ExitCode::from(2);
+    }
+    let _ = writeln!(stdout);
+
+    match diff.is_empty() {
+        true => ExitCode::from(0),
+        false => ExitCode::from(1),
     }
 }
 

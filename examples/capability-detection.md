@@ -99,6 +99,48 @@ The source hash covers all analyzed file contents in deterministic (sorted path)
 
 Capability detection applies to `build.rs` files the same as any other source file. The `location.file` field in findings identifies which file triggered each finding.
 
+## Diffing
+
+Compare two capability profiles or attestations to see what changed:
+
+```bash
+# Diff two bare profiles
+pedant --diff old_profile.json new_profile.json
+
+# Diff two attestations (profiles are extracted automatically)
+pedant --diff old_attestation.json new_attestation.json
+
+# Mix formats — one attestation, one bare profile
+pedant --diff attestation.json profile.json
+```
+
+Output:
+
+```json
+{
+  "added": [
+    {
+      "capability": "file_read",
+      "location": { "file": "src/lib.rs", "line": 1, "column": 0 },
+      "evidence": "use std::fs::read"
+    }
+  ],
+  "removed": [
+    {
+      "capability": "network",
+      "location": { "file": "src/lib.rs", "line": 1, "column": 0 },
+      "evidence": "use std::net::TcpStream"
+    }
+  ],
+  "new_capabilities": ["file_read"],
+  "dropped_capabilities": ["network"]
+}
+```
+
+Exit codes: `0` no changes, `1` differences found, `2` error.
+
+Format detection uses the `spec_version` key as a discriminant — files containing it are parsed as attestations, others as bare profiles.
+
 ## Design
 
 Capability detection is syntactic (AST-only). It matches import paths and expressions against known prefixes. It does not resolve type aliases, follow trait implementations, or trace data flow across crate boundaries. For type-resolved analysis, see the planned `pedant-semantic` analyzer.

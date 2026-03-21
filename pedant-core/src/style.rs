@@ -505,12 +505,9 @@ fn check_mixed_concerns(
 }
 
 fn pairwise_borrowed<'a>(names: &'a [Rc<str>], edges: &mut Vec<(&'a str, &'a str)>) {
-    let len = names.len();
-    for i in 0..len {
-        for j in (i + 1)..len {
-            edges.push((names[i].as_ref(), names[j].as_ref()));
-        }
-    }
+    crate::graph::for_each_pair(names.len(), |i, j| {
+        edges.push((names[i].as_ref(), names[j].as_ref()));
+    });
 }
 
 fn find_disconnected_groups(

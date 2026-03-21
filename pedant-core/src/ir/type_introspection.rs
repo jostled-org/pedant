@@ -16,36 +16,51 @@ pub(crate) fn classify_single_char(
 }
 
 pub(crate) fn collect_pat_idents(pat: &syn::Pat) -> Vec<Box<str>> {
-    match pat {
-        syn::Pat::Ident(pi) => vec![pi.ident.to_string().into_boxed_str()],
-        syn::Pat::Tuple(pt) => pt.elems.iter().flat_map(collect_pat_idents).collect(),
-        syn::Pat::TupleStruct(pts) => pts.elems.iter().flat_map(collect_pat_idents).collect(),
-        syn::Pat::Struct(ps) => ps
-            .fields
-            .iter()
-            .flat_map(|fp| collect_pat_idents(&fp.pat))
-            .collect(),
-        syn::Pat::Slice(psl) => psl.elems.iter().flat_map(collect_pat_idents).collect(),
-        syn::Pat::Or(po) => po.cases.iter().flat_map(collect_pat_idents).collect(),
-        syn::Pat::Reference(pr) => collect_pat_idents(&pr.pat),
-        syn::Pat::Type(pt) => collect_pat_idents(&pt.pat),
-        _ => vec![],
-    }
+    let mut out = Vec::new();
+    let _ = visit_pat_idents(pat, &mut |name| {
+        out.push(name);
+        std::ops::ControlFlow::Continue(())
+    });
+    out
 }
 
 /// Returns the first identifier in a pattern, without allocating the full list.
 pub(crate) fn first_pat_ident(pat: &syn::Pat) -> Option<Box<str>> {
+    let mut result = None;
+    let _ = visit_pat_idents(pat, &mut |name| {
+        result = Some(name);
+        std::ops::ControlFlow::Break(())
+    });
+    result
+}
+
+/// Visits each identifier in a pattern, calling `f` for each one.
+/// Returns early if `f` returns `Break`.
+fn visit_pat_idents(
+    pat: &syn::Pat,
+    f: &mut impl FnMut(Box<str>) -> std::ops::ControlFlow<()>,
+) -> std::ops::ControlFlow<()> {
     match pat {
-        syn::Pat::Ident(pi) => Some(pi.ident.to_string().into_boxed_str()),
-        syn::Pat::Tuple(pt) => pt.elems.iter().find_map(first_pat_ident),
-        syn::Pat::TupleStruct(pts) => pts.elems.iter().find_map(first_pat_ident),
-        syn::Pat::Struct(ps) => ps.fields.iter().find_map(|fp| first_pat_ident(&fp.pat)),
-        syn::Pat::Slice(psl) => psl.elems.iter().find_map(first_pat_ident),
-        syn::Pat::Or(po) => po.cases.iter().find_map(first_pat_ident),
-        syn::Pat::Reference(pr) => first_pat_ident(&pr.pat),
-        syn::Pat::Type(pt) => first_pat_ident(&pt.pat),
-        _ => None,
+        syn::Pat::Ident(pi) => f(pi.ident.to_string().into_boxed_str()),
+        syn::Pat::Tuple(pt) => visit_pat_ident_elems(pt.elems.iter(), f),
+        syn::Pat::TupleStruct(pts) => visit_pat_ident_elems(pts.elems.iter(), f),
+        syn::Pat::Struct(ps) => visit_pat_ident_elems(ps.fields.iter().map(|fp| &*fp.pat), f),
+        syn::Pat::Slice(psl) => visit_pat_ident_elems(psl.elems.iter(), f),
+        syn::Pat::Or(po) => visit_pat_ident_elems(po.cases.iter(), f),
+        syn::Pat::Reference(pr) => visit_pat_idents(&pr.pat, f),
+        syn::Pat::Type(pt) => visit_pat_idents(&pt.pat, f),
+        _ => std::ops::ControlFlow::Continue(()),
     }
+}
+
+fn visit_pat_ident_elems<'a>(
+    elems: impl Iterator<Item = &'a syn::Pat>,
+    f: &mut impl FnMut(Box<str>) -> std::ops::ControlFlow<()>,
+) -> std::ops::ControlFlow<()> {
+    for elem in elems {
+        visit_pat_idents(elem, f)?;
+    }
+    std::ops::ControlFlow::Continue(())
 }
 
 pub(crate) fn receiver_ident(expr: &Expr) -> Option<&syn::Ident> {

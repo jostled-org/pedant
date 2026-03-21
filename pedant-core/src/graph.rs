@@ -24,13 +24,20 @@ pub(crate) fn bfs_component<'a>(
     component
 }
 
+/// Calls `emit(i, j)` for every unique pair of indices in `0..len`.
+pub(crate) fn for_each_pair(len: usize, mut emit: impl FnMut(usize, usize)) {
+    (0..len).for_each(|i| {
+        ((i + 1)..len).for_each(|j| {
+            emit(i, j);
+        });
+    });
+}
+
 pub(crate) fn pairwise_edges(names: &[Rc<str>]) -> Vec<(Rc<str>, Rc<str>)> {
     let len = names.len();
     let mut pairs = Vec::with_capacity(len * len.saturating_sub(1) / 2);
-    (0..len).for_each(|i| {
-        ((i + 1)..len).for_each(|j| {
-            pairs.push((Rc::clone(&names[i]), Rc::clone(&names[j])));
-        });
+    for_each_pair(len, |i, j| {
+        pairs.push((Rc::clone(&names[i]), Rc::clone(&names[j])));
     });
     pairs
 }

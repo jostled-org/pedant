@@ -109,6 +109,10 @@ fn path_matches_prefix(path: &str, prefix: &str) -> bool {
 
 /// Resolve a use-path or qualified path to a capability, if any.
 fn resolve_capabilities(path: &str) -> Option<Capability> {
+    debug_assert!(
+        FS_WRITE_FUNCTIONS.windows(2).all(|w| w[0] <= w[1]),
+        "FS_WRITE_FUNCTIONS must be sorted for binary_search"
+    );
     if FS_WRITE_FUNCTIONS.binary_search(&path).is_ok() {
         return Some(Capability::FileWrite);
     }

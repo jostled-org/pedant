@@ -380,6 +380,8 @@ impl IrExtractor {
         let saved = self.save_fn_state();
         self.reset_fn_state(fn_index);
 
+        let binding_start = self.bindings.len();
+
         // Record param bindings for naming
         self.record_fn_param_bindings(sig);
         self.record_refcounted_params(sig);
@@ -396,8 +398,8 @@ impl IrExtractor {
         }
 
         // Post-process bindings: set is_refcounted from the per-function tracking sets
-        for binding in &mut self.bindings {
-            if binding.containing_fn != Some(fn_index) || binding.is_wildcard {
+        for binding in &mut self.bindings[binding_start..] {
+            if binding.is_wildcard {
                 continue;
             }
             binding.is_refcounted = self.refcounted_bindings.contains(&binding.name);

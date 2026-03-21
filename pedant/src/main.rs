@@ -3,9 +3,10 @@
 mod config;
 mod reporter;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{self, Read, Write};
+use std::path::Path;
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -15,7 +16,7 @@ use pedant_core::AnalysisResult;
 use pedant_core::check_config::{CheckConfig, ConfigFile, find_config_file, load_config_file};
 use pedant_core::checks::ALL_CHECKS;
 use pedant_core::hash::compute_source_hash;
-use pedant_core::lint::analyze;
+use pedant_core::lint::{analyze, analyze_build_script, discover_build_script};
 use pedant_core::violation::{Violation, lookup_rationale};
 use pedant_types::{
     AnalysisTier, AttestationContent, CapabilityDiff, CapabilityFinding, CapabilityProfile,
@@ -100,11 +101,14 @@ fn main() -> ExitCode {
         return print_explain(code, &mut stderr);
     }
 
-    if cli.diff.len() == 2 {
-        return run_diff(&cli.diff, &mut stderr);
+    if let [old_path, new_path] = cli.diff.as_slice() {
+        return run_diff(old_path, new_path, &mut stderr);
     }
 
-    let file_config = load_file_config(&cli, &mut stderr);
+    let file_config = match load_file_config(&cli, &mut stderr) {
+        Ok(cfg) => cfg,
+        Err(exit) => return exit,
+    };
     let base_config = cli.to_check_config(file_config.as_ref());
     let mut acc = AnalysisAccumulator::new();
 
@@ -146,9 +150,17 @@ fn main() -> ExitCode {
                 return ExitCode::from(2);
             };
             let Some(crate_name) = cli.crate_name.as_deref() else {
+                report_error(
+                    &mut stderr,
+                    format_args!("error: --crate-name required for attestation"),
+                );
                 return ExitCode::from(2);
             };
             let Some(crate_version) = cli.crate_version.as_deref() else {
+                report_error(
+                    &mut stderr,
+                    format_args!("error: --crate-version required for attestation"),
+                );
                 return ExitCode::from(2);
             };
             write_attestation(
@@ -205,17 +217,67 @@ fn attest_files(
     stderr: &mut impl Write,
 ) -> Box<str> {
     let mut sources = BTreeMap::new();
+    let mut seen_build_roots: BTreeSet<Box<Path>> = BTreeSet::new();
+
     for file_path in &cli.files {
         let Some(cfg) = base_config.resolve_for_path(file_path, file_config) else {
             continue;
         };
-        read_and_analyze(file_path, &cfg, &mut sources, acc, stderr);
+        read_and_accumulate(file_path, analyze, &cfg, &mut sources, acc, stderr);
+        discover_and_analyze_build_script(
+            file_path,
+            &cfg,
+            &mut sources,
+            &mut seen_build_roots,
+            acc,
+            stderr,
+        );
     }
     compute_source_hash(&sources)
 }
 
-fn read_and_analyze(
+/// Find the crate root by walking up from a file path to locate `Cargo.toml`.
+fn find_crate_root(file_path: &str) -> Option<&Path> {
+    let mut dir = Path::new(file_path).parent()?;
+    loop {
+        match dir.join("Cargo.toml").is_file() {
+            true => return Some(dir),
+            false => dir = dir.parent()?,
+        }
+    }
+}
+
+fn discover_and_analyze_build_script(
     file_path: &str,
+    config: &CheckConfig,
+    sources: &mut BTreeMap<Arc<str>, Arc<str>>,
+    seen_roots: &mut BTreeSet<Box<Path>>,
+    acc: &mut AnalysisAccumulator,
+    stderr: &mut impl Write,
+) {
+    let Some(crate_root) = find_crate_root(file_path) else {
+        return;
+    };
+    if !seen_roots.insert(Box::from(crate_root)) {
+        return;
+    }
+    let Some(build_path) = discover_build_script(crate_root) else {
+        return;
+    };
+    let build_path_str = build_path.to_string_lossy();
+    read_and_accumulate(
+        &build_path_str,
+        analyze_build_script,
+        config,
+        sources,
+        acc,
+        stderr,
+    );
+}
+
+fn read_and_accumulate(
+    file_path: &str,
+    analyze_fn: fn(&str, &str, &CheckConfig) -> Result<AnalysisResult, pedant_core::ParseError>,
     config: &CheckConfig,
     sources: &mut BTreeMap<Arc<str>, Arc<str>>,
     acc: &mut AnalysisAccumulator,
@@ -224,17 +286,14 @@ fn read_and_analyze(
     let source = match fs::read_to_string(file_path) {
         Ok(s) => s,
         Err(e) => {
-            report_error(
-                stderr,
-                format_args!("{file_path}: failed to read file: {e}"),
-            );
+            report_error(stderr, format_args!("{file_path}: {e}"));
             acc.had_error = true;
             return;
         }
     };
     sources.insert(Arc::from(file_path), Arc::from(source.as_str()));
     acc.handle(
-        analyze(file_path, &source, config).map_err(ProcessError::from),
+        analyze_fn(file_path, &source, config).map_err(ProcessError::from),
         file_path,
         stderr,
     );
@@ -247,26 +306,44 @@ fn process_files(
     acc: &mut AnalysisAccumulator,
     stderr: &mut impl Write,
 ) {
+    let mut seen_build_roots: BTreeSet<Box<Path>> = BTreeSet::new();
     for file_path in &cli.files {
         let Some(cfg) = base_config.resolve_for_path(file_path, file_config) else {
             continue;
         };
         acc.handle(process_file(file_path, &cfg), file_path, stderr);
+        discover_and_analyze_build_script(
+            file_path,
+            &cfg,
+            &mut BTreeMap::new(),
+            &mut seen_build_roots,
+            acc,
+            stderr,
+        );
     }
 }
 
-fn load_file_config(cli: &Cli, stderr: &mut impl Write) -> Option<ConfigFile> {
+fn load_file_config(cli: &Cli, stderr: &mut impl Write) -> Result<Option<ConfigFile>, ExitCode> {
+    let explicit = cli.config.is_some();
     let config_path = cli
         .config
         .as_deref()
         .map(std::path::PathBuf::from)
-        .or_else(find_config_file)?;
+        .or_else(find_config_file);
 
-    match load_config_file(&config_path) {
-        Ok(cfg) => Some(cfg),
-        Err(e) => {
+    let Some(config_path) = config_path else {
+        return Ok(None);
+    };
+
+    match (load_config_file(&config_path), explicit) {
+        (Ok(cfg), _) => Ok(Some(cfg)),
+        (Err(e), true) => {
+            report_error(stderr, format_args!("error: {e}"));
+            Err(ExitCode::from(2))
+        }
+        (Err(e), false) => {
             report_error(stderr, format_args!("warning: {e}"));
-            None
+            Ok(None)
         }
     }
 }
@@ -303,6 +380,20 @@ fn current_timestamp() -> u64 {
         .unwrap_or(0)
 }
 
+fn write_json(
+    stdout: &mut impl Write,
+    stderr: &mut impl Write,
+    payload: &impl serde::Serialize,
+    context: &str,
+) -> Result<(), ExitCode> {
+    if let Err(e) = serde_json::to_writer_pretty(&mut *stdout, payload) {
+        report_error(stderr, format_args!("error writing {context}: {e}"));
+        return Err(ExitCode::from(2));
+    }
+    let _ = writeln!(stdout);
+    Ok(())
+}
+
 fn write_attestation(
     stdout: &mut impl Write,
     stderr: &mut impl Write,
@@ -322,12 +413,7 @@ fn write_attestation(
             findings: findings.into_boxed_slice(),
         },
     };
-    if let Err(e) = serde_json::to_writer_pretty(&mut *stdout, &attestation) {
-        report_error(stderr, format_args!("error writing attestation: {e}"));
-        return Err(ExitCode::from(2));
-    }
-    let _ = writeln!(stdout);
-    Ok(())
+    write_json(stdout, stderr, &attestation, "attestation")
 }
 
 fn write_capabilities(
@@ -338,12 +424,7 @@ fn write_capabilities(
     let profile = CapabilityProfile {
         findings: findings.into_boxed_slice(),
     };
-    if let Err(e) = serde_json::to_writer_pretty(&mut *stdout, &profile) {
-        report_error(stderr, format_args!("error writing capabilities: {e}"));
-        return Err(ExitCode::from(2));
-    }
-    let _ = writeln!(stdout);
-    Ok(())
+    write_json(stdout, stderr, &profile, "capabilities")
 }
 
 fn run_print_checks_list(stderr: &mut impl Write) -> ExitCode {
@@ -399,31 +480,19 @@ fn print_explain(code: &str, stderr: &mut impl Write) -> ExitCode {
 }
 
 fn load_profile(path: &str) -> Result<CapabilityProfile, ProcessError> {
-    let data = fs::read_to_string(path).map_err(|e| ProcessError::DiffRead {
+    let raw_json = fs::read_to_string(path).map_err(|e| ProcessError::DiffRead {
         path: path.into(),
         source: e,
     })?;
 
-    let value: serde_json::Value =
-        serde_json::from_str(&data).map_err(|e| ProcessError::DiffParse {
+    // Try as attestation (has spec_version); fall back to bare profile.
+    serde_json::from_str::<AttestationContent>(&raw_json)
+        .map(|att| att.profile)
+        .or_else(|_| serde_json::from_str(&raw_json))
+        .map_err(|e| ProcessError::DiffParse {
             path: path.into(),
             source: e,
-        })?;
-
-    match value.get("spec_version") {
-        Some(_) => {
-            let att: AttestationContent =
-                serde_json::from_value(value).map_err(|e| ProcessError::DiffParse {
-                    path: path.into(),
-                    source: e,
-                })?;
-            Ok(att.profile)
-        }
-        None => serde_json::from_value(value).map_err(|e| ProcessError::DiffParse {
-            path: path.into(),
-            source: e,
-        }),
-    }
+        })
 }
 
 fn load_diff_profiles(
@@ -440,19 +509,17 @@ fn load_diff_profiles(
     Some((old, new))
 }
 
-fn run_diff(paths: &[String], stderr: &mut impl Write) -> ExitCode {
-    let Some((old, new)) = load_diff_profiles(&paths[0], &paths[1], stderr) else {
+fn run_diff(old_path: &str, new_path: &str, stderr: &mut impl Write) -> ExitCode {
+    let Some((old, new)) = load_diff_profiles(old_path, new_path, stderr) else {
         return ExitCode::from(2);
     };
 
     let diff = CapabilityDiff::compute(&old, &new);
     let mut stdout = io::stdout().lock();
 
-    if let Err(e) = serde_json::to_writer_pretty(&mut stdout, &diff) {
-        report_error(stderr, format_args!("error writing diff: {e}"));
-        return ExitCode::from(2);
+    if let Err(exit) = write_json(&mut stdout, stderr, &diff, "diff") {
+        return exit;
     }
-    let _ = writeln!(stdout);
 
     match diff.is_empty() {
         true => ExitCode::from(0),

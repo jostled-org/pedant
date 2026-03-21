@@ -396,7 +396,7 @@ fn test_ir_capabilities_match_visitor() {
 
         let syntax = syn::parse_file(source).unwrap();
         let ir = extract(name, &syntax);
-        let ir_profile = detect_capabilities(&ir);
+        let ir_profile = detect_capabilities(&ir, false);
         let ir_caps = ir_profile.capabilities();
 
         assert_eq!(
@@ -446,7 +446,7 @@ fn connect() {
 "#;
     let syntax = syn::parse_file(source).unwrap();
     let ir = extract("test.rs", &syntax);
-    let profile = detect_capabilities(&ir);
+    let profile = detect_capabilities(&ir, false);
     let caps = profile.capabilities();
 
     assert!(caps.contains(&Capability::Network));
@@ -476,7 +476,7 @@ fn uses_unsafe() {
 "#;
     let syntax = syn::parse_file(source).unwrap();
     let ir = extract("test.rs", &syntax);
-    let profile = detect_capabilities(&ir);
+    let profile = detect_capabilities(&ir, false);
     let caps = profile.capabilities();
 
     assert!(caps.contains(&Capability::UnsafeCode));
@@ -870,7 +870,7 @@ fn test_analyze_produces_identical_output() {
         // Run through direct IR path for comparison
         let ir = parse_and_extract(source);
         let direct_violations = check_style(&ir, &config);
-        let direct_capabilities = detect_capabilities(&ir);
+        let direct_capabilities = detect_capabilities(&ir, false);
 
         // Violation counts must match exactly
         assert_eq!(

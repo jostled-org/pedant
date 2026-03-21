@@ -44,7 +44,10 @@ pub use check_config::{
     CheckConfig as Config, ConfigFile, NamingCheck, PatternCheck, PatternOverride,
 };
 pub use checks::{ALL_CHECKS, CheckInfo};
-pub use lint::{LintError, analyze, lint_file, lint_str};
+pub use lint::{
+    LintError, analyze, analyze_build_script, analyze_with_build_script, discover_build_script,
+    lint_file, lint_str,
+};
 pub use violation::{CheckRationale, Violation, ViolationType, lookup_rationale};
 
 /// Re-export syn::Error as ParseError for consumers that call [`analyze`] directly.

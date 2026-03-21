@@ -42,6 +42,7 @@ fn net_finding() -> CapabilityFinding {
             column: 0,
         },
         evidence: Arc::from("use std::net::TcpStream"),
+        build_script: false,
     }
 }
 
@@ -54,6 +55,7 @@ fn fs_finding() -> CapabilityFinding {
             column: 0,
         },
         evidence: Arc::from("use std::fs::read"),
+        build_script: false,
     }
 }
 

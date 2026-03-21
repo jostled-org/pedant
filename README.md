@@ -90,6 +90,8 @@ pedant --attestation --crate-name my-crate --crate-version 0.1.0 src/**/*.rs
 pedant --diff old.json new.json
 ```
 
+Build scripts (`build.rs`) are automatically discovered and analyzed. Findings from build scripts are tagged with `"build_script": true` in the JSON output, distinguishing compile-time capabilities from runtime capabilities.
+
 Exit codes for `--diff`: `0` no changes, `1` differences found, `2` error.
 
 See the [capability detection guide](examples/capability-detection.md) for output format, supported capabilities, attestation details, and diffing.

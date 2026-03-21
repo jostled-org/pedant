@@ -14,6 +14,7 @@ fn sample_finding(capability: Capability, file: &str, line: usize) -> Capability
             column: 1,
         },
         evidence: Arc::from("test evidence"),
+        build_script: false,
     }
 }
 

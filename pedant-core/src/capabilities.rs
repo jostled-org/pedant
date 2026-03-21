@@ -188,15 +188,17 @@ fn check_string_for_pem(value: &str) -> bool {
 // --- IR-based capability detection ---
 
 /// Detect capabilities from pre-extracted IR facts.
-pub fn detect_capabilities(ir: &FileIr) -> CapabilityProfile {
+///
+/// When `build_script` is true, all findings are tagged as originating from a build script.
+pub fn detect_capabilities(ir: &FileIr, build_script: bool) -> CapabilityProfile {
     let file_path = &ir.file_path;
     let mut findings = Vec::new();
 
-    detect_use_paths(ir, file_path, &mut findings);
-    detect_unsafe_sites(ir, file_path, &mut findings);
-    detect_extern_blocks(ir, file_path, &mut findings);
-    detect_attributes(ir, file_path, &mut findings);
-    detect_string_literals(ir, file_path, &mut findings);
+    detect_use_paths(ir, file_path, build_script, &mut findings);
+    detect_unsafe_sites(ir, file_path, build_script, &mut findings);
+    detect_extern_blocks(ir, file_path, build_script, &mut findings);
+    detect_attributes(ir, file_path, build_script, &mut findings);
+    detect_string_literals(ir, file_path, build_script, &mut findings);
 
     CapabilityProfile {
         findings: findings.into_boxed_slice(),
@@ -210,6 +212,7 @@ fn record(
     line: usize,
     column: usize,
     evidence: &str,
+    build_script: bool,
 ) {
     findings.push(CapabilityFinding {
         capability,
@@ -219,6 +222,7 @@ fn record(
             column,
         },
         evidence: Arc::from(evidence),
+        build_script,
     });
 }
 
@@ -226,53 +230,100 @@ fn record(
 fn detect_from_facts<'a, T: 'a>(
     facts: &'a [T],
     file_path: &Arc<str>,
+    build_script: bool,
     findings: &mut Vec<CapabilityFinding>,
     mut mapper: impl FnMut(&'a T) -> Option<(Capability, usize, usize, &'a str)>,
 ) {
     for fact in facts {
         if let Some((capability, line, column, evidence)) = mapper(fact) {
-            record(findings, capability, file_path, line, column, evidence);
+            record(
+                findings,
+                capability,
+                file_path,
+                line,
+                column,
+                evidence,
+                build_script,
+            );
         }
     }
 }
 
-fn detect_use_paths(ir: &FileIr, file_path: &Arc<str>, findings: &mut Vec<CapabilityFinding>) {
-    detect_from_facts(&ir.use_paths, file_path, findings, |use_path| {
-        resolve_capabilities(&use_path.path).map(|cap| {
-            (
-                cap,
-                use_path.span.line,
-                use_path.span.column + 1,
-                use_path.path.as_ref(),
-            )
-        })
-    });
+fn detect_use_paths(
+    ir: &FileIr,
+    file_path: &Arc<str>,
+    build_script: bool,
+    findings: &mut Vec<CapabilityFinding>,
+) {
+    detect_from_facts(
+        &ir.use_paths,
+        file_path,
+        build_script,
+        findings,
+        |use_path| {
+            resolve_capabilities(&use_path.path).map(|cap| {
+                (
+                    cap,
+                    use_path.span.line,
+                    use_path.span.column + 1,
+                    use_path.path.as_ref(),
+                )
+            })
+        },
+    );
 }
 
-fn detect_unsafe_sites(ir: &FileIr, file_path: &Arc<str>, findings: &mut Vec<CapabilityFinding>) {
-    detect_from_facts(&ir.unsafe_sites, file_path, findings, |site| {
-        Some((
-            Capability::UnsafeCode,
-            site.span.line,
-            site.span.column + 1,
-            site.evidence.as_ref(),
-        ))
-    });
+fn detect_unsafe_sites(
+    ir: &FileIr,
+    file_path: &Arc<str>,
+    build_script: bool,
+    findings: &mut Vec<CapabilityFinding>,
+) {
+    detect_from_facts(
+        &ir.unsafe_sites,
+        file_path,
+        build_script,
+        findings,
+        |site| {
+            Some((
+                Capability::UnsafeCode,
+                site.span.line,
+                site.span.column + 1,
+                site.evidence.as_ref(),
+            ))
+        },
+    );
 }
 
-fn detect_extern_blocks(ir: &FileIr, file_path: &Arc<str>, findings: &mut Vec<CapabilityFinding>) {
-    detect_from_facts(&ir.extern_blocks, file_path, findings, |block| {
-        Some((
-            Capability::Ffi,
-            block.span.line,
-            block.span.column + 1,
-            "extern block",
-        ))
-    });
+fn detect_extern_blocks(
+    ir: &FileIr,
+    file_path: &Arc<str>,
+    build_script: bool,
+    findings: &mut Vec<CapabilityFinding>,
+) {
+    detect_from_facts(
+        &ir.extern_blocks,
+        file_path,
+        build_script,
+        findings,
+        |block| {
+            Some((
+                Capability::Ffi,
+                block.span.line,
+                block.span.column + 1,
+                "extern block",
+            ))
+        },
+    );
 }
 
-fn detect_attributes(ir: &FileIr, file_path: &Arc<str>, findings: &mut Vec<CapabilityFinding>) {
-    detect_from_facts(&ir.attributes, file_path, findings, |attr| {
+fn detect_attributes(
+    ir: &FileIr,
+    file_path: &Arc<str>,
+    build_script: bool,
+    findings: &mut Vec<CapabilityFinding>,
+) {
+    detect_from_facts(&ir.attributes, file_path, build_script, findings, |attr| {
         let (cap, evidence) = match &*attr.name {
             "link" => (Capability::Ffi, "#[link]"),
             "proc_macro" => (Capability::ProcMacro, "#[proc_macro]"),
@@ -287,6 +338,7 @@ fn detect_attributes(ir: &FileIr, file_path: &Arc<str>, findings: &mut Vec<Capab
 fn detect_string_literals(
     ir: &FileIr,
     file_path: &Arc<str>,
+    build_script: bool,
     findings: &mut Vec<CapabilityFinding>,
 ) {
     for lit in &ir.string_literals {
@@ -301,6 +353,7 @@ fn detect_string_literals(
                 line,
                 column,
                 &lit.value,
+                build_script,
             );
         }
         if check_string_for_pem(&lit.value) {
@@ -311,6 +364,7 @@ fn detect_string_literals(
                 line,
                 column,
                 &lit.value,
+                build_script,
             );
         }
     }

@@ -97,7 +97,9 @@ The source hash covers all analyzed file contents in deterministic (sorted path)
 
 ## Build Scripts
 
-Capability detection applies to `build.rs` files the same as any other source file. The `location.file` field in findings identifies which file triggered each finding.
+Build scripts (`build.rs` or custom paths from `Cargo.toml`'s `[package].build`) are automatically discovered and analyzed. Findings from build scripts carry `"build_script": true` in the JSON output, distinguishing compile-time capabilities from runtime capabilities. The `location.file` field identifies which file triggered each finding.
+
+Build script discovery works by walking up from each source file to find a `Cargo.toml`, then checking for the build script path. Each crate root is only scanned once, even when multiple source files are passed.
 
 ## Diffing
 

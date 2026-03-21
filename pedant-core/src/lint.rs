@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::analysis_result::AnalysisResult;
 use crate::capabilities::detect_capabilities;
@@ -32,7 +32,22 @@ pub fn analyze(
 
     Ok(AnalysisResult {
         violations: check_style(&ir, config).into_boxed_slice(),
-        capabilities: detect_capabilities(&ir),
+        capabilities: detect_capabilities(&ir, false),
+    })
+}
+
+/// Parse and analyze a build script source, tagging all capability findings with `build_script: true`.
+pub fn analyze_build_script(
+    file_path: &str,
+    source: &str,
+    config: &CheckConfig,
+) -> Result<AnalysisResult, syn::Error> {
+    let syntax = syn::parse_file(source)?;
+    let ir = ir::extract(file_path, &syntax);
+
+    Ok(AnalysisResult {
+        violations: check_style(&ir, config).into_boxed_slice(),
+        capabilities: detect_capabilities(&ir, true),
     })
 }
 
@@ -60,4 +75,55 @@ pub fn lint_file(path: &Path, config: &CheckConfig) -> Result<AnalysisResult, Li
     let source = fs::read_to_string(path)?;
     let file_path = path.to_string_lossy();
     analyze(&file_path, &source, config).map_err(LintError::from)
+}
+
+/// Discover the build script path for a crate root directory.
+///
+/// Reads `Cargo.toml` at `crate_root` and checks `[package].build`.
+/// If specified, returns the resolved path. Otherwise falls back to `build.rs`.
+/// Returns `None` if no build script exists.
+pub fn discover_build_script(crate_root: &Path) -> Option<PathBuf> {
+    let cargo_toml_path = crate_root.join("Cargo.toml");
+    let cargo_toml_contents = fs::read_to_string(&cargo_toml_path).ok()?;
+    let table: toml::Table = cargo_toml_contents.parse().ok()?;
+
+    let custom_path = table
+        .get("package")
+        .and_then(toml::Value::as_table)
+        .and_then(|pkg| pkg.get("build"))
+        .and_then(toml::Value::as_str);
+
+    let candidate = match custom_path {
+        Some(build_path) => crate_root.join(build_path),
+        None => crate_root.join("build.rs"),
+    };
+
+    candidate.is_file().then_some(candidate)
+}
+
+/// Analyze a source file together with an optional build script.
+///
+/// Runs `analyze()` on the main source, then (if provided) on the build script
+/// with `build_script=true`. Merges capability findings from both into a single result.
+pub fn analyze_with_build_script(
+    file_path: &str,
+    source: &str,
+    config: &CheckConfig,
+    build_source: Option<(&str, &str)>,
+) -> Result<AnalysisResult, syn::Error> {
+    let mut result = analyze(file_path, source, config)?;
+
+    let Some((build_path, build_src)) = build_source else {
+        return Ok(result);
+    };
+
+    let build_syntax = syn::parse_file(build_src)?;
+    let build_ir = ir::extract(build_path, &build_syntax);
+    let build_caps = detect_capabilities(&build_ir, true);
+
+    let mut merged: Vec<pedant_types::CapabilityFinding> = result.capabilities.findings.into_vec();
+    merged.extend(build_caps.findings.into_vec());
+    result.capabilities.findings = merged.into_boxed_slice();
+
+    Ok(result)
 }

@@ -24,4 +24,11 @@ pub struct CapabilityFinding {
     pub location: SourceLocation,
     /// Human-readable evidence (e.g. the function call or expression).
     pub evidence: Arc<str>,
+    /// Whether this finding originates from a build script (compile-time execution).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub build_script: bool,
+}
+
+fn is_false(v: &bool) -> bool {
+    !v
 }

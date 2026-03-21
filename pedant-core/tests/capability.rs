@@ -1,4 +1,6 @@
+use pedant_core::capabilities::detect_capabilities;
 use pedant_core::check_config::CheckConfig;
+use pedant_core::ir;
 use pedant_core::lint::analyze;
 use pedant_types::Capability;
 
@@ -351,5 +353,79 @@ fn my_derive(input: TokenStream) -> TokenStream {
             .findings
             .iter()
             .any(|f| f.evidence.as_ref() == "#[proc_macro_derive]")
+    );
+}
+
+// --- Build script tagging tests ---
+
+#[test]
+fn test_build_script_findings_tagged() {
+    let source = r#"
+use std::process::Command;
+
+fn main() {
+    Command::new("cc").status().unwrap();
+}
+"#;
+    let syntax = syn::parse_file(source).unwrap();
+    let ir_data = ir::extract("build.rs", &syntax);
+
+    let profile_build = detect_capabilities(&ir_data, true);
+    assert!(
+        profile_build.findings.iter().all(|f| f.build_script),
+        "all findings should be tagged build_script=true"
+    );
+
+    let profile_normal = detect_capabilities(&ir_data, false);
+    assert!(
+        profile_normal.findings.iter().all(|f| !f.build_script),
+        "all findings should be tagged build_script=false"
+    );
+}
+
+#[test]
+fn test_build_script_network_detection() {
+    let source = include_str!("fixtures/build_script_network.rs");
+    let syntax = syn::parse_file(source).unwrap();
+    let ir_data = ir::extract("build.rs", &syntax);
+    let profile = detect_capabilities(&ir_data, true);
+
+    let net_findings: Vec<_> = profile
+        .findings
+        .iter()
+        .filter(|f| f.capability == Capability::Network && f.build_script)
+        .collect();
+    assert!(
+        !net_findings.is_empty(),
+        "should detect Network capability in build script"
+    );
+}
+
+#[test]
+fn test_build_script_process_detection() {
+    let source = include_str!("fixtures/build_script_process.rs");
+    let syntax = syn::parse_file(source).unwrap();
+    let ir_data = ir::extract("build.rs", &syntax);
+    let profile = detect_capabilities(&ir_data, true);
+
+    let proc_findings: Vec<_> = profile
+        .findings
+        .iter()
+        .filter(|f| f.capability == Capability::ProcessExec && f.build_script)
+        .collect();
+    assert!(
+        !proc_findings.is_empty(),
+        "should detect ProcessExec capability in build script"
+    );
+}
+
+#[test]
+fn test_existing_findings_default_false() {
+    let source = "use std::net::TcpStream;\n";
+    let result = analyze("lib.rs", source, &permissive_config()).unwrap();
+
+    assert!(
+        result.capabilities.findings.iter().all(|f| !f.build_script),
+        "existing findings should have build_script=false"
     );
 }

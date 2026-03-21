@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
+use std::fs;
 use std::sync::Arc;
 
 use pedant_core::hash::compute_source_hash;
-use pedant_types::{AnalysisTier, AttestationContent, CapabilityProfile};
+use pedant_types::{AnalysisTier, AttestationContent, Capability, CapabilityProfile};
 
 mod common;
 
@@ -172,5 +173,191 @@ fn test_attestation_timestamp_reasonable() {
         attestation.timestamp >= min_ts && attestation.timestamp <= max_ts,
         "timestamp {} not in reasonable range",
         attestation.timestamp
+    );
+}
+
+// --- Build script discovery tests ---
+
+#[test]
+fn test_attestation_includes_build_script() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    fs::create_dir(root.join("src")).unwrap();
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    fs::write(root.join("src/lib.rs"), "use std::fs::read_to_string;\n").unwrap();
+    fs::write(
+        root.join("build.rs"),
+        "use std::process::Command;\nfn main() { Command::new(\"cc\"); }\n",
+    )
+    .unwrap();
+
+    let lib_path = root.join("src/lib.rs");
+    let output = common::run_pedant(
+        &[
+            lib_path.to_str().unwrap(),
+            "--attestation",
+            "--crate-name",
+            "test",
+            "--crate-version",
+            "0.1.0",
+        ],
+        None,
+    );
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let attestation: AttestationContent = serde_json::from_slice(&output.stdout).unwrap();
+    let findings = &attestation.profile.findings;
+
+    // lib.rs should produce FileRead with build_script: false
+    assert!(
+        findings
+            .iter()
+            .any(|f| f.capability == Capability::FileRead && !f.build_script),
+        "expected FileRead from lib.rs, findings: {findings:?}"
+    );
+    // build.rs should produce ProcessExec with build_script: true
+    assert!(
+        findings
+            .iter()
+            .any(|f| f.capability == Capability::ProcessExec && f.build_script),
+        "expected ProcessExec from build.rs, findings: {findings:?}"
+    );
+}
+
+#[test]
+fn test_attestation_custom_build_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    fs::create_dir(root.join("src")).unwrap();
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2024\"\nbuild = \"custom_build.rs\"\n",
+    ).unwrap();
+    fs::write(root.join("src/lib.rs"), "fn lib_fn() {}\n").unwrap();
+    fs::write(
+        root.join("custom_build.rs"),
+        "use std::net::TcpStream;\nfn main() {}\n",
+    )
+    .unwrap();
+
+    let lib_path = root.join("src/lib.rs");
+    let output = common::run_pedant(
+        &[
+            lib_path.to_str().unwrap(),
+            "--attestation",
+            "--crate-name",
+            "test",
+            "--crate-version",
+            "0.1.0",
+        ],
+        None,
+    );
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let attestation: AttestationContent = serde_json::from_slice(&output.stdout).unwrap();
+
+    assert!(
+        attestation
+            .profile
+            .findings
+            .iter()
+            .any(|f| f.capability == Capability::Network && f.build_script),
+        "expected Network from custom_build.rs, findings: {:?}",
+        attestation.profile.findings
+    );
+}
+
+#[test]
+fn test_attestation_no_build_script() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    fs::create_dir(root.join("src")).unwrap();
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    fs::write(root.join("src/lib.rs"), "use std::fs::read_to_string;\n").unwrap();
+    // No build.rs
+
+    let lib_path = root.join("src/lib.rs");
+    let output = common::run_pedant(
+        &[
+            lib_path.to_str().unwrap(),
+            "--attestation",
+            "--crate-name",
+            "test",
+            "--crate-version",
+            "0.1.0",
+        ],
+        None,
+    );
+
+    assert!(output.status.success());
+
+    let attestation: AttestationContent = serde_json::from_slice(&output.stdout).unwrap();
+
+    assert!(
+        attestation.profile.findings.iter().all(|f| !f.build_script),
+        "no findings should have build_script: true"
+    );
+    assert!(
+        !attestation.profile.findings.is_empty(),
+        "normal analysis should still produce findings"
+    );
+}
+
+#[test]
+fn test_single_file_mode_unchanged() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    fs::create_dir(root.join("src")).unwrap();
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    fs::write(root.join("src/lib.rs"), "use std::fs::read_to_string;\n").unwrap();
+    fs::write(
+        root.join("build.rs"),
+        "use std::process::Command;\nfn main() { Command::new(\"cc\"); }\n",
+    )
+    .unwrap();
+
+    let lib_path = root.join("src/lib.rs");
+    // Non-attestation mode: just run pedant on the file with --capabilities
+    let output = common::run_pedant(&[lib_path.to_str().unwrap(), "--capabilities"], None);
+
+    assert!(output.status.success());
+
+    let profile: CapabilityProfile = serde_json::from_slice(&output.stdout).unwrap();
+
+    // Should include build script findings (build scripts are always discovered)
+    assert!(
+        profile.findings.iter().any(|f| f.build_script),
+        "capabilities mode should discover build scripts"
+    );
+    // Should also have non-build-script findings from lib.rs
+    assert!(
+        profile.findings.iter().any(|f| !f.build_script),
+        "capabilities mode should include source file findings"
     );
 }

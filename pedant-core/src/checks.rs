@@ -32,7 +32,7 @@ macro_rules! define_checks {
         $(
             $variant:ident $({ $field:ident : $ftype:ty })? => {
                 code: $code:expr,
-                description: $desc:expr,
+                description: $desc:literal,
                 category: $cat:expr,
                 problem: $problem:expr,
                 fix: $fix:expr,
@@ -45,7 +45,11 @@ macro_rules! define_checks {
         #[derive(Debug, Clone, PartialEq, Eq)]
         pub enum ViolationType {
             $(
-                $variant $({ $field: $ftype })?,
+                #[doc = $desc]
+                $variant $({
+                    #[doc = "The matched pattern."]
+                    $field: $ftype
+                })?,
             )+
         }
 
@@ -223,7 +227,7 @@ define_checks! {
     },
     DynReturn => {
         code: "dyn-return",
-        description: "Dynamic dispatch in return type (Box<dyn T>, Arc<dyn T>)",
+        description: "Dynamic dispatch in return type (`Box<dyn T>`, `Arc<dyn T>`)",
         category: "dispatch",
         problem: "Returning Box<dyn Trait> or Arc<dyn Trait> forces vtable dispatch on every call. The vtable lookup prevents inlining and all downstream optimizations.",
         fix: "Use enum dispatch for a closed set of types. Use `impl Trait` when the caller doesn't need to store heterogeneously. Use a generic type parameter when the concrete type varies per call site.",
@@ -232,7 +236,7 @@ define_checks! {
     },
     DynParam => {
         code: "dyn-param",
-        description: "Dynamic dispatch in function parameter (&dyn T, Box<dyn T>)",
+        description: "Dynamic dispatch in function parameter (`&dyn T`, `Box<dyn T>`)",
         category: "dispatch",
         problem: "Accepting &dyn Trait or Box<dyn Trait> as a parameter forces vtable dispatch per call. The compiler cannot monomorphize or inline the callee's methods.",
         fix: "Use a generic parameter `T: Trait` or `impl Trait` to enable monomorphization. The compiler generates specialized code for each concrete type, enabling inlining.",
@@ -241,7 +245,7 @@ define_checks! {
     },
     VecBoxDyn => {
         code: "vec-box-dyn",
-        description: "Vec<Box<dyn T>> prevents cache locality and inlining",
+        description: "`Vec<Box<dyn T>>` prevents cache locality and inlining",
         category: "dispatch",
         problem: "Vec<Box<dyn Trait>> incurs per-element heap allocation, vtable dispatch on every access, and scattered memory that defeats cache prefetching.",
         fix: "Use an enum wrapping the known concrete types. Elements are stored inline in the Vec with no vtable and no per-element allocation.",
@@ -250,7 +254,7 @@ define_checks! {
     },
     DynField => {
         code: "dyn-field",
-        description: "Dynamic dispatch in struct field (Box<dyn T>, Arc<dyn T>)",
+        description: "Dynamic dispatch in struct field (`Box<dyn T>`, `Arc<dyn T>`)",
         category: "dispatch",
         problem: "A Box<dyn Trait> or Arc<dyn Trait> struct field permanently commits every method call on that field to vtable dispatch. This prevents inlining for the lifetime of the struct.",
         fix: "Make the struct generic over the trait: `struct Foo<T: Trait> { field: T }`. The compiler monomorphizes each instantiation, enabling static dispatch and inlining.",

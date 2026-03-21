@@ -1,3 +1,5 @@
+//! CLI interface for the pedant linter and capability analyzer.
+
 mod config;
 mod reporter;
 

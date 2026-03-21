@@ -1,4 +1,5 @@
-use pedant::visitor::{CheckConfig, analyze};
+use pedant_core::check_config::CheckConfig;
+use pedant_core::lint::analyze;
 use pedant_types::Capability;
 
 fn permissive_config() -> CheckConfig {

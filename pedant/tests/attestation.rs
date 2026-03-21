@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use pedant::hash::compute_source_hash;
+use pedant_core::hash::compute_source_hash;
 use pedant_types::{AnalysisTier, AttestationContent, CapabilityProfile};
 
 mod common;

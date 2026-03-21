@@ -1,4 +1,4 @@
-use pedant::pattern::matches_pattern;
+use pedant_core::pattern::matches_pattern;
 
 #[test]
 fn test_exact_match() {

@@ -1,29 +1,27 @@
 [package]
-name = "pedant"
-version = "0.8.0"
+name = "pedant-core"
+version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
-description = "An opinionated Rust linter, with special focus on AI-generated code"
+description = "Analysis engine for pedant: IR extraction, style checks, and capability detection"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/jostled-org/pedant"
 readme = "../README.md"
 keywords = ["linter", "lint", "static-analysis", "ai", "code-quality"]
 
-[[bin]]
-name = "pedant"
-path = "src/main.rs"
-
 [dependencies]
-pedant-core = { version = "0.1.0", path = "../pedant-core" }
-pedant-types = { version = "0.4.0", path = "../pedant-types" }
-clap = { version = "4", features = ["derive"] }
+syn = { version = "2", features = ["full", "visit", "parsing"] }
+toml = "1"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+proc-macro2 = { version = "1", features = ["span-locations"] }
+quote = "1"
+pedant-types = { version = "0.4.0", path = "../pedant-types" }
 thiserror = "2"
+sha2 = "0.10"
+serde_json = "1"
 
 [dev-dependencies]
 serde_json = "1"
-tempfile = "3"
 
 [package.metadata.docs.rs]
 all-features = true

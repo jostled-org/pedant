@@ -140,14 +140,14 @@ See `examples/` for a full global config and a project-level override.
 
 ## Checks
 
-21 checks across five categories. Nesting checks run by default. Everything else requires a config file.
+22 checks across five categories. Nesting checks run by default. Everything else requires a config file.
 
 | Category | Checks |
 |----------|--------|
 | Nesting | `max-depth`, `nested-if`, `if-in-match`, `nested-match`, `match-in-if`, `else-chain` |
 | Forbidden patterns | `forbidden-attribute`, `forbidden-type`, `forbidden-call`, `forbidden-macro`, `forbidden-else`, `forbidden-unsafe` |
 | Performance & dispatch | `dyn-return`, `dyn-param`, `vec-box-dyn`, `dyn-field`, `clone-in-loop`, `default-hasher` |
-| Structure | `mixed-concerns`, `inline-tests` |
+| Structure | `mixed-concerns`, `inline-tests`, `let-underscore-result` |
 | Naming | `generic-naming` |
 
 Run `pedant --list-checks` to see all checks, or `pedant --explain <check>` for detailed rationale and fix guidance.

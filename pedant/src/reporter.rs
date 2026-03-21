@@ -1,10 +1,10 @@
 use std::io::{self, Write};
 
-use crate::json_format::JsonViolation;
-use crate::violation::Violation;
+use pedant_core::json_format::JsonViolation;
+use pedant_core::violation::Violation;
 
 /// Output format for violation reports.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::ValueEnum)]
 pub enum OutputFormat {
     /// Human-readable text, one violation per line.
     #[default]

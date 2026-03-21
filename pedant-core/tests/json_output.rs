@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use pedant::reporter::{OutputFormat, Reporter};
-use pedant::violation::{Violation, ViolationType};
+use pedant_core::json_format::JsonViolation;
+use pedant_core::violation::{Violation, ViolationType};
 
 fn make_violations() -> Vec<Violation> {
     vec![
@@ -27,11 +27,11 @@ fn make_violations() -> Vec<Violation> {
 #[test]
 fn json_output_has_expected_fields() {
     let violations = make_violations();
-    let reporter = Reporter::new(OutputFormat::Json, false);
-    let mut buf = Vec::new();
-    reporter.report(&violations, &mut buf).unwrap();
+    let json_violations: Vec<JsonViolation<'_>> =
+        violations.iter().map(JsonViolation::from).collect();
+    let serialized = serde_json::to_value(&json_violations).unwrap();
+    let parsed = serialized.as_array().unwrap();
 
-    let parsed: Vec<serde_json::Value> = serde_json::from_slice(&buf).unwrap();
     assert_eq!(parsed.len(), 2);
 
     let first = &parsed[0];
@@ -51,10 +51,11 @@ fn json_output_has_expected_fields() {
 
 #[test]
 fn json_output_empty_violations() {
-    let reporter = Reporter::new(OutputFormat::Json, false);
-    let mut buf = Vec::new();
-    reporter.report(&[], &mut buf).unwrap();
+    let violations: Vec<Violation> = vec![];
+    let json_violations: Vec<JsonViolation<'_>> =
+        violations.iter().map(JsonViolation::from).collect();
+    let serialized = serde_json::to_value(&json_violations).unwrap();
+    let parsed = serialized.as_array().unwrap();
 
-    let parsed: Vec<serde_json::Value> = serde_json::from_slice(&buf).unwrap();
     assert!(parsed.is_empty());
 }

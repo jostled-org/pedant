@@ -16,15 +16,17 @@ fn write_json_file(value: &impl serde::Serialize) -> NamedTempFile {
 }
 
 fn make_profile(findings: Vec<CapabilityFinding>) -> CapabilityProfile {
-    CapabilityProfile { findings }
+    CapabilityProfile {
+        findings: findings.into_boxed_slice(),
+    }
 }
 
 fn make_attestation(profile: CapabilityProfile) -> AttestationContent {
     AttestationContent {
-        spec_version: Arc::from("0.1.0"),
-        source_hash: Arc::from("deadbeef"),
-        crate_name: Arc::from("test"),
-        crate_version: Arc::from("0.0.1"),
+        spec_version: Box::from("0.1.0"),
+        source_hash: Box::from("deadbeef"),
+        crate_name: Box::from("test"),
+        crate_version: Box::from("0.0.1"),
         analysis_tier: AnalysisTier::Syntactic,
         timestamp: 0,
         profile,

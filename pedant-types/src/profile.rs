@@ -6,24 +6,25 @@ use crate::{Capability, CapabilityFinding};
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
 pub struct CapabilityProfile {
     /// All findings from the analysis.
-    pub findings: Vec<CapabilityFinding>,
+    pub findings: Box<[CapabilityFinding]>,
 }
 
 impl CapabilityProfile {
     /// Returns deduplicated, sorted set of capabilities present in the profile.
     /// Recomputes on each call; callers needing repeated access should cache the result.
-    pub fn capabilities(&self) -> Vec<Capability> {
+    pub fn capabilities(&self) -> Box<[Capability]> {
         let mut caps: Vec<Capability> = self.findings.iter().map(|f| f.capability).collect();
         caps.sort();
         caps.dedup();
-        caps
+        caps.into_boxed_slice()
     }
 
     /// Returns findings filtered to a specific capability.
-    pub fn findings_for(&self, capability: Capability) -> Vec<&CapabilityFinding> {
+    pub fn findings_for(&self, capability: Capability) -> Box<[&CapabilityFinding]> {
         self.findings
             .iter()
             .filter(|f| f.capability == capability)
-            .collect()
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
     }
 }

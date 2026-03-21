@@ -3,7 +3,7 @@ use serde::Serialize;
 use crate::violation::Violation;
 
 #[derive(Serialize)]
-pub(crate) struct JsonViolation<'a> {
+pub struct JsonViolation<'a> {
     r#type: &'a str,
     check: &'static str,
     file: &'a str,

@@ -8,7 +8,7 @@ use crate::Capability;
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SourceLocation {
     /// File path relative to the crate root.
-    pub file: Arc<str>,
+    pub file: Arc<str>, // Arc: cloned per-finding from shared file path
     /// 1-based line number.
     pub line: usize,
     /// 1-based column number.

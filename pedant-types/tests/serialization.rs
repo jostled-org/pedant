@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use pedant_types::{
     AnalysisTier, AttestationContent, Capability, CapabilityDiff, CapabilityFinding,
-    CapabilityProfile, SourceLocation, TypeError,
+    CapabilityProfile, SourceLocation,
 };
 
 fn sample_finding(capability: Capability, file: &str, line: usize) -> CapabilityFinding {
@@ -83,10 +83,14 @@ fn profile_capabilities_deduplicates_and_sorts() {
             sample_finding(Capability::Network, "a.rs", 1),
             sample_finding(Capability::FileRead, "b.rs", 2),
             sample_finding(Capability::Network, "c.rs", 3),
-        ],
+        ]
+        .into_boxed_slice(),
     };
     let caps = profile.capabilities();
-    assert_eq!(caps, vec![Capability::Network, Capability::FileRead]);
+    assert_eq!(
+        caps,
+        vec![Capability::Network, Capability::FileRead].into_boxed_slice()
+    );
 }
 
 #[test]
@@ -96,7 +100,8 @@ fn profile_findings_for_filters() {
             sample_finding(Capability::Network, "a.rs", 1),
             sample_finding(Capability::FileRead, "b.rs", 2),
             sample_finding(Capability::Network, "c.rs", 3),
-        ],
+        ]
+        .into_boxed_slice(),
     };
     let net = profile.findings_for(Capability::Network);
     assert_eq!(net.len(), 2);
@@ -118,14 +123,14 @@ fn empty_profile_round_trip() {
 #[test]
 fn attestation_round_trip() {
     let attestation = AttestationContent {
-        spec_version: Arc::from("1.0"),
-        source_hash: Arc::from("abc123"),
-        crate_name: Arc::from("my-crate"),
-        crate_version: Arc::from("0.1.0"),
+        spec_version: Box::from("1.0"),
+        source_hash: Box::from("abc123"),
+        crate_name: Box::from("my-crate"),
+        crate_version: Box::from("0.1.0"),
         analysis_tier: AnalysisTier::Syntactic,
         timestamp: 1_700_000_000,
         profile: CapabilityProfile {
-            findings: vec![sample_finding(Capability::Ffi, "src/lib.rs", 5)],
+            findings: vec![sample_finding(Capability::Ffi, "src/lib.rs", 5)].into_boxed_slice(),
         },
     };
     let json = serde_json::to_string(&attestation).unwrap();
@@ -152,13 +157,15 @@ fn diff_overlapping_profiles() {
         findings: vec![
             sample_finding(Capability::Network, "a.rs", 1),
             sample_finding(Capability::FileRead, "b.rs", 2),
-        ],
+        ]
+        .into_boxed_slice(),
     };
     let new = CapabilityProfile {
         findings: vec![
             sample_finding(Capability::Network, "a.rs", 1),
             sample_finding(Capability::Crypto, "c.rs", 3),
-        ],
+        ]
+        .into_boxed_slice(),
     };
     let diff = CapabilityDiff::compute(&old, &new);
     assert_eq!(diff.added.len(), 1);
@@ -172,10 +179,10 @@ fn diff_overlapping_profiles() {
 #[test]
 fn diff_disjoint_profiles() {
     let old = CapabilityProfile {
-        findings: vec![sample_finding(Capability::Network, "a.rs", 1)],
+        findings: vec![sample_finding(Capability::Network, "a.rs", 1)].into_boxed_slice(),
     };
     let new = CapabilityProfile {
-        findings: vec![sample_finding(Capability::FileWrite, "b.rs", 2)],
+        findings: vec![sample_finding(Capability::FileWrite, "b.rs", 2)].into_boxed_slice(),
     };
     let diff = CapabilityDiff::compute(&old, &new);
     assert_eq!(diff.added.len(), 1);
@@ -197,27 +204,13 @@ fn diff_empty_profiles() {
 #[test]
 fn diff_round_trip() {
     let old = CapabilityProfile {
-        findings: vec![sample_finding(Capability::Network, "a.rs", 1)],
+        findings: vec![sample_finding(Capability::Network, "a.rs", 1)].into_boxed_slice(),
     };
     let new = CapabilityProfile {
-        findings: vec![sample_finding(Capability::Crypto, "b.rs", 2)],
+        findings: vec![sample_finding(Capability::Crypto, "b.rs", 2)].into_boxed_slice(),
     };
     let diff = CapabilityDiff::compute(&old, &new);
     let json = serde_json::to_string(&diff).unwrap();
     let back: CapabilityDiff = serde_json::from_str(&json).unwrap();
     assert_eq!(diff, back);
-}
-
-#[test]
-fn type_error_wraps_json() {
-    let bad_json = "not json";
-    let result: Result<Capability, _> = serde_json::from_str(bad_json);
-    match result {
-        Err(e) => {
-            let te = TypeError::Json(e);
-            let msg = format!("{te}");
-            assert!(msg.contains("json error:"));
-        }
-        Ok(_) => panic!("expected error"),
-    }
 }

@@ -303,6 +303,18 @@ name = "pedant"
 version = "0.8.0"
 dependencies = [
  "clap",
+ "pedant-core",
+ "pedant-types",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
+name = "pedant-core"
+version = "0.1.0"
+dependencies = [
  "pedant-types",
  "proc-macro2",
  "quote",
@@ -310,7 +322,6 @@ dependencies = [
  "serde_json",
  "sha2",
  "syn",
- "tempfile",
  "thiserror",
  "toml",
 ]
@@ -322,7 +333,6 @@ dependencies = [
  "rustc-hash",
  "serde",
  "serde_json",
- "thiserror",
 ]
 
 [[package]]

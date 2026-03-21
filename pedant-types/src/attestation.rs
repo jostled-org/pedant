@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use serde::{Deserialize, Serialize};
 
 use crate::CapabilityProfile;
@@ -17,16 +15,16 @@ pub enum AnalysisTier {
 }
 
 /// The content of a capability attestation for a crate.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct AttestationContent {
     /// Schema version for forward compatibility.
-    pub spec_version: Arc<str>,
+    pub spec_version: Box<str>,
     /// Hash of the analyzed source.
-    pub source_hash: Arc<str>,
+    pub source_hash: Box<str>,
     /// Name of the analyzed crate.
-    pub crate_name: Arc<str>,
+    pub crate_name: Box<str>,
     /// Version of the analyzed crate.
-    pub crate_version: Arc<str>,
+    pub crate_version: Box<str>,
     /// Depth of the analysis performed.
     pub analysis_tier: AnalysisTier,
     /// Seconds since Unix epoch (UTC).

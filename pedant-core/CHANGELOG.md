@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/jostled-org/pedant/compare/pedant-core-v0.1.1...pedant-core-v0.2.0) - 2026-03-21
+
+### Added
+
+- [**breaking**] auto-discover and analyze build scripts for capability detection
+
 ## [0.1.1](https://github.com/jostled-org/pedant/compare/pedant-core-v0.1.0...pedant-core-v0.1.1) - 2026-03-21
 
 ### Other

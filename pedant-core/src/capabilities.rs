@@ -238,20 +238,36 @@ fn detect_from_facts<'a, T: 'a>(
 
 fn detect_use_paths(ir: &FileIr, file_path: &Arc<str>, findings: &mut Vec<CapabilityFinding>) {
     detect_from_facts(&ir.use_paths, file_path, findings, |use_path| {
-        resolve_capabilities(&use_path.path)
-            .map(|cap| (cap, use_path.span.line, use_path.span.column + 1, use_path.path.as_ref()))
+        resolve_capabilities(&use_path.path).map(|cap| {
+            (
+                cap,
+                use_path.span.line,
+                use_path.span.column + 1,
+                use_path.path.as_ref(),
+            )
+        })
     });
 }
 
 fn detect_unsafe_sites(ir: &FileIr, file_path: &Arc<str>, findings: &mut Vec<CapabilityFinding>) {
     detect_from_facts(&ir.unsafe_sites, file_path, findings, |site| {
-        Some((Capability::UnsafeCode, site.span.line, site.span.column + 1, site.evidence.as_ref()))
+        Some((
+            Capability::UnsafeCode,
+            site.span.line,
+            site.span.column + 1,
+            site.evidence.as_ref(),
+        ))
     });
 }
 
 fn detect_extern_blocks(ir: &FileIr, file_path: &Arc<str>, findings: &mut Vec<CapabilityFinding>) {
     detect_from_facts(&ir.extern_blocks, file_path, findings, |block| {
-        Some((Capability::Ffi, block.span.line, block.span.column + 1, "extern block"))
+        Some((
+            Capability::Ffi,
+            block.span.line,
+            block.span.column + 1,
+            "extern block",
+        ))
     });
 }
 
@@ -278,10 +294,24 @@ fn detect_string_literals(
         let column = lit.span.column + 1;
 
         if check_string_for_endpoint(&lit.value) {
-            record(findings, Capability::Network, file_path, line, column, &lit.value);
+            record(
+                findings,
+                Capability::Network,
+                file_path,
+                line,
+                column,
+                &lit.value,
+            );
         }
         if check_string_for_pem(&lit.value) {
-            record(findings, Capability::Crypto, file_path, line, column, &lit.value);
+            record(
+                findings,
+                Capability::Crypto,
+                file_path,
+                line,
+                column,
+                &lit.value,
+            );
         }
     }
 }

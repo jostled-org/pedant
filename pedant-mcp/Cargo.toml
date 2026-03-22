@@ -13,7 +13,7 @@ name = "pedant-mcp"
 path = "src/main.rs"
 
 [dependencies]
-pedant-core = { version = "0.5.0", path = "../pedant-core" }
+pedant-core = { version = "0.5.1", path = "../pedant-core" }
 pedant-types = { version = "0.7.0", path = "../pedant-types" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

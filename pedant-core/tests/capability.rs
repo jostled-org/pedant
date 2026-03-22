@@ -15,7 +15,7 @@ fn permissive_config() -> CheckConfig {
 #[test]
 fn test_network_capability_detected() {
     let source = include_str!("fixtures/network_capability.rs");
-    let result = analyze("network_capability.rs", source, &permissive_config()).unwrap();
+    let result = analyze("network_capability.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
 
     assert!(caps.contains(&Capability::Network));
@@ -24,7 +24,13 @@ fn test_network_capability_detected() {
 #[test]
 fn test_filesystem_capability_detected() {
     let source = include_str!("fixtures/filesystem_capability.rs");
-    let result = analyze("filesystem_capability.rs", source, &permissive_config()).unwrap();
+    let result = analyze(
+        "filesystem_capability.rs",
+        source,
+        &permissive_config(),
+        None,
+    )
+    .unwrap();
     let caps = result.capabilities.capabilities();
 
     assert!(caps.contains(&Capability::FileRead));
@@ -33,7 +39,7 @@ fn test_filesystem_capability_detected() {
 #[test]
 fn test_process_capability_detected() {
     let source = include_str!("fixtures/process_capability.rs");
-    let result = analyze("process_capability.rs", source, &permissive_config()).unwrap();
+    let result = analyze("process_capability.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
 
     assert!(caps.contains(&Capability::ProcessExec));
@@ -42,7 +48,7 @@ fn test_process_capability_detected() {
 #[test]
 fn test_env_capability_detected() {
     let source = include_str!("fixtures/env_capability.rs");
-    let result = analyze("env_capability.rs", source, &permissive_config()).unwrap();
+    let result = analyze("env_capability.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
 
     assert!(caps.contains(&Capability::EnvAccess));
@@ -51,7 +57,7 @@ fn test_env_capability_detected() {
 #[test]
 fn test_clean_code_no_capabilities() {
     let source = include_str!("fixtures/clean.rs");
-    let result = analyze("clean.rs", source, &permissive_config()).unwrap();
+    let result = analyze("clean.rs", source, &permissive_config(), None).unwrap();
 
     assert!(result.capabilities.findings.is_empty());
 }
@@ -67,7 +73,7 @@ fn do_things() {
     let _content = fs::read_to_string("file.txt");
 }
 "#;
-    let result = analyze("multi.rs", source, &permissive_config()).unwrap();
+    let result = analyze("multi.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
 
     assert!(caps.contains(&Capability::Network));
@@ -77,7 +83,7 @@ fn do_things() {
 #[test]
 fn test_glob_use_detected() {
     let source = "use std::net::*;\n";
-    let result = analyze("glob.rs", source, &permissive_config()).unwrap();
+    let result = analyze("glob.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
 
     assert!(caps.contains(&Capability::Network));
@@ -90,7 +96,7 @@ fn write_file() {
     let _ = std::fs::write("out.txt", "data");
 }
 "#;
-    let result = analyze("fs_write.rs", source, &permissive_config()).unwrap();
+    let result = analyze("fs_write.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
 
     assert!(caps.contains(&Capability::FileWrite));
@@ -100,7 +106,7 @@ fn write_file() {
 #[test]
 fn test_third_party_network_crate() {
     let source = "use reqwest::Client;\n";
-    let result = analyze("reqwest.rs", source, &permissive_config()).unwrap();
+    let result = analyze("reqwest.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
 
     assert!(caps.contains(&Capability::Network));
@@ -109,7 +115,7 @@ fn test_third_party_network_crate() {
 #[test]
 fn test_grouped_use_detected() {
     let source = "use std::process::{Command, Stdio};\n";
-    let result = analyze("grouped.rs", source, &permissive_config()).unwrap();
+    let result = analyze("grouped.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
 
     assert!(caps.contains(&Capability::ProcessExec));
@@ -118,7 +124,7 @@ fn test_grouped_use_detected() {
 #[test]
 fn test_finding_has_correct_evidence() {
     let source = "use std::net::TcpStream;\n";
-    let result = analyze("evidence.rs", source, &permissive_config()).unwrap();
+    let result = analyze("evidence.rs", source, &permissive_config(), None).unwrap();
 
     assert_eq!(result.capabilities.findings.len(), 1);
     assert_eq!(
@@ -138,7 +144,7 @@ extern "C" {
     fn my_c_function(x: i32) -> i32;
 }
 "#;
-    let result = analyze("ffi.rs", source, &permissive_config()).unwrap();
+    let result = analyze("ffi.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::Ffi));
     assert!(
@@ -153,7 +159,7 @@ extern "C" {
 #[test]
 fn test_ffi_capability_link_attribute() {
     let source = include_str!("fixtures/ffi_capability.rs");
-    let result = analyze("ffi_link.rs", source, &permissive_config()).unwrap();
+    let result = analyze("ffi_link.rs", source, &permissive_config(), None).unwrap();
     let ffi_findings: Vec<_> = result
         .capabilities
         .findings
@@ -166,7 +172,7 @@ fn test_ffi_capability_link_attribute() {
 #[test]
 fn test_ffi_capability_libc_import() {
     let source = "use libc::getpid;\n";
-    let result = analyze("libc.rs", source, &permissive_config()).unwrap();
+    let result = analyze("libc.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::Ffi));
 }
@@ -178,7 +184,7 @@ fn foo() {
     let _val = unsafe { 42 };
 }
 "#;
-    let result = analyze("unsafe_block.rs", source, &permissive_config()).unwrap();
+    let result = analyze("unsafe_block.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::UnsafeCode));
     assert!(
@@ -197,7 +203,7 @@ unsafe fn dangerous() -> i32 {
     42
 }
 "#;
-    let result = analyze("unsafe_fn.rs", source, &permissive_config()).unwrap();
+    let result = analyze("unsafe_fn.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::UnsafeCode));
     assert!(
@@ -215,7 +221,7 @@ fn test_unsafe_impl_detected() {
 struct MyType;
 unsafe impl Send for MyType {}
 "#;
-    let result = analyze("unsafe_impl.rs", source, &permissive_config()).unwrap();
+    let result = analyze("unsafe_impl.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::UnsafeCode));
     assert!(
@@ -234,7 +240,7 @@ fn foo() {
     let _url = "https://api.example.com/v1/data";
 }
 "#;
-    let result = analyze("url.rs", source, &permissive_config()).unwrap();
+    let result = analyze("url.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::Network));
 }
@@ -246,7 +252,7 @@ fn foo() {
     let _ip = "192.168.1.1:8080";
 }
 "#;
-    let result = analyze("ip.rs", source, &permissive_config()).unwrap();
+    let result = analyze("ip.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::Network));
 }
@@ -258,7 +264,7 @@ fn foo() {
     let _ip = "[::1]:8080";
 }
 "#;
-    let result = analyze("ipv6.rs", source, &permissive_config()).unwrap();
+    let result = analyze("ipv6.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::Network));
 }
@@ -270,7 +276,7 @@ fn foo() {
     let _s = "hello";
 }
 "#;
-    let result = analyze("short.rs", source, &permissive_config()).unwrap();
+    let result = analyze("short.rs", source, &permissive_config(), None).unwrap();
     let net_findings: Vec<_> = result
         .capabilities
         .findings
@@ -287,7 +293,7 @@ fn foo() {
     let _key = "-----BEGIN PRIVATE KEY-----\ndata\n-----END PRIVATE KEY-----";
 }
 "#;
-    let result = analyze("pem.rs", source, &permissive_config()).unwrap();
+    let result = analyze("pem.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::Crypto));
 }
@@ -295,7 +301,7 @@ fn foo() {
 #[test]
 fn test_crypto_crate_import_detected() {
     let source = "use ring::aead;\n";
-    let result = analyze("ring.rs", source, &permissive_config()).unwrap();
+    let result = analyze("ring.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::Crypto));
 }
@@ -303,7 +309,7 @@ fn test_crypto_crate_import_detected() {
 #[test]
 fn test_system_time_detected() {
     let source = "use std::time::SystemTime;\n";
-    let result = analyze("systime.rs", source, &permissive_config()).unwrap();
+    let result = analyze("systime.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::SystemTime));
 }
@@ -311,7 +317,7 @@ fn test_system_time_detected() {
 #[test]
 fn test_chrono_detected() {
     let source = "use chrono::Utc;\n";
-    let result = analyze("chrono.rs", source, &permissive_config()).unwrap();
+    let result = analyze("chrono.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::SystemTime));
 }
@@ -324,7 +330,7 @@ fn my_macro(input: TokenStream) -> TokenStream {
     input
 }
 "#;
-    let result = analyze("proc_macro.rs", source, &permissive_config()).unwrap();
+    let result = analyze("proc_macro.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::ProcMacro));
     assert!(
@@ -344,7 +350,7 @@ fn my_derive(input: TokenStream) -> TokenStream {
     input
 }
 "#;
-    let result = analyze("proc_macro_derive.rs", source, &permissive_config()).unwrap();
+    let result = analyze("proc_macro_derive.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::ProcMacro));
     assert!(
@@ -368,7 +374,7 @@ fn main() {
 }
 "#;
     let syntax = syn::parse_file(source).unwrap();
-    let ir_data = ir::extract("build.rs", &syntax);
+    let ir_data = ir::extract("build.rs", &syntax, None);
 
     let profile_build = detect_capabilities(&ir_data, true);
     assert!(
@@ -387,7 +393,7 @@ fn main() {
 fn test_build_script_network_detection() {
     let source = include_str!("fixtures/build_script_network.rs");
     let syntax = syn::parse_file(source).unwrap();
-    let ir_data = ir::extract("build.rs", &syntax);
+    let ir_data = ir::extract("build.rs", &syntax, None);
     let profile = detect_capabilities(&ir_data, true);
 
     let net_findings: Vec<_> = profile
@@ -405,7 +411,7 @@ fn test_build_script_network_detection() {
 fn test_build_script_process_detection() {
     let source = include_str!("fixtures/build_script_process.rs");
     let syntax = syn::parse_file(source).unwrap();
-    let ir_data = ir::extract("build.rs", &syntax);
+    let ir_data = ir::extract("build.rs", &syntax, None);
     let profile = detect_capabilities(&ir_data, true);
 
     let proc_findings: Vec<_> = profile
@@ -422,7 +428,7 @@ fn test_build_script_process_detection() {
 #[test]
 fn test_existing_findings_default_false() {
     let source = "use std::net::TcpStream;\n";
-    let result = analyze("lib.rs", source, &permissive_config()).unwrap();
+    let result = analyze("lib.rs", source, &permissive_config(), None).unwrap();
 
     assert!(
         result.capabilities.findings.iter().all(|f| !f.build_script),
@@ -453,7 +459,7 @@ fn test_truncate_evidence_long_truncated() {
 #[test]
 fn test_hex_key_64_chars_detected() {
     let source = include_str!("fixtures/hex_key_material.rs");
-    let result = analyze("hex_key.rs", source, &permissive_config()).unwrap();
+    let result = analyze("hex_key.rs", source, &permissive_config(), None).unwrap();
     let crypto_findings: Vec<_> = result
         .capabilities
         .findings
@@ -476,7 +482,7 @@ fn test_hex_key_64_chars_detected() {
 #[test]
 fn test_hex_key_128_chars_detected() {
     let source = include_str!("fixtures/hex_key_material.rs");
-    let result = analyze("hex_key128.rs", source, &permissive_config()).unwrap();
+    let result = analyze("hex_key128.rs", source, &permissive_config(), None).unwrap();
     let crypto_findings: Vec<_> = result
         .capabilities
         .findings
@@ -498,7 +504,7 @@ fn foo() {
     let _hash = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4";
 }
 "#;
-    let result = analyze("hex_short.rs", source, &permissive_config()).unwrap();
+    let result = analyze("hex_short.rs", source, &permissive_config(), None).unwrap();
     let crypto_findings: Vec<_> = result
         .capabilities
         .findings
@@ -523,7 +529,7 @@ fn foo() {
 }
 "#;
     let syntax = syn::parse_file(source).unwrap();
-    let ir_data = ir::extract("hex_odd.rs", &syntax);
+    let ir_data = ir::extract("hex_odd.rs", &syntax, None);
     let profile = detect_capabilities(&ir_data, false);
     // Should have at most 1 finding (base58), not 2 (hex would be a second)
     let crypto_findings: Vec<_> = profile
@@ -545,7 +551,7 @@ fn foo() {
     let _key = "aAbBcCdDeEfF0011aAbBcCdDeEfF0011aAbBcCdDeEfF0011aAbBcCdDeEfF0011";
 }
 "#;
-    let result = analyze("hex_mixed.rs", source, &permissive_config()).unwrap();
+    let result = analyze("hex_mixed.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(
         caps.contains(&Capability::Crypto),
@@ -558,7 +564,7 @@ fn foo() {
 #[test]
 fn test_bitcoin_wif_detected() {
     let source = include_str!("fixtures/base58_key_material.rs");
-    let result = analyze("base58.rs", source, &permissive_config()).unwrap();
+    let result = analyze("base58.rs", source, &permissive_config(), None).unwrap();
     let crypto_findings: Vec<_> = result
         .capabilities
         .findings
@@ -578,7 +584,7 @@ fn foo() {
     let _key = "KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn";
 }
 "#;
-    let result = analyze("wif_k.rs", source, &permissive_config()).unwrap();
+    let result = analyze("wif_k.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(
         caps.contains(&Capability::Crypto),
@@ -589,7 +595,7 @@ fn foo() {
 #[test]
 fn test_solana_keypair_detected() {
     let source = include_str!("fixtures/base58_key_material.rs");
-    let result = analyze("solana.rs", source, &permissive_config()).unwrap();
+    let result = analyze("solana.rs", source, &permissive_config(), None).unwrap();
     let crypto_findings: Vec<_> = result
         .capabilities
         .findings
@@ -611,7 +617,7 @@ fn foo() {
     let _addr = "1A1zP1eP5QGefi2DM";
 }
 "#;
-    let result = analyze("base58_short.rs", source, &permissive_config()).unwrap();
+    let result = analyze("base58_short.rs", source, &permissive_config(), None).unwrap();
     let crypto_findings: Vec<_> = result
         .capabilities
         .findings
@@ -632,7 +638,7 @@ fn foo() {
     let _not_key = "5HueCGU8rMjxEXxiPuD5BDku4MkFqeZyd4dZ1jvhTVq0OIl";
 }
 "#;
-    let result = analyze("base58_invalid.rs", source, &permissive_config()).unwrap();
+    let result = analyze("base58_invalid.rs", source, &permissive_config(), None).unwrap();
     let crypto_findings: Vec<_> = result
         .capabilities
         .findings
@@ -650,7 +656,7 @@ fn foo() {
 #[test]
 fn test_age_secret_key_detected() {
     let source = include_str!("fixtures/key_prefix_material.rs");
-    let result = analyze("age_key.rs", source, &permissive_config()).unwrap();
+    let result = analyze("age_key.rs", source, &permissive_config(), None).unwrap();
     let crypto_findings: Vec<_> = result
         .capabilities
         .findings
@@ -668,7 +674,7 @@ fn test_age_secret_key_detected() {
 #[test]
 fn test_xprv_key_detected() {
     let source = include_str!("fixtures/key_prefix_material.rs");
-    let result = analyze("xprv.rs", source, &permissive_config()).unwrap();
+    let result = analyze("xprv.rs", source, &permissive_config(), None).unwrap();
     let crypto_findings: Vec<_> = result
         .capabilities
         .findings
@@ -690,7 +696,7 @@ fn foo() {
     let _key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 }
 "#;
-    let result = analyze("eth_key.rs", source, &permissive_config()).unwrap();
+    let result = analyze("eth_key.rs", source, &permissive_config(), None).unwrap();
     let crypto_findings: Vec<_> = result
         .capabilities
         .findings
@@ -710,7 +716,7 @@ fn foo() {
     let _key = "ed25519:3D4YudUahN1nawWogh6LMPvoRPW8QHr9AJsByJsXk7gn";
 }
 "#;
-    let result = analyze("near_key.rs", source, &permissive_config()).unwrap();
+    let result = analyze("near_key.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(
         caps.contains(&Capability::Crypto),
@@ -723,7 +729,7 @@ fn foo() {
 #[test]
 fn test_aws_access_key_detected() {
     let source = include_str!("fixtures/credential_material.rs");
-    let result = analyze("aws_key.rs", source, &permissive_config()).unwrap();
+    let result = analyze("aws_key.rs", source, &permissive_config(), None).unwrap();
     let crypto_findings: Vec<_> = result
         .capabilities
         .findings
@@ -743,7 +749,7 @@ fn foo() {
     let _token = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij";
 }
 "#;
-    let result = analyze("ghp.rs", source, &permissive_config()).unwrap();
+    let result = analyze("ghp.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(
         caps.contains(&Capability::Crypto),
@@ -758,7 +764,7 @@ fn foo() {
     let _key = "sk_live_abcdefghijklmnopqrstuvwx";
 }
 "#;
-    let result = analyze("stripe.rs", source, &permissive_config()).unwrap();
+    let result = analyze("stripe.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(
         caps.contains(&Capability::Crypto),
@@ -773,7 +779,7 @@ fn foo() {
     let _val = "0xdeadbeef12";
 }
 "#;
-    let result = analyze("short_0x.rs", source, &permissive_config()).unwrap();
+    let result = analyze("short_0x.rs", source, &permissive_config(), None).unwrap();
     let crypto_findings: Vec<_> = result
         .capabilities
         .findings
@@ -794,7 +800,7 @@ fn foo() {
     let _key = "-----BEGIN PRIVATE KEY-----\ndata\n-----END PRIVATE KEY-----";
 }
 "#;
-    let pem_result = analyze("pem_regress.rs", pem_source, &permissive_config()).unwrap();
+    let pem_result = analyze("pem_regress.rs", pem_source, &permissive_config(), None).unwrap();
     assert!(
         pem_result
             .capabilities
@@ -803,7 +809,8 @@ fn foo() {
     );
 
     let import_source = "use ring::aead;\n";
-    let import_result = analyze("ring_regress.rs", import_source, &permissive_config()).unwrap();
+    let import_result =
+        analyze("ring_regress.rs", import_source, &permissive_config(), None).unwrap();
     assert!(
         import_result
             .capabilities
@@ -818,7 +825,7 @@ fn foo() {
 fn test_self_analysis_no_false_positives() {
     let source = include_str!("../../pedant-core/src/capabilities.rs");
     let syntax = syn::parse_file(source).unwrap();
-    let ir_data = ir::extract("capabilities.rs", &syntax);
+    let ir_data = ir::extract("capabilities.rs", &syntax, None);
     let profile = detect_capabilities(&ir_data, false);
 
     let crypto_findings: Vec<_> = profile

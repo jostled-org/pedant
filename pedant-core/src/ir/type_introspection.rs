@@ -17,15 +17,6 @@ pub(crate) fn classify_single_char(
     }
 }
 
-pub(crate) fn collect_pat_idents(pat: &syn::Pat) -> Vec<Box<str>> {
-    let mut out = Vec::new();
-    let _cf = visit_pat_idents(pat, &mut |name| {
-        out.push(name);
-        std::ops::ControlFlow::Continue(())
-    });
-    out
-}
-
 /// Returns the first identifier in a pattern, without allocating the full list.
 pub(crate) fn first_pat_ident(pat: &syn::Pat) -> Option<Box<str>> {
     let mut result = None;
@@ -38,7 +29,7 @@ pub(crate) fn first_pat_ident(pat: &syn::Pat) -> Option<Box<str>> {
 
 /// Visits each identifier in a pattern, calling `f` for each one.
 /// Returns early if `f` returns `Break`.
-fn visit_pat_idents(
+pub(crate) fn visit_pat_idents(
     pat: &syn::Pat,
     f: &mut impl FnMut(Box<str>) -> std::ops::ControlFlow<()>,
 ) -> std::ops::ControlFlow<()> {
@@ -274,15 +265,15 @@ pub(crate) fn first_type_name(ty: &Type) -> Option<Rc<str>> {
     }
 }
 
-pub(crate) fn collect_type_names(ty: &Type) -> Vec<Rc<str>> {
+pub(crate) fn collect_type_names_into(ty: &Type, names: &mut Vec<Rc<str>>) {
     match ty {
         Type::Path(tp) => {
-            let mut names: Vec<Rc<str>> = tp
-                .path
-                .segments
-                .iter()
-                .map(|seg| Rc::from(seg.ident.to_string()))
-                .collect();
+            names.extend(
+                tp.path
+                    .segments
+                    .iter()
+                    .map(|seg| Rc::from(seg.ident.to_string())),
+            );
             for seg in &tp.path.segments {
                 let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
                     continue;
@@ -291,29 +282,30 @@ pub(crate) fn collect_type_names(ty: &Type) -> Vec<Rc<str>> {
                     let syn::GenericArgument::Type(inner) = arg else {
                         continue;
                     };
-                    names.extend(collect_type_names(inner));
+                    collect_type_names_into(inner, names);
                 }
             }
-            names
         }
-        Type::Reference(r) => collect_type_names(&r.elem),
-        Type::Tuple(t) => t.elems.iter().flat_map(collect_type_names).collect(),
-        Type::Slice(s) => collect_type_names(&s.elem),
-        Type::Array(a) => collect_type_names(&a.elem),
-        _ => Vec::new(),
+        Type::Reference(r) => collect_type_names_into(&r.elem, names),
+        Type::Tuple(t) => {
+            for elem in &t.elems {
+                collect_type_names_into(elem, names);
+            }
+        }
+        Type::Slice(s) => collect_type_names_into(&s.elem, names),
+        Type::Array(a) => collect_type_names_into(&a.elem, names),
+        _ => {}
     }
 }
 
-pub(crate) fn collect_signature_type_names(sig: &Signature) -> Vec<Rc<str>> {
-    let mut names = Vec::new();
+pub(crate) fn collect_signature_type_names_into(sig: &Signature, names: &mut Vec<Rc<str>>) {
     for input in &sig.inputs {
         match input {
-            FnArg::Typed(pat) => names.extend(collect_type_names(&pat.ty)),
+            FnArg::Typed(pat) => collect_type_names_into(&pat.ty, names),
             FnArg::Receiver(_) => {}
         }
     }
     if let ReturnType::Type(_, ty) = &sig.output {
-        names.extend(collect_type_names(ty));
+        collect_type_names_into(ty, names);
     }
-    names
 }

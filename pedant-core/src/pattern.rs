@@ -3,9 +3,11 @@ use syn::{Attribute, ExprMethodCall, Macro, Type};
 /// Matches text against a glob-style pattern.
 /// Supports: `*` for any characters, literal matching, prefix/suffix matching.
 pub fn matches_pattern(text: &str, pattern: &str) -> bool {
+    if !pattern.contains('*') {
+        return text == pattern;
+    }
     let star_count = pattern.matches('*').count();
     match star_count {
-        0 => text == pattern,
         1 => match_single_wildcard(text, pattern),
         _ => match_multiple_wildcards(text, pattern, star_count),
     }

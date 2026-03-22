@@ -220,6 +220,36 @@ fn check_forbidden_patterns<'a>(
     }
 }
 
+/// Table entry for dyn-dispatch checks that share the pattern:
+/// "if config flag && tr.involves_dyn, emit formatted message".
+struct DynCheck {
+    context: TypeRefContext,
+    enabled: fn(&CheckConfig) -> bool,
+    make_violation: fn() -> ViolationType,
+    label: &'static str,
+}
+
+const DYN_CHECKS: &[DynCheck] = &[
+    DynCheck {
+        context: TypeRefContext::Return,
+        enabled: |c| c.check_dyn_return,
+        make_violation: || ViolationType::DynReturn,
+        label: "return type",
+    },
+    DynCheck {
+        context: TypeRefContext::Param,
+        enabled: |c| c.check_dyn_param,
+        make_violation: || ViolationType::DynParam,
+        label: "parameter",
+    },
+    DynCheck {
+        context: TypeRefContext::Field,
+        enabled: |c| c.check_dyn_field,
+        make_violation: || ViolationType::DynField,
+        label: "struct field",
+    },
+];
+
 fn check_dyn_dispatch(
     ir: &FileIr,
     config: &CheckConfig,
@@ -227,35 +257,20 @@ fn check_dyn_dispatch(
     violations: &mut Vec<Violation>,
 ) {
     for tr in &ir.type_refs {
-        match tr.context {
-            TypeRefContext::Return if config.check_dyn_return && tr.involves_dyn => {
+        let matched = DYN_CHECKS
+            .iter()
+            .find(|dc| dc.context == tr.context && (dc.enabled)(config) && tr.involves_dyn);
+        match matched {
+            Some(dc) => {
                 emit(
                     violations,
                     fp,
                     tr.span,
-                    ViolationType::DynReturn,
-                    format!("dynamic dispatch in return type: {}", tr.text),
+                    (dc.make_violation)(),
+                    format!("dynamic dispatch in {}: {}", dc.label, tr.text),
                 );
             }
-            TypeRefContext::Param if config.check_dyn_param && tr.involves_dyn => {
-                emit(
-                    violations,
-                    fp,
-                    tr.span,
-                    ViolationType::DynParam,
-                    format!("dynamic dispatch in parameter: {}", tr.text),
-                );
-            }
-            TypeRefContext::Field if config.check_dyn_field && tr.involves_dyn => {
-                emit(
-                    violations,
-                    fp,
-                    tr.span,
-                    ViolationType::DynField,
-                    format!("dynamic dispatch in struct field: {}", tr.text),
-                );
-            }
-            _ if config.check_vec_box_dyn && tr.is_vec_box_dyn => {
+            None if config.check_vec_box_dyn && tr.is_vec_box_dyn => {
                 emit(
                     violations,
                     fp,
@@ -264,7 +279,7 @@ fn check_dyn_dispatch(
                     format!("Vec of boxed trait object: {}", tr.text),
                 );
             }
-            _ => {}
+            None => {}
         }
     }
 }
@@ -425,14 +440,19 @@ fn check_naming(ir: &FileIr, config: &CheckConfig, fp: &Arc<str>, violations: &m
 
     for (fn_idx, func) in ir.functions.iter().enumerate() {
         let has_arithmetic = func.has_arithmetic;
-        let mut total = 0usize;
-        let mut offenders: Vec<&str> = Vec::new();
+        let total = ir
+            .bindings
+            .iter()
+            .filter(|b| {
+                b.containing_fn == Some(fn_idx) && !b.is_wildcard && !b.name.starts_with('_')
+            })
+            .count();
+        let mut offenders: Vec<&str> = Vec::with_capacity(total);
 
         for b in ir.bindings.iter() {
             if b.containing_fn != Some(fn_idx) || b.is_wildcard || b.name.starts_with('_') {
                 continue;
             }
-            total += 1;
             if is_generic_name(&b.name, b.loop_depth, has_arithmetic, generic_names) {
                 offenders.push(&b.name);
             }
@@ -471,7 +491,18 @@ fn check_mixed_concerns(
 
     let defined_types: BTreeSet<&str> = ir.type_defs.iter().map(|td| td.name.as_ref()).collect();
 
-    let mut all_edges: Vec<(&str, &str)> = Vec::new();
+    let type_def_edges: usize = ir.type_defs.iter().map(|td| td.edges.len()).sum();
+    let impl_edges: usize = ir.impl_blocks.iter().map(|ib| ib.edges.len()).sum();
+    let fn_edges: usize = ir
+        .functions
+        .iter()
+        .map(|f| {
+            let sig = f.signature_type_names.len();
+            f.body_type_edges.len() + sig * sig.saturating_sub(1) / 2
+        })
+        .sum();
+    let mut all_edges: Vec<(&str, &str)> =
+        Vec::with_capacity(type_def_edges + impl_edges + fn_edges);
 
     for td in &ir.type_defs {
         all_edges.extend(td.edges.iter().map(|(a, b)| (a.as_ref(), b.as_ref())));
@@ -514,10 +545,21 @@ fn find_disconnected_groups(
     defined_types: &BTreeSet<&str>,
     all_edges: &[(&str, &str)],
 ) -> Option<String> {
-    let mut adj: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    let mut degree: BTreeMap<&str, usize> = BTreeMap::new();
     for name in defined_types {
-        adj.entry(name).or_default();
+        degree.entry(name).or_insert(0);
     }
+    for &(src, dst) in all_edges {
+        if src == dst || !defined_types.contains(src) || !defined_types.contains(dst) {
+            continue;
+        }
+        *degree.entry(src).or_insert(0) += 1;
+        *degree.entry(dst).or_insert(0) += 1;
+    }
+    let mut adj: BTreeMap<&str, Vec<&str>> = degree
+        .iter()
+        .map(|(&name, &deg)| (name, Vec::with_capacity(deg)))
+        .collect();
     for &(src, dst) in all_edges {
         if src == dst || !defined_types.contains(src) || !defined_types.contains(dst) {
             continue;

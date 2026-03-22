@@ -9,6 +9,17 @@ repository = "https://github.com/jostled-org/pedant"
 readme = "../README.md"
 keywords = ["linter", "lint", "static-analysis", "ai", "code-quality"]
 
+[features]
+default = []
+semantic = [
+    "ra_ap_ide",
+    "ra_ap_hir",
+    "ra_ap_syntax",
+    "ra_ap_vfs",
+    "ra_ap_project_model",
+    "ra_ap_load-cargo",
+]
+
 [dependencies]
 syn = { version = "2", features = ["full", "visit", "parsing"] }
 toml = "1"
@@ -19,6 +30,12 @@ pedant-types = { version = "0.7.0", path = "../pedant-types" }
 thiserror = "2"
 sha2 = "0.10"
 serde_json = "1"
+ra_ap_ide = { version = "0.0.324", optional = true }
+ra_ap_hir = { version = "0.0.324", optional = true }
+ra_ap_vfs = { version = "0.0.324", optional = true }
+ra_ap_project_model = { version = "0.0.324", optional = true }
+ra_ap_syntax = { version = "0.0.324", optional = true }
+ra_ap_load-cargo = { version = "0.0.324", optional = true }
 
 [dev-dependencies]
 serde_json = "1"

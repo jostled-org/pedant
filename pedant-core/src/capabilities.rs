@@ -296,7 +296,7 @@ pub fn detect_capabilities(ir: &FileIr, build_script: bool) -> CapabilityProfile
     }
 }
 
-fn record(
+fn emit(
     findings: &mut Vec<CapabilityFinding>,
     capability: Capability,
     file: &Arc<str>,
@@ -317,7 +317,7 @@ fn record(
     });
 }
 
-/// Shared helper: iterate IR facts, map each to zero or more capability findings, and record them.
+/// Shared helper: iterate IR facts, map each to zero or more capability findings, and emit them.
 fn detect_from_facts<'a, T: 'a>(
     facts: &'a [T],
     file_path: &Arc<str>,
@@ -327,7 +327,7 @@ fn detect_from_facts<'a, T: 'a>(
 ) {
     for fact in facts {
         if let Some((capability, line, column, evidence)) = mapper(fact) {
-            record(
+            emit(
                 findings,
                 capability,
                 file_path,
@@ -434,6 +434,23 @@ const KEY_MATERIAL_CHECKS: &[fn(&str) -> bool] = &[
     check_string_for_credential_prefix,
 ];
 
+/// String literal detection entry: checker function and capability.
+struct StringLiteralCheck {
+    checker: fn(&str) -> bool,
+    capability: Capability,
+}
+
+const STRING_LITERAL_CHECKS: &[StringLiteralCheck] = &[
+    StringLiteralCheck {
+        checker: check_string_for_endpoint,
+        capability: Capability::Network,
+    },
+    StringLiteralCheck {
+        checker: check_string_for_pem,
+        capability: Capability::Crypto,
+    },
+];
+
 fn detect_string_literals(
     ir: &FileIr,
     file_path: &Arc<str>,
@@ -444,31 +461,22 @@ fn detect_string_literals(
         let line = lit.span.line;
         let column = lit.span.column + 1;
 
-        if check_string_for_endpoint(&lit.value) {
-            record(
-                findings,
-                Capability::Network,
-                file_path,
-                line,
-                column,
-                &lit.value,
-                build_script,
-            );
-        }
-        if check_string_for_pem(&lit.value) {
-            record(
-                findings,
-                Capability::Crypto,
-                file_path,
-                line,
-                column,
-                &lit.value,
-                build_script,
-            );
+        for check in STRING_LITERAL_CHECKS {
+            if (check.checker)(&lit.value) {
+                emit(
+                    findings,
+                    check.capability,
+                    file_path,
+                    line,
+                    column,
+                    &lit.value,
+                    build_script,
+                );
+            }
         }
         if KEY_MATERIAL_CHECKS.iter().any(|check| check(&lit.value)) {
             let evidence = truncate_evidence(&lit.value);
-            record(
+            emit(
                 findings,
                 Capability::Crypto,
                 file_path,

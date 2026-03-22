@@ -3,16 +3,17 @@ use std::fmt::Write;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use syn::spanned::Spanned;
 use syn::visit::Visit;
 use syn::{Expr, ExprIf, FnArg, ReturnType, Signature, Type};
 
 use super::type_introspection::{
-    collect_pat_idents, collect_signature_type_names, collect_type_names, contains_refcounted_type,
+    collect_signature_type_names_into, collect_type_names_into, contains_refcounted_type,
     first_pat_ident, first_type_name, get_type_span_start, involves_dyn_dispatch,
     is_default_hasher, is_refcounted_type, is_string_type, is_vec_box_dyn, iter_expr_ident,
-    receiver_ident,
+    receiver_ident, visit_pat_idents,
 };
-use crate::graph::edges_from_names;
+use crate::graph::{extend_edges_from_names, extend_pairwise_edges};
 use crate::pattern::{
     extract_attribute_text, extract_macro_text, extract_method_call_text, extract_type_text,
 };
@@ -25,20 +26,43 @@ use super::facts::{
 };
 
 /// Extract all facts from a parsed source file into a `FileIr`.
-pub fn extract(file_path: &str, syntax: &syn::File) -> FileIr {
+///
+/// When `semantic` is `Some`, enriches facts with resolved type information
+/// after the syntactic extraction pass. When `None`, behavior is identical
+/// to pure syntactic analysis.
+pub fn extract(
+    file_path: &str,
+    syntax: &syn::File,
+    semantic: Option<&super::semantic::SemanticContext>,
+) -> FileIr {
     let mut extractor = IrExtractor::new(file_path);
     extractor.visit_file(syntax);
-    extractor.finalize()
+    #[cfg(feature = "semantic")]
+    {
+        let mut ir = extractor.finalize();
+        if let Some(ctx) = semantic {
+            enrich_ir(&mut ir, ctx);
+        }
+        ir
+    }
+    #[cfg(not(feature = "semantic"))]
+    {
+        _ = semantic;
+        extractor.finalize()
+    }
 }
 
 /// Check if an attribute is `#[cfg(test)]` without allocating.
 fn is_cfg_test_attr(attr: &syn::Attribute) -> bool {
     attr.path().is_ident("cfg")
-        && attr
-            .meta
-            .require_list()
-            .ok()
-            .is_some_and(|list| list.tokens.to_string() == "test")
+        && attr.meta.require_list().ok().is_some_and(|list| {
+            let mut iter = list.tokens.clone().into_iter();
+            let first = iter.next();
+            matches!(
+                (&first, iter.next()),
+                (Some(proc_macro2::TokenTree::Ident(ident)), None) if ident == "test"
+            )
+        })
 }
 
 /// Saved per-function state for nested function handling.
@@ -201,7 +225,9 @@ impl IrExtractor {
             ReturnType::Default => None,
         };
 
-        let signature_type_names: Box<[Rc<str>]> = collect_signature_type_names(sig).into();
+        let mut sig_type_names = Vec::new();
+        collect_signature_type_names_into(sig, &mut sig_type_names);
+        let signature_type_names: Box<[Rc<str>]> = sig_type_names.into();
         let item_depth = self.item_depth;
 
         let index = self.functions.len();
@@ -242,6 +268,52 @@ impl IrExtractor {
         }
     }
 
+    /// Visit binding identifiers with their spans and optional type annotation spans.
+    fn for_each_pat_ident_span(
+        pat: &syn::Pat,
+        type_span: Option<IrSpan>,
+        f: &mut impl FnMut(Box<str>, IrSpan, Option<IrSpan>),
+    ) {
+        match pat {
+            syn::Pat::Ident(pi) => {
+                let name: Box<str> = pi.ident.to_string().into_boxed_str();
+                let span = Self::span_from(pi.ident.span().start());
+                f(name, span, type_span);
+            }
+            syn::Pat::Type(pt) => {
+                let ty_span = Self::span_from(get_type_span_start(&pt.ty));
+                Self::for_each_pat_ident_span(&pt.pat, Some(ty_span), f);
+            }
+            syn::Pat::Tuple(pt) => {
+                for inner_pat in &pt.elems {
+                    Self::for_each_pat_ident_span(inner_pat, None, f);
+                }
+            }
+            syn::Pat::TupleStruct(pts) => {
+                for field_pat in &pts.elems {
+                    Self::for_each_pat_ident_span(field_pat, None, f);
+                }
+            }
+            syn::Pat::Struct(ps) => {
+                for field in &ps.fields {
+                    Self::for_each_pat_ident_span(&field.pat, None, f);
+                }
+            }
+            syn::Pat::Slice(psl) => {
+                for slice_pat in &psl.elems {
+                    Self::for_each_pat_ident_span(slice_pat, None, f);
+                }
+            }
+            syn::Pat::Or(po) => {
+                for case in &po.cases {
+                    Self::for_each_pat_ident_span(case, None, f);
+                }
+            }
+            syn::Pat::Reference(pr) => Self::for_each_pat_ident_span(&pr.pat, type_span, f),
+            _ => {}
+        }
+    }
+
     fn typed_ident_from_pat(pat: &syn::Pat) -> Option<(&syn::Ident, &Type)> {
         let syn::Pat::Type(pt) = pat else { return None };
         let syn::Pat::Ident(pi) = pt.pat.as_ref() else {
@@ -273,12 +345,14 @@ impl IrExtractor {
         let Some(ident) = iter_expr_ident(iter_expr) else {
             return;
         };
-        if !self.refcounted_containers.iter().any(|s| ident == &**s) {
+        let ident_str: Box<str> = ident.to_string().into_boxed_str();
+        if !self.refcounted_containers.contains(&ident_str) {
             return;
         }
-        for name in collect_pat_idents(pat) {
+        let _cf = visit_pat_idents(pat, &mut |name| {
             self.refcounted_bindings.insert(name);
-        }
+            std::ops::ControlFlow::Continue(())
+        });
     }
 
     fn is_write_macro_to_string(&self, expr: &Expr) -> bool {
@@ -346,8 +420,10 @@ impl IrExtractor {
     }
 
     fn fn_body_type_edges(&self) -> Box<[(Rc<str>, Rc<str>)]> {
-        let names: Box<[Rc<str>]> = self.fn_body_types.iter().cloned().collect();
-        crate::graph::pairwise_edges(&names).into_boxed_slice()
+        let names: Vec<Rc<str>> = self.fn_body_types.iter().cloned().collect();
+        let mut edges = Vec::new();
+        extend_pairwise_edges(&names, &mut edges);
+        edges.into_boxed_slice()
     }
 
     fn count_else_chain(expr: &ExprIf) -> usize {
@@ -419,9 +495,10 @@ impl IrExtractor {
         for input in &sig.inputs {
             match input {
                 FnArg::Typed(pt) => {
-                    for name in collect_pat_idents(&pt.pat) {
-                        self.push_binding_fact(name, None, false, false, false);
-                    }
+                    let _cf = visit_pat_idents(&pt.pat, &mut |name| {
+                        self.push_binding_fact(name, None, false, false, false, None);
+                        std::ops::ControlFlow::Continue(())
+                    });
                 }
                 FnArg::Receiver(_) => {}
             }
@@ -435,6 +512,7 @@ impl IrExtractor {
         is_wildcard: bool,
         has_init: bool,
         init_is_write_macro: bool,
+        type_annotation_span: Option<IrSpan>,
     ) {
         self.bindings.push(BindingFact {
             name,
@@ -445,6 +523,8 @@ impl IrExtractor {
             has_init,
             init_is_write_macro,
             containing_fn: self.current_fn,
+            type_annotation_span,
+            resolved_type: None,
         });
     }
 
@@ -458,6 +538,7 @@ impl IrExtractor {
             is_default_hasher: is_default_hasher(ty),
             containing_fn,
             context,
+            resolved_text: None,
         });
     }
 
@@ -695,9 +776,10 @@ impl<'ast> Visit<'ast> for IrExtractor {
         let span = Self::span_from(node.for_token.span.start());
         self.visit_loop_body(ControlFlowKind::ForLoop, span, |s| {
             // Record pat names for naming check
-            for name in collect_pat_idents(&node.pat) {
-                s.push_binding_fact(name, None, false, false, false);
-            }
+            let _cf = visit_pat_idents(&node.pat, &mut |name| {
+                s.push_binding_fact(name, None, false, false, false, None);
+                std::ops::ControlFlow::Continue(())
+            });
             s.record_refcounted_loop_bindings(&node.pat, &node.expr);
             syn::visit::visit_expr_for_loop(s, node);
         });
@@ -772,20 +854,20 @@ impl<'ast> Visit<'ast> for IrExtractor {
             .and_then(|(_, path, _)| path.segments.last())
             .map(|seg| seg.ident.to_string().into_boxed_str());
 
-        let mut edges: Vec<(Rc<str>, Rc<str>)> = Vec::new();
+        let mut edges: Vec<(Rc<str>, Rc<str>)> = Vec::with_capacity(node.items.len());
 
         if let Some(ref tn) = trait_name {
             edges.push((Rc::clone(&self_name), Rc::from(tn.as_ref())));
         }
 
+        let mut sig_names = Vec::new();
         for item in &node.items {
             let syn::ImplItem::Fn(method) = item else {
                 continue;
             };
-            edges.extend(edges_from_names(
-                &self_name,
-                &collect_signature_type_names(&method.sig),
-            ));
+            sig_names.clear();
+            collect_signature_type_names_into(&method.sig, &mut sig_names);
+            extend_edges_from_names(&self_name, &sig_names, &mut edges);
         }
 
         self.impl_blocks.push(ImplFact {
@@ -805,10 +887,14 @@ impl<'ast> Visit<'ast> for IrExtractor {
             &node.ident,
             TypeDefKind::Struct,
             |name| {
-                node.fields
-                    .iter()
-                    .flat_map(|field| edges_from_names(name, &collect_type_names(&field.ty)))
-                    .collect()
+                let mut edges = Vec::new();
+                let mut type_names = Vec::new();
+                for field in &node.fields {
+                    type_names.clear();
+                    collect_type_names_into(&field.ty, &mut type_names);
+                    extend_edges_from_names(name, &type_names, &mut edges);
+                }
+                edges.into_boxed_slice()
             },
             |s| syn::visit::visit_item_struct(s, node),
         );
@@ -819,11 +905,16 @@ impl<'ast> Visit<'ast> for IrExtractor {
             &node.ident,
             TypeDefKind::Enum,
             |name| {
-                node.variants
-                    .iter()
-                    .flat_map(|variant| &variant.fields)
-                    .flat_map(|field| edges_from_names(name, &collect_type_names(&field.ty)))
-                    .collect()
+                let mut edges = Vec::new();
+                let mut type_names = Vec::new();
+                for variant in &node.variants {
+                    for field in &variant.fields {
+                        type_names.clear();
+                        collect_type_names_into(&field.ty, &mut type_names);
+                        extend_edges_from_names(name, &type_names, &mut edges);
+                    }
+                }
+                edges.into_boxed_slice()
             },
             |s| syn::visit::visit_item_enum(s, node),
         );
@@ -834,16 +925,17 @@ impl<'ast> Visit<'ast> for IrExtractor {
             &node.ident,
             TypeDefKind::Trait,
             |name| {
-                node.items
-                    .iter()
-                    .filter_map(|item| match item {
-                        syn::TraitItem::Fn(method) => Some(method),
-                        _ => None,
-                    })
-                    .flat_map(|method| {
-                        edges_from_names(name, &collect_signature_type_names(&method.sig))
-                    })
-                    .collect()
+                let mut edges = Vec::new();
+                let mut sig_names = Vec::new();
+                for item in &node.items {
+                    let syn::TraitItem::Fn(method) = item else {
+                        continue;
+                    };
+                    sig_names.clear();
+                    collect_signature_type_names_into(&method.sig, &mut sig_names);
+                    extend_edges_from_names(name, &sig_names, &mut edges);
+                }
+                edges.into_boxed_slice()
             },
             |s| syn::visit::visit_item_trait(s, node),
         );
@@ -895,15 +987,16 @@ impl<'ast> Visit<'ast> for IrExtractor {
                 true,
                 node.init.is_some(),
                 init_is_write,
+                None,
             );
         }
 
         // Extract named bindings for naming check
-        for name in collect_pat_idents(&node.pat) {
+        Self::for_each_pat_ident_span(&node.pat, None, &mut |name, span, type_ann_span| {
             if !name.starts_with('_') {
-                self.push_binding_fact(name, None, false, false, false);
+                self.push_binding_fact(name, Some(span), false, false, false, type_ann_span);
             }
-        }
+        });
 
         syn::visit::visit_local(self, node);
     }
@@ -956,6 +1049,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
     fn visit_expr_method_call(&mut self, node: &'ast syn::ExprMethodCall) {
         let text = extract_method_call_text(node);
         let span = Self::span_from(node.dot_token.span.start());
+        let receiver_span = Self::span_from(node.receiver.span().start());
         let method_name: Box<str> = node.method.to_string().into_boxed_str();
         let recv = receiver_ident(&node.receiver).map(|i| i.to_string().into_boxed_str());
 
@@ -964,8 +1058,11 @@ impl<'ast> Visit<'ast> for IrExtractor {
             text,
             span,
             receiver_ident: recv,
+            receiver_span,
             loop_depth: self.loop_depth,
             containing_fn: self.current_fn,
+            receiver_type: None,
+            is_copy_receiver: false,
         });
 
         syn::visit::visit_expr_method_call(self, node);
@@ -1015,5 +1112,84 @@ impl<'ast> Visit<'ast> for IrExtractor {
             is_cfg_test: has_cfg_test,
         });
         syn::visit::visit_item_mod(self, node);
+    }
+}
+
+/// Enrich IR facts with resolved type information from semantic analysis.
+#[cfg(feature = "semantic")]
+fn enrich_ir(ir: &mut FileIr, ctx: &super::semantic::SemanticContext) {
+    let file_path: &str = &ir.file_path;
+    enrich_bindings(&mut ir.bindings, file_path, ctx);
+    enrich_type_refs(&mut ir.type_refs, file_path, ctx);
+    enrich_method_calls(&mut ir.method_calls, &ir.bindings, ctx);
+}
+
+/// Resolve binding types through aliases and update `is_refcounted`.
+#[cfg(feature = "semantic")]
+fn enrich_bindings(
+    bindings: &mut [BindingFact],
+    file_path: &str,
+    ctx: &super::semantic::SemanticContext,
+) {
+    for binding in bindings.iter_mut() {
+        let Some(type_span) = binding.type_annotation_span else {
+            continue;
+        };
+        let Some(resolved) = ctx.resolve_type(file_path, type_span.line, type_span.column) else {
+            continue;
+        };
+        if resolved.contains("Arc") || resolved.contains("Rc<") {
+            binding.is_refcounted = true;
+        }
+        binding.resolved_type = Some(resolved);
+    }
+}
+
+/// Resolve type references through aliases and update classification flags.
+#[cfg(feature = "semantic")]
+fn enrich_type_refs(
+    type_refs: &mut [TypeRefFact],
+    file_path: &str,
+    ctx: &super::semantic::SemanticContext,
+) {
+    for tr in type_refs.iter_mut() {
+        let Some(resolved) = ctx.resolve_type(file_path, tr.span.line, tr.span.column) else {
+            continue;
+        };
+        if resolved.contains("dyn ") {
+            tr.involves_dyn = true;
+        }
+        if resolved.contains("HashMap") && !resolved.contains("BuildHasher") {
+            tr.is_default_hasher = true;
+        }
+        if resolved.contains("Vec") && resolved.contains("Box") && resolved.contains("dyn ") {
+            tr.is_vec_box_dyn = true;
+        }
+        tr.resolved_text = Some(resolved);
+    }
+}
+
+/// Resolve method call receiver types using enriched binding data.
+///
+/// Looks up the receiver identifier's resolved type from the binding facts
+/// (already enriched by `enrich_bindings`). This works because `resolve_type`
+/// resolves type annotations but not expression-level references.
+#[cfg(feature = "semantic")]
+fn enrich_method_calls(
+    method_calls: &mut [MethodCallFact],
+    bindings: &[BindingFact],
+    ctx: &super::semantic::SemanticContext,
+) {
+    for mc in method_calls.iter_mut() {
+        let Some(recv_ident) = mc.receiver_ident.as_deref() else {
+            continue;
+        };
+        let resolved = bindings
+            .iter()
+            .filter(|b| &*b.name == recv_ident && b.containing_fn == mc.containing_fn)
+            .find_map(|b| b.resolved_type.as_deref());
+        let Some(resolved) = resolved else { continue };
+        mc.is_copy_receiver = super::semantic::SemanticContext::is_copy(resolved);
+        mc.receiver_type = Some(Box::from(resolved));
     }
 }

@@ -157,6 +157,10 @@ pub struct BindingFact {
     pub init_is_write_macro: bool,
     /// Index into `FileIr::functions` of the enclosing function, if any.
     pub containing_fn: Option<usize>,
+    /// Source location of the type annotation, if present.
+    pub type_annotation_span: Option<IrSpan>,
+    /// Canonical type name after alias resolution (semantic analysis only).
+    pub resolved_type: Option<Box<str>>,
 }
 
 /// A type reference encountered in the AST.
@@ -176,6 +180,8 @@ pub struct TypeRefFact {
     pub containing_fn: Option<usize>,
     /// Where this type reference appears (return, param, field, body).
     pub context: TypeRefContext,
+    /// Resolved type text after alias resolution (semantic analysis only).
+    pub resolved_text: Option<Box<str>>,
 }
 
 /// Position where a type reference appears.
@@ -248,10 +254,16 @@ pub struct MethodCallFact {
     pub span: IrSpan,
     /// Identifier of the receiver, if a simple ident.
     pub receiver_ident: Option<Box<str>>,
+    /// Source location of the receiver expression.
+    pub receiver_span: IrSpan,
     /// Number of enclosing loops.
     pub loop_depth: usize,
     /// Index into `FileIr::functions` of the enclosing function, if any.
     pub containing_fn: Option<usize>,
+    /// Resolved type of the method receiver (semantic analysis only).
+    pub receiver_type: Option<Box<str>>,
+    /// Whether the receiver implements `Copy` (semantic analysis only).
+    pub is_copy_receiver: bool,
 }
 
 /// A macro invocation.

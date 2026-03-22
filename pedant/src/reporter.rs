@@ -48,9 +48,17 @@ impl Reporter {
     }
 
     fn report_json<W: Write>(&self, violations: &[Violation], writer: &mut W) -> io::Result<()> {
-        let json_violations: Vec<JsonViolation<'_>> =
-            violations.iter().map(JsonViolation::from).collect();
-        serde_json::to_writer_pretty(&mut *writer, &json_violations).map_err(io::Error::other)?;
+        use serde::Serializer;
+        use serde::ser::SerializeSeq;
+        let serializer = &mut serde_json::Serializer::pretty(&mut *writer);
+        let mut seq = serializer
+            .serialize_seq(Some(violations.len()))
+            .map_err(io::Error::other)?;
+        for v in violations {
+            seq.serialize_element(&JsonViolation::from(v))
+                .map_err(io::Error::other)?;
+        }
+        serde::ser::SerializeSeq::end(seq).map_err(io::Error::other)?;
         writeln!(writer)?;
         Ok(())
     }

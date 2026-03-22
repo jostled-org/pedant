@@ -20,7 +20,7 @@ fn permissive_config() -> CheckConfig {
 #[test]
 fn test_nested_if_detection() {
     let source = include_str!("fixtures/nested_if.rs");
-    let violations = analyze("nested_if.rs", source, &permissive_config())
+    let violations = analyze("nested_if.rs", source, &permissive_config(), None)
         .unwrap()
         .violations;
 
@@ -32,7 +32,7 @@ fn test_nested_if_detection() {
 #[test]
 fn test_if_in_match_detection() {
     let source = include_str!("fixtures/if_in_match.rs");
-    let violations = analyze("if_in_match.rs", source, &permissive_config())
+    let violations = analyze("if_in_match.rs", source, &permissive_config(), None)
         .unwrap()
         .violations;
 
@@ -44,7 +44,7 @@ fn test_if_in_match_detection() {
 #[test]
 fn test_nested_match_detection() {
     let source = include_str!("fixtures/nested_match.rs");
-    let violations = analyze("nested_match.rs", source, &permissive_config())
+    let violations = analyze("nested_match.rs", source, &permissive_config(), None)
         .unwrap()
         .violations;
 
@@ -56,7 +56,7 @@ fn test_nested_match_detection() {
 #[test]
 fn test_deep_nesting_detection() {
     let source = include_str!("fixtures/deep_nesting.rs");
-    let violations = analyze("deep_nesting.rs", source, &default_config())
+    let violations = analyze("deep_nesting.rs", source, &default_config(), None)
         .unwrap()
         .violations;
 
@@ -71,7 +71,7 @@ fn test_deep_nesting_detection() {
 #[test]
 fn test_else_chain_detection() {
     let source = include_str!("fixtures/else_chain.rs");
-    let violations = analyze("else_chain.rs", source, &permissive_config())
+    let violations = analyze("else_chain.rs", source, &permissive_config(), None)
         .unwrap()
         .violations;
 
@@ -86,7 +86,7 @@ fn test_else_chain_detection() {
 #[test]
 fn test_clean_code_no_violations() {
     let source = include_str!("fixtures/clean.rs");
-    let violations = analyze("clean.rs", source, &permissive_config())
+    let violations = analyze("clean.rs", source, &permissive_config(), None)
         .unwrap()
         .violations;
 
@@ -100,7 +100,9 @@ fn test_disabled_checks() {
         check_nested_if: false,
         ..permissive_config()
     };
-    let violations = analyze("nested_if.rs", source, &config).unwrap().violations;
+    let violations = analyze("nested_if.rs", source, &config, None)
+        .unwrap()
+        .violations;
 
     assert!(
         violations
@@ -112,7 +114,7 @@ fn test_disabled_checks() {
 #[test]
 fn test_custom_max_depth() {
     let source = include_str!("fixtures/deep_nesting.rs");
-    let violations = analyze("deep_nesting.rs", source, &permissive_config())
+    let violations = analyze("deep_nesting.rs", source, &permissive_config(), None)
         .unwrap()
         .violations;
 
@@ -138,7 +140,7 @@ fn test_forbidden_attribute_detection() {
         },
         ..permissive_config()
     };
-    let violations = analyze("forbidden_attr.rs", source, &config)
+    let violations = analyze("forbidden_attr.rs", source, &config, None)
         .unwrap()
         .violations;
 
@@ -160,7 +162,7 @@ fn test_forbidden_attribute_disabled() {
         },
         ..permissive_config()
     };
-    let violations = analyze("forbidden_attr.rs", source, &config)
+    let violations = analyze("forbidden_attr.rs", source, &config, None)
         .unwrap()
         .violations;
 
@@ -186,7 +188,7 @@ fn test_forbidden_type_detection() {
         },
         ..permissive_config()
     };
-    let violations = analyze("forbidden_types.rs", source, &config)
+    let violations = analyze("forbidden_types.rs", source, &config, None)
         .unwrap()
         .violations;
 
@@ -207,7 +209,7 @@ fn test_forbidden_type_disabled() {
         },
         ..permissive_config()
     };
-    let violations = analyze("forbidden_types.rs", source, &config)
+    let violations = analyze("forbidden_types.rs", source, &config, None)
         .unwrap()
         .violations;
 
@@ -233,7 +235,7 @@ fn test_forbidden_call_detection() {
         },
         ..permissive_config()
     };
-    let violations = analyze("forbidden_calls.rs", source, &config)
+    let violations = analyze("forbidden_calls.rs", source, &config, None)
         .unwrap()
         .violations;
 
@@ -261,7 +263,7 @@ fn test_forbidden_macro_detection() {
         },
         ..permissive_config()
     };
-    let violations = analyze("forbidden_macros.rs", source, &config)
+    let violations = analyze("forbidden_macros.rs", source, &config, None)
         .unwrap()
         .violations;
 
@@ -320,7 +322,7 @@ fn test_forbidden_else() {
         forbid_else: true,
         ..permissive_config()
     };
-    let violations = analyze("forbidden_keywords.rs", source, &config)
+    let violations = analyze("forbidden_keywords.rs", source, &config, None)
         .unwrap()
         .violations;
 
@@ -338,7 +340,7 @@ fn test_forbidden_unsafe() {
         forbid_unsafe: true,
         ..permissive_config()
     };
-    let violations = analyze("forbidden_keywords.rs", source, &config)
+    let violations = analyze("forbidden_keywords.rs", source, &config, None)
         .unwrap()
         .violations;
 
@@ -356,7 +358,7 @@ fn test_dyn_return_detection() {
         check_dyn_return: true,
         ..permissive_config()
     };
-    let violations = analyze("dyn_return.rs", source, &config)
+    let violations = analyze("dyn_return.rs", source, &config, None)
         .unwrap()
         .violations;
 
@@ -370,7 +372,7 @@ fn test_dyn_return_detection() {
 #[test]
 fn test_dyn_return_disabled() {
     let source = include_str!("fixtures/dyn_return.rs");
-    let violations = analyze("dyn_return.rs", source, &permissive_config())
+    let violations = analyze("dyn_return.rs", source, &permissive_config(), None)
         .unwrap()
         .violations;
 
@@ -388,7 +390,9 @@ fn test_dyn_param_detection() {
         check_dyn_param: true,
         ..permissive_config()
     };
-    let violations = analyze("dyn_param.rs", source, &config).unwrap().violations;
+    let violations = analyze("dyn_param.rs", source, &config, None)
+        .unwrap()
+        .violations;
 
     let dyn_violations: Vec<_> = violations
         .iter()
@@ -400,7 +404,7 @@ fn test_dyn_param_detection() {
 #[test]
 fn test_dyn_param_disabled() {
     let source = include_str!("fixtures/dyn_param.rs");
-    let violations = analyze("dyn_param.rs", source, &permissive_config())
+    let violations = analyze("dyn_param.rs", source, &permissive_config(), None)
         .unwrap()
         .violations;
 
@@ -418,7 +422,7 @@ fn test_vec_box_dyn_detection() {
         check_vec_box_dyn: true,
         ..permissive_config()
     };
-    let violations = analyze("vec_box_dyn.rs", source, &config)
+    let violations = analyze("vec_box_dyn.rs", source, &config, None)
         .unwrap()
         .violations;
 
@@ -436,7 +440,9 @@ fn test_dyn_field_detection() {
         check_dyn_field: true,
         ..permissive_config()
     };
-    let violations = analyze("dyn_field.rs", source, &config).unwrap().violations;
+    let violations = analyze("dyn_field.rs", source, &config, None)
+        .unwrap()
+        .violations;
 
     let field_violations: Vec<_> = violations
         .iter()
@@ -448,7 +454,7 @@ fn test_dyn_field_detection() {
 #[test]
 fn test_dyn_field_disabled() {
     let source = include_str!("fixtures/dyn_field.rs");
-    let violations = analyze("dyn_field.rs", source, &permissive_config())
+    let violations = analyze("dyn_field.rs", source, &permissive_config(), None)
         .unwrap()
         .violations;
 
@@ -466,7 +472,7 @@ fn test_clone_in_loop_detection() {
         check_clone_in_loop: true,
         ..permissive_config()
     };
-    let violations = analyze("clone_in_loop.rs", source, &config)
+    let violations = analyze("clone_in_loop.rs", source, &config, None)
         .unwrap()
         .violations;
 
@@ -480,7 +486,7 @@ fn test_clone_in_loop_detection() {
 #[test]
 fn test_clone_in_loop_disabled() {
     let source = include_str!("fixtures/clone_in_loop.rs");
-    let violations = analyze("clone_in_loop.rs", source, &permissive_config())
+    let violations = analyze("clone_in_loop.rs", source, &permissive_config(), None)
         .unwrap()
         .violations;
 
@@ -498,7 +504,7 @@ fn test_default_hasher_detection() {
         check_default_hasher: true,
         ..permissive_config()
     };
-    let violations = analyze("default_hasher.rs", source, &config)
+    let violations = analyze("default_hasher.rs", source, &config, None)
         .unwrap()
         .violations;
 
@@ -512,7 +518,7 @@ fn test_default_hasher_detection() {
 #[test]
 fn test_default_hasher_disabled() {
     let source = include_str!("fixtures/default_hasher.rs");
-    let violations = analyze("default_hasher.rs", source, &permissive_config())
+    let violations = analyze("default_hasher.rs", source, &permissive_config(), None)
         .unwrap()
         .violations;
 
@@ -530,7 +536,7 @@ fn test_mixed_concerns_detection() {
         check_mixed_concerns: true,
         ..permissive_config()
     };
-    let violations = analyze("mixed_concerns.rs", source, &config)
+    let violations = analyze("mixed_concerns.rs", source, &config, None)
         .unwrap()
         .violations;
 
@@ -553,7 +559,7 @@ fn test_mixed_concerns_clean() {
         check_mixed_concerns: true,
         ..permissive_config()
     };
-    let violations = analyze("mixed_concerns_clean.rs", source, &config)
+    let violations = analyze("mixed_concerns_clean.rs", source, &config, None)
         .unwrap()
         .violations;
 
@@ -571,7 +577,7 @@ fn test_mixed_concerns_body_coupling() {
         check_mixed_concerns: true,
         ..permissive_config()
     };
-    let violations = analyze("mixed_concerns_body.rs", source, &config)
+    let violations = analyze("mixed_concerns_body.rs", source, &config, None)
         .unwrap()
         .violations;
 
@@ -585,7 +591,7 @@ fn test_mixed_concerns_body_coupling() {
 #[test]
 fn test_mixed_concerns_disabled() {
     let source = include_str!("fixtures/mixed_concerns.rs");
-    let violations = analyze("mixed_concerns.rs", source, &permissive_config())
+    let violations = analyze("mixed_concerns.rs", source, &permissive_config(), None)
         .unwrap()
         .violations;
 
@@ -603,7 +609,7 @@ fn test_inline_tests_detection() {
         check_inline_tests: true,
         ..permissive_config()
     };
-    let violations = analyze("inline_tests.rs", source, &config)
+    let violations = analyze("inline_tests.rs", source, &config, None)
         .unwrap()
         .violations;
 
@@ -618,7 +624,7 @@ fn test_inline_tests_detection() {
 #[test]
 fn test_inline_tests_disabled() {
     let source = include_str!("fixtures/inline_tests.rs");
-    let violations = analyze("inline_tests.rs", source, &permissive_config())
+    let violations = analyze("inline_tests.rs", source, &permissive_config(), None)
         .unwrap()
         .violations;
 
@@ -636,7 +642,7 @@ fn test_let_underscore_result_detection() {
         check_let_underscore_result: true,
         ..permissive_config()
     };
-    let violations = analyze("let_underscore_result.rs", source, &config)
+    let violations = analyze("let_underscore_result.rs", source, &config, None)
         .unwrap()
         .violations;
 
@@ -658,9 +664,14 @@ fn test_let_underscore_result_detection() {
 #[test]
 fn test_let_underscore_result_disabled() {
     let source = include_str!("fixtures/let_underscore_result.rs");
-    let violations = analyze("let_underscore_result.rs", source, &permissive_config())
-        .unwrap()
-        .violations;
+    let violations = analyze(
+        "let_underscore_result.rs",
+        source,
+        &permissive_config(),
+        None,
+    )
+    .unwrap()
+    .violations;
 
     assert!(
         violations
@@ -681,7 +692,9 @@ fn no_init() {
         check_let_underscore_result: true,
         ..permissive_config()
     };
-    let violations = analyze("no_init.rs", source, &config).unwrap().violations;
+    let violations = analyze("no_init.rs", source, &config, None)
+        .unwrap()
+        .violations;
 
     assert!(
         violations
@@ -697,7 +710,7 @@ fn test_let_underscore_result_write_to_string_suppressed() {
         check_let_underscore_result: true,
         ..permissive_config()
     };
-    let violations = analyze("let_underscore_result_suppressed.rs", source, &config)
+    let violations = analyze("let_underscore_result_suppressed.rs", source, &config, None)
         .unwrap()
         .violations;
 
@@ -726,7 +739,7 @@ fn write_to_unknown() {
         check_let_underscore_result: true,
         ..permissive_config()
     };
-    let violations = analyze("non_string.rs", source, &config)
+    let violations = analyze("non_string.rs", source, &config, None)
         .unwrap()
         .violations;
 
@@ -751,7 +764,9 @@ fn write_to_untyped() {
         check_let_underscore_result: true,
         ..permissive_config()
     };
-    let violations = analyze("untyped.rs", source, &config).unwrap().violations;
+    let violations = analyze("untyped.rs", source, &config, None)
+        .unwrap()
+        .violations;
 
     let lur_violations: Vec<_> = violations
         .iter()
@@ -773,7 +788,7 @@ fn naming_config() -> CheckConfig {
 #[test]
 fn test_generic_naming_detection() {
     let source = include_str!("fixtures/generic_naming.rs");
-    let violations = analyze("generic_naming.rs", source, &naming_config())
+    let violations = analyze("generic_naming.rs", source, &naming_config(), None)
         .unwrap()
         .violations;
 
@@ -788,7 +803,7 @@ fn test_generic_naming_detection() {
 #[test]
 fn test_generic_naming_disabled() {
     let source = include_str!("fixtures/generic_naming.rs");
-    let violations = analyze("generic_naming.rs", source, &permissive_config())
+    let violations = analyze("generic_naming.rs", source, &permissive_config(), None)
         .unwrap()
         .violations;
 
@@ -811,7 +826,7 @@ fn test_generic_naming_custom_config() {
         },
         ..permissive_config()
     };
-    let violations = analyze("generic_naming.rs", source, &config)
+    let violations = analyze("generic_naming.rs", source, &config, None)
         .unwrap()
         .violations;
 

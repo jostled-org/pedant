@@ -27,7 +27,7 @@ fn nested() {
     }
 }
 "#;
-    let result = analyze("test.rs", source, &permissive_config()).unwrap();
+    let result = analyze("test.rs", source, &permissive_config(), None).unwrap();
 
     assert!(!result.violations.is_empty());
 }
@@ -64,7 +64,7 @@ fn greet(name: &str) -> String {
 }
 "#;
     let syntax = syn::parse_file(source).unwrap();
-    let file_ir = ir::extract("test.rs", &syntax);
+    let file_ir = ir::extract("test.rs", &syntax, None);
 
     assert!(!file_ir.functions.is_empty());
     assert!(!file_ir.use_paths.is_empty());
@@ -81,7 +81,7 @@ fn connect() {
 }
 "#;
     let syntax = syn::parse_file(source).unwrap();
-    let file_ir = ir::extract("test.rs", &syntax);
+    let file_ir = ir::extract("test.rs", &syntax, None);
     let profile = detect_capabilities(&file_ir, false);
     let caps = profile.capabilities();
 
@@ -97,7 +97,7 @@ fn dyn_ret() -> Box<dyn std::error::Error> {
 }
 "#;
     let syntax = syn::parse_file(source).unwrap();
-    let file_ir = ir::extract("test.rs", &syntax);
+    let file_ir = ir::extract("test.rs", &syntax, None);
     let config = CheckConfig {
         check_dyn_return: true,
         ..permissive_config()

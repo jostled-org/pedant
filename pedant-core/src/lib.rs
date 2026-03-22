@@ -56,3 +56,5 @@ pub use violation::{CheckRationale, Violation, ViolationType, lookup_rationale};
 
 /// Re-export syn::Error as ParseError for consumers that call [`analyze`] directly.
 pub use syn::Error as ParseError;
+
+pub use ir::semantic::SemanticContext;

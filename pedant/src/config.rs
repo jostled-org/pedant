@@ -84,6 +84,11 @@ pub struct Cli {
     /// Crate version for attestation output
     #[arg(long, value_name = "VERSION")]
     pub crate_version: Option<String>,
+
+    /// Enable semantic analysis via rust-analyzer for type-aware checks
+    #[cfg(feature = "semantic")]
+    #[arg(long)]
+    pub semantic: bool,
 }
 
 impl Cli {

@@ -31,18 +31,22 @@ pub(crate) fn for_each_pair(len: usize, mut emit: impl FnMut(usize, usize)) {
     });
 }
 
-pub(crate) fn pairwise_edges(names: &[Rc<str>]) -> Vec<(Rc<str>, Rc<str>)> {
+pub(crate) fn extend_pairwise_edges(names: &[Rc<str>], edges: &mut Vec<(Rc<str>, Rc<str>)>) {
     let len = names.len();
-    let mut pairs = Vec::with_capacity(len * len.saturating_sub(1) / 2);
+    edges.reserve(len * len.saturating_sub(1) / 2);
     for_each_pair(len, |i, j| {
-        pairs.push((Rc::clone(&names[i]), Rc::clone(&names[j])));
+        edges.push((Rc::clone(&names[i]), Rc::clone(&names[j])));
     });
-    pairs
 }
 
-pub(crate) fn edges_from_names(owner: &Rc<str>, type_names: &[Rc<str>]) -> Vec<(Rc<str>, Rc<str>)> {
-    type_names
-        .iter()
-        .map(|tn| (Rc::clone(owner), Rc::clone(tn)))
-        .collect()
+pub(crate) fn extend_edges_from_names(
+    owner: &Rc<str>,
+    type_names: &[Rc<str>],
+    edges: &mut Vec<(Rc<str>, Rc<str>)>,
+) {
+    edges.extend(
+        type_names
+            .iter()
+            .map(|tn| (Rc::clone(owner), Rc::clone(tn))),
+    );
 }

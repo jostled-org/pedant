@@ -361,3 +361,75 @@ fn test_single_file_mode_unchanged() {
         "capabilities mode should include source file findings"
     );
 }
+
+// --- Semantic attestation tier tests ---
+
+#[cfg(feature = "semantic")]
+#[test]
+fn test_semantic_attestation_tier() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    fs::create_dir(root.join("src")).unwrap();
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"tier-test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[workspace]\n",
+    )
+    .unwrap();
+    fs::write(root.join("src/lib.rs"), "pub fn f() {}\n").unwrap();
+
+    let lib_path = root.join("src/lib.rs");
+    let output = common::run_pedant(
+        &[
+            lib_path.to_str().unwrap(),
+            "--semantic",
+            "--attestation",
+            "--crate-name",
+            "tier-test",
+            "--crate-version",
+            "0.1.0",
+        ],
+        None,
+    );
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let attestation: AttestationContent =
+        serde_json::from_slice(&output.stdout).expect("should parse as AttestationContent");
+
+    assert_eq!(
+        attestation.analysis_tier,
+        AnalysisTier::Semantic,
+        "expected semantic tier when --semantic is used"
+    );
+}
+
+#[test]
+fn test_nonsemantic_attestation_tier_unchanged() {
+    let output = common::run_pedant(
+        &[
+            "--stdin",
+            "--attestation",
+            "--crate-name",
+            "syn-test",
+            "--crate-version",
+            "0.1.0",
+        ],
+        Some("fn main() {}\n"),
+    );
+
+    assert!(output.status.success());
+
+    let attestation: AttestationContent =
+        serde_json::from_slice(&output.stdout).expect("should parse as AttestationContent");
+
+    assert_eq!(
+        attestation.analysis_tier,
+        AnalysisTier::Syntactic,
+        "expected syntactic tier without --semantic"
+    );
+}

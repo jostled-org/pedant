@@ -8,11 +8,13 @@ use std::fs;
 use std::io::{self, Read, Write};
 use std::path::Path;
 use std::process::ExitCode;
-use std::sync::Arc;
+#[cfg(feature = "semantic")]
+use std::time::Instant;
 use std::time::SystemTime;
 
 use clap::Parser;
 use pedant_core::AnalysisResult;
+use pedant_core::SemanticContext;
 use pedant_core::check_config::{CheckConfig, ConfigFile, find_config_file, load_config_file};
 use pedant_core::checks::ALL_CHECKS;
 use pedant_core::gate::{GateSeverity, evaluate_gate_rules};
@@ -46,6 +48,12 @@ enum ProcessError {
     },
 }
 
+struct AnalysisContext<'a> {
+    base_config: &'a CheckConfig,
+    file_config: Option<&'a ConfigFile>,
+    semantic: Option<&'a SemanticContext>,
+}
+
 struct AnalysisAccumulator {
     violations: Vec<Violation>,
     findings: Vec<CapabilityFinding>,
@@ -53,14 +61,16 @@ struct AnalysisAccumulator {
 }
 
 fn report_error(stderr: &mut impl Write, msg: std::fmt::Arguments<'_>) {
-    let _ = writeln!(stderr, "{msg}");
+    match writeln!(stderr, "{msg}") {
+        Ok(()) | Err(_) => {}
+    }
 }
 
 impl AnalysisAccumulator {
-    fn new() -> Self {
+    fn with_capacity(file_count: usize) -> Self {
         Self {
-            violations: Vec::new(),
-            findings: Vec::new(),
+            violations: Vec::with_capacity(file_count),
+            findings: Vec::with_capacity(file_count),
             had_error: false,
         }
     }
@@ -105,33 +115,21 @@ fn main() -> ExitCode {
         Err(exit) => return exit,
     };
     let base_config = cli.to_check_config(file_config.as_ref());
-    let mut acc = AnalysisAccumulator::new();
+    let mut acc = AnalysisAccumulator::with_capacity(cli.files.len());
 
-    let source_hash = match (cli.attestation, cli.stdin) {
-        (true, true) => attest_stdin(&base_config, &mut acc, &mut stderr),
-        (true, false) => Some(attest_files(
-            &cli,
-            &base_config,
-            file_config.as_ref(),
-            &mut acc,
-            &mut stderr,
-        )),
-        (false, true) => {
-            acc.handle(process_stdin(&base_config), "error", &mut stderr);
-            None
-        }
-        (false, false) => {
-            analyze_file_list(
-                &cli,
-                &base_config,
-                file_config.as_ref(),
-                None,
-                &mut acc,
-                &mut stderr,
-            );
-            None
-        }
+    let semantic = load_semantic_if_requested(&cli, &mut stderr);
+    let analysis_tier = match semantic.is_some() {
+        true => AnalysisTier::Semantic,
+        false => AnalysisTier::Syntactic,
     };
+
+    let ctx = AnalysisContext {
+        base_config: &base_config,
+        file_config: file_config.as_ref(),
+        semantic: semantic.as_ref(),
+    };
+
+    let source_hash = run_analysis(&cli, &ctx, &mut acc, &mut stderr);
 
     let reporter = Reporter::new(cli.format, cli.quiet);
     let mut stdout = io::stdout().lock();
@@ -150,38 +148,14 @@ fn main() -> ExitCode {
         false => Box::new([]),
     };
 
-    let output_result = match (cli.attestation, cli.capabilities) {
-        (true, _) => {
-            let Some(hash) = source_hash else {
-                return ExitCode::from(2);
-            };
-            let Some(crate_name) = cli.crate_name.as_deref() else {
-                report_error(
-                    &mut stderr,
-                    format_args!("error: --crate-name required for attestation"),
-                );
-                return ExitCode::from(2);
-            };
-            let Some(crate_version) = cli.crate_version.as_deref() else {
-                report_error(
-                    &mut stderr,
-                    format_args!("error: --crate-version required for attestation"),
-                );
-                return ExitCode::from(2);
-            };
-            write_attestation(
-                &mut stdout,
-                &mut stderr,
-                acc.findings,
-                hash,
-                Box::from(crate_name),
-                Box::from(crate_version),
-            )
-        }
-        (false, true) => write_capabilities(&mut stdout, &mut stderr, acc.findings),
-        (false, false) => Ok(()),
-    };
-    if let Err(exit) = output_result {
+    if let Err(exit) = dispatch_output(
+        &cli,
+        source_hash,
+        acc.findings,
+        analysis_tier,
+        &mut stdout,
+        &mut stderr,
+    ) {
         return exit;
     }
 
@@ -190,11 +164,85 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     }
 
+    compute_exit_code(acc.had_error, acc.violations.is_empty(), &gate_verdicts)
+}
+
+/// Select the input source (stdin vs files) and run analysis, returning a source
+/// hash when attestation mode requires one.
+fn run_analysis(
+    cli: &Cli,
+    ctx: &AnalysisContext<'_>,
+    acc: &mut AnalysisAccumulator,
+    stderr: &mut impl Write,
+) -> Option<Box<str>> {
+    match (cli.attestation, cli.stdin) {
+        (true, true) => attest_stdin(ctx.base_config, acc, stderr),
+        (true, false) => Some(attest_files(cli, ctx, acc, stderr)),
+        (false, true) => {
+            acc.handle(process_stdin(ctx.base_config), "error", stderr);
+            None
+        }
+        (false, false) => {
+            analyze_file_list(cli, ctx, None, acc, stderr);
+            None
+        }
+    }
+}
+
+/// Dispatch output based on mode: attestation JSON, capabilities JSON, or nothing.
+fn dispatch_output(
+    cli: &Cli,
+    source_hash: Option<Box<str>>,
+    findings: Vec<CapabilityFinding>,
+    analysis_tier: AnalysisTier,
+    stdout: &mut impl Write,
+    stderr: &mut impl Write,
+) -> Result<(), ExitCode> {
+    match (cli.attestation, cli.capabilities) {
+        (true, _) => {
+            let Some(hash) = source_hash else {
+                return Err(ExitCode::from(2));
+            };
+            let Some(crate_name) = cli.crate_name.as_deref() else {
+                report_error(
+                    stderr,
+                    format_args!("error: --crate-name required for attestation"),
+                );
+                return Err(ExitCode::from(2));
+            };
+            let Some(crate_version) = cli.crate_version.as_deref() else {
+                report_error(
+                    stderr,
+                    format_args!("error: --crate-version required for attestation"),
+                );
+                return Err(ExitCode::from(2));
+            };
+            write_attestation(
+                stdout,
+                stderr,
+                findings,
+                hash,
+                Box::from(crate_name),
+                Box::from(crate_version),
+                analysis_tier,
+            )
+        }
+        (false, true) => write_capabilities(stdout, stderr, findings),
+        (false, false) => Ok(()),
+    }
+}
+
+/// Compute the process exit code from error state, violations, and gate verdicts.
+fn compute_exit_code(
+    had_error: bool,
+    violations_empty: bool,
+    gate_verdicts: &[pedant_core::gate::GateVerdict],
+) -> ExitCode {
     let has_deny = gate_verdicts
         .iter()
         .any(|v| v.severity == GateSeverity::Deny);
 
-    match (acc.had_error, acc.violations.is_empty(), has_deny) {
+    match (had_error, violations_empty, has_deny) {
         (true, _, _) => ExitCode::from(2),
         (_, false, _) | (_, _, true) => ExitCode::from(1),
         (false, true, false) => ExitCode::from(0),
@@ -215,9 +263,9 @@ fn attest_stdin(
         }
     };
     let mut sources = BTreeMap::new();
-    sources.insert(Arc::from("<stdin>"), Arc::from(source.as_str()));
+    sources.insert(Box::<str>::from("<stdin>"), source.clone());
     acc.handle(
-        analyze("<stdin>", &source, config).map_err(ProcessError::from),
+        analyze("<stdin>", &source, config, None).map_err(ProcessError::from),
         "error",
         stderr,
     );
@@ -226,40 +274,32 @@ fn attest_stdin(
 
 fn attest_files(
     cli: &Cli,
-    base_config: &CheckConfig,
-    file_config: Option<&ConfigFile>,
+    ctx: &AnalysisContext<'_>,
     acc: &mut AnalysisAccumulator,
     stderr: &mut impl Write,
 ) -> Box<str> {
     let mut sources = BTreeMap::new();
-    analyze_file_list(
-        cli,
-        base_config,
-        file_config,
-        Some(&mut sources),
-        acc,
-        stderr,
-    );
+    analyze_file_list(cli, ctx, Some(&mut sources), acc, stderr);
     compute_source_hash(&sources)
 }
 
 fn analyze_file_list(
     cli: &Cli,
-    base_config: &CheckConfig,
-    file_config: Option<&ConfigFile>,
-    mut sources: Option<&mut BTreeMap<Arc<str>, Arc<str>>>,
+    ctx: &AnalysisContext<'_>,
+    mut sources: Option<&mut BTreeMap<Box<str>, String>>,
     acc: &mut AnalysisAccumulator,
     stderr: &mut impl Write,
 ) {
     let mut seen_build_roots: BTreeSet<Box<Path>> = BTreeSet::new();
     for file_path in &cli.files {
-        let Some(cfg) = base_config.resolve_for_path(file_path, file_config) else {
+        let Some(cfg) = ctx.base_config.resolve_for_path(file_path, ctx.file_config) else {
             continue;
         };
         analyze_single_file(
             file_path,
             analyze,
             &cfg,
+            ctx.semantic,
             sources.as_deref_mut(),
             acc,
             stderr,
@@ -286,10 +326,104 @@ fn find_crate_root(file_path: &str) -> Option<&Path> {
     }
 }
 
+#[cfg(feature = "semantic")]
+/// Find the workspace root by walking up from the first file argument.
+///
+/// Looks for a `Cargo.toml` containing `[workspace]`, or falls back to the
+/// nearest `Cargo.toml` with `[package]`.
+fn find_workspace_root(files: &[String]) -> Option<Box<Path>> {
+    let first = files.first()?;
+    let mut dir = Path::new(first.as_str()).parent()?;
+    let mut fallback: Option<&Path> = None;
+    loop {
+        // Some(true) = workspace, Some(false) = package, None = absent
+        match (is_cargo_workspace(dir), fallback) {
+            (Some(true), _) => return Some(Box::from(dir)),
+            (Some(false), None) => fallback = Some(dir),
+            (Some(false), Some(_)) | (None, _) => {}
+        }
+        match dir.parent() {
+            Some(parent) => dir = parent,
+            None => return fallback.map(Box::from),
+        }
+    }
+}
+
+#[cfg(feature = "semantic")]
+/// Check whether a directory contains a Cargo workspace, package, or neither.
+///
+/// Returns `Some(true)` for `[workspace]`, `Some(false)` for `[package]`-only,
+/// `None` if no readable `Cargo.toml`.
+fn is_cargo_workspace(dir: &Path) -> Option<bool> {
+    use io::BufRead;
+    let file = fs::File::open(dir.join("Cargo.toml")).ok()?;
+    let reader = io::BufReader::new(file);
+    for line in reader.lines() {
+        let line = line.ok()?;
+        if line.trim_start().starts_with("[workspace]") {
+            return Some(true);
+        }
+    }
+    Some(false)
+}
+
+/// Load `SemanticContext` when `--semantic` is requested.
+///
+/// Returns `None` (with a stderr warning) if loading fails or the flag is absent.
+#[cfg(feature = "semantic")]
+fn load_semantic_if_requested(cli: &Cli, stderr: &mut impl Write) -> Option<SemanticContext> {
+    if !cli.semantic {
+        return None;
+    }
+
+    let Some(root) = find_workspace_root(&cli.files) else {
+        report_error(
+            stderr,
+            format_args!(
+                "warning: --semantic: no Cargo.toml found, falling back to syntactic analysis"
+            ),
+        );
+        return None;
+    };
+
+    let start = Instant::now();
+    let ctx = SemanticContext::load(&root);
+    let elapsed = start.elapsed();
+
+    match ctx {
+        Some(c) => {
+            report_error(
+                stderr,
+                format_args!(
+                    "semantic: loaded workspace in {:.1}s",
+                    elapsed.as_secs_f64()
+                ),
+            );
+            Some(c)
+        }
+        None => {
+            report_error(
+                stderr,
+                format_args!(
+                    "warning: --semantic: failed to load workspace at {}, falling back to syntactic analysis",
+                    root.display()
+                ),
+            );
+            None
+        }
+    }
+}
+
+/// Stub when the `semantic` feature is disabled — always returns `None`.
+#[cfg(not(feature = "semantic"))]
+fn load_semantic_if_requested(_cli: &Cli, _stderr: &mut impl Write) -> Option<SemanticContext> {
+    None
+}
+
 fn discover_and_analyze_build_script(
     file_path: &str,
     config: &CheckConfig,
-    sources: Option<&mut BTreeMap<Arc<str>, Arc<str>>>,
+    sources: Option<&mut BTreeMap<Box<str>, String>>,
     seen_roots: &mut BTreeSet<Box<Path>>,
     acc: &mut AnalysisAccumulator,
     stderr: &mut impl Write,
@@ -297,9 +431,10 @@ fn discover_and_analyze_build_script(
     let Some(crate_root) = find_crate_root(file_path) else {
         return;
     };
-    if !seen_roots.insert(Box::from(crate_root)) {
+    if seen_roots.contains(crate_root) {
         return;
     }
+    seen_roots.insert(Box::from(crate_root));
     let build_path = match discover_build_script(crate_root) {
         Ok(Some(path)) => path,
         Ok(None) => return,
@@ -308,11 +443,21 @@ fn discover_and_analyze_build_script(
             return;
         }
     };
-    let build_path_str = build_path.to_string_lossy();
+    let Some(build_path_str) = build_path.to_str() else {
+        report_error(
+            stderr,
+            format_args!(
+                "build script path is not valid UTF-8: {}",
+                build_path.display()
+            ),
+        );
+        return;
+    };
     analyze_single_file(
-        &build_path_str,
+        build_path_str,
         analyze_build_script,
         config,
+        None,
         sources,
         acc,
         stderr,
@@ -321,9 +466,15 @@ fn discover_and_analyze_build_script(
 
 fn analyze_single_file(
     file_path: &str,
-    analyze_fn: fn(&str, &str, &CheckConfig) -> Result<AnalysisResult, pedant_core::ParseError>,
+    analyze_fn: fn(
+        &str,
+        &str,
+        &CheckConfig,
+        Option<&SemanticContext>,
+    ) -> Result<AnalysisResult, pedant_core::ParseError>,
     config: &CheckConfig,
-    sources: Option<&mut BTreeMap<Arc<str>, Arc<str>>>,
+    semantic: Option<&SemanticContext>,
+    sources: Option<&mut BTreeMap<Box<str>, String>>,
     acc: &mut AnalysisAccumulator,
     stderr: &mut impl Write,
 ) {
@@ -336,10 +487,10 @@ fn analyze_single_file(
         }
     };
     if let Some(sources) = sources {
-        sources.insert(Arc::from(file_path), Arc::from(source.as_str()));
+        sources.insert(Box::from(file_path), source.clone());
     }
     acc.handle(
-        analyze_fn(file_path, &source, config).map_err(ProcessError::from),
+        analyze_fn(file_path, &source, config, semantic).map_err(ProcessError::from),
         file_path,
         stderr,
     );
@@ -380,7 +531,7 @@ fn read_stdin_source() -> Result<String, ProcessError> {
 
 fn process_stdin(config: &CheckConfig) -> Result<AnalysisResult, ProcessError> {
     let source = read_stdin_source()?;
-    Ok(analyze("<stdin>", &source, config)?)
+    Ok(analyze("<stdin>", &source, config, None)?)
 }
 
 const SPEC_VERSION: &str = "0.1.0";
@@ -404,7 +555,13 @@ fn write_json(
         report_error(stderr, format_args!("error writing {context}: {e}"));
         return Err(ExitCode::from(2));
     }
-    let _ = writeln!(stdout);
+    if let Err(e) = writeln!(stdout) {
+        report_error(
+            stderr,
+            format_args!("error writing trailing newline for {context}: {e}"),
+        );
+        return Err(ExitCode::from(2));
+    }
     Ok(())
 }
 
@@ -415,13 +572,14 @@ fn write_attestation(
     source_hash: Box<str>,
     crate_name: Box<str>,
     crate_version: Box<str>,
+    analysis_tier: AnalysisTier,
 ) -> Result<(), ExitCode> {
     let attestation = AttestationContent {
         spec_version: Box::from(SPEC_VERSION),
         source_hash,
         crate_name,
         crate_version,
-        analysis_tier: AnalysisTier::Syntactic,
+        analysis_tier,
         timestamp: current_timestamp(),
         profile: CapabilityProfile {
             findings: findings.into_boxed_slice(),

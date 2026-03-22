@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 fn parse_and_extract(source: &str) -> pedant_core::ir::FileIr {
     let syntax = syn::parse_file(source).expect("parse failed");
-    extract("test.rs", &syntax)
+    extract("test.rs", &syntax, None)
 }
 
 fn permissive_config() -> CheckConfig {
@@ -391,11 +391,11 @@ fn test_ir_capabilities_match_visitor() {
     let config = permissive_config();
 
     for (name, source) in fixtures {
-        let baseline = analyze(name, source, &config).unwrap();
+        let baseline = analyze(name, source, &config, None).unwrap();
         let baseline_caps = baseline.capabilities.capabilities();
 
         let syntax = syn::parse_file(source).unwrap();
-        let ir = extract(name, &syntax);
+        let ir = extract(name, &syntax, None);
         let ir_profile = detect_capabilities(&ir, false);
         let ir_caps = ir_profile.capabilities();
 
@@ -445,7 +445,7 @@ fn connect() {
 }
 "#;
     let syntax = syn::parse_file(source).unwrap();
-    let ir = extract("test.rs", &syntax);
+    let ir = extract("test.rs", &syntax, None);
     let profile = detect_capabilities(&ir, false);
     let caps = profile.capabilities();
 
@@ -475,7 +475,7 @@ fn uses_unsafe() {
 }
 "#;
     let syntax = syn::parse_file(source).unwrap();
-    let ir = extract("test.rs", &syntax);
+    let ir = extract("test.rs", &syntax, None);
     let profile = detect_capabilities(&ir, false);
     let caps = profile.capabilities();
 
@@ -635,7 +635,7 @@ fn test_ir_style_clone_in_loop() {
     assert!(!clone_violations.is_empty());
 
     // Compare with baseline
-    let baseline = analyze("clone_in_loop.rs", source, &config).unwrap();
+    let baseline = analyze("clone_in_loop.rs", source, &config, None).unwrap();
     let baseline_clones: Vec<_> = baseline
         .violations
         .iter()
@@ -863,7 +863,7 @@ fn test_analyze_produces_identical_output() {
 
     for (name, source) in fixtures {
         // Run through analyze() — the public entry point
-        let result = analyze(name, source, &config).unwrap_or_else(|e| {
+        let result = analyze(name, source, &config, None).unwrap_or_else(|e| {
             panic!("analyze failed for {name}: {e}");
         });
 
@@ -945,7 +945,7 @@ fn test_analyze_single_parse() {
     "#;
 
     let config = CheckConfig::default();
-    let result = analyze("single_parse.rs", source, &config).unwrap();
+    let result = analyze("single_parse.rs", source, &config, None).unwrap();
 
     // Must find style violations (nesting) AND capability findings (unsafe, network)
     assert!(

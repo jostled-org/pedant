@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 use std::fmt::Write;
-use std::sync::Arc;
 
 use sha2::{Digest, Sha256};
 
@@ -8,10 +7,12 @@ use sha2::{Digest, Sha256};
 ///
 /// The `BTreeMap` guarantees deterministic iteration regardless of insertion order.
 /// Returns a hex-encoded digest.
-pub fn compute_source_hash(sources: &BTreeMap<Arc<str>, Arc<str>>) -> Box<str> {
+pub fn compute_source_hash<K: Ord + AsRef<str>, V: AsRef<str>>(
+    sources: &BTreeMap<K, V>,
+) -> Box<str> {
     let mut hasher = Sha256::new();
     for content in sources.values() {
-        hasher.update(content.as_bytes());
+        hasher.update(content.as_ref().as_bytes());
     }
     let digest = hasher.finalize();
     let mut hex: String = String::with_capacity(64);

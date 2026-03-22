@@ -5,6 +5,7 @@ use crate::analysis_result::AnalysisResult;
 use crate::capabilities::detect_capabilities;
 use crate::check_config::CheckConfig;
 use crate::ir;
+use crate::ir::semantic::SemanticContext;
 use crate::style::check_style;
 
 /// Error type for linting operations.
@@ -24,13 +25,15 @@ pub enum LintError {
 /// Parse and analyze a Rust source string, returning violations and capability findings.
 ///
 /// Parses the AST once with `syn::parse_file`, extracts IR facts, then runs
-/// style checks and capability detection over the IR.
+/// style checks and capability detection over the IR. When `semantic` is
+/// `Some`, IR facts are enriched with resolved type information.
 pub fn analyze(
     file_path: &str,
     source: &str,
     config: &CheckConfig,
+    semantic: Option<&SemanticContext>,
 ) -> Result<AnalysisResult, syn::Error> {
-    analyze_inner(file_path, source, config, false)
+    analyze_inner(file_path, source, config, semantic, false)
 }
 
 /// Parse and analyze a build script source, tagging all capability findings with `build_script: true`.
@@ -38,18 +41,20 @@ pub fn analyze_build_script(
     file_path: &str,
     source: &str,
     config: &CheckConfig,
+    semantic: Option<&SemanticContext>,
 ) -> Result<AnalysisResult, syn::Error> {
-    analyze_inner(file_path, source, config, true)
+    analyze_inner(file_path, source, config, semantic, true)
 }
 
 fn analyze_inner(
     file_path: &str,
     source: &str,
     config: &CheckConfig,
+    semantic: Option<&SemanticContext>,
     build_script: bool,
 ) -> Result<AnalysisResult, syn::Error> {
     let syntax = syn::parse_file(source)?;
-    let ir = ir::extract(file_path, &syntax);
+    let ir = ir::extract(file_path, &syntax, semantic);
 
     Ok(AnalysisResult {
         violations: check_style(&ir, config).into_boxed_slice(),
@@ -66,7 +71,7 @@ fn analyze_inner(
 /// # Returns
 /// An [`AnalysisResult`] containing violations and capability findings, or an error if parsing fails.
 pub fn lint_str(source: &str, config: &CheckConfig) -> Result<AnalysisResult, LintError> {
-    analyze("<string>", source, config).map_err(LintError::from)
+    analyze("<string>", source, config, None).map_err(LintError::from)
 }
 
 /// Lint a file of Rust source code.
@@ -80,7 +85,7 @@ pub fn lint_str(source: &str, config: &CheckConfig) -> Result<AnalysisResult, Li
 pub fn lint_file(path: &Path, config: &CheckConfig) -> Result<AnalysisResult, LintError> {
     let source = fs::read_to_string(path)?;
     let file_path = path.to_string_lossy();
-    analyze(&file_path, &source, config).map_err(LintError::from)
+    analyze(&file_path, &source, config, None).map_err(LintError::from)
 }
 
 /// Discover the build script path for a crate root directory.
@@ -120,16 +125,17 @@ pub fn analyze_with_build_script(
     file_path: &str,
     source: &str,
     config: &CheckConfig,
+    semantic: Option<&SemanticContext>,
     build_source: Option<(&str, &str)>,
 ) -> Result<AnalysisResult, syn::Error> {
-    let mut result = analyze(file_path, source, config)?;
+    let mut result = analyze(file_path, source, config, semantic)?;
 
     let Some((build_path, build_src)) = build_source else {
         return Ok(result);
     };
 
     let build_syntax = syn::parse_file(build_src)?;
-    let build_ir = ir::extract(build_path, &build_syntax);
+    let build_ir = ir::extract(build_path, &build_syntax, semantic);
     let build_caps = detect_capabilities(&build_ir, true);
 
     let mut merged: Vec<pedant_types::CapabilityFinding> = result.capabilities.findings.into_vec();

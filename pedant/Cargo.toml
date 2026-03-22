@@ -37,5 +37,6 @@ serde_json = "1"
 tempfile = "3"
 
 [package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
+# pedant is a CLI binary — the library API lives in pedant-core.
+# See https://docs.rs/pedant-core for API documentation.
+targets = []

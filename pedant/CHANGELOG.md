@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0](https://github.com/jostled-org/pedant/compare/pedant-v0.12.0...pedant-v0.13.0) - 2026-03-22
+
+### Added
+
+- [**breaking**] add semantic analysis via ra_ap_ide with performance audit fixes
+
 ## [0.12.0](https://github.com/jostled-org/pedant/compare/pedant-v0.11.0...pedant-v0.12.0) - 2026-03-22
 
 ### Added

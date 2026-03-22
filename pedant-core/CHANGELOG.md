@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/jostled-org/pedant/compare/pedant-core-v0.4.0...pedant-core-v0.5.0) - 2026-03-22
+
+### Added
+
+- [**breaking**] add semantic analysis via ra_ap_ide with performance audit fixes
+
+### Fixed
+
+- *(ir)* remove unused SemanticContext parameter from enrich_method_calls
+
 ## [0.4.0](https://github.com/jostled-org/pedant/compare/pedant-core-v0.3.0...pedant-core-v0.4.0) - 2026-03-22
 
 ### Added

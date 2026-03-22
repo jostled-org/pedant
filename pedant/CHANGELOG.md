@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0](https://github.com/jostled-org/pedant/compare/pedant-v0.10.0...pedant-v0.11.0) - 2026-03-22
+
+### Added
+
+- [**breaking**] expand key material pattern detection in string literals
+
 ## [0.10.0](https://github.com/jostled-org/pedant/compare/pedant-v0.9.0...pedant-v0.10.0) - 2026-03-21
 
 ### Added

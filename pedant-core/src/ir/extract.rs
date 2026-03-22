@@ -1121,7 +1121,7 @@ fn enrich_ir(ir: &mut FileIr, ctx: &super::semantic::SemanticContext) {
     let file_path: &str = &ir.file_path;
     enrich_bindings(&mut ir.bindings, file_path, ctx);
     enrich_type_refs(&mut ir.type_refs, file_path, ctx);
-    enrich_method_calls(&mut ir.method_calls, &ir.bindings, ctx);
+    enrich_method_calls(&mut ir.method_calls, &ir.bindings);
 }
 
 /// Resolve binding types through aliases and update `is_refcounted`.
@@ -1175,11 +1175,7 @@ fn enrich_type_refs(
 /// (already enriched by `enrich_bindings`). This works because `resolve_type`
 /// resolves type annotations but not expression-level references.
 #[cfg(feature = "semantic")]
-fn enrich_method_calls(
-    method_calls: &mut [MethodCallFact],
-    bindings: &[BindingFact],
-    ctx: &super::semantic::SemanticContext,
-) {
+fn enrich_method_calls(method_calls: &mut [MethodCallFact], bindings: &[BindingFact]) {
     for mc in method_calls.iter_mut() {
         let Some(recv_ident) = mc.receiver_ident.as_deref() else {
             continue;

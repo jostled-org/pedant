@@ -1,11 +1,11 @@
 [![crates.io](https://img.shields.io/crates/v/pedant)](https://crates.io/crates/pedant)
-[![docs.rs](https://img.shields.io/docsrs/pedant)](https://docs.rs/pedant)
+[![docs.rs](https://img.shields.io/docsrs/pedant-core)](https://docs.rs/pedant-core)
 [![CI](https://github.com/jostled-org/pedant/actions/workflows/ci.yml/badge.svg)](https://github.com/jostled-org/pedant/actions/workflows/ci.yml)
 [![license](https://img.shields.io/crates/l/pedant)](LICENSE-MIT)
 
 You put "never use unwrap in production code" in your CLAUDE.md. Your AI assistant wrote `.unwrap()` anyway. Clippy catches it at compile time. pedant catches it at write time, before the code enters your project. Style rules in system prompts compete with training data, and training data wins. pedant enforces the rules your AI agent can't reliably follow.
 
-**pedant** is a Rust linter that enforces style rules too subjective for Clippy but too important to leave to a system prompt.
+**pedant** is a Rust linter and security analyzer. It enforces style rules too subjective for Clippy, detects what a crate can do (capabilities), flags suspicious capability combinations (gate rules), and exposes all of this via an MCP server for AI agents.
 
 ## Proof
 
@@ -45,7 +45,7 @@ cargo install pedant
 
 ## Usage
 
-pedant has two modes: **linting** enforces style rules, **capability detection** audits what a crate can do. Linting is fast enough to run on every edit. Capability detection is for CI and audits.
+pedant has four modes: **linting** enforces style rules, **capability detection** audits what a crate can do, **gate rules** flag suspicious capability combinations, and an **MCP server** exposes all of this to AI agents.
 
 ### Linting
 
@@ -93,6 +93,47 @@ pedant --diff old.json new.json
 Build scripts (`build.rs`) are automatically discovered and analyzed. Findings from build scripts are tagged with `"build_script": true` in the JSON output, distinguishing compile-time capabilities from runtime capabilities.
 
 Exit codes for `--diff`: `0` no changes, `1` differences found, `2` error.
+
+### Gate Rules
+
+```bash
+# Evaluate security rules against capability profile
+pedant --gate src/**/*.rs
+
+# Combine with attestation
+pedant --gate --attestation --crate-name my-crate --crate-version 0.1.0 src/**/*.rs
+```
+
+Gate rules flag suspicious capability combinations — build scripts with network access, proc macros spawning processes, embedded key material with network capability. 9 built-in rules with configurable severity.
+
+Exit codes: `0` clean or warn-only, `1` deny-level verdict fired, `2` error.
+
+Configure in `.pedant.toml`:
+
+```toml
+[gate]
+# Disable a rule
+build-script-exec = false
+
+# Override severity (deny/warn/info)
+env-access-network = "warn"
+```
+
+### MCP Server
+
+```bash
+# Start the MCP server (indexes workspace, serves queries via stdio)
+pedant-mcp
+```
+
+`pedant-mcp` exposes pedant's analysis as MCP tools for AI agents. It indexes the workspace on startup, watches for file changes, and serves queries:
+
+- `query_capabilities` — list capability findings for a crate, file, or workspace
+- `query_gate_verdicts` — evaluate gate rules for a crate or workspace
+- `query_violations` — list style violations with optional filtering
+- `search_by_capability` — find crates matching a capability pattern (e.g., "network + crypto")
+- `explain_finding` — get rationale for a specific check
+- `audit_crate` — full security summary: capabilities, verdicts, violations
 
 See the [capability detection guide](examples/capability-detection.md) for output format, supported capabilities, attestation details, and diffing.
 
@@ -153,6 +194,20 @@ See `examples/` for a full global config and a project-level override.
 | Naming | `generic-naming` |
 
 Run `pedant --list-checks` to see all checks, or `pedant --explain <check>` for detailed rationale and fix guidance.
+
+## Semantic Analysis
+
+With the `semantic` feature enabled, pedant resolves types through aliases using rust-analyzer's analysis engine (`ra_ap_ide`). This eliminates false positives in clone-in-loop, refcounted detection, and type classification checks.
+
+```bash
+# Build with semantic support
+cargo install pedant --features semantic
+
+# Run with type resolution (requires Cargo workspace)
+pedant --semantic src/**/*.rs
+```
+
+When `--semantic` is active, the attestation's `analysis_tier` is set to `"semantic"` instead of `"syntactic"`, signaling higher-confidence results.
 
 ## License
 

@@ -26,7 +26,7 @@ pedant --capabilities -f json src/lib.rs
 | `env_access` | `std::env::var`, `std::env::vars`, `dotenvy`, `envy` imports |
 | `unsafe_code` | `unsafe` blocks, `unsafe fn`, `unsafe impl` |
 | `ffi` | `extern` blocks, `#[link]` attributes, `libc`, `nix`, `winapi`, `windows_sys` imports |
-| `crypto` | `ring`, `rustls`, `openssl`, `aes`, `sha2`, `hmac`, `ed25519_dalek`, `x25519_dalek` imports; PEM key material in string literals |
+| `crypto` | `ring`, `rustls`, `openssl`, `aes`, `sha2`, `hmac`, `ed25519_dalek`, `x25519_dalek` imports; PEM blocks, hex-encoded keys, base58 private keys, key prefixes, credential prefixes in string literals |
 | `system_time` | `std::time::SystemTime`, `std::time::Instant`, `chrono`, `time` imports |
 | `proc_macro` | `#[proc_macro]`, `#[proc_macro_derive]`, `#[proc_macro_attribute]` attributes |
 
@@ -63,8 +63,52 @@ Each finding includes the capability type, source location, and evidence (the im
 
 Beyond import scanning, pedant inspects string literals for:
 
-- **Hardcoded endpoints** — URLs (`http://`, `https://`, `ws://`, `wss://`), IPv4 addresses (e.g. `192.168.1.1:8080`), and IPv6 addresses (e.g. `[::1]:8080`). These produce `network` findings. Strings shorter than 8 characters are skipped to reduce false positives.
-- **Key material** — PEM-encoded keys and certificates (`-----BEGIN PRIVATE KEY-----`, `-----BEGIN CERTIFICATE-----`, etc.). These produce `crypto` findings.
+- **Hardcoded endpoints** — URLs (`http://`, `https://`, `ws://`, `wss://`), IPv4 addresses (e.g. `192.168.1.1:8080`), and IPv6 addresses (e.g. `[::1]:8080`). These produce `network` findings. Strings shorter than 8 characters are skipped.
+- **PEM key material** — PEM-encoded keys and certificates (`-----BEGIN PRIVATE KEY-----`, `-----BEGIN CERTIFICATE-----`, etc.). These produce `crypto` findings.
+- **Hex-encoded keys** — Pure hex strings at known private key sizes (64, 96, or 128+ chars). Covers Ed25519, X25519, AES-256, P-384, and combined keypair formats. These produce `crypto` findings.
+- **Base58 private keys** — Bitcoin WIF keys (51-52 chars starting with 5/K/L) and Solana keypairs (64-88 base58 chars). These produce `crypto` findings.
+- **Known key prefixes** — `AGE-SECRET-KEY-1` (age encryption), `xprv` (BIP32 extended private keys), `ed25519:` (NEAR protocol), `0x` + 64 hex chars (Ethereum-style private keys). These produce `crypto` findings.
+- **Credential prefixes** — `AKIA` + 16 chars (AWS access key IDs), `ghp_`/`gho_`/`ghs_`/`ghr_` + 36 chars (GitHub tokens), `sk-`/`sk_live_`/`sk_test_` + 24+ chars (Stripe/OpenAI-style secrets). These produce `crypto` findings.
+
+Evidence for key material longer than 40 characters is truncated (first 16 chars + `…` + last 4 chars) to avoid leaking full secrets in pedant's output.
+
+## Gate Rules
+
+Gate rules evaluate capability profiles for suspicious combinations. Run with `--gate`:
+
+```bash
+pedant --gate src/**/*.rs
+```
+
+9 built-in rules:
+
+| Rule | Condition | Default Severity |
+|------|-----------|-----------------|
+| `build-script-network` | build_script + Network | deny |
+| `build-script-exec` | build_script + ProcessExec | warn |
+| `build-script-download-exec` | build_script + Network + ProcessExec | deny |
+| `build-script-file-write` | build_script + FileWrite | warn |
+| `proc-macro-network` | ProcMacro + Network | deny |
+| `proc-macro-exec` | ProcMacro + ProcessExec | deny |
+| `proc-macro-file-write` | ProcMacro + FileWrite | deny |
+| `env-access-network` | EnvAccess + Network | info |
+| `key-material-network` | Embedded key material + Network | warn |
+
+Configure in `.pedant.toml`:
+
+```toml
+[gate]
+# Disable a rule
+build-script-exec = false
+
+# Override severity
+env-access-network = "warn"
+
+# Disable all gate rules
+enabled = false
+```
+
+Exit codes: `0` clean or warn-only, `1` deny-level verdict, `2` error.
 
 ## Attestation
 
@@ -93,7 +137,7 @@ Output:
 }
 ```
 
-The source hash covers all analyzed file contents in deterministic (sorted path) order. Re-running against the same source produces the same hash.
+The `analysis_tier` field is `"syntactic"` for default analysis or `"semantic"` when `--semantic` is used (type resolution via rust-analyzer). The source hash covers all analyzed file contents in deterministic (sorted path) order.
 
 ## Build Scripts
 
@@ -143,6 +187,27 @@ Exit codes: `0` no changes, `1` differences found, `2` error.
 
 Format detection uses the `spec_version` key as a discriminant — files containing it are parsed as attestations, others as bare profiles.
 
-## Design
+## Semantic Analysis
 
-Capability detection is syntactic (AST-only). It matches import paths and expressions against known prefixes. It does not resolve type aliases, follow trait implementations, or trace data flow across crate boundaries. For type-resolved analysis, see the planned `pedant-semantic` analyzer.
+With the `semantic` feature enabled (`cargo install pedant --features semantic`), pedant resolves types through aliases using rust-analyzer's analysis engine. This eliminates false positives where type aliases hide the real type:
+
+- `type Handle = Arc<Inner>` — `clone()` on `Handle` is correctly identified as a cheap refcount bump
+- `type MyMap = HashMap<K, V>` — default hasher check fires through the alias
+- `use reqwest as http` — capability detection resolves the alias to its canonical path
+
+```bash
+pedant --semantic --capabilities src/**/*.rs
+```
+
+Requires a Cargo workspace. Falls back to syntactic analysis if the workspace can't be loaded.
+
+## MCP Server
+
+`pedant-mcp` exposes pedant's analysis as MCP tools for AI agents:
+
+```bash
+# Start the server (indexes workspace from CWD, serves via stdio)
+pedant-mcp
+```
+
+Tools: `query_capabilities`, `query_gate_verdicts`, `query_violations`, `search_by_capability`, `explain_finding`, `audit_crate`. The server watches source files and incrementally re-indexes on changes.

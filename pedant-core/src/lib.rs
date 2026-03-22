@@ -22,6 +22,8 @@ pub mod capabilities;
 pub mod check_config;
 /// Check metadata catalog used by `--list-checks` and `--explain`.
 pub mod checks;
+/// Gate rules engine: evaluates capability profiles against built-in security rules.
+pub mod gate;
 /// Graph algorithms for type-relationship analysis.
 pub(crate) mod graph;
 /// Source content hashing for attestation.
@@ -41,9 +43,11 @@ pub mod violation;
 
 pub use analysis_result::AnalysisResult;
 pub use check_config::{
-    CheckConfig as Config, ConfigFile, NamingCheck, PatternCheck, PatternOverride,
+    CheckConfig as Config, ConfigFile, GateConfig, GateRuleOverride, NamingCheck, PatternCheck,
+    PatternOverride,
 };
 pub use checks::{ALL_CHECKS, CheckInfo};
+pub use gate::{GateRuleInfo, GateSeverity, GateVerdict, all_gate_rules, evaluate_gate_rules};
 pub use lint::{
     LintError, analyze, analyze_build_script, analyze_with_build_script, discover_build_script,
     lint_file, lint_str,

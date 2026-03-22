@@ -151,6 +151,9 @@ pub struct PatternOverride {
 /// Deserialized `.pedant.toml` configuration.
 #[derive(Debug, Deserialize, Default)]
 pub struct ConfigFile {
+    /// Gate rules engine configuration.
+    #[serde(default)]
+    pub gate: GateConfig,
     /// Maximum allowed nesting depth (default: 3).
     #[serde(default = "default_max_depth")]
     pub max_depth: usize,
@@ -510,4 +513,88 @@ fn find_global_config_file() -> Option<std::path::PathBuf> {
         })?;
     let config_path = config_dir.join("pedant").join("config.toml");
     config_path.exists().then_some(config_path)
+}
+
+/// Per-rule override in the `[gate]` config section.
+#[derive(Debug)]
+pub enum GateRuleOverride {
+    /// Rule is disabled and will not produce verdicts.
+    Disabled,
+    /// Rule fires with overridden severity.
+    Severity(crate::gate::GateSeverity),
+}
+
+/// Configuration for the gate rules engine.
+///
+/// Deserializes from the `[gate]` section of `.pedant.toml` where each key
+/// is either `enabled` (bool) or a rule name mapped to `false` (disabled)
+/// or a severity string (`"deny"`, `"warn"`, `"info"`).
+#[derive(Debug)]
+pub struct GateConfig {
+    /// Master switch for gate evaluation.
+    pub enabled: bool,
+    /// Per-rule overrides keyed by rule name.
+    pub overrides: BTreeMap<Box<str>, GateRuleOverride>,
+}
+
+impl Default for GateConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            overrides: BTreeMap::new(),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for GateConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::Error;
+
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum GateTomlValue {
+            Bool(bool),
+            String(String),
+        }
+
+        let raw: BTreeMap<Box<str>, GateTomlValue> = BTreeMap::deserialize(deserializer)?;
+        let mut enabled = true;
+        let mut overrides = BTreeMap::new();
+
+        for (key, value) in raw {
+            match (&*key, value) {
+                ("enabled", GateTomlValue::Bool(b)) => enabled = b,
+                ("enabled", GateTomlValue::String(_)) => {
+                    return Err(D::Error::custom("'enabled' must be a boolean"));
+                }
+                (_, GateTomlValue::Bool(false)) => {
+                    overrides.insert(key, GateRuleOverride::Disabled);
+                }
+                (_, GateTomlValue::Bool(true)) => {} // true = use default, no override
+                (_, GateTomlValue::String(s)) => {
+                    let severity = parse_gate_severity(&s).ok_or_else(|| {
+                        D::Error::custom(format!(
+                            "invalid gate severity '{s}': expected \"deny\", \"warn\", or \"info\""
+                        ))
+                    })?;
+                    overrides.insert(key, GateRuleOverride::Severity(severity));
+                }
+            }
+        }
+
+        Ok(GateConfig { enabled, overrides })
+    }
+}
+
+fn parse_gate_severity(s: &str) -> Option<crate::gate::GateSeverity> {
+    use crate::gate::GateSeverity;
+    match s {
+        "deny" => Some(GateSeverity::Deny),
+        "warn" => Some(GateSeverity::Warn),
+        "info" => Some(GateSeverity::Info),
+        _ => None,
+    }
 }

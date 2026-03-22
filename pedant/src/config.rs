@@ -69,6 +69,10 @@ pub struct Cli {
     #[arg(long, num_args = 2, value_names = ["OLD", "NEW"], conflicts_with_all = ["stdin", "capabilities", "attestation"])]
     pub diff: Vec<String>,
 
+    /// Evaluate gate rules against capability profile
+    #[arg(long)]
+    pub gate: bool,
+
     /// Output capability attestation as JSON (implies --capabilities)
     #[arg(long, requires_all = ["crate_name", "crate_version"])]
     pub attestation: bool,

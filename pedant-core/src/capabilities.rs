@@ -110,10 +110,6 @@ fn path_matches_prefix(path: &str, prefix: &str) -> bool {
 
 /// Resolve a use-path or qualified path to a capability, if any.
 fn resolve_capabilities(path: &str) -> Option<Capability> {
-    debug_assert!(
-        FS_WRITE_FUNCTIONS.windows(2).all(|w| w[0] <= w[1]),
-        "FS_WRITE_FUNCTIONS must be sorted for binary_search"
-    );
     if FS_WRITE_FUNCTIONS.binary_search(&path).is_ok() {
         return Some(Capability::FileWrite);
     }
@@ -193,7 +189,11 @@ fn check_string_for_pem(value: &str) -> bool {
 pub fn truncate_evidence(value: &str) -> Cow<'_, str> {
     match value.len() <= 40 {
         true => Cow::Borrowed(value),
-        false => Cow::Owned(format!("{}…{}", &value[..16], &value[value.len() - 4..])),
+        false => {
+            let head_end = value.char_indices().nth(16).map_or(value.len(), |(i, _)| i);
+            let tail_start = value.char_indices().rev().nth(3).map_or(0, |(i, _)| i);
+            Cow::Owned(format!("{}…{}", &value[..head_end], &value[tail_start..]))
+        }
     }
 }
 

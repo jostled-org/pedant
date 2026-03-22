@@ -1,5 +1,6 @@
 use std::io::{self, Write};
 
+use pedant_core::GateVerdict;
 use pedant_core::json_format::JsonViolation;
 use pedant_core::violation::Violation;
 
@@ -50,6 +51,39 @@ impl Reporter {
         let json_violations: Vec<JsonViolation<'_>> =
             violations.iter().map(JsonViolation::from).collect();
         serde_json::to_writer_pretty(&mut *writer, &json_violations).map_err(io::Error::other)?;
+        writeln!(writer)?;
+        Ok(())
+    }
+
+    /// Writes gate verdicts to the given writer in the configured format.
+    pub fn report_gate<W: Write>(
+        &self,
+        verdicts: &[GateVerdict],
+        writer: &mut W,
+    ) -> io::Result<()> {
+        match self.format {
+            OutputFormat::Text => self.report_gate_text(verdicts, writer),
+            OutputFormat::Json => self.report_gate_json(verdicts, writer),
+        }
+    }
+
+    fn report_gate_text<W: Write>(
+        &self,
+        verdicts: &[GateVerdict],
+        writer: &mut W,
+    ) -> io::Result<()> {
+        for v in verdicts {
+            writeln!(writer, "{}: {} — {}", v.severity, v.rule, v.rationale)?;
+        }
+        Ok(())
+    }
+
+    fn report_gate_json<W: Write>(
+        &self,
+        verdicts: &[GateVerdict],
+        writer: &mut W,
+    ) -> io::Result<()> {
+        serde_json::to_writer_pretty(&mut *writer, verdicts).map_err(io::Error::other)?;
         writeln!(writer)?;
         Ok(())
     }

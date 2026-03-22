@@ -15,6 +15,7 @@ use clap::Parser;
 use pedant_core::AnalysisResult;
 use pedant_core::check_config::{CheckConfig, ConfigFile, find_config_file, load_config_file};
 use pedant_core::checks::ALL_CHECKS;
+use pedant_core::gate::{GateSeverity, evaluate_gate_rules};
 use pedant_core::hash::compute_source_hash;
 use pedant_core::lint::{analyze, analyze_build_script, discover_build_script};
 use pedant_core::violation::{Violation, lookup_rationale};
@@ -31,12 +32,6 @@ enum ProcessError {
     StdinRead(#[source] std::io::Error),
     #[error("parse error: {0}")]
     Parse(#[from] pedant_core::ParseError),
-    #[error("failed to read file {path}: {source}")]
-    FileRead {
-        path: Box<str>,
-        #[source]
-        source: std::io::Error,
-    },
     #[error("failed to read diff input {path}: {source}")]
     DiffRead {
         path: Box<str>,
@@ -126,10 +121,11 @@ fn main() -> ExitCode {
             None
         }
         (false, false) => {
-            process_files(
+            analyze_file_list(
                 &cli,
                 &base_config,
                 file_config.as_ref(),
+                None,
                 &mut acc,
                 &mut stderr,
             );
@@ -143,6 +139,16 @@ fn main() -> ExitCode {
         report_error(&mut stderr, format_args!("error writing output: {e}"));
         return ExitCode::from(2);
     }
+
+    // Evaluate gate rules before findings are consumed by attestation/capabilities output.
+    let default_gate = pedant_core::GateConfig::default();
+    let gate_verdicts = match cli.gate {
+        true => {
+            let gate_config = file_config.as_ref().map_or(&default_gate, |fc| &fc.gate);
+            evaluate_gate_rules(&acc.findings, gate_config)
+        }
+        false => Box::new([]),
+    };
 
     let output_result = match (cli.attestation, cli.capabilities) {
         (true, _) => {
@@ -179,10 +185,19 @@ fn main() -> ExitCode {
         return exit;
     }
 
-    match (acc.had_error, acc.violations.is_empty()) {
-        (true, _) => ExitCode::from(2),
-        (false, false) => ExitCode::from(1),
-        (false, true) => ExitCode::from(0),
+    if let (true, Err(e)) = (cli.gate, reporter.report_gate(&gate_verdicts, &mut stdout)) {
+        report_error(&mut stderr, format_args!("error writing gate output: {e}"));
+        return ExitCode::from(2);
+    }
+
+    let has_deny = gate_verdicts
+        .iter()
+        .any(|v| v.severity == GateSeverity::Deny);
+
+    match (acc.had_error, acc.violations.is_empty(), has_deny) {
+        (true, _, _) => ExitCode::from(2),
+        (_, false, _) | (_, _, true) => ExitCode::from(1),
+        (false, true, false) => ExitCode::from(0),
     }
 }
 
@@ -217,23 +232,47 @@ fn attest_files(
     stderr: &mut impl Write,
 ) -> Box<str> {
     let mut sources = BTreeMap::new();
-    let mut seen_build_roots: BTreeSet<Box<Path>> = BTreeSet::new();
+    analyze_file_list(
+        cli,
+        base_config,
+        file_config,
+        Some(&mut sources),
+        acc,
+        stderr,
+    );
+    compute_source_hash(&sources)
+}
 
+fn analyze_file_list(
+    cli: &Cli,
+    base_config: &CheckConfig,
+    file_config: Option<&ConfigFile>,
+    mut sources: Option<&mut BTreeMap<Arc<str>, Arc<str>>>,
+    acc: &mut AnalysisAccumulator,
+    stderr: &mut impl Write,
+) {
+    let mut seen_build_roots: BTreeSet<Box<Path>> = BTreeSet::new();
     for file_path in &cli.files {
         let Some(cfg) = base_config.resolve_for_path(file_path, file_config) else {
             continue;
         };
-        read_and_accumulate(file_path, analyze, &cfg, &mut sources, acc, stderr);
+        analyze_single_file(
+            file_path,
+            analyze,
+            &cfg,
+            sources.as_deref_mut(),
+            acc,
+            stderr,
+        );
         discover_and_analyze_build_script(
             file_path,
             &cfg,
-            &mut sources,
+            sources.as_deref_mut(),
             &mut seen_build_roots,
             acc,
             stderr,
         );
     }
-    compute_source_hash(&sources)
 }
 
 /// Find the crate root by walking up from a file path to locate `Cargo.toml`.
@@ -250,7 +289,7 @@ fn find_crate_root(file_path: &str) -> Option<&Path> {
 fn discover_and_analyze_build_script(
     file_path: &str,
     config: &CheckConfig,
-    sources: &mut BTreeMap<Arc<str>, Arc<str>>,
+    sources: Option<&mut BTreeMap<Arc<str>, Arc<str>>>,
     seen_roots: &mut BTreeSet<Box<Path>>,
     acc: &mut AnalysisAccumulator,
     stderr: &mut impl Write,
@@ -270,7 +309,7 @@ fn discover_and_analyze_build_script(
         }
     };
     let build_path_str = build_path.to_string_lossy();
-    read_and_accumulate(
+    analyze_single_file(
         &build_path_str,
         analyze_build_script,
         config,
@@ -280,11 +319,11 @@ fn discover_and_analyze_build_script(
     );
 }
 
-fn read_and_accumulate(
+fn analyze_single_file(
     file_path: &str,
     analyze_fn: fn(&str, &str, &CheckConfig) -> Result<AnalysisResult, pedant_core::ParseError>,
     config: &CheckConfig,
-    sources: &mut BTreeMap<Arc<str>, Arc<str>>,
+    sources: Option<&mut BTreeMap<Arc<str>, Arc<str>>>,
     acc: &mut AnalysisAccumulator,
     stderr: &mut impl Write,
 ) {
@@ -296,36 +335,14 @@ fn read_and_accumulate(
             return;
         }
     };
-    sources.insert(Arc::from(file_path), Arc::from(source.as_str()));
+    if let Some(sources) = sources {
+        sources.insert(Arc::from(file_path), Arc::from(source.as_str()));
+    }
     acc.handle(
         analyze_fn(file_path, &source, config).map_err(ProcessError::from),
         file_path,
         stderr,
     );
-}
-
-fn process_files(
-    cli: &Cli,
-    base_config: &CheckConfig,
-    file_config: Option<&ConfigFile>,
-    acc: &mut AnalysisAccumulator,
-    stderr: &mut impl Write,
-) {
-    let mut seen_build_roots: BTreeSet<Box<Path>> = BTreeSet::new();
-    for file_path in &cli.files {
-        let Some(cfg) = base_config.resolve_for_path(file_path, file_config) else {
-            continue;
-        };
-        acc.handle(process_file(file_path, &cfg), file_path, stderr);
-        discover_and_analyze_build_script(
-            file_path,
-            &cfg,
-            &mut BTreeMap::new(),
-            &mut seen_build_roots,
-            acc,
-            stderr,
-        );
-    }
 }
 
 fn load_file_config(cli: &Cli, stderr: &mut impl Write) -> Result<Option<ConfigFile>, ExitCode> {
@@ -364,14 +381,6 @@ fn read_stdin_source() -> Result<String, ProcessError> {
 fn process_stdin(config: &CheckConfig) -> Result<AnalysisResult, ProcessError> {
     let source = read_stdin_source()?;
     Ok(analyze("<stdin>", &source, config)?)
-}
-
-fn process_file(file_path: &str, config: &CheckConfig) -> Result<AnalysisResult, ProcessError> {
-    let source = fs::read_to_string(file_path).map_err(|e| ProcessError::FileRead {
-        path: file_path.into(),
-        source: e,
-    })?;
-    Ok(analyze(file_path, &source, config)?)
 }
 
 const SPEC_VERSION: &str = "0.1.0";

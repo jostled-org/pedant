@@ -104,12 +104,9 @@ fn profile_findings_for_filters() {
         ]
         .into_boxed_slice(),
     };
-    let net = profile.findings_for(Capability::Network);
-    assert_eq!(net.len(), 2);
-    let fr = profile.findings_for(Capability::FileRead);
-    assert_eq!(fr.len(), 1);
-    let empty = profile.findings_for(Capability::Crypto);
-    assert!(empty.is_empty());
+    assert_eq!(profile.findings_for(Capability::Network).count(), 2);
+    assert_eq!(profile.findings_for(Capability::FileRead).count(), 1);
+    assert_eq!(profile.findings_for(Capability::Crypto).count(), 0);
 }
 
 #[test]

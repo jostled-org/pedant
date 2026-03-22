@@ -20,11 +20,9 @@ impl CapabilityProfile {
     }
 
     /// Returns findings filtered to a specific capability.
-    pub fn findings_for(&self, capability: Capability) -> Box<[&CapabilityFinding]> {
+    pub fn findings_for(&self, capability: Capability) -> impl Iterator<Item = &CapabilityFinding> {
         self.findings
             .iter()
-            .filter(|f| f.capability == capability)
-            .collect::<Vec<_>>()
-            .into_boxed_slice()
+            .filter(move |f| f.capability == capability)
     }
 }

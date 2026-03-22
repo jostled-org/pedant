@@ -31,6 +31,16 @@ pub fn extract(file_path: &str, syntax: &syn::File) -> FileIr {
     extractor.finalize()
 }
 
+/// Check if an attribute is `#[cfg(test)]` without allocating.
+fn is_cfg_test_attr(attr: &syn::Attribute) -> bool {
+    attr.path().is_ident("cfg")
+        && attr
+            .meta
+            .require_list()
+            .ok()
+            .is_some_and(|list| list.tokens.to_string() == "test")
+}
+
 /// Saved per-function state for nested function handling.
 struct FnSavedState {
     fn_index: Option<usize>,
@@ -301,10 +311,8 @@ impl IrExtractor {
         let Some(seg) = path.segments.last() else {
             return;
         };
-        if self.fn_body_types.iter().any(|s| seg.ident == **s) {
-            return;
-        }
-        self.fn_body_types.insert(Rc::from(seg.ident.to_string()));
+        let name: Rc<str> = Rc::from(seg.ident.to_string());
+        self.fn_body_types.insert(name);
     }
 
     fn collect_body_type_from_type(&mut self, ty: &Type) {
@@ -615,10 +623,19 @@ impl<'ast> Visit<'ast> for IrExtractor {
     }
 
     fn visit_trait_item_fn(&mut self, node: &'ast syn::TraitItemFn) {
-        // Only emit signature type refs, no body traversal with fn state
-        let fn_index = self.push_fn(&node.sig);
-        self.emit_signature_type_refs(&node.sig, fn_index);
-        syn::visit::visit_trait_item_fn(self, node);
+        match node.default {
+            Some(_) => {
+                self.record_unsafe_fn(&node.sig);
+                self.visit_fn_body(&node.sig, false, |this| {
+                    syn::visit::visit_trait_item_fn(this, node);
+                });
+            }
+            None => {
+                let fn_index = self.push_fn(&node.sig);
+                self.emit_signature_type_refs(&node.sig, fn_index);
+                syn::visit::visit_trait_item_fn(self, node);
+            }
+        }
     }
 
     fn visit_expr_if(&mut self, node: &'ast ExprIf) {
@@ -990,10 +1007,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
     }
 
     fn visit_item_mod(&mut self, node: &'ast syn::ItemMod) {
-        let has_cfg_test = node.attrs.iter().any(|attr| {
-            let text = extract_attribute_text(attr);
-            &*text == "cfg(test)"
-        });
+        let has_cfg_test = node.attrs.iter().any(is_cfg_test_attr);
         let span = Self::span_from(node.mod_token.span.start());
         self.modules.push(ModuleFact {
             name: node.ident.to_string().into_boxed_str(),

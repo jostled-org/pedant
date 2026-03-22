@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.2](https://github.com/jostled-org/pedant/compare/pedant-v0.13.1...pedant-v0.13.2) - 2026-03-22
+
+### Added
+
+- add pedant-mcp server for MCP-based capability queries
+
 ## [0.13.1](https://github.com/jostled-org/pedant/compare/pedant-v0.13.0...pedant-v0.13.1) - 2026-03-22
 
 ### Fixed

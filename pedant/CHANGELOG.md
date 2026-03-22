@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0](https://github.com/jostled-org/pedant/compare/pedant-v0.11.0...pedant-v0.12.0) - 2026-03-22
+
+### Added
+
+- [**breaking**] add gate rules engine for capability profile evaluation
+
 ## [0.11.0](https://github.com/jostled-org/pedant/compare/pedant-v0.10.0...pedant-v0.11.0) - 2026-03-22
 
 ### Added

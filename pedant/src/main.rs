@@ -261,8 +261,13 @@ fn discover_and_analyze_build_script(
     if !seen_roots.insert(Box::from(crate_root)) {
         return;
     }
-    let Some(build_path) = discover_build_script(crate_root) else {
-        return;
+    let build_path = match discover_build_script(crate_root) {
+        Ok(Some(path)) => path,
+        Ok(None) => return,
+        Err(e) => {
+            report_error(stderr, format_args!("build script discovery: {e}"));
+            return;
+        }
     };
     let build_path_str = build_path.to_string_lossy();
     read_and_accumulate(

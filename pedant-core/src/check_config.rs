@@ -458,21 +458,18 @@ impl CheckConfig {
 
         config.merge_bool_overrides(override_cfg);
 
-        if let Some(ref ovr) = override_cfg.forbid_attributes {
-            config.forbid_attributes.apply_override(ovr);
+        macro_rules! apply {
+            ($field:ident) => {
+                if let Some(ref ovr) = override_cfg.$field {
+                    config.$field.apply_override(ovr);
+                }
+            };
         }
-        if let Some(ref ovr) = override_cfg.forbid_types {
-            config.forbid_types.apply_override(ovr);
-        }
-        if let Some(ref ovr) = override_cfg.forbid_calls {
-            config.forbid_calls.apply_override(ovr);
-        }
-        if let Some(ref ovr) = override_cfg.forbid_macros {
-            config.forbid_macros.apply_override(ovr);
-        }
-        if let Some(ref ovr) = override_cfg.check_naming {
-            config.check_naming.apply_override(ovr);
-        }
+        apply!(forbid_attributes);
+        apply!(forbid_types);
+        apply!(forbid_calls);
+        apply!(forbid_macros);
+        apply!(check_naming);
 
         Some(Cow::Owned(config))
     }

@@ -1,4 +1,4 @@
-use pedant_core::capabilities::detect_capabilities;
+use pedant_core::capabilities::{detect_capabilities, truncate_evidence};
 use pedant_core::check_config::CheckConfig;
 use pedant_core::ir;
 use pedant_core::lint::analyze;
@@ -427,5 +427,416 @@ fn test_existing_findings_default_false() {
     assert!(
         result.capabilities.findings.iter().all(|f| !f.build_script),
         "existing findings should have build_script=false"
+    );
+}
+
+// --- Evidence truncation tests ---
+
+#[test]
+fn test_truncate_evidence_short_passthrough() {
+    let short = "abcdefghijklmnopqrstuvwxyz1234";
+    assert_eq!(truncate_evidence(short), short);
+}
+
+#[test]
+fn test_truncate_evidence_long_truncated() {
+    let long = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
+    let result = truncate_evidence(long);
+    assert!(result.len() < long.len());
+    assert!(result.starts_with("a1b2c3d4e5f6a1b2"));
+    assert!(result.ends_with("a1b2"));
+    assert!(result.contains('\u{2026}')); // ellipsis
+}
+
+// --- Hex key detection tests ---
+
+#[test]
+fn test_hex_key_64_chars_detected() {
+    let source = include_str!("fixtures/hex_key_material.rs");
+    let result = analyze("hex_key.rs", source, &permissive_config()).unwrap();
+    let crypto_findings: Vec<_> = result
+        .capabilities
+        .findings
+        .iter()
+        .filter(|f| f.capability == Capability::Crypto)
+        .collect();
+    assert!(
+        !crypto_findings.is_empty(),
+        "should detect Crypto from 64-char hex key"
+    );
+    // Evidence should be truncated (the 64-char string is > 40 chars)
+    assert!(
+        crypto_findings
+            .iter()
+            .any(|f| f.evidence.contains('\u{2026}')),
+        "evidence should be truncated for long hex key"
+    );
+}
+
+#[test]
+fn test_hex_key_128_chars_detected() {
+    let source = include_str!("fixtures/hex_key_material.rs");
+    let result = analyze("hex_key128.rs", source, &permissive_config()).unwrap();
+    let crypto_findings: Vec<_> = result
+        .capabilities
+        .findings
+        .iter()
+        .filter(|f| f.capability == Capability::Crypto)
+        .collect();
+    // Should have findings for both the 64-char and 128-char keys
+    assert!(
+        crypto_findings.len() >= 2,
+        "should detect Crypto from both 64-char and 128-char hex keys, found {}",
+        crypto_findings.len()
+    );
+}
+
+#[test]
+fn test_hex_short_not_flagged() {
+    let source = r#"
+fn foo() {
+    let _hash = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4";
+}
+"#;
+    let result = analyze("hex_short.rs", source, &permissive_config()).unwrap();
+    let crypto_findings: Vec<_> = result
+        .capabilities
+        .findings
+        .iter()
+        .filter(|f| f.capability == Capability::Crypto)
+        .collect();
+    assert!(
+        crypto_findings.is_empty(),
+        "32-char hex string should not trigger Crypto detection"
+    );
+}
+
+#[test]
+fn test_hex_odd_length_not_flagged() {
+    // 65-char hex: odd length prevents hex key detection.
+    // Note: base58 detection may still fire (65 chars falls in Solana range,
+    // and hex chars are a subset of base58). This test verifies the hex
+    // checker rejects odd lengths — base58 findings are expected.
+    let source = r#"
+fn foo() {
+    let _odd = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2a";
+}
+"#;
+    let syntax = syn::parse_file(source).unwrap();
+    let ir_data = ir::extract("hex_odd.rs", &syntax);
+    let profile = detect_capabilities(&ir_data, false);
+    // Should have at most 1 finding (base58), not 2 (hex would be a second)
+    let crypto_findings: Vec<_> = profile
+        .findings
+        .iter()
+        .filter(|f| f.capability == Capability::Crypto)
+        .collect();
+    assert!(
+        crypto_findings.len() <= 1,
+        "65-char odd-length hex string should not trigger hex key detection (found {} crypto findings)",
+        crypto_findings.len()
+    );
+}
+
+#[test]
+fn test_hex_mixed_case_detected() {
+    let source = r#"
+fn foo() {
+    let _key = "aAbBcCdDeEfF0011aAbBcCdDeEfF0011aAbBcCdDeEfF0011aAbBcCdDeEfF0011";
+}
+"#;
+    let result = analyze("hex_mixed.rs", source, &permissive_config()).unwrap();
+    let caps = result.capabilities.capabilities();
+    assert!(
+        caps.contains(&Capability::Crypto),
+        "mixed-case 64-char hex string should trigger Crypto detection"
+    );
+}
+
+// --- Base58 key detection tests ---
+
+#[test]
+fn test_bitcoin_wif_detected() {
+    let source = include_str!("fixtures/base58_key_material.rs");
+    let result = analyze("base58.rs", source, &permissive_config()).unwrap();
+    let crypto_findings: Vec<_> = result
+        .capabilities
+        .findings
+        .iter()
+        .filter(|f| f.capability == Capability::Crypto)
+        .collect();
+    assert!(
+        !crypto_findings.is_empty(),
+        "should detect Crypto from Bitcoin WIF key"
+    );
+}
+
+#[test]
+fn test_bitcoin_wif_k_prefix_detected() {
+    let source = r#"
+fn foo() {
+    let _key = "KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn";
+}
+"#;
+    let result = analyze("wif_k.rs", source, &permissive_config()).unwrap();
+    let caps = result.capabilities.capabilities();
+    assert!(
+        caps.contains(&Capability::Crypto),
+        "52-char WIF key starting with 'K' should trigger Crypto detection"
+    );
+}
+
+#[test]
+fn test_solana_keypair_detected() {
+    let source = include_str!("fixtures/base58_key_material.rs");
+    let result = analyze("solana.rs", source, &permissive_config()).unwrap();
+    let crypto_findings: Vec<_> = result
+        .capabilities
+        .findings
+        .iter()
+        .filter(|f| f.capability == Capability::Crypto)
+        .collect();
+    // Should have findings for both the WIF key and the Solana keypair
+    assert!(
+        crypto_findings.len() >= 2,
+        "should detect Crypto from both WIF and Solana keys, found {}",
+        crypto_findings.len()
+    );
+}
+
+#[test]
+fn test_short_base58_not_flagged() {
+    let source = r#"
+fn foo() {
+    let _addr = "1A1zP1eP5QGefi2DM";
+}
+"#;
+    let result = analyze("base58_short.rs", source, &permissive_config()).unwrap();
+    let crypto_findings: Vec<_> = result
+        .capabilities
+        .findings
+        .iter()
+        .filter(|f| f.capability == Capability::Crypto)
+        .collect();
+    assert!(
+        crypto_findings.is_empty(),
+        "20-char base58 string should not trigger Crypto detection"
+    );
+}
+
+#[test]
+fn test_base58_with_invalid_chars_not_flagged() {
+    // Contains '0', 'O', 'I', 'l' which are NOT in base58 alphabet
+    let source = r#"
+fn foo() {
+    let _not_key = "5HueCGU8rMjxEXxiPuD5BDku4MkFqeZyd4dZ1jvhTVq0OIl";
+}
+"#;
+    let result = analyze("base58_invalid.rs", source, &permissive_config()).unwrap();
+    let crypto_findings: Vec<_> = result
+        .capabilities
+        .findings
+        .iter()
+        .filter(|f| f.capability == Capability::Crypto)
+        .collect();
+    assert!(
+        crypto_findings.is_empty(),
+        "base58 string with invalid chars (0, O, I, l) should not trigger Crypto detection"
+    );
+}
+
+// --- Key prefix detection tests ---
+
+#[test]
+fn test_age_secret_key_detected() {
+    let source = include_str!("fixtures/key_prefix_material.rs");
+    let result = analyze("age_key.rs", source, &permissive_config()).unwrap();
+    let crypto_findings: Vec<_> = result
+        .capabilities
+        .findings
+        .iter()
+        .filter(|f| f.capability == Capability::Crypto)
+        .collect();
+    assert!(
+        crypto_findings
+            .iter()
+            .any(|f| f.evidence.starts_with("AGE-SECRET-KEY-1")),
+        "should detect AGE-SECRET-KEY-1 prefix"
+    );
+}
+
+#[test]
+fn test_xprv_key_detected() {
+    let source = include_str!("fixtures/key_prefix_material.rs");
+    let result = analyze("xprv.rs", source, &permissive_config()).unwrap();
+    let crypto_findings: Vec<_> = result
+        .capabilities
+        .findings
+        .iter()
+        .filter(|f| f.capability == Capability::Crypto)
+        .collect();
+    assert!(
+        crypto_findings
+            .iter()
+            .any(|f| f.evidence.starts_with("xprv")),
+        "should detect xprv key prefix"
+    );
+}
+
+#[test]
+fn test_ethereum_private_key_detected() {
+    let source = r#"
+fn foo() {
+    let _key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+}
+"#;
+    let result = analyze("eth_key.rs", source, &permissive_config()).unwrap();
+    let crypto_findings: Vec<_> = result
+        .capabilities
+        .findings
+        .iter()
+        .filter(|f| f.capability == Capability::Crypto)
+        .collect();
+    assert!(
+        !crypto_findings.is_empty(),
+        "should detect 0x + 64 hex chars as Ethereum private key"
+    );
+}
+
+#[test]
+fn test_near_ed25519_key_detected() {
+    let source = r#"
+fn foo() {
+    let _key = "ed25519:3D4YudUahN1nawWogh6LMPvoRPW8QHr9AJsByJsXk7gn";
+}
+"#;
+    let result = analyze("near_key.rs", source, &permissive_config()).unwrap();
+    let caps = result.capabilities.capabilities();
+    assert!(
+        caps.contains(&Capability::Crypto),
+        "should detect ed25519: prefix as NEAR key"
+    );
+}
+
+// --- Credential prefix detection tests ---
+
+#[test]
+fn test_aws_access_key_detected() {
+    let source = include_str!("fixtures/credential_material.rs");
+    let result = analyze("aws_key.rs", source, &permissive_config()).unwrap();
+    let crypto_findings: Vec<_> = result
+        .capabilities
+        .findings
+        .iter()
+        .filter(|f| f.capability == Capability::Crypto)
+        .collect();
+    assert!(
+        crypto_findings.iter().any(|f| f.evidence.contains("AKIA")),
+        "should detect AKIA prefix as AWS access key"
+    );
+}
+
+#[test]
+fn test_github_pat_detected() {
+    let source = r#"
+fn foo() {
+    let _token = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij";
+}
+"#;
+    let result = analyze("ghp.rs", source, &permissive_config()).unwrap();
+    let caps = result.capabilities.capabilities();
+    assert!(
+        caps.contains(&Capability::Crypto),
+        "should detect ghp_ prefix as GitHub PAT"
+    );
+}
+
+#[test]
+fn test_stripe_secret_key_detected() {
+    let source = r#"
+fn foo() {
+    let _key = "sk_live_abcdefghijklmnopqrstuvwx";
+}
+"#;
+    let result = analyze("stripe.rs", source, &permissive_config()).unwrap();
+    let caps = result.capabilities.capabilities();
+    assert!(
+        caps.contains(&Capability::Crypto),
+        "should detect sk_live_ prefix as Stripe secret key"
+    );
+}
+
+#[test]
+fn test_short_0x_not_flagged() {
+    let source = r#"
+fn foo() {
+    let _val = "0xdeadbeef12";
+}
+"#;
+    let result = analyze("short_0x.rs", source, &permissive_config()).unwrap();
+    let crypto_findings: Vec<_> = result
+        .capabilities
+        .findings
+        .iter()
+        .filter(|f| f.capability == Capability::Crypto)
+        .collect();
+    assert!(
+        crypto_findings.is_empty(),
+        "0x + 10 hex chars should not trigger key prefix detection"
+    );
+}
+
+#[test]
+fn test_existing_pem_still_works() {
+    // Regression: verify PEM and crypto import detection still work
+    let pem_source = r#"
+fn foo() {
+    let _key = "-----BEGIN PRIVATE KEY-----\ndata\n-----END PRIVATE KEY-----";
+}
+"#;
+    let pem_result = analyze("pem_regress.rs", pem_source, &permissive_config()).unwrap();
+    assert!(
+        pem_result
+            .capabilities
+            .capabilities()
+            .contains(&Capability::Crypto)
+    );
+
+    let import_source = "use ring::aead;\n";
+    let import_result = analyze("ring_regress.rs", import_source, &permissive_config()).unwrap();
+    assert!(
+        import_result
+            .capabilities
+            .capabilities()
+            .contains(&Capability::Crypto)
+    );
+}
+
+// --- Self-analysis validation ---
+
+#[test]
+fn test_self_analysis_no_false_positives() {
+    let source = include_str!("../../pedant-core/src/capabilities.rs");
+    let syntax = syn::parse_file(source).unwrap();
+    let ir_data = ir::extract("capabilities.rs", &syntax);
+    let profile = detect_capabilities(&ir_data, false);
+
+    let crypto_findings: Vec<_> = profile
+        .findings
+        .iter()
+        .filter(|f| f.capability == Capability::Crypto)
+        .collect();
+
+    // The only expected Crypto finding is from the PEM check string "-----BEGIN "
+    assert!(
+        crypto_findings.len() == 1,
+        "expected exactly 1 Crypto finding (PEM check string) from self-analysis, found {}: {:#?}",
+        crypto_findings.len(),
+        crypto_findings
+    );
+    assert!(
+        crypto_findings[0].evidence.contains("-----BEGIN "),
+        "the single Crypto finding should be the PEM check string, got: {}",
+        crypto_findings[0].evidence
     );
 }

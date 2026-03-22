@@ -1,5 +1,7 @@
+use std::rc::Rc;
+
 use proc_macro2::LineColumn;
-use syn::{Expr, Type};
+use syn::{Expr, FnArg, ReturnType, Signature, Type};
 
 /// Classifies a single-character binding name. Returns `Some(true)` if generic,
 /// `Some(false)` if contextually allowed, `None` if the name is multi-character.
@@ -17,7 +19,7 @@ pub(crate) fn classify_single_char(
 
 pub(crate) fn collect_pat_idents(pat: &syn::Pat) -> Vec<Box<str>> {
     let mut out = Vec::new();
-    let _ = visit_pat_idents(pat, &mut |name| {
+    let _cf = visit_pat_idents(pat, &mut |name| {
         out.push(name);
         std::ops::ControlFlow::Continue(())
     });
@@ -27,7 +29,7 @@ pub(crate) fn collect_pat_idents(pat: &syn::Pat) -> Vec<Box<str>> {
 /// Returns the first identifier in a pattern, without allocating the full list.
 pub(crate) fn first_pat_ident(pat: &syn::Pat) -> Option<Box<str>> {
     let mut result = None;
-    let _ = visit_pat_idents(pat, &mut |name| {
+    let _cf = visit_pat_idents(pat, &mut |name| {
         result = Some(name);
         std::ops::ControlFlow::Break(())
     });
@@ -151,14 +153,16 @@ fn as_type_arg(arg: &syn::GenericArgument) -> Option<&Type> {
     None
 }
 
-fn count_type_args(seg: &syn::PathSegment) -> usize {
-    let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
-        return 0;
+fn has_exact_type_args(seg: &syn::PathSegment, expected: usize) -> bool {
+    let syn::PathArguments::AngleBracketed(angle) = &seg.arguments else {
+        return expected == 0;
     };
-    args.args
+    angle
+        .args
         .iter()
         .filter(|arg| matches!(arg, syn::GenericArgument::Type(_)))
         .count()
+        == expected
 }
 
 pub(crate) fn involves_dyn_dispatch(ty: &Type) -> bool {
@@ -199,8 +203,8 @@ pub(crate) fn is_default_hasher(ty: &Type) -> bool {
         return false;
     };
     match () {
-        () if seg.ident == "HashMap" => count_type_args(seg) == 2,
-        () if seg.ident == "HashSet" => count_type_args(seg) == 1,
+        () if seg.ident == "HashMap" => has_exact_type_args(seg, 2),
+        () if seg.ident == "HashSet" => has_exact_type_args(seg, 1),
         () => false,
     }
 }
@@ -251,4 +255,65 @@ fn get_type_param_bound_span(bound: &syn::TypeParamBound) -> LineColumn {
         syn::TypeParamBound::Lifetime(lt) => lt.apostrophe.start(),
         _ => LineColumn { line: 1, column: 0 },
     }
+}
+
+/// Returns the first type name from a type (the first path segment), without
+/// allocating the full list of recursively collected names.
+pub(crate) fn first_type_name(ty: &Type) -> Option<Rc<str>> {
+    match ty {
+        Type::Path(tp) => tp
+            .path
+            .segments
+            .first()
+            .map(|seg| Rc::from(seg.ident.to_string())),
+        Type::Reference(r) => first_type_name(&r.elem),
+        Type::Tuple(t) => t.elems.iter().find_map(first_type_name),
+        Type::Slice(s) => first_type_name(&s.elem),
+        Type::Array(a) => first_type_name(&a.elem),
+        _ => None,
+    }
+}
+
+pub(crate) fn collect_type_names(ty: &Type) -> Vec<Rc<str>> {
+    match ty {
+        Type::Path(tp) => {
+            let mut names: Vec<Rc<str>> = tp
+                .path
+                .segments
+                .iter()
+                .map(|seg| Rc::from(seg.ident.to_string()))
+                .collect();
+            for seg in &tp.path.segments {
+                let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
+                    continue;
+                };
+                for arg in &args.args {
+                    let syn::GenericArgument::Type(inner) = arg else {
+                        continue;
+                    };
+                    names.extend(collect_type_names(inner));
+                }
+            }
+            names
+        }
+        Type::Reference(r) => collect_type_names(&r.elem),
+        Type::Tuple(t) => t.elems.iter().flat_map(collect_type_names).collect(),
+        Type::Slice(s) => collect_type_names(&s.elem),
+        Type::Array(a) => collect_type_names(&a.elem),
+        _ => Vec::new(),
+    }
+}
+
+pub(crate) fn collect_signature_type_names(sig: &Signature) -> Vec<Rc<str>> {
+    let mut names = Vec::new();
+    for input in &sig.inputs {
+        match input {
+            FnArg::Typed(pat) => names.extend(collect_type_names(&pat.ty)),
+            FnArg::Receiver(_) => {}
+        }
+    }
+    if let ReturnType::Type(_, ty) = &sig.output {
+        names.extend(collect_type_names(ty));
+    }
+    names
 }

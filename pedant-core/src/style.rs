@@ -483,7 +483,7 @@ fn check_mixed_concerns(
 
     for func in &ir.functions {
         if func.item_depth == 0 {
-            pairwise_borrowed(&func.signature_type_names, &mut all_edges);
+            push_pairwise_edges(&func.signature_type_names, &mut all_edges);
         }
         all_edges.extend(
             func.body_type_edges
@@ -504,7 +504,7 @@ fn check_mixed_concerns(
     );
 }
 
-fn pairwise_borrowed<'a>(names: &'a [Rc<str>], edges: &mut Vec<(&'a str, &'a str)>) {
+fn push_pairwise_edges<'a>(names: &'a [Rc<str>], edges: &mut Vec<(&'a str, &'a str)>) {
     crate::graph::for_each_pair(names.len(), |i, j| {
         edges.push((names[i].as_ref(), names[j].as_ref()));
     });

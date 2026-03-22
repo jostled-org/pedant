@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use pedant_types::{Capability, CapabilityFinding, CapabilityProfile, SourceLocation};
@@ -185,6 +186,96 @@ fn check_string_for_pem(value: &str) -> bool {
     value.contains("-----BEGIN ")
 }
 
+/// Truncate long evidence strings to avoid leaking full keys.
+///
+/// Strings ≤ 40 chars are returned unchanged. Longer strings return the first
+/// 16 chars, an ellipsis, and the last 4 chars.
+pub fn truncate_evidence(value: &str) -> Cow<'_, str> {
+    match value.len() <= 40 {
+        true => Cow::Borrowed(value),
+        false => Cow::Owned(format!("{}…{}", &value[..16], &value[value.len() - 4..])),
+    }
+}
+
+/// Check whether a string is a hex-encoded key at a known private key size.
+///
+/// Returns true for even-length pure hex strings of 64, 96, or ≥ 128 chars.
+fn check_string_for_hex_key(value: &str) -> bool {
+    let len = value.len();
+    if len < 64 || len % 2 != 0 {
+        return false;
+    }
+    if !value.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return false;
+    }
+    matches!(len, 64 | 96) || len >= 128
+}
+
+const BASE58_ALPHABET: &[u8; 58] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+fn is_base58(value: &str) -> bool {
+    value.bytes().all(|b| BASE58_ALPHABET.contains(&b))
+}
+
+/// Check whether a string is a base58-encoded private key.
+///
+/// Matches Bitcoin WIF keys (51–52 chars, first char in {5, K, L}) and
+/// Solana keypairs (64–88 base58 chars).
+fn check_string_for_base58_key(value: &str) -> bool {
+    let len = value.len();
+    match value.as_bytes().first() {
+        Some(b'5' | b'K' | b'L') if (51..=52).contains(&len) => is_base58(value),
+        _ if (64..=88).contains(&len) => is_base58(value),
+        _ => false,
+    }
+}
+
+/// Check whether a string starts with a known cryptographic key prefix.
+///
+/// Matches AGE-SECRET-KEY-1, xprv (BIP32), ed25519: (NEAR), and 0x + 64 hex (Ethereum).
+fn check_string_for_key_prefix(value: &str) -> bool {
+    match () {
+        () if value.starts_with("AGE-SECRET-KEY-1") => value.len() > 16,
+        () if value.starts_with("xprv") => value.len() >= 111 && is_base58(&value[4..]),
+        () if value.starts_with("ed25519:") => value.len() > 8,
+        () if value.starts_with("0x") => {
+            value.len() == 66 && value[2..].bytes().all(|b| b.is_ascii_hexdigit())
+        }
+        () => false,
+    }
+}
+
+/// Check whether a string starts with a known credential prefix.
+///
+/// Matches AWS access keys (AKIA), GitHub tokens (ghp_, gho_, ghs_, ghr_),
+/// and Stripe/OpenAI-style secrets (sk-, sk_live_, sk_test_).
+fn check_string_for_credential_prefix(value: &str) -> bool {
+    match () {
+        () if value.starts_with("AKIA") => {
+            value.len() == 20
+                && value[4..]
+                    .bytes()
+                    .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+        }
+        () if starts_with_github_prefix(value) => {
+            value.len() == 40 && value[4..].bytes().all(|b| b.is_ascii_alphanumeric())
+        }
+        () if value.starts_with("sk_live_") || value.starts_with("sk_test_") => {
+            let suffix = &value[8..];
+            suffix.len() >= 24 && suffix.bytes().all(|b| b.is_ascii_alphanumeric())
+        }
+        () if value.starts_with("sk-") => {
+            let suffix = &value[3..];
+            suffix.len() >= 24 && suffix.bytes().all(|b| b.is_ascii_alphanumeric())
+        }
+        () => false,
+    }
+}
+
+fn starts_with_github_prefix(value: &str) -> bool {
+    matches!(value.get(..4), Some("ghp_" | "gho_" | "ghs_" | "ghr_"))
+}
+
 // --- IR-based capability detection ---
 
 /// Detect capabilities from pre-extracted IR facts.
@@ -335,6 +426,14 @@ fn detect_attributes(
     });
 }
 
+/// Key-material checks that are mutually exclusive (a string matches at most one).
+const KEY_MATERIAL_CHECKS: &[fn(&str) -> bool] = &[
+    check_string_for_hex_key,
+    check_string_for_base58_key,
+    check_string_for_key_prefix,
+    check_string_for_credential_prefix,
+];
+
 fn detect_string_literals(
     ir: &FileIr,
     file_path: &Arc<str>,
@@ -364,6 +463,18 @@ fn detect_string_literals(
                 line,
                 column,
                 &lit.value,
+                build_script,
+            );
+        }
+        if KEY_MATERIAL_CHECKS.iter().any(|check| check(&lit.value)) {
+            let evidence = truncate_evidence(&lit.value);
+            record(
+                findings,
+                Capability::Crypto,
+                file_path,
+                line,
+                column,
+                &evidence,
                 build_script,
             );
         }

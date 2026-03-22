@@ -10,12 +10,15 @@ use crate::style::check_style;
 /// Error type for linting operations.
 #[derive(Debug, thiserror::Error)]
 pub enum LintError {
-    /// Failed to read the source file.
+    /// Failed to read a source or configuration file.
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
     /// Failed to parse the Rust source code.
     #[error("parse error: {0}")]
     ParseError(#[from] syn::Error),
+    /// Failed to parse a TOML configuration file.
+    #[error("TOML parse error: {0}")]
+    TomlParseError(#[from] toml::de::Error),
 }
 
 /// Parse and analyze a Rust source string, returning violations and capability findings.
@@ -27,13 +30,7 @@ pub fn analyze(
     source: &str,
     config: &CheckConfig,
 ) -> Result<AnalysisResult, syn::Error> {
-    let syntax = syn::parse_file(source)?;
-    let ir = ir::extract(file_path, &syntax);
-
-    Ok(AnalysisResult {
-        violations: check_style(&ir, config).into_boxed_slice(),
-        capabilities: detect_capabilities(&ir, false),
-    })
+    analyze_inner(file_path, source, config, false)
 }
 
 /// Parse and analyze a build script source, tagging all capability findings with `build_script: true`.
@@ -42,12 +39,21 @@ pub fn analyze_build_script(
     source: &str,
     config: &CheckConfig,
 ) -> Result<AnalysisResult, syn::Error> {
+    analyze_inner(file_path, source, config, true)
+}
+
+fn analyze_inner(
+    file_path: &str,
+    source: &str,
+    config: &CheckConfig,
+    build_script: bool,
+) -> Result<AnalysisResult, syn::Error> {
     let syntax = syn::parse_file(source)?;
     let ir = ir::extract(file_path, &syntax);
 
     Ok(AnalysisResult {
         violations: check_style(&ir, config).into_boxed_slice(),
-        capabilities: detect_capabilities(&ir, true),
+        capabilities: detect_capabilities(&ir, build_script),
     })
 }
 
@@ -81,11 +87,16 @@ pub fn lint_file(path: &Path, config: &CheckConfig) -> Result<AnalysisResult, Li
 ///
 /// Reads `Cargo.toml` at `crate_root` and checks `[package].build`.
 /// If specified, returns the resolved path. Otherwise falls back to `build.rs`.
-/// Returns `None` if no build script exists.
-pub fn discover_build_script(crate_root: &Path) -> Option<PathBuf> {
+/// Returns `Ok(None)` if no `Cargo.toml` or build script exists.
+/// Returns `Err` if `Cargo.toml` exists but cannot be read or parsed.
+pub fn discover_build_script(crate_root: &Path) -> Result<Option<PathBuf>, LintError> {
     let cargo_toml_path = crate_root.join("Cargo.toml");
-    let cargo_toml_contents = fs::read_to_string(&cargo_toml_path).ok()?;
-    let table: toml::Table = cargo_toml_contents.parse().ok()?;
+    let cargo_toml_contents = match fs::read_to_string(&cargo_toml_path) {
+        Ok(contents) => contents,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(LintError::IoError(e)),
+    };
+    let table: toml::Table = cargo_toml_contents.parse()?;
 
     let custom_path = table
         .get("package")
@@ -98,7 +109,7 @@ pub fn discover_build_script(crate_root: &Path) -> Option<PathBuf> {
         None => crate_root.join("build.rs"),
     };
 
-    candidate.is_file().then_some(candidate)
+    Ok(candidate.is_file().then_some(candidate))
 }
 
 /// Analyze a source file together with an optional build script.

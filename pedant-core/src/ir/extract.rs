@@ -7,13 +7,12 @@ use syn::visit::Visit;
 use syn::{Expr, ExprIf, FnArg, ReturnType, Signature, Type};
 
 use super::type_introspection::{
-    collect_pat_idents, contains_refcounted_type, first_pat_ident, get_type_span_start,
-    involves_dyn_dispatch, is_default_hasher, is_refcounted_type, is_string_type, is_vec_box_dyn,
-    iter_expr_ident, receiver_ident,
+    collect_pat_idents, collect_signature_type_names, collect_type_names, contains_refcounted_type,
+    first_pat_ident, first_type_name, get_type_span_start, involves_dyn_dispatch,
+    is_default_hasher, is_refcounted_type, is_string_type, is_vec_box_dyn, iter_expr_ident,
+    receiver_ident,
 };
-use crate::graph::{
-    collect_signature_type_names, collect_type_names, edges_from_names, first_type_name,
-};
+use crate::graph::edges_from_names;
 use crate::pattern::{
     extract_attribute_text, extract_macro_text, extract_method_call_text, extract_type_text,
 };
@@ -276,13 +275,12 @@ impl IrExtractor {
         let Expr::Macro(expr_macro) = expr else {
             return false;
         };
-        let macro_name = expr_macro
+        let is_write = expr_macro
             .mac
             .path
             .segments
             .last()
-            .map(|s| s.ident.to_string());
-        let is_write = matches!(macro_name.as_deref(), Some("write" | "writeln"));
+            .is_some_and(|s| s.ident == "write" || s.ident == "writeln");
         if !is_write {
             return false;
         }
@@ -310,9 +308,6 @@ impl IrExtractor {
     }
 
     fn collect_body_type_from_type(&mut self, ty: &Type) {
-        if self.current_fn.is_none() || self.item_depth == 0 {
-            return;
-        }
         if let Type::Path(tp) = ty {
             self.collect_body_type_from_path(&tp.path);
         }
@@ -325,7 +320,7 @@ impl IrExtractor {
         self.path_buf.clear();
         push_segment(&mut self.path_buf, &path.segments[0].ident);
         for seg in path.segments.iter().skip(1) {
-            let _ = write!(self.path_buf, "{PATH_SEPARATOR}{}", seg.ident);
+            write!(self.path_buf, "{PATH_SEPARATOR}{}", seg.ident).ok();
         }
 
         let span = path.segments.first().map_or_else(
@@ -545,10 +540,10 @@ const MAX_USE_TREE_DEPTH: usize = 32;
 fn push_segment(buf: &mut String, ident: &impl std::fmt::Display) {
     match buf.is_empty() {
         true => {
-            let _ = write!(buf, "{ident}");
+            write!(buf, "{ident}").ok();
         }
         false => {
-            let _ = write!(buf, "{PATH_SEPARATOR}{ident}");
+            write!(buf, "{PATH_SEPARATOR}{ident}").ok();
         }
     }
 }
@@ -772,7 +767,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
             };
             edges.extend(edges_from_names(
                 &self_name,
-                collect_signature_type_names(&method.sig),
+                &collect_signature_type_names(&method.sig),
             ));
         }
 
@@ -795,7 +790,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
             |name| {
                 node.fields
                     .iter()
-                    .flat_map(|field| edges_from_names(name, collect_type_names(&field.ty)))
+                    .flat_map(|field| edges_from_names(name, &collect_type_names(&field.ty)))
                     .collect()
             },
             |s| syn::visit::visit_item_struct(s, node),
@@ -810,7 +805,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
                 node.variants
                     .iter()
                     .flat_map(|variant| &variant.fields)
-                    .flat_map(|field| edges_from_names(name, collect_type_names(&field.ty)))
+                    .flat_map(|field| edges_from_names(name, &collect_type_names(&field.ty)))
                     .collect()
             },
             |s| syn::visit::visit_item_enum(s, node),
@@ -829,7 +824,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
                         _ => None,
                     })
                     .flat_map(|method| {
-                        edges_from_names(name, collect_signature_type_names(&method.sig))
+                        edges_from_names(name, &collect_signature_type_names(&method.sig))
                     })
                     .collect()
             },

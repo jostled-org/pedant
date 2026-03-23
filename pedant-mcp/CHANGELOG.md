@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/jostled-org/pedant/compare/pedant-mcp-v0.1.1...pedant-mcp-v0.2.0) - 2026-03-23
+
+### Other
+
+- fix formatting in query.rs and watcher.rs
+- [**breaking**] audit fixes and single-crate MCP support
+
 ## [0.1.1](https://github.com/jostled-org/pedant/compare/pedant-mcp-v0.1.0...pedant-mcp-v0.1.1) - 2026-03-22
 
 ### Other

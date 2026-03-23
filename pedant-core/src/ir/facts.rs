@@ -180,8 +180,6 @@ pub struct TypeRefFact {
     pub containing_fn: Option<usize>,
     /// Where this type reference appears (return, param, field, body).
     pub context: TypeRefContext,
-    /// Resolved type text after alias resolution (semantic analysis only).
-    pub resolved_text: Option<Box<str>>,
 }
 
 /// Position where a type reference appears.

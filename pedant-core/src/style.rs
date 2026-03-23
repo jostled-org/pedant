@@ -440,19 +440,14 @@ fn check_naming(ir: &FileIr, config: &CheckConfig, fp: &Arc<str>, violations: &m
 
     for (fn_idx, func) in ir.functions.iter().enumerate() {
         let has_arithmetic = func.has_arithmetic;
-        let total = ir
-            .bindings
-            .iter()
-            .filter(|b| {
-                b.containing_fn == Some(fn_idx) && !b.is_wildcard && !b.name.starts_with('_')
-            })
-            .count();
-        let mut offenders: Vec<&str> = Vec::with_capacity(total);
+        let mut total: usize = 0;
+        let mut offenders: Vec<&str> = Vec::new();
 
         for b in ir.bindings.iter() {
             if b.containing_fn != Some(fn_idx) || b.is_wildcard || b.name.starts_with('_') {
                 continue;
             }
+            total += 1;
             if is_generic_name(&b.name, b.loop_depth, has_arithmetic, generic_names) {
                 offenders.push(&b.name);
             }

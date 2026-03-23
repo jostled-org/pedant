@@ -262,13 +262,13 @@ fn attest_stdin(
             return None;
         }
     };
-    let mut sources = BTreeMap::new();
-    sources.insert(Box::<str>::from("<stdin>"), source.clone());
     acc.handle(
         analyze("<stdin>", &source, config, None).map_err(ProcessError::from),
         "error",
         stderr,
     );
+    let mut sources = BTreeMap::new();
+    sources.insert(Box::<str>::from("<stdin>"), source);
     Some(compute_source_hash(&sources))
 }
 
@@ -486,14 +486,14 @@ fn analyze_single_file(
             return;
         }
     };
-    if let Some(sources) = sources {
-        sources.insert(Box::from(file_path), source.clone());
-    }
     acc.handle(
         analyze_fn(file_path, &source, config, semantic).map_err(ProcessError::from),
         file_path,
         stderr,
     );
+    if let Some(sources) = sources {
+        sources.insert(Box::from(file_path), source);
+    }
 }
 
 fn load_file_config(cli: &Cli, stderr: &mut impl Write) -> Result<Option<ConfigFile>, ExitCode> {
@@ -702,15 +702,5 @@ fn run_diff(old_path: &str, new_path: &str, stderr: &mut impl Write) -> ExitCode
 fn write_explain(code: &str, rationale: &pedant_core::violation::CheckRationale) -> io::Result<()> {
     let mut stdout = io::stdout().lock();
     writeln!(stdout, "Check: {code}\n")?;
-    writeln!(stdout, "Problem:")?;
-    writeln!(stdout, "  {}\n", rationale.problem)?;
-    writeln!(stdout, "Fix:")?;
-    writeln!(stdout, "  {}\n", rationale.fix)?;
-    writeln!(stdout, "Exception:")?;
-    writeln!(stdout, "  {}\n", rationale.exception)?;
-    let llm_note = match rationale.llm_specific {
-        true => "Yes - particularly relevant for LLM-generated code",
-        false => "No - general code quality check",
-    };
-    writeln!(stdout, "LLM-specific: {llm_note}")
+    writeln!(stdout, "{rationale}")
 }

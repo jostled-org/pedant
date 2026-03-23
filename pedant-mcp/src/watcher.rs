@@ -81,6 +81,29 @@ fn handle_fs_event(
 
     let now = Instant::now();
 
+    // Check debounce timestamps before acquiring the expensive index write lock.
+    let actionable: Vec<&std::path::Path> = {
+        let timestamps = match last_reindex.read() {
+            Ok(guard) => guard,
+            Err(_) => return,
+        };
+        event
+            .paths
+            .iter()
+            .filter(|p| p.extension().is_some_and(|ext| ext == "rs"))
+            .filter(|p| {
+                timestamps
+                    .get(p.as_path())
+                    .is_none_or(|last| now.duration_since(*last).as_millis() >= DEBOUNCE_INTERVAL_MS)
+            })
+            .map(|p| p.as_path())
+            .collect()
+    };
+
+    if actionable.is_empty() {
+        return;
+    }
+
     let mut idx = match index.write() {
         Ok(guard) => guard,
         Err(_) => return,
@@ -91,23 +114,11 @@ fn handle_fs_event(
         Err(_) => return,
     };
 
-    for path in event
-        .paths
-        .iter()
-        .filter(|p| p.extension().is_some_and(|ext| ext == "rs"))
-    {
-        let recently_indexed = timestamps
-            .get(path)
-            .is_some_and(|last| now.duration_since(*last).as_millis() < DEBOUNCE_INTERVAL_MS);
-
-        if recently_indexed {
-            continue;
-        }
-
+    for path in &actionable {
         match event.kind {
             EventKind::Remove(_) => {
                 idx.remove_file(path);
-                timestamps.remove(path.as_path());
+                timestamps.remove(*path);
             }
             EventKind::Create(_) | EventKind::Modify(_) => {
                 drop(idx.reindex_file(path, config));

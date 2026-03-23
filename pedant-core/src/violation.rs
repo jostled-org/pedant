@@ -4,7 +4,7 @@ use std::sync::Arc;
 pub use crate::checks::{ViolationType, lookup_rationale};
 
 /// Rationale explaining why a check exists and how to address it.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize)]
 pub struct CheckRationale {
     /// What problem this check detects.
     pub problem: &'static str,
@@ -14,6 +14,15 @@ pub struct CheckRationale {
     pub exception: &'static str,
     /// Whether this check is particularly relevant for LLM-generated code.
     pub llm_specific: bool,
+}
+
+impl fmt::Display for CheckRationale {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Problem:      {}", self.problem)?;
+        writeln!(f, "Fix:          {}", self.fix)?;
+        writeln!(f, "Exception:    {}", self.exception)?;
+        write!(f, "LLM-specific: {}", self.llm_specific)
+    }
 }
 
 impl ViolationType {

@@ -538,7 +538,6 @@ impl IrExtractor {
             is_default_hasher: is_default_hasher(ty),
             containing_fn,
             context,
-            resolved_text: None,
         });
     }
 
@@ -1165,7 +1164,6 @@ fn enrich_type_refs(
         if resolved.contains("Vec") && resolved.contains("Box") && resolved.contains("dyn ") {
             tr.is_vec_box_dyn = true;
         }
-        tr.resolved_text = Some(resolved);
     }
 }
 
@@ -1176,16 +1174,26 @@ fn enrich_type_refs(
 /// resolves type annotations but not expression-level references.
 #[cfg(feature = "semantic")]
 fn enrich_method_calls(method_calls: &mut [MethodCallFact], bindings: &[BindingFact]) {
+    use std::collections::BTreeMap;
+
+    let mut binding_types: BTreeMap<(Option<usize>, &str), &str> = BTreeMap::new();
+    for b in bindings {
+        let Some(resolved) = b.resolved_type.as_deref() else {
+            continue;
+        };
+        binding_types
+            .entry((b.containing_fn, &b.name))
+            .or_insert(resolved);
+    }
+
     for mc in method_calls.iter_mut() {
         let Some(recv_ident) = mc.receiver_ident.as_deref() else {
             continue;
         };
-        let resolved = bindings
-            .iter()
-            .filter(|b| &*b.name == recv_ident && b.containing_fn == mc.containing_fn)
-            .find_map(|b| b.resolved_type.as_deref());
-        let Some(resolved) = resolved else { continue };
+        let Some(resolved) = binding_types.get(&(mc.containing_fn, recv_ident)) else {
+            continue;
+        };
         mc.is_copy_receiver = super::semantic::SemanticContext::is_copy(resolved);
-        mc.receiver_type = Some(Box::from(resolved));
+        mc.receiver_type = Some(Box::from(*resolved));
     }
 }

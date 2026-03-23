@@ -201,15 +201,6 @@ fn test_extract_resolves_type_ref() {
         .expect("should find return type ref for bar()");
 
     assert!(
-        type_ref.resolved_text.is_some(),
-        "resolved_text should be populated for MyHashMap return type"
-    );
-    let resolved = type_ref.resolved_text.as_deref().unwrap();
-    assert!(
-        resolved.contains("HashMap"),
-        "resolved type should contain 'HashMap', got: {resolved}"
-    );
-    assert!(
         type_ref.is_default_hasher,
         "is_default_hasher should be true (resolved through alias)"
     );

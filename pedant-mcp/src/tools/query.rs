@@ -290,19 +290,7 @@ fn collect_crate_violations<'a>(index: &'a WorkspaceIndex, name: &str) -> Vec<&'
 // ---------------------------------------------------------------------------
 
 fn parse_capability(name: &str) -> Result<Capability, String> {
-    match name {
-        "network" => Ok(Capability::Network),
-        "file_read" => Ok(Capability::FileRead),
-        "file_write" => Ok(Capability::FileWrite),
-        "process_exec" => Ok(Capability::ProcessExec),
-        "env_access" => Ok(Capability::EnvAccess),
-        "unsafe_code" => Ok(Capability::UnsafeCode),
-        "ffi" => Ok(Capability::Ffi),
-        "crypto" => Ok(Capability::Crypto),
-        "system_time" => Ok(Capability::SystemTime),
-        "proc_macro" => Ok(Capability::ProcMacro),
-        _ => Err(format!("unknown capability: {name}")),
-    }
+    name.parse().map_err(|e: pedant_types::ParseCapabilityError| e.to_string())
 }
 
 fn parse_capability_pattern(pattern: &str) -> Result<Vec<Capability>, String> {

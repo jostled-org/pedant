@@ -54,12 +54,18 @@ pub struct WorkspaceIndex {
     gate_config: GateConfig,
 }
 
-/// Walk up from `start` to find a `Cargo.toml` containing `[workspace]`.
+/// Walk up from `start` to find a `Cargo.toml`.
+///
+/// Prefers a `[workspace]` root. If none is found, falls back to the nearest
+/// `Cargo.toml` with a `[package]` section (single-crate project).
 pub fn discover_workspace_root(start: &Path) -> Option<PathBuf> {
-    let mut current = match start.is_dir() {
-        true => start.to_path_buf(),
-        false => start.parent()?.to_path_buf(),
+    let start_dir = match start.is_dir() {
+        true => start,
+        false => start.parent()?,
     };
+
+    // First pass: look for [workspace]
+    let mut current = start_dir.to_path_buf();
     loop {
         let cargo_toml = current.join("Cargo.toml");
         let is_workspace = fs::read_to_string(&cargo_toml)
@@ -67,7 +73,22 @@ pub fn discover_workspace_root(start: &Path) -> Option<PathBuf> {
             .is_some_and(|contents| contents.contains("[workspace]"));
         match is_workspace {
             true => return Some(current),
-            false => current = current.parent()?.to_path_buf(),
+            false if !current.pop() => break,
+            false => {}
+        }
+    }
+
+    // Fallback: nearest [package]
+    let mut current = start_dir.to_path_buf();
+    loop {
+        let cargo_toml = current.join("Cargo.toml");
+        let is_package = fs::read_to_string(&cargo_toml)
+            .ok()
+            .is_some_and(|contents| contents.contains("[package]"));
+        match is_package {
+            true => return Some(current),
+            false if !current.pop() => return None,
+            false => {}
         }
     }
 }
@@ -97,14 +118,20 @@ struct PackageSection {
 
 impl WorkspaceIndex {
     /// Build the index by discovering all workspace members and analyzing their sources.
+    ///
+    /// Handles both multi-crate workspaces (`[workspace]` in Cargo.toml) and
+    /// single-crate projects (`[package]` only).
     pub fn build(workspace_root: &Path, config: &Config) -> Result<Self, IndexError> {
         let cargo_toml_path = workspace_root.join("Cargo.toml");
         let cargo_toml_str = read_file(&cargo_toml_path)?;
-        let workspace: CargoWorkspace = parse_toml(&cargo_toml_str, &cargo_toml_path)?;
 
         let gate_config = GateConfig::default();
         let mut crates = BTreeMap::new();
-        let member_dirs = resolve_members(workspace_root, &workspace.workspace.members);
+
+        let member_dirs = match parse_toml::<CargoWorkspace>(&cargo_toml_str, &cargo_toml_path) {
+            Ok(workspace) => resolve_members(workspace_root, &workspace.workspace.members),
+            Err(_) => vec![workspace_root.to_path_buf()],
+        };
 
         for member_dir in member_dirs {
             let member_cargo_toml = member_dir.join("Cargo.toml");

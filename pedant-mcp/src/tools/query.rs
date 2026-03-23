@@ -290,7 +290,8 @@ fn collect_crate_violations<'a>(index: &'a WorkspaceIndex, name: &str) -> Vec<&'
 // ---------------------------------------------------------------------------
 
 fn parse_capability(name: &str) -> Result<Capability, String> {
-    name.parse().map_err(|e: pedant_types::ParseCapabilityError| e.to_string())
+    name.parse()
+        .map_err(|e: pedant_types::ParseCapabilityError| e.to_string())
 }
 
 fn parse_capability_pattern(pattern: &str) -> Result<Vec<Capability>, String> {

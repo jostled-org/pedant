@@ -92,9 +92,9 @@ fn handle_fs_event(
             .iter()
             .filter(|p| p.extension().is_some_and(|ext| ext == "rs"))
             .filter(|p| {
-                timestamps
-                    .get(p.as_path())
-                    .is_none_or(|last| now.duration_since(*last).as_millis() >= DEBOUNCE_INTERVAL_MS)
+                timestamps.get(p.as_path()).is_none_or(|last| {
+                    now.duration_since(*last).as_millis() >= DEBOUNCE_INTERVAL_MS
+                })
             })
             .map(|p| p.as_path())
             .collect()

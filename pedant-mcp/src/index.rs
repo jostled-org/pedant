@@ -53,7 +53,7 @@ struct CrateIndex {
 pub struct WorkspaceIndex {
     crates: BTreeMap<Box<str>, CrateIndex>,
     gate_config: GateConfig,
-    semantic: Option<SemanticContext>,
+    semantic_available: bool,
 }
 
 pub use pedant_core::lint::discover_workspace_root;
@@ -139,7 +139,7 @@ impl WorkspaceIndex {
         Ok(Self {
             crates,
             gate_config,
-            semantic,
+            semantic_available: semantic.is_some(),
         })
     }
 
@@ -191,7 +191,7 @@ impl WorkspaceIndex {
             .crates
             .get(name)
             .is_some_and(|c| c.files.values().any(|r| !r.data_flows.is_empty()));
-        match (has_flows, self.semantic.is_some()) {
+        match (has_flows, self.semantic_available) {
             (true, _) => "data_flow",
             (false, true) => "semantic",
             (false, false) => "syntactic",
@@ -211,11 +211,12 @@ impl WorkspaceIndex {
     /// Handles both regular source files and `build.rs`.
     pub fn reindex_file(&mut self, path: &Path, config: &Config) -> Result<(), IndexError> {
         let path_lossy = path.to_string_lossy();
-        let sem = self.semantic.as_ref();
+        // Incremental reindex uses syntactic analysis only — SemanticContext
+        // is consumed at build time and not retained (it's not Sync).
         let is_build_script = path.file_name().is_some_and(|n| n == "build.rs");
         let result = match is_build_script {
-            true => analyze_build_script_at(path, &path_lossy, config, sem)?,
-            false => analyze_source_at(path, &path_lossy, config, sem)?,
+            true => analyze_build_script_at(path, &path_lossy, config, None)?,
+            false => analyze_source_at(path, &path_lossy, config, None)?,
         };
 
         let crate_index = match find_owning_crate(&mut self.crates, path) {

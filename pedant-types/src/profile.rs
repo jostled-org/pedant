@@ -2,16 +2,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Capability, CapabilityFinding};
 
-/// A collection of capability findings for a crate.
+/// Aggregated capability findings for a crate or file.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
 pub struct CapabilityProfile {
-    /// All findings from the analysis.
+    /// Every capability finding, unsorted and possibly duplicated across files.
     pub findings: Box<[CapabilityFinding]>,
 }
 
 impl CapabilityProfile {
-    /// Returns deduplicated, sorted set of capabilities present in the profile.
-    /// Recomputes on each call; callers needing repeated access should cache the result.
+    /// Deduplicated, sorted capability set. Recomputes on each call -- cache if needed.
     pub fn capabilities(&self) -> Box<[Capability]> {
         let mut caps: Vec<Capability> = self.findings.iter().map(|f| f.capability).collect();
         caps.sort();
@@ -19,7 +18,7 @@ impl CapabilityProfile {
         caps.into_boxed_slice()
     }
 
-    /// Returns findings filtered to a specific capability.
+    /// Iterate over findings matching a single capability type.
     pub fn findings_for(&self, capability: Capability) -> impl Iterator<Item = &CapabilityFinding> {
         self.findings
             .iter()

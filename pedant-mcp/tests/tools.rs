@@ -18,7 +18,7 @@ fn fixture_path(name: &str) -> std::path::PathBuf {
 fn fixture_index() -> WorkspaceIndex {
     let root = fixture_path("multi_crate");
     let config = Config::default();
-    WorkspaceIndex::build(&root, &config).unwrap()
+    WorkspaceIndex::build(&root, &config, None).unwrap()
 }
 
 fn result_text(result: &rmcp::model::CallToolResult) -> String {
@@ -229,6 +229,35 @@ fn test_audit_crate() {
     assert!(
         audit.get("tier").is_some(),
         "expected tier in audit: {text}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 7.T3: audit_crate response includes data_flows array
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_mcp_audit_crate_includes_data_flows() {
+    let index = fixture_index();
+    let result = audit_crate(
+        AuditCrateParams {
+            crate_name: "lib-a".into(),
+        },
+        &index,
+    );
+
+    assert!(!is_error(&result));
+    let text = result_text(&result);
+    let audit: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert!(
+        audit.get("data_flows").is_some(),
+        "expected data_flows field in audit output: {text}"
+    );
+    // Without semantic analysis, data_flows should be an empty array.
+    let flows = audit["data_flows"].as_array().unwrap();
+    assert!(
+        flows.is_empty(),
+        "expected empty data_flows without semantic analysis: {text}"
     );
 }
 

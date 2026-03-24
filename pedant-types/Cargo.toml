@@ -12,3 +12,4 @@ readme = "README.md"
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 rustc-hash = "2"
+thiserror = "2"

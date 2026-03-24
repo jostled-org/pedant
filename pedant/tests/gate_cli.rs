@@ -121,30 +121,36 @@ fn test_gate_cli_json_format() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // The JSON output should contain gate verdicts — find the JSON array
-    let verdicts: Vec<serde_json::Value> = serde_json::from_str(
-        stdout
-            .lines()
-            .collect::<Vec<_>>()
-            .join("\n")
-            .trim_start_matches(|c: char| c != '['),
-    )
-    .unwrap_or_default();
+    // The JSON output contains multiple blocks; the gate verdicts are the last JSON array.
+    let full = stdout.lines().collect::<Vec<_>>().join("\n");
+    let verdicts: Vec<serde_json::Value> = full
+        .rfind('[')
+        .and_then(|start| serde_json::from_str(&full[start..]).ok())
+        .unwrap_or_default();
 
-    // There should be at least one verdict, but let's parse more carefully.
-    // The output contains both attestation JSON and gate verdict JSON.
-    // Let's just check the raw output contains the expected fields.
     assert!(
-        stdout.contains("build-script-download-exec"),
-        "expected verdict rule in JSON output, got:\n{stdout}"
+        !verdicts.is_empty(),
+        "expected at least one gate verdict in JSON output, got:\n{stdout}"
+    );
+
+    let has_build_script_rule = verdicts.iter().any(|v| {
+        v.get("rule")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|r| r.contains("build-script"))
+    });
+    assert!(
+        has_build_script_rule,
+        "expected a build-script verdict rule in parsed JSON, got: {verdicts:?}"
+    );
+
+    let first = &verdicts[0];
+    assert!(
+        first.get("severity").is_some(),
+        "expected severity field in verdict, got: {first:?}"
     );
     assert!(
-        stdout.contains("\"severity\""),
-        "expected severity field in JSON output, got:\n{stdout}"
-    );
-    assert!(
-        stdout.contains("\"rationale\""),
-        "expected rationale field in JSON output, got:\n{stdout}"
+        first.get("rationale").is_some(),
+        "expected rationale field in verdict, got: {first:?}"
     );
 }
 

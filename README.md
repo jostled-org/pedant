@@ -43,9 +43,25 @@ All three pass `cargo check` and `cargo clippy`.
 cargo install pedant
 ```
 
-## Usage
+## When to Use What
 
-pedant has four modes: **linting** enforces style rules, **capability detection** audits what a crate can do, **gate rules** flag suspicious capability combinations, and an **MCP server** exposes all of this to AI agents.
+pedant has several access paths. Each serves a different workflow:
+
+| When you want to... | Use | Why |
+|---------------------|-----|-----|
+| Block bad code as it's written | **Post-hook** (`pedant-check.sh`) | Runs on every Edit/Write, catches violations before they enter the project |
+| Check a file or crate manually | **CLI** (`pedant src/*.rs`) | One-shot style check with immediate feedback |
+| Audit what a crate can do | **CLI** (`pedant --capabilities`) | Lists network, filesystem, crypto, etc. capabilities with evidence |
+| Check for supply chain risks | **CLI** (`pedant --gate`) | Evaluates 9+ rules against capability combinations |
+| Get a reproducible security snapshot | **CLI** (`pedant --attestation`) | Capability profile + source hash + crate identity |
+| Compare before/after a dependency change | **CLI** (`pedant --diff old.json new.json`) | Shows added/removed capabilities |
+| Let an AI agent query capabilities | **MCP server** (`pedant-mcp`) | Persistent service — AI agents ask questions, get structured answers |
+| Quick scan of changed files | **Skill** (`/pedant`) | Runs capabilities + gate + style on your recent changes |
+| Resolve types through aliases | **`--semantic` flag** | Enriches any of the above with rust-analyzer type resolution |
+
+The post-hook is enforcement (automatic, per-file). The CLI is investigation (manual, targeted). The MCP server is intelligence (persistent, queryable). See [examples/](examples/) for skill and hook setup.
+
+## Usage
 
 ### Linting
 

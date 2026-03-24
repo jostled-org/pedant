@@ -1,7 +1,6 @@
 use syn::{Attribute, ExprMethodCall, Macro, Type};
 
-/// Matches text against a glob-style pattern.
-/// Supports: `*` for any characters, literal matching, prefix/suffix matching.
+/// Test whether `text` matches a glob pattern (`*` matches any characters).
 pub fn matches_pattern(text: &str, pattern: &str) -> bool {
     if !pattern.contains('*') {
         return text == pattern;
@@ -76,31 +75,30 @@ fn check_position_constraints(
     }
 }
 
-/// Matches a file path against a glob pattern with `/`-separated segments.
-/// Supports `*` (single segment wildcard) and `**` (multi-segment wildcard).
+/// Path-aware glob: `*` matches one segment, `**` matches zero or more segments.
 pub(crate) fn matches_glob(pattern: &str, path: &str) -> bool {
     let path = path.strip_prefix("./").unwrap_or(path);
-    let pattern_parts: Vec<&str> = pattern.split('/').collect();
-    let path_parts: Vec<&str> = path.split('/').collect();
-    matches_glob_parts(&pattern_parts, &path_parts)
+    let pat_segs: Box<[&str]> = pattern.split('/').collect::<Vec<_>>().into_boxed_slice();
+    let path_segs: Box<[&str]> = path.split('/').collect::<Vec<_>>().into_boxed_slice();
+    matches_glob_at(&pat_segs, 0, &path_segs, 0)
 }
 
-fn matches_glob_parts(pattern: &[&str], path: &[&str]) -> bool {
-    match (pattern.first(), path.first()) {
+fn matches_glob_at(pat_segs: &[&str], pi: usize, path_segs: &[&str], si: usize) -> bool {
+    match (pat_segs.get(pi), path_segs.get(si)) {
         (None, None) => true,
-        (Some(&"**"), _) => matches_double_star(&pattern[1..], path),
+        (Some(&"**"), _) => matches_double_star_at(pat_segs, pi + 1, path_segs, si),
         (Some(p), Some(s)) if matches_segment(p, s) => {
-            matches_glob_parts(&pattern[1..], &path[1..])
+            matches_glob_at(pat_segs, pi + 1, path_segs, si + 1)
         }
         _ => false,
     }
 }
 
-fn matches_double_star(rest_pattern: &[&str], path: &[&str]) -> bool {
-    if rest_pattern.is_empty() {
-        return true;
+fn matches_double_star_at(pat_segs: &[&str], pi: usize, path_segs: &[&str], si: usize) -> bool {
+    match pat_segs.get(pi) {
+        None => true,
+        Some(_) => (si..=path_segs.len()).any(|i| matches_glob_at(pat_segs, pi, path_segs, i)),
     }
-    (0..=path.len()).any(|i| matches_glob_parts(rest_pattern, &path[i..]))
 }
 
 fn matches_segment(pattern: &str, segment: &str) -> bool {
@@ -111,8 +109,7 @@ fn matches_segment(pattern: &str, segment: &str) -> bool {
     }
 }
 
-/// Extracts the text representation of an attribute for pattern matching.
-/// Returns the inner content of the attribute (e.g., "allow(dead_code)" from #[allow(dead_code)]).
+/// Render the inner content of an attribute (e.g., `allow(dead_code)` from `#[allow(dead_code)]`).
 pub fn extract_attribute_text(attr: &Attribute) -> Box<str> {
     let tokens = &attr.meta;
     quote::quote!(#tokens)
@@ -121,8 +118,7 @@ pub fn extract_attribute_text(attr: &Attribute) -> Box<str> {
         .into_boxed_str()
 }
 
-/// Extracts the text representation of a type for pattern matching.
-/// Normalizes whitespace for consistent matching.
+/// Render a type with whitespace stripped for consistent pattern matching.
 pub fn extract_type_text(ty: &Type) -> Box<str> {
     quote::quote!(#ty)
         .to_string()
@@ -130,14 +126,12 @@ pub fn extract_type_text(ty: &Type) -> Box<str> {
         .into_boxed_str()
 }
 
-/// Extracts the text representation of a method call for pattern matching.
-/// Returns format ".method_name()" for matching.
+/// Render a method call as `.method_name()` for pattern matching.
 pub fn extract_method_call_text(call: &ExprMethodCall) -> Box<str> {
     format!(".{}()", call.method).into_boxed_str()
 }
 
-/// Extracts the text representation of a macro for pattern matching.
-/// Returns the macro name with "!" suffix (e.g., "println!").
+/// Render a macro invocation as `name!` (e.g., `println!`) for pattern matching.
 pub fn extract_macro_text(mac: &Macro) -> Box<str> {
     let path = &mac.path;
     format!("{}!", quote::quote!(#path).to_string().replace(' ', "")).into_boxed_str()

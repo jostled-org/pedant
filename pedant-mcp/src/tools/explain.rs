@@ -4,14 +4,14 @@ use serde::Deserialize;
 
 use super::{error_result, json_result};
 
-/// Parameters for the `explain_finding` tool.
+/// Deserialized arguments for `explain_finding`.
 #[derive(Deserialize)]
 pub struct ExplainFindingParams {
-    /// Check or violation type name to explain.
+    /// Check code to look up (e.g., `"max-depth"`, `"clone-in-loop"`).
     pub check_name: Box<str>,
 }
 
-/// Get detailed rationale for a check or violation type.
+/// Handler: return the structured rationale for a check code.
 pub fn explain_finding(params: ExplainFindingParams) -> CallToolResult {
     let rationale = match lookup_rationale(&params.check_name) {
         Some(r) => r,

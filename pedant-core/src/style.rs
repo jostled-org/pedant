@@ -9,7 +9,7 @@ use crate::ir::{BranchContext, ControlFlowKind, FileIr, IrSpan, TypeRefContext};
 use crate::pattern::matches_pattern;
 use crate::violation::{Violation, ViolationType};
 
-/// Run all style checks over extracted IR facts.
+/// Entry point: runs every enabled style check over a file's IR facts.
 pub fn check_style(ir: &FileIr, config: &CheckConfig) -> Vec<Violation> {
     let mut violations = Vec::new();
     let fp = &ir.file_path;
@@ -539,21 +539,10 @@ fn push_pairwise_edges<'a>(names: &'a [Rc<str>], edges: &mut Vec<(&'a str, &'a s
 fn find_disconnected_groups(
     defined_types: &BTreeSet<&str>,
     all_edges: &[(&str, &str)],
-) -> Option<String> {
-    let mut degree: BTreeMap<&str, usize> = BTreeMap::new();
-    for name in defined_types {
-        degree.entry(name).or_insert(0);
-    }
-    for &(src, dst) in all_edges {
-        if src == dst || !defined_types.contains(src) || !defined_types.contains(dst) {
-            continue;
-        }
-        *degree.entry(src).or_insert(0) += 1;
-        *degree.entry(dst).or_insert(0) += 1;
-    }
-    let mut adj: BTreeMap<&str, Vec<&str>> = degree
+) -> Option<Box<str>> {
+    let mut adj: BTreeMap<&str, Vec<&str>> = defined_types
         .iter()
-        .map(|(&name, &deg)| (name, Vec::with_capacity(deg)))
+        .map(|&name| (name, Vec::new()))
         .collect();
     for &(src, dst) in all_edges {
         if src == dst || !defined_types.contains(src) || !defined_types.contains(dst) {
@@ -587,5 +576,5 @@ fn find_disconnected_groups(
         result.push_str(&c.join(", "));
         result.push('}');
     }
-    Some(result)
+    Some(result.into_boxed_str())
 }

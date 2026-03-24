@@ -1,12 +1,12 @@
 //! MCP server exposing pedant security and capability analysis.
 
-/// Workspace discovery, per-crate analysis caching, and incremental reindexing.
+/// Workspace discovery, per-crate analysis caching, and incremental reindex.
 pub mod index;
-/// MCP tool schema definitions and registration.
+/// MCP tool JSON-Schema definitions built once via `LazyLock`.
 pub mod schema;
-/// MCP protocol bridge routing tool calls to handlers.
+/// MCP protocol handler routing `call_tool` to query/explain/audit functions.
 pub mod server;
-/// Tool handler functions for security queries.
+/// Tool handler implementations for security and capability queries.
 pub mod tools;
-/// File system watcher for incremental reindex on source changes.
+/// `notify`-based file watcher triggering incremental reindex on `.rs` changes.
 pub mod watcher;

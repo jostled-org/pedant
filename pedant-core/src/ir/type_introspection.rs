@@ -156,48 +156,72 @@ fn has_exact_type_args(seg: &syn::PathSegment, expected: usize) -> bool {
         == expected
 }
 
-pub(crate) fn involves_dyn_dispatch(ty: &Type) -> bool {
+/// Combined type-ref flags computed in a single type traversal.
+pub(crate) struct TypeRefFlags {
+    pub involves_dyn: bool,
+    pub is_vec_box_dyn: bool,
+    pub is_default_hasher: bool,
+}
+
+/// Compute all type-ref flags in a single pass over the type structure.
+///
+/// Replaces three separate functions (`involves_dyn_dispatch`, `is_vec_box_dyn`,
+/// `is_default_hasher`) to avoid redundant `type_path_last_segment` lookups.
+pub(crate) fn classify_type_ref(ty: &Type) -> TypeRefFlags {
     match ty {
-        Type::TraitObject(_) => true,
-        Type::Reference(r) => matches!(r.elem.as_ref(), Type::TraitObject(_)),
-        _ => {
-            let Some(seg) = type_path_last_segment(ty) else {
-                return false;
-            };
-            (seg.ident == "Box" || seg.ident == "Arc" || seg.ident == "Rc")
-                && first_type_arg(seg).is_some_and(|inner| matches!(inner, Type::TraitObject(_)))
-        }
+        Type::TraitObject(_) => TypeRefFlags {
+            involves_dyn: true,
+            is_vec_box_dyn: false,
+            is_default_hasher: false,
+        },
+        Type::Reference(r) => TypeRefFlags {
+            involves_dyn: matches!(r.elem.as_ref(), Type::TraitObject(_)),
+            is_vec_box_dyn: false,
+            is_default_hasher: false,
+        },
+        _ => classify_type_ref_from_segment(ty),
     }
 }
 
-pub(crate) fn is_vec_box_dyn(ty: &Type) -> bool {
+fn classify_type_ref_from_segment(ty: &Type) -> TypeRefFlags {
     let Some(seg) = type_path_last_segment(ty) else {
-        return false;
+        return TypeRefFlags {
+            involves_dyn: false,
+            is_vec_box_dyn: false,
+            is_default_hasher: false,
+        };
     };
-    if seg.ident != "Vec" {
-        return false;
+
+    let inner_is_trait_object =
+        first_type_arg(seg).is_some_and(|inner| matches!(inner, Type::TraitObject(_)));
+
+    let involves_dyn =
+        (seg.ident == "Box" || seg.ident == "Arc" || seg.ident == "Rc") && inner_is_trait_object;
+
+    let is_vec_box_dyn = seg.ident == "Vec" && check_vec_box_dyn(seg);
+
+    let is_default_hasher = match () {
+        () if seg.ident == "HashMap" => has_exact_type_args(seg, 2),
+        () if seg.ident == "HashSet" => has_exact_type_args(seg, 1),
+        () => false,
+    };
+
+    TypeRefFlags {
+        involves_dyn,
+        is_vec_box_dyn,
+        is_default_hasher,
     }
-    let Some(inner) = first_type_arg(seg) else {
+}
+
+fn check_vec_box_dyn(vec_seg: &syn::PathSegment) -> bool {
+    let Some(inner) = first_type_arg(vec_seg) else {
         return false;
     };
     let Some(inner_seg) = type_path_last_segment(inner) else {
         return false;
     };
-    if inner_seg.ident != "Box" {
-        return false;
-    }
-    first_type_arg(inner_seg).is_some_and(|ty| matches!(ty, Type::TraitObject(_)))
-}
-
-pub(crate) fn is_default_hasher(ty: &Type) -> bool {
-    let Some(seg) = type_path_last_segment(ty) else {
-        return false;
-    };
-    match () {
-        () if seg.ident == "HashMap" => has_exact_type_args(seg, 2),
-        () if seg.ident == "HashSet" => has_exact_type_args(seg, 1),
-        () => false,
-    }
+    inner_seg.ident == "Box"
+        && first_type_arg(inner_seg).is_some_and(|ty| matches!(ty, Type::TraitObject(_)))
 }
 
 pub(crate) fn get_type_span_start(ty: &Type) -> LineColumn {

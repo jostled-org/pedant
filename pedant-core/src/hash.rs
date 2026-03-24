@@ -3,10 +3,9 @@ use std::fmt::Write;
 
 use sha2::{Digest, Sha256};
 
-/// Compute a SHA-256 hash of all source contents in key order.
+/// SHA-256 digest of concatenated source contents, iterated in key order.
 ///
 /// The `BTreeMap` guarantees deterministic iteration regardless of insertion order.
-/// Returns a hex-encoded digest.
 pub fn compute_source_hash<K: Ord + AsRef<str>, V: AsRef<str>>(
     sources: &BTreeMap<K, V>,
 ) -> Box<str> {

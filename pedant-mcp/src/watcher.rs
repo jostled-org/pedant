@@ -11,20 +11,20 @@ use crate::index::WorkspaceIndex;
 /// Minimum interval between reindex operations for the same file.
 const DEBOUNCE_INTERVAL_MS: u128 = 100;
 
-/// Errors from file watcher operations.
+/// Failure modes for the file watcher subsystem.
 #[derive(Debug, Error)]
 pub enum WatcherError {
-    /// The workspace index RwLock was poisoned by a panicking thread.
+    /// The workspace index `RwLock` was poisoned by a panicking thread.
     #[error("index lock poisoned")]
     LockPoisoned,
-    /// Error from the underlying file notification system.
+    /// The OS file notification layer reported an error.
     #[error("file watcher error: {0}")]
     Notify(#[from] notify::Error),
 }
 
-/// Start a file watcher that incrementally re-indexes on `.rs` file changes.
+/// Begin watching crate `src/` dirs and `build.rs` for `.rs` file changes.
 ///
-/// Returns the watcher handle — dropping it stops watching.
+/// Returns the watcher handle; dropping it stops watching.
 pub fn start_watcher(
     index: &Arc<RwLock<WorkspaceIndex>>,
     config: Arc<Config>,

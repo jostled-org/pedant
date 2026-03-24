@@ -16,13 +16,13 @@ use crate::tools::{
     query_capabilities, query_gate_verdicts, query_violations, search_by_capability,
 };
 
-/// MCP server backed by a shared workspace index.
+/// MCP protocol handler backed by a shared, incrementally-updated workspace index.
 pub struct PedantServer {
     index: Arc<RwLock<WorkspaceIndex>>,
 }
 
 impl PedantServer {
-    /// Create a server backed by the given shared workspace index.
+    /// Wrap a shared index for use as an MCP server.
     pub fn new(index: Arc<RwLock<WorkspaceIndex>>) -> Self {
         Self { index }
     }

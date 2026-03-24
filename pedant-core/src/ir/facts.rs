@@ -1,64 +1,85 @@
 use std::rc::Rc;
 use std::sync::Arc;
 
-/// Line and column in source (1-based line, 0-based column from syn, +1 at report time).
+use pedant_types::Capability;
+
+/// Source position extracted from `syn` spans.
+///
+/// Line is 1-based. Column is 0-based from syn, adjusted to 1-based at report time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IrSpan {
-    /// 1-based line number.
+    /// 1-based.
     pub line: usize,
-    /// 0-based column offset (adjusted to 1-based at report time).
+    /// 0-based from syn; adjusted to 1-based at report time.
     pub column: usize,
 }
 
-/// All facts extracted from a single file's AST.
+/// Cross-function data flow edge from a capability source to a sink.
+#[derive(Debug, Clone)]
+pub struct DataFlowFact {
+    /// Where the tainted data originates.
+    pub source_capability: Capability,
+    /// Location of the source expression.
+    pub source_span: IrSpan,
+    /// Where the tainted data is consumed.
+    pub sink_capability: Capability,
+    /// Location of the sink expression.
+    pub sink_span: IrSpan,
+    /// Intermediate function names the data passes through.
+    pub call_chain: Box<[Box<str>]>,
+}
+
+/// All facts extracted from a single source file's AST in one pass.
 #[derive(Debug)]
 pub struct FileIr {
-    /// Absolute path of the source file.
+    /// Absolute path used for violation reporting.
     pub file_path: Arc<str>,
-    /// Function and method definitions.
+    /// Function and method definitions with body metadata.
     pub functions: Box<[FnFact]>,
-    /// Struct, enum, and trait definitions.
+    /// Struct, enum, and trait definitions with type-relationship edges.
     pub type_defs: Box<[TypeDefFact]>,
-    /// Impl blocks (inherent and trait).
+    /// Inherent and trait impl blocks.
     pub impl_blocks: Box<[ImplFact]>,
-    /// Flattened use paths.
+    /// Flattened `use` paths for capability detection.
     pub use_paths: Box<[UsePathFact]>,
-    /// Control flow constructs (if, match, loops, closures).
+    /// Nesting-tracked control flow constructs.
     pub control_flow: Box<[ControlFlowFact]>,
-    /// Let bindings.
+    /// Let bindings with ownership and type metadata.
     pub bindings: Box<[BindingFact]>,
-    /// Type references in signatures and bodies.
+    /// Type references classified by position (return, param, field, body).
     pub type_refs: Box<[TypeRefFact]>,
-    /// Method call expressions.
+    /// Method calls with receiver tracking for clone-in-loop analysis.
     pub method_calls: Box<[MethodCallFact]>,
-    /// Macro invocations.
+    /// Macro invocations for forbidden-macro checks.
     pub macro_invocations: Box<[MacroFact]>,
-    /// Attributes on items.
+    /// Item attributes for forbidden-attribute checks.
     pub attributes: Box<[AttributeFact]>,
-    /// String literal values.
+    /// String literals for credential/endpoint detection.
     pub string_literals: Box<[StringLitFact]>,
     /// Unsafe blocks, functions, and impls.
     pub unsafe_sites: Box<[UnsafeFact]>,
-    /// Extern block declarations.
+    /// Extern block declarations for FFI detection.
     pub extern_blocks: Box<[ExternBlockFact]>,
-    /// Module declarations.
+    /// Module declarations for inline-test detection.
     pub modules: Box<[ModuleFact]>,
+    /// Populated only by semantic enrichment; empty otherwise.
+    pub data_flows: Box<[DataFlowFact]>,
 }
 
-/// A function or method definition.
+/// Extracted metadata for a function or method definition.
 #[derive(Debug)]
 pub struct FnFact {
-    /// Function name.
+    /// Identifier of the function.
     pub name: Box<str>,
-    /// Source location.
+    /// Location of the `fn` keyword.
     pub span: IrSpan,
-    /// Whether the function is marked `unsafe`.
+    /// Marked `unsafe fn`.
     pub is_unsafe: bool,
-    /// Parameter list.
+    /// Declared parameters.
     pub params: Box<[ParamFact]>,
-    /// Return type, if explicitly specified.
+    /// Explicit return type, if present (excludes implicit `()`).
     pub return_type: Option<TypeInfo>,
-    /// Type names referenced in the signature.
+    /// Unique type names from parameters and return type, for mixed-concerns edges.
     pub signature_type_names: Box<[Rc<str>]>,
     /// Nesting depth of the item in the module tree.
     pub item_depth: usize,
@@ -68,267 +89,267 @@ pub struct FnFact {
     pub body_type_edges: Box<[(Rc<str>, Rc<str>)]>,
 }
 
-/// A function parameter.
+/// Extracted metadata for a function parameter.
 #[derive(Debug)]
 pub struct ParamFact {
-    /// Parameter name (or `self`).
+    /// Identifier or `self`.
     pub name: Box<str>,
-    /// Textual representation of the parameter type.
+    /// Rendered type text for pattern matching.
     pub type_text: Box<str>,
 }
 
-/// Minimal type information extracted from the AST.
+/// Rendered type text with dispatch classification.
 #[derive(Debug)]
 pub struct TypeInfo {
-    /// Textual representation of the type.
+    /// Normalized type text for pattern matching.
     pub text: Box<str>,
-    /// Whether the type involves dynamic dispatch (`dyn Trait`).
+    /// Contains `dyn Trait` at any depth.
     pub involves_dyn: bool,
 }
 
-/// Else-branch details, only present for If control flow.
+/// Else-branch metadata attached to `If` control flow nodes.
 #[derive(Debug, Clone, Copy)]
 pub struct ElseInfo {
-    /// Length of the if/else-if chain, if chained.
+    /// Total branches in the if/else-if chain, when chained.
     pub chain_len: Option<usize>,
-    /// Span of the else keyword.
+    /// Location of the `else` keyword, for `forbid_else` reporting.
     pub span: Option<IrSpan>,
 }
 
-/// Control flow construct encountered during traversal.
+/// A control flow construct with nesting context.
 #[derive(Debug)]
 pub struct ControlFlowFact {
-    /// Kind of control flow (if, match, loop, etc.).
+    /// Discriminant: if, match, loop variant, or closure.
     pub kind: ControlFlowKind,
-    /// Source location.
+    /// Location of the keyword.
     pub span: IrSpan,
-    /// Nesting depth within the function body.
+    /// Nesting depth within the function body (for max-depth check).
     pub depth: usize,
-    /// Number of enclosing loops.
+    /// Enclosing loop count (for clone-in-loop suppression).
     pub loop_depth: usize,
-    /// Parent branch context, if nested inside if/match.
+    /// Set when nested inside an if or match arm.
     pub parent_branch: Option<BranchContext>,
-    /// Else-branch details for `If` nodes.
+    /// Present only for `If` nodes.
     pub else_info: Option<ElseInfo>,
 }
 
-/// Kind of control flow construct.
+/// Discriminant for control flow constructs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ControlFlowKind {
-    /// An `if` expression.
+    /// `if` expression.
     If,
-    /// A `match` expression.
+    /// `match` expression.
     Match,
-    /// A `for` loop.
+    /// `for .. in` loop.
     ForLoop,
-    /// A `while` loop.
+    /// `while` loop.
     WhileLoop,
-    /// A bare `loop`.
+    /// Bare `loop` (infinite).
     Loop,
-    /// A closure expression.
+    /// Closure expression (counts as nesting).
     Closure,
 }
 
-/// Parent branch context for nested control flow.
+/// Which branch kind encloses a nested control flow node.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BranchContext {
-    /// Inside an `if` arm.
+    /// Nested inside an `if` branch.
     If,
-    /// Inside a `match` arm.
+    /// Nested inside a `match` arm.
     Match,
 }
 
-/// A let binding.
+/// A `let` binding with ownership and context metadata.
 #[derive(Debug)]
 pub struct BindingFact {
-    /// Binding name.
+    /// Identifier (or `_` for wildcard).
     pub name: Box<str>,
-    /// Source location (None for desugared bindings).
+    /// `None` for compiler-desugared bindings without source spans.
     pub span: Option<IrSpan>,
-    /// Number of enclosing loops.
+    /// Enclosing loop count for clone-in-loop analysis.
     pub loop_depth: usize,
-    /// Whether the binding holds an Rc or Arc type.
+    /// `true` when the declared type is `Rc<_>` or `Arc<_>`.
     pub is_refcounted: bool,
-    /// Whether the pattern is `_`.
+    /// `true` when the pattern is `_` (wildcard discard).
     pub is_wildcard: bool,
-    /// Whether the binding has an initializer expression.
+    /// `true` when an initializer expression is present.
     pub has_init: bool,
-    /// Whether the initializer is a `write!` macro targeting a String.
+    /// `true` when the initializer is `write!`/`writeln!` into a `String` (infallible).
     pub init_is_write_macro: bool,
-    /// Index into `FileIr::functions` of the enclosing function, if any.
+    /// Index into `FileIr::functions`; links binding to its enclosing function.
     pub containing_fn: Option<usize>,
-    /// Source location of the type annotation, if present.
+    /// Present when the binding has an explicit `: Type` annotation.
     pub type_annotation_span: Option<IrSpan>,
-    /// Canonical type name after alias resolution (semantic analysis only).
+    /// Filled by semantic enrichment; canonical type after alias resolution.
     pub resolved_type: Option<Box<str>>,
 }
 
-/// A type reference encountered in the AST.
+/// A type reference with dispatch and hasher classification.
 #[derive(Debug)]
 pub struct TypeRefFact {
-    /// Textual representation of the type.
+    /// Normalized type text for pattern matching.
     pub text: Box<str>,
-    /// Source location.
+    /// Location of the type in source.
     pub span: IrSpan,
-    /// Whether the type involves dynamic dispatch (`dyn Trait`).
+    /// Contains `dyn Trait` at any depth.
     pub involves_dyn: bool,
-    /// Whether the type is `Vec<Box<dyn ...>>`.
+    /// Matches `Vec<Box<dyn ...>>` pattern.
     pub is_vec_box_dyn: bool,
-    /// Whether the type uses the default hasher.
+    /// `HashMap`/`HashSet` without explicit hasher parameter.
     pub is_default_hasher: bool,
-    /// Index into `FileIr::functions` of the enclosing function, if any.
+    /// Index into `FileIr::functions`; links to enclosing function.
     pub containing_fn: Option<usize>,
-    /// Where this type reference appears (return, param, field, body).
+    /// Positional context: return, param, field, or body.
     pub context: TypeRefContext,
 }
 
-/// Position where a type reference appears.
+/// Positional context of a type reference, determining which checks apply.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypeRefContext {
-    /// Function return type.
+    /// In a function return type.
     Return,
-    /// Function parameter.
+    /// In a function parameter.
     Param,
-    /// Struct or enum field.
+    /// In a struct or enum field.
     Field,
-    /// Function body.
+    /// Inside a function body.
     Body,
 }
 
-/// A type definition (struct, enum, trait).
+/// Struct, enum, or trait definition with type-relationship edges.
 #[derive(Debug)]
 pub struct TypeDefFact {
-    /// Type name.
+    /// Identifier of the defined type.
     pub name: Rc<str>,
-    /// Source location.
+    /// Location of the definition keyword.
     pub span: IrSpan,
-    /// Kind of type definition.
+    /// Struct, enum, or trait.
     pub kind: TypeDefKind,
-    /// Pairwise type-relationship edges for graph analysis.
+    /// Pairwise type-relationship edges for mixed-concerns graph analysis.
     pub edges: Box<[(Rc<str>, Rc<str>)]>,
 }
 
-/// Kind of type definition.
+/// Discriminant for type definitions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypeDefKind {
-    /// A `struct`.
+    /// `struct` definition.
     Struct,
-    /// An `enum`.
+    /// `enum` definition.
     Enum,
-    /// A `trait`.
+    /// `trait` definition.
     Trait,
 }
 
-/// An impl block.
+/// An inherent or trait impl block with type-relationship edges.
 #[derive(Debug)]
 pub struct ImplFact {
-    /// The self type being implemented.
+    /// The type being implemented on.
     pub self_type: Rc<str>,
-    /// Trait name, if this is a trait impl.
+    /// `Some` for `impl Trait for Type`, `None` for inherent impls.
     pub trait_name: Option<Box<str>>,
-    /// Source location.
+    /// Location of the `impl` keyword.
     pub span: IrSpan,
-    /// Pairwise type-relationship edges for graph analysis.
+    /// Pairwise type-relationship edges for mixed-concerns graph analysis.
     pub edges: Box<[(Rc<str>, Rc<str>)]>,
 }
 
-/// A use path (flattened from use trees).
+/// A flattened `use` import path for capability detection.
 #[derive(Debug)]
 pub struct UsePathFact {
-    /// Full path text (e.g., `std::collections::HashMap`).
+    /// Fully qualified path (e.g., `std::collections::HashMap`).
     pub path: Box<str>,
-    /// Source location.
+    /// Location of the `use` statement.
     pub span: IrSpan,
 }
 
-/// A method call expression.
+/// A method call expression with receiver and loop context.
 #[derive(Debug)]
 pub struct MethodCallFact {
-    /// Name of the method being called.
+    /// Method identifier (e.g., `clone`, `unwrap`).
     pub method_name: Box<str>,
-    /// Full expression text.
+    /// Full rendered expression for pattern matching.
     pub text: Box<str>,
-    /// Source location.
+    /// Location of the method call.
     pub span: IrSpan,
-    /// Identifier of the receiver, if a simple ident.
+    /// Simple identifier receiver, when not a complex expression.
     pub receiver_ident: Option<Box<str>>,
-    /// Source location of the receiver expression.
+    /// Location of the receiver for diagnostic pointing.
     pub receiver_span: IrSpan,
-    /// Number of enclosing loops.
+    /// Enclosing loop count for clone-in-loop analysis.
     pub loop_depth: usize,
-    /// Index into `FileIr::functions` of the enclosing function, if any.
+    /// Index into `FileIr::functions`; links to enclosing function.
     pub containing_fn: Option<usize>,
-    /// Resolved type of the method receiver (semantic analysis only).
+    /// Filled by semantic enrichment; canonical receiver type.
     pub receiver_type: Option<Box<str>>,
-    /// Whether the receiver implements `Copy` (semantic analysis only).
+    /// Filled by semantic enrichment; suppresses clone-in-loop for `Copy` types.
     pub is_copy_receiver: bool,
 }
 
-/// A macro invocation.
+/// A macro invocation for forbidden-macro checks.
 #[derive(Debug)]
 pub struct MacroFact {
-    /// Full macro invocation text.
+    /// Rendered macro text (e.g., `println!`) for pattern matching.
     pub text: Box<str>,
-    /// Source location.
+    /// Location of the macro call.
     pub span: IrSpan,
 }
 
-/// An attribute on an item.
+/// An item attribute for forbidden-attribute and capability checks.
 #[derive(Debug)]
 pub struct AttributeFact {
-    /// Full attribute text.
+    /// Rendered inner text (e.g., `allow(dead_code)`) for pattern matching.
     pub text: Box<str>,
-    /// Source location.
+    /// Location of the `#[` token.
     pub span: IrSpan,
-    /// Attribute name (e.g., `derive`, `cfg`).
+    /// Top-level attribute name (e.g., `derive`, `cfg`, `link`).
     pub name: Box<str>,
 }
 
-/// A string literal.
+/// A string literal for credential and endpoint detection.
 #[derive(Debug)]
 pub struct StringLitFact {
-    /// Literal value (unescaped content).
+    /// Unescaped content of the literal.
     pub value: Box<str>,
-    /// Source location.
+    /// Location of the opening quote.
     pub span: IrSpan,
 }
 
-/// An unsafe site (block, fn, or impl).
+/// An unsafe block, function, or impl for safety auditing.
 #[derive(Debug)]
 pub struct UnsafeFact {
-    /// Kind of unsafe construct.
+    /// Block, function, or impl.
     pub kind: UnsafeKind,
-    /// Source location.
+    /// Location of the `unsafe` keyword.
     pub span: IrSpan,
-    /// Textual evidence of the unsafe usage.
+    /// Snippet of the unsafe code for evidence reporting.
     pub evidence: Box<str>,
 }
 
-/// Kind of unsafe construct.
+/// Discriminant for unsafe constructs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnsafeKind {
-    /// An `unsafe { }` block.
+    /// `unsafe { }` block.
     Block,
-    /// An `unsafe fn`.
+    /// `unsafe fn` declaration.
     Fn,
-    /// An `unsafe impl`.
+    /// `unsafe impl` block.
     Impl,
 }
 
-/// A bare span fact (used for extern blocks).
+/// An `extern` block declaration for FFI capability detection.
 #[derive(Debug)]
 pub struct ExternBlockFact {
-    /// Source location.
+    /// Location of the `extern` keyword.
     pub span: IrSpan,
 }
 
-/// A module declaration.
+/// A `mod` declaration for inline-test detection.
 #[derive(Debug)]
 pub struct ModuleFact {
-    /// Module name.
+    /// Module identifier.
     pub name: Box<str>,
-    /// Source location.
+    /// Location of the `mod` keyword.
     pub span: IrSpan,
-    /// Whether the module has `#[cfg(test)]`.
+    /// `true` when annotated with `#[cfg(test)]`.
     pub is_cfg_test: bool,
 }

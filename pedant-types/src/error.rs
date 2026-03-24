@@ -1,24 +1,17 @@
-use std::fmt;
+use thiserror::Error;
 
-/// Error returned when parsing an unknown capability name.
-#[derive(Debug, Clone)]
+/// Returned when a string does not match any known capability variant.
+#[derive(Debug, Clone, Error)]
+#[error("unknown capability: {name}")]
 pub struct ParseCapabilityError {
     name: Box<str>,
 }
 
 impl ParseCapabilityError {
-    /// Create a new error for the given unrecognized capability name.
+    /// Wrap the unrecognized name for display in the error message.
     pub fn new(name: &str) -> Self {
         Self {
             name: Box::from(name),
         }
     }
 }
-
-impl fmt::Display for ParseCapabilityError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "unknown capability: {}", self.name)
-    }
-}
-
-impl std::error::Error for ParseCapabilityError {}

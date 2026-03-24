@@ -15,6 +15,7 @@ fn sample_finding(capability: Capability, file: &str, line: usize) -> Capability
         },
         evidence: Arc::from("test evidence"),
         build_script: false,
+        reachable: None,
     }
 }
 
@@ -211,4 +212,50 @@ fn diff_round_trip() {
     let json = serde_json::to_string(&diff).unwrap();
     let back: CapabilityDiff = serde_json::from_str(&json).unwrap();
     assert_eq!(diff, back);
+}
+
+#[test]
+fn capability_finding_reachable_none_omitted() {
+    let finding = sample_finding(Capability::Network, "src/lib.rs", 10);
+    assert!(finding.reachable.is_none());
+
+    let json = serde_json::to_string(&finding).unwrap();
+    assert!(
+        !json.contains("reachable"),
+        "JSON should not contain 'reachable' when None, got: {json}"
+    );
+
+    // Round-trip: deserializing JSON without reachable yields None
+    let back: CapabilityFinding = serde_json::from_str(&json).unwrap();
+    assert!(back.reachable.is_none());
+}
+
+#[test]
+fn capability_finding_reachable_some_serialized() {
+    let finding = CapabilityFinding {
+        reachable: Some(true),
+        ..sample_finding(Capability::Network, "src/lib.rs", 10)
+    };
+    let json = serde_json::to_string(&finding).unwrap();
+    assert!(
+        json.contains(r#""reachable":true"#),
+        "JSON should contain reachable: true, got: {json}"
+    );
+
+    let back: CapabilityFinding = serde_json::from_str(&json).unwrap();
+    assert_eq!(back.reachable, Some(true));
+
+    // Also test Some(false)
+    let finding_false = CapabilityFinding {
+        reachable: Some(false),
+        ..sample_finding(Capability::FileRead, "src/lib.rs", 5)
+    };
+    let json_false = serde_json::to_string(&finding_false).unwrap();
+    assert!(
+        json_false.contains(r#""reachable":false"#),
+        "JSON should contain reachable: false, got: {json_false}"
+    );
+
+    let back_false: CapabilityFinding = serde_json::from_str(&json_false).unwrap();
+    assert_eq!(back_false.reachable, Some(false));
 }

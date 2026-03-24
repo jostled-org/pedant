@@ -1,7 +1,7 @@
-//! Gate rules engine: evaluates capability profiles against built-in security rules.
+//! Gate rules engine: evaluates capability profiles and data flows against security rules.
 //!
-//! Each rule is a predicate over a [`pedant_types::CapabilityProfile`] that produces a verdict
-//! when suspicious capability combinations are detected.
+//! Capability-combination rules fire on suspicious co-occurrence of capabilities.
+//! Flow-aware rules fire when taint analysis detects a data path from source to sink.
 
 use std::fmt;
 
@@ -10,16 +10,17 @@ use serde::Serialize;
 
 use crate::check_config::GateConfig;
 use crate::check_config::GateRuleOverride;
+use crate::ir::DataFlowFact;
 
-/// Severity level for a gate verdict.
+/// Controls whether a gate verdict blocks CI, warns, or is purely informational.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum GateSeverity {
-    /// Hard failure — blocks publish/CI.
+    /// Blocks CI/publish with a non-zero exit code.
     Deny,
-    /// Advisory — displayed but does not block.
+    /// Displayed but does not affect exit code.
     Warn,
-    /// Informational — logged for review.
+    /// Logged for audit trail; no user-facing output by default.
     Info,
 }
 
@@ -33,24 +34,24 @@ impl fmt::Display for GateSeverity {
     }
 }
 
-/// Result of a gate rule firing against a capability profile.
+/// Produced when a gate rule's predicate matches the capability profile.
 #[derive(Serialize)]
 pub struct GateVerdict {
-    /// Rule name (e.g. `"build-script-network"`).
+    /// Kebab-case rule identifier (e.g., `"build-script-network"`).
     pub rule: &'static str,
-    /// Effective severity (default or overridden by config).
+    /// Effective severity after config overrides.
     pub severity: GateSeverity,
-    /// Human-readable explanation of why this rule fired.
+    /// Why this combination of capabilities is suspicious.
     pub rationale: &'static str,
 }
 
-/// Metadata about a built-in gate rule.
+/// Public metadata for a built-in gate rule, used by `--list-checks` and MCP tools.
 pub struct GateRuleInfo {
-    /// Rule name used in config and output.
+    /// Kebab-case identifier used in config overrides and output.
     pub name: &'static str,
-    /// Severity when no config override is set.
+    /// Severity applied when no config override is present.
     pub default_severity: GateSeverity,
-    /// What this rule detects.
+    /// One-line summary of the suspicious pattern.
     pub description: &'static str,
 }
 
@@ -73,7 +74,7 @@ fn has_capability(
         .any(|f| f.capability == cap && (!build_script_only || f.build_script))
 }
 
-static BUILTIN_RULES: &[BuiltinRule] = &[
+const BUILTIN_RULES: &[BuiltinRule] = &[
     // --- Compile-time execution rules (build scripts) ---
     BuiltinRule {
         name: "build-script-network",
@@ -168,7 +169,46 @@ fn has_key_material(findings: &[CapabilityFinding]) -> bool {
         .any(|f| f.capability == Capability::Crypto && !f.evidence.contains("::"))
 }
 
-/// Returns metadata for all built-in gate rules.
+/// Internal rule definition pairing metadata with a data flow predicate.
+struct FlowRule {
+    name: &'static str,
+    default_severity: GateSeverity,
+    description: &'static str,
+    rationale: &'static str,
+    predicate: fn(&[DataFlowFact]) -> bool,
+}
+
+fn has_flow(data_flows: &[DataFlowFact], source: Capability, sink: Capability) -> bool {
+    data_flows
+        .iter()
+        .any(|f| f.source_capability == source && f.sink_capability == sink)
+}
+
+const FLOW_RULES: &[FlowRule] = &[
+    FlowRule {
+        name: "env-to-network",
+        default_severity: GateSeverity::Deny,
+        description: "Data flows from environment variable to network sink",
+        rationale: "Environment variable value reaches a network call — potential credential exfiltration",
+        predicate: |f| has_flow(f, Capability::EnvAccess, Capability::Network),
+    },
+    FlowRule {
+        name: "file-to-network",
+        default_severity: GateSeverity::Deny,
+        description: "Data flows from file read to network sink",
+        rationale: "File content reaches a network call — potential data exfiltration",
+        predicate: |f| has_flow(f, Capability::FileRead, Capability::Network),
+    },
+    FlowRule {
+        name: "network-to-exec",
+        default_severity: GateSeverity::Deny,
+        description: "Data flows from network source to process execution",
+        rationale: "Network-sourced data reaches process execution — remote code execution risk",
+        predicate: |f| has_flow(f, Capability::Network, Capability::ProcessExec),
+    },
+];
+
+/// Enumerate every built-in gate rule with its default severity and description.
 pub fn all_gate_rules() -> Box<[GateRuleInfo]> {
     BUILTIN_RULES
         .iter()
@@ -177,35 +217,57 @@ pub fn all_gate_rules() -> Box<[GateRuleInfo]> {
             default_severity: r.default_severity,
             description: r.description,
         })
+        .chain(FLOW_RULES.iter().map(|r| GateRuleInfo {
+            name: r.name,
+            default_severity: r.default_severity,
+            description: r.description,
+        }))
         .collect()
 }
 
-/// Evaluate all gate rules against capability findings.
+/// Run every enabled gate rule against the findings, returning fired verdicts.
 ///
-/// Returns verdicts for rules whose predicates match. Respects config
-/// overrides for disabling rules and changing severity.
+/// Evaluates both capability-combination rules (from `findings`) and
+/// flow-aware rules (from `data_flows`). Respects per-rule config overrides.
 pub fn evaluate_gate_rules(
     findings: &[CapabilityFinding],
+    data_flows: &[DataFlowFact],
     config: &GateConfig,
 ) -> Box<[GateVerdict]> {
     if !config.enabled {
         return Box::new([]);
     }
 
-    BUILTIN_RULES
-        .iter()
-        .filter_map(|rule| {
-            let severity = match config.overrides.get(rule.name) {
-                Some(GateRuleOverride::Disabled) => return None,
-                Some(GateRuleOverride::Severity(s)) => *s,
-                None => rule.default_severity,
-            };
-
-            (rule.predicate)(findings).then_some(GateVerdict {
-                rule: rule.name,
-                severity,
-                rationale: rule.rationale,
-            })
+    let capability_verdicts = BUILTIN_RULES.iter().filter_map(|rule| {
+        let severity = resolve_severity(rule.name, rule.default_severity, config)?;
+        (rule.predicate)(findings).then_some(GateVerdict {
+            rule: rule.name,
+            severity,
+            rationale: rule.rationale,
         })
-        .collect()
+    });
+
+    let flow_verdicts = FLOW_RULES.iter().filter_map(|rule| {
+        let severity = resolve_severity(rule.name, rule.default_severity, config)?;
+        (rule.predicate)(data_flows).then_some(GateVerdict {
+            rule: rule.name,
+            severity,
+            rationale: rule.rationale,
+        })
+    });
+
+    capability_verdicts.chain(flow_verdicts).collect()
+}
+
+/// Resolve the effective severity for a rule, returning `None` if disabled.
+fn resolve_severity(
+    name: &str,
+    default: GateSeverity,
+    config: &GateConfig,
+) -> Option<GateSeverity> {
+    match config.overrides.get(name) {
+        Some(GateRuleOverride::Disabled) => None,
+        Some(GateRuleOverride::Severity(s)) => Some(*s),
+        None => Some(default),
+    }
 }

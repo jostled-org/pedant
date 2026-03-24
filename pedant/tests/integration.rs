@@ -192,6 +192,125 @@ fn test_self_analysis_semantic() {
     );
 }
 
+/// 7.T1: CLI --capabilities output includes "reachable" when semantic analysis annotates it.
+#[cfg(feature = "semantic")]
+#[test]
+fn test_cli_capabilities_shows_reachable() {
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("pedant crate should be in workspace")
+        .to_path_buf();
+    let lib_path = workspace_root.join("pedant-core/tests/fixtures/dataflow_workspace/src/lib.rs");
+
+    let output = common::run_pedant(
+        &[lib_path.to_str().unwrap(), "--semantic", "--capabilities"],
+        None,
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "expected success, stderr:\n{stderr}"
+    );
+
+    // Parse the capabilities profile and verify reachable is set on findings.
+    let profile: pedant_types::CapabilityProfile =
+        serde_json::from_str(&stdout).expect("should parse capabilities JSON");
+    let has_reachable = profile.findings.iter().any(|f| f.reachable.is_some());
+    assert!(
+        has_reachable,
+        "expected at least one finding with reachable annotated, stdout:\n{stdout}"
+    );
+
+    // Verify the JSON text contains the "reachable" key.
+    assert!(
+        stdout.contains("\"reachable\""),
+        "expected JSON to contain \"reachable\" field, stdout:\n{stdout}"
+    );
+}
+
+/// 7.T2: CLI --gate output includes flow-aware verdicts when data flows are detected.
+#[cfg(feature = "semantic")]
+#[test]
+fn test_cli_gate_shows_flow_verdicts() {
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("pedant crate should be in workspace")
+        .to_path_buf();
+    let lib_path = workspace_root.join("pedant-core/tests/fixtures/dataflow_workspace/src/lib.rs");
+
+    let output = common::run_pedant(&[lib_path.to_str().unwrap(), "--semantic", "--gate"], None);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // The fixture has an env→network flow in leak_env(), so the flow-aware
+    // gate rule "env-to-network" should fire.
+    assert!(
+        stdout.contains("env-to-network"),
+        "expected env-to-network flow verdict in gate output, stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+}
+
+/// 8.T1: Self-analysis with DataFlow — no deny-level flow verdicts, reachability annotated.
+#[cfg(feature = "semantic")]
+#[test]
+fn test_self_analysis_dataflow() {
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("pedant crate should be in workspace")
+        .to_path_buf();
+
+    let src_dirs = [
+        workspace_root.join("pedant-core/src"),
+        workspace_root.join("pedant-types/src"),
+        workspace_root.join("pedant/src"),
+    ];
+
+    let mut files: Vec<String> = Vec::new();
+    for dir in &src_dirs {
+        for file in collect_rs_files(dir) {
+            files.push(file.to_string_lossy().into_owned());
+        }
+    }
+
+    // Run with --semantic --gate: verify no deny-level flow verdicts.
+    let mut gate_args: Vec<&str> = files.iter().map(String::as_str).collect();
+    gate_args.push("--semantic");
+    gate_args.push("--gate");
+    let gate_output = common::run_pedant(&gate_args, None);
+
+    let gate_stdout = String::from_utf8_lossy(&gate_output.stdout);
+    let gate_stderr = String::from_utf8_lossy(&gate_output.stderr);
+
+    assert!(
+        !gate_stdout.contains("deny"),
+        "expected no deny-level gate verdicts on self-analysis with DataFlow, stdout:\n{gate_stdout}\nstderr:\n{gate_stderr}"
+    );
+
+    // Run with --semantic --capabilities: verify reachability annotations are present.
+    let mut cap_args: Vec<&str> = files.iter().map(String::as_str).collect();
+    cap_args.push("--semantic");
+    cap_args.push("--capabilities");
+    let cap_output = common::run_pedant(&cap_args, None);
+
+    let cap_stdout = String::from_utf8_lossy(&cap_output.stdout);
+    let cap_stderr = String::from_utf8_lossy(&cap_output.stderr);
+    assert!(
+        cap_output.status.success(),
+        "semantic capabilities analysis failed, stderr:\n{cap_stderr}"
+    );
+
+    let profile: pedant_types::CapabilityProfile =
+        serde_json::from_str(&cap_stdout).expect("should parse capabilities JSON");
+    let has_reachable = profile.findings.iter().any(|f| f.reachable.is_some());
+    assert!(
+        has_reachable,
+        "expected reachability annotations on self-analysis findings, stdout:\n{cap_stdout}"
+    );
+}
+
 #[cfg(feature = "semantic")]
 #[test]
 fn test_semantic_cli_no_workspace_warns() {

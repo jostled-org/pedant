@@ -8,20 +8,20 @@ use serde::Deserialize;
 
 use crate::pattern::matches_glob;
 
-/// A set of glob-style patterns to match against AST nodes.
+/// A set of glob patterns matched against rendered AST node text.
 #[derive(Debug, Deserialize, Default, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct PatternCheck {
-    /// Whether this pattern check is active.
+    /// Master switch; `false` skips all patterns.
     #[serde(default)]
     pub enabled: bool,
-    /// Glob-style patterns to match against AST node text.
+    /// Glob patterns (e.g., `.unwrap()`, `allow(dead_code)`).
     #[serde(default, deserialize_with = "deserialize_arc_str_slice")]
     pub patterns: Arc<[Arc<str>]>,
 }
 
 impl PatternCheck {
-    /// Apply a path override, replacing enabled and/or patterns when set.
+    /// Merge a path-specific override, replacing fields that are set.
     pub fn apply_override(&mut self, ovr: &PatternOverride) {
         if let Some(enabled) = ovr.enabled {
             self.enabled = enabled;
@@ -46,23 +46,23 @@ const DEFAULT_GENERIC_NAMES: &[&str] = &[
     "baz",
 ];
 
-/// Configuration for the generic-naming check.
+/// Thresholds for the generic-naming check (`tmp`, `val`, `data`, etc.).
 #[derive(Debug, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct NamingCheck {
-    /// Whether this check is active.
+    /// Master switch; `false` skips the naming check entirely.
     #[serde(default)]
     pub enabled: bool,
-    /// Words considered generic. Overrides the default list when provided.
+    /// Words considered generic. Replaces the built-in list when provided.
     #[serde(
         default = "default_generic_names",
         deserialize_with = "deserialize_arc_str_slice"
     )]
     pub generic_names: Arc<[Arc<str>]>,
-    /// Maximum ratio of generic names to total bindings before flagging.
+    /// Fraction of bindings that must be generic before flagging (0.0..=1.0).
     #[serde(default = "default_max_generic_ratio")]
     pub max_generic_ratio: f64,
-    /// Minimum count of generic names before the ratio check applies.
+    /// Absolute minimum generic count before the ratio check kicks in.
     #[serde(default = "default_min_generic_count")]
     pub min_generic_count: usize,
 }
@@ -79,7 +79,7 @@ impl Default for NamingCheck {
 }
 
 impl NamingCheck {
-    /// Apply a path override, replacing individual fields when set.
+    /// Merge a path-specific override, replacing fields that are set.
     pub fn apply_override(&mut self, ovr: &NamingOverride) {
         if let Some(enabled) = ovr.enabled {
             self.enabled = enabled;
@@ -96,17 +96,17 @@ impl NamingCheck {
     }
 }
 
-/// Per-path override for the naming check.
+/// Path-specific overrides for the naming check. `None` inherits from base config.
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct NamingOverride {
-    /// Override the enabled state.
+    /// Replace the enabled state.
     pub enabled: Option<bool>,
-    /// Override generic names list.
+    /// Replace the generic names list.
     #[serde(default, deserialize_with = "deserialize_option_arc_str_slice")]
     pub generic_names: Option<Arc<[Arc<str>]>>,
-    /// Override maximum generic ratio.
+    /// Replace the maximum generic ratio threshold.
     pub max_generic_ratio: Option<f64>,
-    /// Override minimum generic count.
+    /// Replace the minimum generic count threshold.
     pub min_generic_count: Option<usize>,
 }
 
@@ -138,26 +138,26 @@ fn default_min_generic_count() -> usize {
     2
 }
 
-/// Per-path override for a pattern check.
+/// Path-specific overrides for a pattern check. `None` inherits from base config.
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct PatternOverride {
-    /// Override the enabled state. `None` inherits from the base config.
+    /// Replace the enabled state.
     pub enabled: Option<bool>,
-    /// Replacement patterns. Empty inherits from the base config.
+    /// Replace the pattern list. Empty slice inherits from base.
     #[serde(default, deserialize_with = "deserialize_arc_str_slice")]
     pub patterns: Arc<[Arc<str>]>,
 }
 
-/// Deserialized `.pedant.toml` configuration.
+/// Deserialized `.pedant.toml` file with all check settings.
 #[derive(Debug, Deserialize, Default)]
 pub struct ConfigFile {
-    /// Gate rules engine configuration.
+    /// Security gate rules configuration.
     #[serde(default)]
     pub gate: GateConfig,
-    /// Maximum allowed nesting depth (default: 3).
+    /// Depth limit for nesting checks (default: 3).
     #[serde(default = "default_max_depth")]
     pub max_depth: usize,
-    /// Minimum branches to trigger `else-chain` (default: 3).
+    /// Branch count that triggers `else-chain` (default: 3).
     #[serde(default = "default_else_chain_threshold")]
     pub else_chain_threshold: usize,
     /// Banned attribute patterns (e.g., `allow(dead_code)`).
@@ -172,7 +172,7 @@ pub struct ConfigFile {
     /// Banned macro patterns (e.g., `panic!`).
     #[serde(default)]
     pub forbid_macros: PatternCheck,
-    /// Generic naming check configuration.
+    /// Thresholds for the generic-naming check.
     #[serde(default)]
     pub check_naming: NamingCheck,
     /// Flag `if` inside `if`.
@@ -228,56 +228,54 @@ pub struct ConfigFile {
     pub overrides: BTreeMap<Box<str>, PathOverride>,
 }
 
-/// Per-path configuration overrides (e.g., for `tests/**`).
-///
-/// All fields are `Option` -- `None` inherits from the base config.
+/// Per-path overrides (e.g., for `tests/**`). `None` inherits from base config.
 #[derive(Debug, Deserialize, Default)]
 pub struct PathOverride {
-    /// Disable all checks for matched paths when `false`.
+    /// `Some(false)` disables all checks for matched paths.
     pub enabled: Option<bool>,
-    /// Override maximum nesting depth.
+    /// Replace nesting depth limit.
     pub max_depth: Option<usize>,
-    /// Override forbidden attribute patterns.
+    /// Replace forbidden attribute patterns.
     pub forbid_attributes: Option<PatternOverride>,
-    /// Override forbidden type patterns.
+    /// Replace forbidden type patterns.
     pub forbid_types: Option<PatternOverride>,
-    /// Override forbidden call patterns.
+    /// Replace forbidden call patterns.
     pub forbid_calls: Option<PatternOverride>,
-    /// Override forbidden macro patterns.
+    /// Replace forbidden macro patterns.
     pub forbid_macros: Option<PatternOverride>,
-    /// Override generic naming check.
+    /// Replace generic naming thresholds.
     pub check_naming: Option<NamingOverride>,
-    /// Override nested-if check.
+    /// Replace nested-if check state.
     pub check_nested_if: Option<bool>,
-    /// Override if-in-match check.
+    /// Replace if-in-match check state.
     pub check_if_in_match: Option<bool>,
-    /// Override nested-match check.
+    /// Replace nested-match check state.
     pub check_nested_match: Option<bool>,
-    /// Override match-in-if check.
+    /// Replace match-in-if check state.
     pub check_match_in_if: Option<bool>,
-    /// Override else-chain check.
+    /// Replace else-chain check state.
     pub check_else_chain: Option<bool>,
-    /// Override the `else` keyword ban.
+    /// Replace `else` keyword ban state.
     pub forbid_else: Option<bool>,
-    /// Override the `unsafe` block ban.
+    /// Replace `unsafe` block ban state.
     pub forbid_unsafe: Option<bool>,
-    /// Override dynamic dispatch return check.
+    /// Replace dyn-return check state.
     pub check_dyn_return: Option<bool>,
-    /// Override dynamic dispatch parameter check.
+    /// Replace dyn-param check state.
     pub check_dyn_param: Option<bool>,
-    /// Override `Vec<Box<dyn T>>` check.
+    /// Replace `Vec<Box<dyn T>>` check state.
     pub check_vec_box_dyn: Option<bool>,
-    /// Override dynamic dispatch field check.
+    /// Replace dyn-field check state.
     pub check_dyn_field: Option<bool>,
-    /// Override clone-in-loop check.
+    /// Replace clone-in-loop check state.
     pub check_clone_in_loop: Option<bool>,
-    /// Override default hasher check.
+    /// Replace default-hasher check state.
     pub check_default_hasher: Option<bool>,
-    /// Override mixed concerns check.
+    /// Replace mixed-concerns check state.
     pub check_mixed_concerns: Option<bool>,
-    /// Override inline tests check.
+    /// Replace inline-tests check state.
     pub check_inline_tests: Option<bool>,
-    /// Override let-underscore-result check.
+    /// Replace let-underscore-result check state.
     pub check_let_underscore_result: Option<bool>,
 }
 
@@ -293,7 +291,7 @@ fn default_true() -> bool {
     true
 }
 
-/// Returns the first path override whose glob matches `file_path`, or `None`.
+/// Find the first `[overrides]` entry whose glob matches `file_path`.
 pub fn check_path_override<'a>(
     file_path: &str,
     config: &'a ConfigFile,
@@ -478,24 +476,24 @@ impl CheckConfig {
     }
 }
 
-/// Error loading or parsing a configuration file.
+/// Failure modes when loading `.pedant.toml`.
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
-    /// Failed to read the config file from disk.
+    /// Disk I/O failure reading the config file.
     #[error("failed to read config file: {0}")]
     Read(#[from] std::io::Error),
-    /// Failed to parse the TOML config file.
+    /// TOML syntax or schema error in the config file.
     #[error("failed to parse config file: {0}")]
     Parse(#[from] toml::de::Error),
 }
 
-/// Load and parse a `.pedant.toml` configuration file.
+/// Read and deserialize a `.pedant.toml` from the given path.
 pub fn load_config_file(path: &Path) -> Result<ConfigFile, ConfigError> {
     let content = fs::read_to_string(path)?;
     Ok(toml::from_str(&content)?)
 }
 
-/// Search for a config file: `.pedant.toml` in the project root, then `$XDG_CONFIG_HOME/pedant/config.toml`.
+/// Search `.pedant.toml` in the project root, then `$XDG_CONFIG_HOME/pedant/config.toml`.
 pub fn find_config_file() -> Option<std::path::PathBuf> {
     find_project_config_file().or_else(find_global_config_file)
 }
@@ -515,23 +513,22 @@ fn find_global_config_file() -> Option<std::path::PathBuf> {
     config_path.exists().then_some(config_path)
 }
 
-/// Per-rule override in the `[gate]` config section.
+/// Per-rule override from the `[gate]` TOML section.
 #[derive(Debug)]
 pub enum GateRuleOverride {
-    /// Rule is disabled and will not produce verdicts.
+    /// Suppresses the rule entirely.
     Disabled,
-    /// Rule fires with overridden severity.
+    /// Changes the rule's effective severity.
     Severity(crate::gate::GateSeverity),
 }
 
-/// Configuration for the gate rules engine.
+/// Deserialized `[gate]` section of `.pedant.toml`.
 ///
-/// Deserializes from the `[gate]` section of `.pedant.toml` where each key
-/// is either `enabled` (bool) or a rule name mapped to `false` (disabled)
-/// or a severity string (`"deny"`, `"warn"`, `"info"`).
+/// Keys are either `enabled` (master switch) or rule names mapped to
+/// `false` (disabled) or a severity string (`"deny"`, `"warn"`, `"info"`).
 #[derive(Debug)]
 pub struct GateConfig {
-    /// Master switch for gate evaluation.
+    /// Master switch; `false` disables all gate rules.
     pub enabled: bool,
     /// Per-rule overrides keyed by rule name.
     pub overrides: BTreeMap<Box<str>, GateRuleOverride>,

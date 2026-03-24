@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use pedant_core::check_config::load_config_file;
 use pedant_core::gate::GateVerdict;
 use pedant_core::{
     AnalysisResult, Config, GateConfig, SemanticContext, analyze, analyze_build_script,
@@ -11,18 +12,18 @@ use pedant_types::CapabilityProfile;
 use thiserror::Error;
 use walkdir::WalkDir;
 
-/// Errors that can occur during workspace indexing.
+/// Failure modes during workspace indexing.
 #[derive(Debug, Error)]
 pub enum IndexError {
-    /// File I/O failure.
+    /// Disk I/O failure.
     #[error("failed to read {path}: {source}")]
     Io {
-        /// Path that could not be read.
+        /// Absolute path of the unreadable file.
         path: Box<str>,
         /// Underlying I/O error.
         source: std::io::Error,
     },
-    /// TOML deserialization failure.
+    /// TOML syntax or schema error.
     #[error("failed to parse {path}: {source}")]
     TomlParse {
         /// Path of the malformed TOML file.
@@ -30,7 +31,7 @@ pub enum IndexError {
         /// Underlying parse error.
         source: toml::de::Error,
     },
-    /// Rust source parsing failure.
+    /// `syn` could not parse a Rust source file.
     #[error("failed to parse Rust source {path}: {source}")]
     RustParse {
         /// Path of the unparseable source file.
@@ -48,50 +49,14 @@ struct CrateIndex {
     gate_verdicts: Box<[GateVerdict]>,
 }
 
-/// In-memory index of all crates in a Cargo workspace.
+/// Cached analysis results for every crate in a Cargo workspace.
 pub struct WorkspaceIndex {
     crates: BTreeMap<Box<str>, CrateIndex>,
     gate_config: GateConfig,
+    semantic: Option<SemanticContext>,
 }
 
-/// Walk up from `start` to find a `Cargo.toml`.
-///
-/// Prefers a `[workspace]` root. If none is found, falls back to the nearest
-/// `Cargo.toml` with a `[package]` section (single-crate project).
-pub fn discover_workspace_root(start: &Path) -> Option<PathBuf> {
-    let start_dir = match start.is_dir() {
-        true => start,
-        false => start.parent()?,
-    };
-
-    // First pass: look for [workspace]
-    let mut current = start_dir.to_path_buf();
-    loop {
-        let cargo_toml = current.join("Cargo.toml");
-        let is_workspace = fs::read_to_string(&cargo_toml)
-            .ok()
-            .is_some_and(|contents| contents.contains("[workspace]"));
-        match is_workspace {
-            true => return Some(current),
-            false if !current.pop() => break,
-            false => {}
-        }
-    }
-
-    // Fallback: nearest [package]
-    let mut current = start_dir.to_path_buf();
-    loop {
-        let cargo_toml = current.join("Cargo.toml");
-        let is_package = fs::read_to_string(&cargo_toml)
-            .ok()
-            .is_some_and(|contents| contents.contains("[package]"));
-        match is_package {
-            true => return Some(current),
-            false if !current.pop() => return None,
-            false => {}
-        }
-    }
-}
+pub use pedant_core::lint::discover_workspace_root;
 
 /// Minimal representation of a workspace Cargo.toml for member enumeration.
 #[derive(serde::Deserialize)]
@@ -116,22 +81,49 @@ struct PackageSection {
     name: Box<str>,
 }
 
+/// Load `GateConfig` from the workspace `.pedant.toml`, falling back to defaults.
+///
+/// Returns the default config when the file does not exist.
+/// Returns an error when the file exists but contains invalid TOML.
+fn load_gate_config(workspace_root: &Path) -> Result<GateConfig, IndexError> {
+    let config_path = workspace_root.join(".pedant.toml");
+    match load_config_file(&config_path) {
+        Ok(cfg) => Ok(cfg.gate),
+        Err(pedant_core::check_config::ConfigError::Read(ref io_err))
+            if io_err.kind() == std::io::ErrorKind::NotFound =>
+        {
+            Ok(GateConfig::default())
+        }
+        Err(pedant_core::check_config::ConfigError::Read(io_err)) => Err(IndexError::Io {
+            path: config_path.to_string_lossy().into(),
+            source: io_err,
+        }),
+        Err(pedant_core::check_config::ConfigError::Parse(toml_err)) => {
+            Err(IndexError::TomlParse {
+                path: config_path.to_string_lossy().into(),
+                source: toml_err,
+            })
+        }
+    }
+}
+
 impl WorkspaceIndex {
-    /// Build the index by discovering all workspace members and analyzing their sources.
+    /// Discover workspace members, analyze all source files, and cache the results.
     ///
-    /// Handles both multi-crate workspaces (`[workspace]` in Cargo.toml) and
-    /// single-crate projects (`[package]` only).
-    pub fn build(workspace_root: &Path, config: &Config) -> Result<Self, IndexError> {
+    /// Handles both multi-crate workspaces and single-crate projects.
+    pub fn build(
+        workspace_root: &Path,
+        config: &Config,
+        semantic: Option<SemanticContext>,
+    ) -> Result<Self, IndexError> {
         let cargo_toml_path = workspace_root.join("Cargo.toml");
         let cargo_toml_str = read_file(&cargo_toml_path)?;
 
-        let gate_config = GateConfig::default();
+        let gate_config = load_gate_config(workspace_root)?;
         let mut crates = BTreeMap::new();
 
-        let member_dirs = match parse_toml::<CargoWorkspace>(&cargo_toml_str, &cargo_toml_path) {
-            Ok(workspace) => resolve_members(workspace_root, &workspace.workspace.members),
-            Err(_) => vec![workspace_root.to_path_buf()],
-        };
+        let member_dirs =
+            resolve_workspace_members(workspace_root, &cargo_toml_str, &cargo_toml_path)?;
 
         for member_dir in member_dirs {
             let member_cargo_toml = member_dir.join("Cargo.toml");
@@ -139,65 +131,91 @@ impl WorkspaceIndex {
             let package: CargoPackage = parse_toml(&member_toml_str, &member_cargo_toml)?;
 
             let crate_name = package.package.name;
-            let crate_index = build_crate_index(&member_dir, config, &gate_config)?;
+            let crate_index =
+                build_crate_index(&member_dir, config, &gate_config, semantic.as_ref())?;
             crates.insert(crate_name, crate_index);
         }
 
         Ok(Self {
             crates,
             gate_config,
+            semantic,
         })
     }
 
-    /// Iterate over all indexed crate names.
+    /// Yield every indexed crate name in sorted order.
     pub fn crate_names(&self) -> impl Iterator<Item = &str> {
         self.crates.keys().map(AsRef::as_ref)
     }
 
-    /// Get the aggregated capability profile for a crate.
+    /// Aggregated capability profile across all files in a crate.
     pub fn crate_profile(&self, name: &str) -> Option<&CapabilityProfile> {
         self.crates.get(name).map(|c| &c.profile)
     }
 
-    /// Get gate verdicts for a crate.
+    /// Gate verdicts computed from the crate's aggregated profile.
     pub fn crate_verdicts(&self, name: &str) -> Option<&[GateVerdict]> {
         self.crates.get(name).map(|c| c.gate_verdicts.as_ref())
     }
 
-    /// Get the analysis result for a specific file path.
+    /// Look up a file's cached analysis result across all crates.
     pub fn file_result(&self, path: &str) -> Option<&AnalysisResult> {
         self.crates.values().find_map(|c| c.files.get(path))
     }
 
-    /// Get all file analysis results for a crate.
+    /// Iterate over every file result in a crate, keyed by path.
     pub fn crate_files(&self, name: &str) -> Option<impl Iterator<Item = (&str, &AnalysisResult)>> {
         self.crates
             .get(name)
             .map(|c| c.files.iter().map(|(k, v)| (k.as_ref(), v)))
     }
 
-    /// Iterate over all crates with their capability profiles.
+    /// Yield every crate with its aggregated capability profile.
     pub fn all_profiles(&self) -> impl Iterator<Item = (&str, &CapabilityProfile)> {
         self.crates.iter().map(|(k, v)| (k.as_ref(), &v.profile))
     }
 
-    /// Iterate over all crates with their gate verdicts.
+    /// Aggregate data flow facts across all files in a crate.
+    pub fn crate_data_flows(
+        &self,
+        name: &str,
+    ) -> Option<impl Iterator<Item = &pedant_core::ir::DataFlowFact>> {
+        self.crates
+            .get(name)
+            .map(|c| c.files.values().flat_map(|r| r.data_flows.iter()))
+    }
+
+    /// Analysis tier based on whether semantic context was loaded and data flows detected.
+    pub fn crate_tier(&self, name: &str) -> &'static str {
+        let has_flows = self
+            .crates
+            .get(name)
+            .is_some_and(|c| c.files.values().any(|r| !r.data_flows.is_empty()));
+        match (has_flows, self.semantic.is_some()) {
+            (true, _) => "data_flow",
+            (false, true) => "semantic",
+            (false, false) => "syntactic",
+        }
+    }
+
+    /// Yield every crate with its gate verdicts.
     pub fn all_verdicts(&self) -> impl Iterator<Item = (&str, &[GateVerdict])> {
         self.crates
             .iter()
             .map(|(k, v)| (k.as_ref(), v.gate_verdicts.as_ref()))
     }
 
-    /// Re-analyze a single file and update the crate's cached results.
+    /// Incrementally re-analyze a single file and update its owning crate's cache.
     ///
-    /// Works for new files, modified files, and build.rs. The owning crate
-    /// is determined by matching the file path against crate root directories.
+    /// The owning crate is determined by matching the file path against crate roots.
+    /// Handles both regular source files and `build.rs`.
     pub fn reindex_file(&mut self, path: &Path, config: &Config) -> Result<(), IndexError> {
         let path_lossy = path.to_string_lossy();
+        let sem = self.semantic.as_ref();
         let is_build_script = path.file_name().is_some_and(|n| n == "build.rs");
         let result = match is_build_script {
-            true => analyze_build_script_at(path, &path_lossy, config)?,
-            false => analyze_source_at(path, &path_lossy, config)?,
+            true => analyze_build_script_at(path, &path_lossy, config, sem)?,
+            false => analyze_source_at(path, &path_lossy, config, sem)?,
         };
 
         let crate_index = match find_owning_crate(&mut self.crates, path) {
@@ -212,7 +230,7 @@ impl WorkspaceIndex {
         Ok(())
     }
 
-    /// Remove a file from the index and recompute the owning crate's aggregates.
+    /// Drop a file's cached result and recompute the owning crate's profile.
     pub fn remove_file(&mut self, path: &Path) {
         let crate_index = match find_owning_crate(&mut self.crates, path) {
             Some(ci) => ci,
@@ -224,7 +242,7 @@ impl WorkspaceIndex {
         recompute_aggregates(crate_index, &self.gate_config);
     }
 
-    /// Collect all crate root directories (for file watcher setup).
+    /// Yield all crate root directories for file watcher registration.
     pub fn crate_roots(&self) -> impl Iterator<Item = &Path> {
         self.crates.values().map(|c| c.root.as_path())
     }
@@ -236,6 +254,30 @@ fn find_owning_crate<'a>(
     path: &Path,
 ) -> Option<&'a mut CrateIndex> {
     crates.values_mut().find(|c| path.starts_with(&c.root))
+}
+
+/// Parse `Cargo.toml` to determine workspace members or single-crate layout.
+///
+/// Returns an error if the TOML is malformed. Returns a single-element vec
+/// when the manifest is valid TOML but has no `[workspace]` key.
+fn resolve_workspace_members(
+    workspace_root: &Path,
+    cargo_toml_str: &str,
+    cargo_toml_path: &Path,
+) -> Result<Vec<PathBuf>, IndexError> {
+    let workspace_parse = toml::from_str::<CargoWorkspace>(cargo_toml_str);
+    let valid_toml = toml::from_str::<toml::Value>(cargo_toml_str);
+    match (workspace_parse, valid_toml) {
+        (Ok(workspace), _) => Ok(resolve_members(
+            workspace_root,
+            &workspace.workspace.members,
+        )),
+        (Err(_), Ok(_)) => Ok(vec![workspace_root.to_path_buf()]),
+        (Err(toml_err), Err(_)) => Err(IndexError::TomlParse {
+            path: cargo_toml_path.to_string_lossy().into(),
+            source: toml_err,
+        }),
+    }
 }
 
 /// Resolve workspace member patterns to actual directories.
@@ -273,35 +315,25 @@ fn build_crate_index(
     crate_root: &Path,
     config: &Config,
     gate_config: &GateConfig,
+    semantic: Option<&SemanticContext>,
 ) -> Result<CrateIndex, IndexError> {
     let mut files = BTreeMap::new();
 
     for source_path in discover_rust_sources(crate_root) {
-        let result = analyze_source_file(&source_path, config)?;
+        let result = analyze_source_file(&source_path, config, semantic)?;
         let path_str: Box<str> = source_path.to_string_lossy().into();
         files.insert(path_str, result);
     }
 
     let build_rs = crate_root.join("build.rs");
     if build_rs.is_file() {
-        let result = analyze_build_script_file(&build_rs, config)?;
+        let result = analyze_build_script_file(&build_rs, config, semantic)?;
         let path_str: Box<str> = build_rs.to_string_lossy().into();
         files.insert(path_str, result);
     }
 
-    let findings_count: usize = files.values().map(|r| r.capabilities.findings.len()).sum();
-    let mut all_findings = Vec::with_capacity(findings_count);
-    all_findings.extend(
-        files
-            .values()
-            .flat_map(|r| r.capabilities.findings.iter().cloned()),
-    );
-
-    let profile = CapabilityProfile {
-        findings: all_findings.into(),
-    };
-
-    let gate_verdicts = compute_gate_verdicts(&profile, gate_config);
+    let profile = aggregate_profile(&files);
+    let gate_verdicts = compute_gate_verdicts(&profile, &files, gate_config);
 
     Ok(CrateIndex {
         root: crate_root.to_path_buf(),
@@ -313,24 +345,35 @@ fn build_crate_index(
 
 /// Recompute a crate's aggregated profile and gate verdicts from its cached file results.
 fn recompute_aggregates(crate_index: &mut CrateIndex, gate_config: &GateConfig) {
-    let all_findings: Vec<_> = crate_index
-        .files
-        .values()
-        .flat_map(|r| r.capabilities.findings.iter().cloned())
-        .collect();
+    crate_index.profile = aggregate_profile(&crate_index.files);
+    crate_index.gate_verdicts =
+        compute_gate_verdicts(&crate_index.profile, &crate_index.files, gate_config);
+}
 
-    crate_index.profile = CapabilityProfile {
+/// Collect all per-file capability findings into a single aggregated profile.
+fn aggregate_profile(files: &BTreeMap<Box<str>, AnalysisResult>) -> CapabilityProfile {
+    let findings_count: usize = files.values().map(|r| r.capabilities.findings.len()).sum();
+    let mut all_findings = Vec::with_capacity(findings_count);
+    all_findings.extend(
+        files
+            .values()
+            .flat_map(|r| r.capabilities.findings.iter().cloned()),
+    );
+    CapabilityProfile {
         findings: all_findings.into(),
-    };
-
-    crate_index.gate_verdicts = compute_gate_verdicts(&crate_index.profile, gate_config);
+    }
 }
 
 fn compute_gate_verdicts(
     profile: &CapabilityProfile,
+    files: &BTreeMap<Box<str>, AnalysisResult>,
     gate_config: &GateConfig,
 ) -> Box<[GateVerdict]> {
-    evaluate_gate_rules(&profile.findings, gate_config)
+    let data_flows: Vec<_> = files
+        .values()
+        .flat_map(|r| r.data_flows.iter().cloned())
+        .collect();
+    evaluate_gate_rules(&profile.findings, &data_flows, gate_config)
 }
 
 /// Find all .rs files under the crate's src/ directory.
@@ -350,9 +393,13 @@ fn discover_rust_sources(crate_root: &Path) -> impl Iterator<Item = PathBuf> {
 }
 
 /// Analyze a single Rust source file.
-fn analyze_source_file(path: &Path, config: &Config) -> Result<AnalysisResult, IndexError> {
+fn analyze_source_file(
+    path: &Path,
+    config: &Config,
+    semantic: Option<&SemanticContext>,
+) -> Result<AnalysisResult, IndexError> {
     let path_lossy = path.to_string_lossy();
-    analyze_source_at(path, &path_lossy, config)
+    analyze_source_at(path, &path_lossy, config, semantic)
 }
 
 /// Analyze a source file with a pre-computed path string.
@@ -360,20 +407,23 @@ fn analyze_source_at(
     path: &Path,
     path_str: &str,
     config: &Config,
+    semantic: Option<&SemanticContext>,
 ) -> Result<AnalysisResult, IndexError> {
     let source = read_file(path)?;
-    analyze(path_str, &source, config, Option::<&SemanticContext>::None).map_err(|e| {
-        IndexError::RustParse {
-            path: path_str.into(),
-            source: e,
-        }
+    analyze(path_str, &source, config, semantic).map_err(|e| IndexError::RustParse {
+        path: path_str.into(),
+        source: e,
     })
 }
 
 /// Analyze a build.rs file, tagging all findings as build-script.
-fn analyze_build_script_file(path: &Path, config: &Config) -> Result<AnalysisResult, IndexError> {
+fn analyze_build_script_file(
+    path: &Path,
+    config: &Config,
+    semantic: Option<&SemanticContext>,
+) -> Result<AnalysisResult, IndexError> {
     let path_lossy = path.to_string_lossy();
-    analyze_build_script_at(path, &path_lossy, config)
+    analyze_build_script_at(path, &path_lossy, config, semantic)
 }
 
 /// Analyze a build script with a pre-computed path string.
@@ -381,13 +431,12 @@ fn analyze_build_script_at(
     path: &Path,
     path_str: &str,
     config: &Config,
+    semantic: Option<&SemanticContext>,
 ) -> Result<AnalysisResult, IndexError> {
     let source = read_file(path)?;
-    analyze_build_script(path_str, &source, config, Option::<&SemanticContext>::None).map_err(|e| {
-        IndexError::RustParse {
-            path: path_str.into(),
-            source: e,
-        }
+    analyze_build_script(path_str, &source, config, semantic).map_err(|e| IndexError::RustParse {
+        path: path_str.into(),
+        source: e,
     })
 }
 

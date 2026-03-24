@@ -1,11 +1,14 @@
 use pedant_types::CapabilityProfile;
 
+use crate::ir::DataFlowFact;
 use crate::violation::Violation;
 
-/// Combined result of violation analysis and capability detection.
+/// Output of a single file analysis: violations and capabilities.
 pub struct AnalysisResult {
-    /// Violations found by the nesting/pattern visitor.
+    /// Style violations produced by the checks pipeline.
     pub violations: Box<[Violation]>,
-    /// Capability profile from path-based detection.
+    /// Capability findings from use-path and string-literal detection.
     pub capabilities: CapabilityProfile,
+    /// Cross-function data flow edges (populated only by semantic enrichment).
+    pub data_flows: Box<[DataFlowFact]>,
 }

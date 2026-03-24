@@ -5,6 +5,9 @@ use pedant_types::{Capability, CapabilityFinding, CapabilityProfile, SourceLocat
 
 use crate::ir::FileIr;
 
+/// Validator: receives (full value, suffix after prefix) and returns whether it matches.
+type PrefixValidator = fn(&str, &str) -> bool;
+
 // --- Prefix tables for path-based capability resolution ---
 
 const NETWORK_PREFIXES: &[(&str, Capability)] = &[
@@ -108,7 +111,7 @@ fn path_matches_prefix(path: &str, prefix: &str) -> bool {
                 == Some(PATH_SEPARATOR.as_bytes()))
 }
 
-/// Resolve a use-path or qualified path to a capability, if any.
+/// Map a use-path to its capability, checking write-function overrides first.
 fn resolve_capabilities(path: &str) -> Option<Capability> {
     if FS_WRITE_FUNCTIONS.binary_search(&path).is_ok() {
         return Some(Capability::FileWrite);
@@ -122,7 +125,7 @@ fn resolve_capabilities(path: &str) -> Option<Capability> {
 
 const URL_SCHEMES: &[&str] = &["http://", "https://", "ws://", "wss://"];
 
-/// Check whether a string literal looks like a network endpoint.
+/// Heuristic: URLs, IPv4 with port, or IPv6 addresses.
 fn check_string_for_endpoint(value: &str) -> bool {
     if value.len() < 8 {
         return false;
@@ -177,7 +180,7 @@ fn looks_like_ipv6(s: &str) -> bool {
     valid && count > 2
 }
 
-/// Check whether a string literal looks like a PEM block.
+/// Heuristic: looks for PEM block header prefix.
 fn check_string_for_pem(value: &str) -> bool {
     value.contains("-----BEGIN ")
 }
@@ -190,8 +193,12 @@ pub fn truncate_evidence(value: &str) -> Cow<'_, str> {
     match value.len() <= 40 {
         true => Cow::Borrowed(value),
         false => {
-            let head_end = value.char_indices().nth(16).map_or(value.len(), |(i, _)| i);
-            let tail_start = value.char_indices().rev().nth(3).map_or(0, |(i, _)| i);
+            let char_count = value.chars().count();
+            let tail_offset = char_count.saturating_sub(4);
+            let mut indices = value.char_indices();
+            let head_end = indices.nth(16).map_or(value.len(), |(i, _)| i);
+            let skip = tail_offset.saturating_sub(17);
+            let tail_start = indices.nth(skip).map_or(0, |(i, _)| i);
             Cow::Owned(format!("{}…{}", &value[..head_end], &value[tail_start..]))
         }
     }
@@ -234,41 +241,51 @@ fn check_string_for_base58_key(value: &str) -> bool {
 ///
 /// Matches AGE-SECRET-KEY-1, xprv (BIP32), ed25519: (NEAR), and 0x + 64 hex (Ethereum).
 fn check_string_for_key_prefix(value: &str) -> bool {
-    match () {
-        () if value.starts_with("AGE-SECRET-KEY-1") => value.len() > 16,
-        () if value.starts_with("xprv") => value.len() >= 111 && is_base58(&value[4..]),
-        () if value.starts_with("ed25519:") => value.len() > 8,
-        () if value.starts_with("0x") => {
-            value.len() == 66 && value[2..].bytes().all(|b| b.is_ascii_hexdigit())
-        }
-        () => false,
-    }
+    const KEY_PREFIXES: &[(&str, PrefixValidator)] = &[
+        ("AGE-SECRET-KEY-1", |v, _| v.len() > 16),
+        ("xprv", |v, suffix| v.len() >= 111 && is_base58(suffix)),
+        ("ed25519:", |v, _| v.len() > 8),
+        ("0x", |v, suffix| {
+            v.len() == 66 && suffix.bytes().all(|b| b.is_ascii_hexdigit())
+        }),
+    ];
+    KEY_PREFIXES.iter().any(|(prefix, validate)| {
+        value
+            .strip_prefix(prefix)
+            .is_some_and(|suffix| validate(value, suffix))
+    })
 }
 
 /// Check whether a string starts with a known credential prefix.
 ///
 /// Matches AWS access keys (AKIA), GitHub tokens (ghp_, gho_, ghs_, ghr_),
 /// and Stripe/OpenAI-style secrets (sk-, sk_live_, sk_test_).
+/// Validates that the suffix is at least 24 ASCII alphanumeric characters.
+/// Shared by sk_live_, sk_test_, and sk- credential prefixes.
+fn validate_sk_suffix(_full: &str, suffix: &str) -> bool {
+    suffix.len() >= 24 && suffix.bytes().all(|b| b.is_ascii_alphanumeric())
+}
+
 fn check_string_for_credential_prefix(value: &str) -> bool {
-    match () {
-        () if value.starts_with("AKIA") => {
-            value.len() == 20
-                && value[4..]
+    const CREDENTIAL_PREFIXES: &[(&str, PrefixValidator)] = &[
+        ("AKIA", |v, suffix| {
+            v.len() == 20
+                && suffix
                     .bytes()
                     .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
-        }
-        () if starts_with_github_prefix(value) => {
-            value.len() == 40 && value[4..].bytes().all(|b| b.is_ascii_alphanumeric())
-        }
-        () if value.starts_with("sk_live_") || value.starts_with("sk_test_") => {
-            let suffix = &value[8..];
-            suffix.len() >= 24 && suffix.bytes().all(|b| b.is_ascii_alphanumeric())
-        }
-        () if value.starts_with("sk-") => {
-            let suffix = &value[3..];
-            suffix.len() >= 24 && suffix.bytes().all(|b| b.is_ascii_alphanumeric())
-        }
-        () => false,
+        }),
+        ("sk_live_", validate_sk_suffix),
+        ("sk_test_", validate_sk_suffix),
+        ("sk-", validate_sk_suffix),
+    ];
+    // GitHub tokens use a 4-char prefix checked separately.
+    match starts_with_github_prefix(value) {
+        true => value.len() == 40 && value[4..].bytes().all(|b| b.is_ascii_alphanumeric()),
+        false => CREDENTIAL_PREFIXES.iter().any(|(prefix, validate)| {
+            value
+                .strip_prefix(prefix)
+                .is_some_and(|suffix| validate(value, suffix))
+        }),
     }
 }
 
@@ -278,9 +295,9 @@ fn starts_with_github_prefix(value: &str) -> bool {
 
 // --- IR-based capability detection ---
 
-/// Detect capabilities from pre-extracted IR facts.
+/// Scan all IR facts for capability usage and produce a profile.
 ///
-/// When `build_script` is true, all findings are tagged as originating from a build script.
+/// When `build_script` is true, every finding is tagged with `build_script: true`.
 pub fn detect_capabilities(ir: &FileIr, build_script: bool) -> CapabilityProfile {
     let file_path = &ir.file_path;
     let mut findings = Vec::new();
@@ -310,10 +327,11 @@ fn emit(
         location: SourceLocation {
             file: Arc::clone(file),
             line,
-            column,
+            column: column + 1,
         },
         evidence: Arc::from(evidence),
         build_script,
+        reachable: None,
     });
 }
 
@@ -356,7 +374,7 @@ fn detect_use_paths(
                 (
                     cap,
                     use_path.span.line,
-                    use_path.span.column + 1,
+                    use_path.span.column,
                     use_path.path.as_ref(),
                 )
             })
@@ -379,7 +397,7 @@ fn detect_unsafe_sites(
             Some((
                 Capability::UnsafeCode,
                 site.span.line,
-                site.span.column + 1,
+                site.span.column,
                 site.evidence.as_ref(),
             ))
         },
@@ -401,7 +419,7 @@ fn detect_extern_blocks(
             Some((
                 Capability::Ffi,
                 block.span.line,
-                block.span.column + 1,
+                block.span.column,
                 "extern block",
             ))
         },
@@ -422,7 +440,7 @@ fn detect_attributes(
             "proc_macro_attribute" => (Capability::ProcMacro, "#[proc_macro_attribute]"),
             _ => return None,
         };
-        Some((cap, attr.span.line, attr.span.column + 1, evidence))
+        Some((cap, attr.span.line, attr.span.column, evidence))
     });
 }
 
@@ -459,20 +477,21 @@ fn detect_string_literals(
 ) {
     for lit in &ir.string_literals {
         let line = lit.span.line;
-        let column = lit.span.column + 1;
+        let column = lit.span.column;
 
-        for check in STRING_LITERAL_CHECKS {
-            if (check.checker)(&lit.value) {
-                emit(
-                    findings,
-                    check.capability,
-                    file_path,
-                    line,
-                    column,
-                    &lit.value,
-                    build_script,
-                );
-            }
+        if let Some(check) = STRING_LITERAL_CHECKS
+            .iter()
+            .find(|check| (check.checker)(&lit.value))
+        {
+            emit(
+                findings,
+                check.capability,
+                file_path,
+                line,
+                column,
+                &lit.value,
+                build_script,
+            );
         }
         if KEY_MATERIAL_CHECKS.iter().any(|check| check(&lit.value)) {
             let evidence = truncate_evidence(&lit.value);

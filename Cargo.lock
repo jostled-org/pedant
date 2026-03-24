@@ -1303,6 +1303,7 @@ dependencies = [
 name = "pedant-core"
 version = "0.6.0"
 dependencies = [
+ "line-index",
  "pedant-types",
  "proc-macro2",
  "quote",
@@ -1344,6 +1345,7 @@ dependencies = [
  "rustc-hash 2.1.1",
  "serde",
  "serde_json",
+ "thiserror",
 ]
 
 [[package]]

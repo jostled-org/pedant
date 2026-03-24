@@ -2,33 +2,33 @@ use serde::{Deserialize, Serialize};
 
 use crate::CapabilityProfile;
 
-/// The depth of analysis performed.
+/// How deeply the source was analyzed, affecting finding accuracy.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum AnalysisTier {
-    /// Pattern-based detection on syntax trees.
+    /// Pattern-based detection on unresolved syntax trees.
     Syntactic,
-    /// Type-aware analysis with resolved names.
+    /// Type-resolved analysis via rust-analyzer.
     Semantic,
-    /// Full data-flow tracking through the program.
+    /// Full inter-procedural data-flow tracking.
     DataFlow,
 }
 
-/// The content of a capability attestation for a crate.
+/// Signed attestation binding a source hash to its capability profile.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct AttestationContent {
-    /// Schema version for forward compatibility.
+    /// Schema version for forward compatibility (e.g., `"0.1.0"`).
     pub spec_version: Box<str>,
-    /// Hash of the analyzed source.
+    /// SHA-256 digest of the concatenated source files.
     pub source_hash: Box<str>,
-    /// Name of the analyzed crate.
+    /// Crate name from `Cargo.toml`.
     pub crate_name: Box<str>,
-    /// Version of the analyzed crate.
+    /// Crate version from `Cargo.toml`.
     pub crate_version: Box<str>,
-    /// Depth of the analysis performed.
+    /// How deeply the source was analyzed.
     pub analysis_tier: AnalysisTier,
-    /// Seconds since Unix epoch (UTC).
+    /// UTC seconds since Unix epoch.
     pub timestamp: u64,
-    /// The capability profile produced by analysis.
+    /// Capability findings from the analysis.
     pub profile: CapabilityProfile,
 }

@@ -18,6 +18,7 @@ semantic = [
     "ra_ap_vfs",
     "ra_ap_project_model",
     "ra_ap_load-cargo",
+    "line-index",
 ]
 
 [dependencies]
@@ -36,6 +37,7 @@ ra_ap_vfs = { version = "0.0.324", optional = true }
 ra_ap_project_model = { version = "0.0.324", optional = true }
 ra_ap_syntax = { version = "0.0.324", optional = true }
 ra_ap_load-cargo = { version = "0.0.324", optional = true }
+line-index = { version = "0.1.2", optional = true }
 
 [dev-dependencies]
 serde_json = "1"

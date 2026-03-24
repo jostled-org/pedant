@@ -6,16 +6,16 @@ const NESTED_CONDITIONAL_PROBLEM: &str = "Conditional-in-conditional creates com
 const NESTED_CONDITIONAL_FIX: &str = "Use tuple patterns `match (a, b) { ... }`, match guards `Some(x) if x > 0 => ...`, or extract to functions.";
 const NESTED_CONDITIONAL_EXCEPTION: &str = "None. Refactoring is always possible.";
 
-/// Metadata about a single check, used by `--list-checks` and `--explain`.
+/// Catalog entry for a single check, displayed by `--list-checks` and `--explain`.
 #[derive(Debug, Clone, Copy)]
 pub struct CheckInfo {
-    /// Short code string (e.g., `"max-depth"`).
+    /// Kebab-case identifier (e.g., `"max-depth"`).
     pub code: &'static str,
-    /// One-line description of what the check detects.
+    /// One-line summary for the checks table.
     pub description: &'static str,
-    /// Category grouping (e.g., `"nesting"`, `"dispatch"`, `"structure"`).
+    /// Grouping key (e.g., `"nesting"`, `"dispatch"`, `"structure"`).
     pub category: &'static str,
-    /// Whether this pattern is particularly common in LLM-generated code.
+    /// `true` when the pattern is disproportionately common in LLM output.
     pub llm_specific: bool,
 }
 

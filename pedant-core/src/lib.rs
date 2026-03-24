@@ -14,31 +14,31 @@
 //! assert!(!result.violations.is_empty());
 //! ```
 
-/// Combined analysis result type.
+/// Violations + capabilities produced by a single analysis run.
 pub mod analysis_result;
-/// IR-based capability detection consuming extracted facts.
+/// Path-based capability detection over extracted IR facts.
 pub mod capabilities;
-/// Check configuration, TOML config file types, and config file loading.
+/// `.pedant.toml` schema, loading, and per-path override resolution.
 pub mod check_config;
-/// Check metadata catalog used by `--list-checks` and `--explain`.
+/// Check catalog: metadata, rationale, and the `ViolationType` enum.
 pub mod checks;
-/// Gate rules engine: evaluates capability profiles against built-in security rules.
+/// Security gate rules that fire on suspicious capability combinations.
 pub mod gate;
-/// Graph algorithms for type-relationship analysis.
+/// BFS and pairwise-edge helpers for type-relationship graphs.
 pub(crate) mod graph;
-/// Source content hashing for attestation.
+/// SHA-256 hashing of source contents for attestation.
 pub mod hash;
-/// Intermediate representation: facts extracted from the AST in a single pass.
+/// Intermediate representation extracted from the AST in one pass.
 pub mod ir;
-/// JSON serialization types for violation output.
+/// JSON serialization for machine-readable violation output.
 pub mod json_format;
-/// Linting entry points and error types.
+/// High-level analysis entry points and error types.
 pub mod lint;
-/// Glob-style pattern matching for AST node text.
+/// Glob and wildcard matching for AST node text and file paths.
 pub mod pattern;
-/// IR-based style checks consuming extracted facts.
+/// Style checks that consume IR facts and produce violations.
 pub mod style;
-/// Violation types, rationale, and the `Violation` struct.
+/// The `Violation` type, display formatting, and check rationale.
 pub mod violation;
 
 pub use analysis_result::AnalysisResult;
@@ -49,12 +49,12 @@ pub use check_config::{
 pub use checks::{ALL_CHECKS, CheckInfo};
 pub use gate::{GateRuleInfo, GateSeverity, GateVerdict, all_gate_rules, evaluate_gate_rules};
 pub use lint::{
-    LintError, analyze, analyze_build_script, analyze_with_build_script, discover_build_script,
-    lint_file, lint_str,
+    LintError, analyze, analyze_build_script, analyze_with_build_script, determine_analysis_tier,
+    discover_build_script, discover_workspace_root, lint_file, lint_str,
 };
 pub use violation::{CheckRationale, Violation, ViolationType, lookup_rationale};
 
-/// Re-export syn::Error as ParseError for consumers that call [`analyze`] directly.
+/// Alias for `syn::Error`, used by consumers that call [`analyze`] directly.
 pub use syn::Error as ParseError;
 
 pub use ir::semantic::SemanticContext;

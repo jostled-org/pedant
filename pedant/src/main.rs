@@ -57,6 +57,7 @@ struct AnalysisContext<'a> {
 struct AnalysisAccumulator {
     violations: Vec<Violation>,
     findings: Vec<CapabilityFinding>,
+    data_flows: Vec<pedant_core::ir::DataFlowFact>,
     had_error: bool,
 }
 
@@ -71,6 +72,7 @@ impl AnalysisAccumulator {
         Self {
             violations: Vec::with_capacity(file_count),
             findings: Vec::with_capacity(file_count),
+            data_flows: Vec::new(),
             had_error: false,
         }
     }
@@ -85,6 +87,7 @@ impl AnalysisAccumulator {
             Ok(r) => {
                 self.violations.extend(r.violations);
                 self.findings.extend(r.capabilities.findings);
+                self.data_flows.extend(r.data_flows);
             }
             Err(e) => {
                 report_error(stderr, format_args!("{context}: {e}"));
@@ -118,10 +121,6 @@ fn main() -> ExitCode {
     let mut acc = AnalysisAccumulator::with_capacity(cli.files.len());
 
     let semantic = load_semantic_if_requested(&cli, &mut stderr);
-    let analysis_tier = match semantic.is_some() {
-        true => AnalysisTier::Semantic,
-        false => AnalysisTier::Syntactic,
-    };
 
     let ctx = AnalysisContext {
         base_config: &base_config,
@@ -130,6 +129,7 @@ fn main() -> ExitCode {
     };
 
     let source_hash = run_analysis(&cli, &ctx, &mut acc, &mut stderr);
+    let analysis_tier = pedant_core::determine_analysis_tier(semantic.as_ref(), &acc.data_flows);
 
     let reporter = Reporter::new(cli.format, cli.quiet);
     let mut stdout = io::stdout().lock();
@@ -143,7 +143,7 @@ fn main() -> ExitCode {
     let gate_verdicts = match cli.gate {
         true => {
             let gate_config = file_config.as_ref().map_or(&default_gate, |fc| &fc.gate);
-            evaluate_gate_rules(&acc.findings, gate_config)
+            evaluate_gate_rules(&acc.findings, &acc.data_flows, gate_config)
         }
         false => Box::new([]),
     };
@@ -306,6 +306,7 @@ fn analyze_file_list(
         );
         discover_and_analyze_build_script(
             file_path,
+            &cli.files,
             &cfg,
             sources.as_deref_mut(),
             &mut seen_build_roots,
@@ -326,57 +327,21 @@ fn find_crate_root(file_path: &str) -> Option<&Path> {
     }
 }
 
-#[cfg(feature = "semantic")]
-/// Find the workspace root by walking up from the first file argument.
-///
-/// Looks for a `Cargo.toml` containing `[workspace]`, or falls back to the
-/// nearest `Cargo.toml` with `[package]`.
-fn find_workspace_root(files: &[String]) -> Option<Box<Path>> {
-    let first = files.first()?;
-    let mut dir = Path::new(first.as_str()).parent()?;
-    let mut fallback: Option<&Path> = None;
-    loop {
-        // Some(true) = workspace, Some(false) = package, None = absent
-        match (is_cargo_workspace(dir), fallback) {
-            (Some(true), _) => return Some(Box::from(dir)),
-            (Some(false), None) => fallback = Some(dir),
-            (Some(false), Some(_)) | (None, _) => {}
-        }
-        match dir.parent() {
-            Some(parent) => dir = parent,
-            None => return fallback.map(Box::from),
-        }
-    }
-}
-
-#[cfg(feature = "semantic")]
-/// Check whether a directory contains a Cargo workspace, package, or neither.
-///
-/// Returns `Some(true)` for `[workspace]`, `Some(false)` for `[package]`-only,
-/// `None` if no readable `Cargo.toml`.
-fn is_cargo_workspace(dir: &Path) -> Option<bool> {
-    use io::BufRead;
-    let file = fs::File::open(dir.join("Cargo.toml")).ok()?;
-    let reader = io::BufReader::new(file);
-    for line in reader.lines() {
-        let line = line.ok()?;
-        if line.trim_start().starts_with("[workspace]") {
-            return Some(true);
-        }
-    }
-    Some(false)
-}
-
 /// Load `SemanticContext` when `--semantic` is requested.
 ///
 /// Returns `None` (with a stderr warning) if loading fails or the flag is absent.
 #[cfg(feature = "semantic")]
 fn load_semantic_if_requested(cli: &Cli, stderr: &mut impl Write) -> Option<SemanticContext> {
+    use pedant_core::lint::discover_workspace_root;
+
     if !cli.semantic {
         return None;
     }
 
-    let Some(root) = find_workspace_root(&cli.files) else {
+    let first_file = cli.files.first()?;
+    let Some(root) =
+        discover_workspace_root(Path::new(first_file.as_str())).map(|p| p.into_boxed_path())
+    else {
         report_error(
             stderr,
             format_args!(
@@ -422,6 +387,7 @@ fn load_semantic_if_requested(_cli: &Cli, _stderr: &mut impl Write) -> Option<Se
 
 fn discover_and_analyze_build_script(
     file_path: &str,
+    cli_files: &[String],
     config: &CheckConfig,
     sources: Option<&mut BTreeMap<Box<str>, String>>,
     seen_roots: &mut BTreeSet<Box<Path>>,
@@ -453,6 +419,13 @@ fn discover_and_analyze_build_script(
         );
         return;
     };
+    // Skip if the build script is already in the CLI file list (analyzed as a regular file).
+    if cli_files
+        .iter()
+        .any(|f| Path::new(f.as_str()) == build_path)
+    {
+        return;
+    }
     analyze_single_file(
         build_path_str,
         analyze_build_script,

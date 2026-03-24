@@ -2,7 +2,7 @@ use serde::Serialize;
 
 use crate::violation::Violation;
 
-/// A violation serialized as JSON for machine-readable output.
+/// Flat JSON representation of a violation for `--format json` output.
 #[derive(Serialize)]
 pub struct JsonViolation<'a> {
     r#type: &'a str,

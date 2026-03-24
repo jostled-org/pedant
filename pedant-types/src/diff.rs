@@ -3,21 +3,21 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Capability, CapabilityFinding, CapabilityProfile};
 
-/// The difference between two capability profiles.
+/// Set-difference between two capability profiles.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
 pub struct CapabilityDiff {
-    /// Findings present in `new` but not in `old`.
+    /// Findings present in `new` but absent from `old`.
     pub added: Box<[CapabilityFinding]>,
-    /// Findings present in `old` but not in `new`.
+    /// Findings present in `old` but absent from `new`.
     pub removed: Box<[CapabilityFinding]>,
-    /// Capabilities that appear in `new` but had zero findings in `old`.
+    /// Capability types that gained their first finding.
     pub new_capabilities: Box<[Capability]>,
-    /// Capabilities that appeared in `old` but have zero findings in `new`.
+    /// Capability types that lost their last finding.
     pub dropped_capabilities: Box<[Capability]>,
 }
 
 impl CapabilityDiff {
-    /// Returns `true` when the diff contains no changes.
+    /// No findings were added, removed, or changed capability type.
     pub fn is_empty(&self) -> bool {
         self.added.is_empty()
             && self.removed.is_empty()
@@ -25,7 +25,7 @@ impl CapabilityDiff {
             && self.dropped_capabilities.is_empty()
     }
 
-    /// Compute the diff between an old and new profile.
+    /// Produce the set-difference between two profiles.
     pub fn compute(old: &CapabilityProfile, new: &CapabilityProfile) -> Self {
         let old_set: FxHashSet<&CapabilityFinding> = old.findings.iter().collect();
         let new_set: FxHashSet<&CapabilityFinding> = new.findings.iter().collect();

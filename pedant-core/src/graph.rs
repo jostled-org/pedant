@@ -22,7 +22,7 @@ pub(crate) fn bfs_component<'a>(
     component
 }
 
-/// Calls `emit(i, j)` for every unique pair of indices in `0..len`.
+/// Iterate every unique pair `(i, j)` where `i < j < len`.
 pub(crate) fn for_each_pair(len: usize, mut emit: impl FnMut(usize, usize)) {
     (0..len).for_each(|i| {
         ((i + 1)..len).for_each(|j| {

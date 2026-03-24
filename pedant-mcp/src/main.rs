@@ -1,8 +1,10 @@
 use std::io::Write;
+use std::path::Path;
 use std::process;
 use std::sync::{Arc, RwLock};
 
 use pedant_core::Config;
+use pedant_core::ir::semantic::SemanticContext;
 use pedant_mcp::index::{WorkspaceIndex, discover_workspace_root};
 use pedant_mcp::server::PedantServer;
 use pedant_mcp::watcher::start_watcher;
@@ -34,8 +36,9 @@ async fn main() {
         }
     };
 
+    let semantic = load_semantic(&workspace_root);
     let config = Arc::new(Config::default());
-    let index = match WorkspaceIndex::build(&workspace_root, &config) {
+    let index = match WorkspaceIndex::build(&workspace_root, &config, semantic) {
         Ok(idx) => idx,
         Err(e) => {
             let _ = writeln!(std::io::stderr(), "error: failed to index workspace: {e}");
@@ -72,4 +75,14 @@ async fn main() {
         );
         process::exit(1);
     }
+}
+
+#[cfg(feature = "semantic")]
+fn load_semantic(workspace_root: &Path) -> Option<SemanticContext> {
+    SemanticContext::load(workspace_root)
+}
+
+#[cfg(not(feature = "semantic"))]
+fn load_semantic(_workspace_root: &Path) -> Option<SemanticContext> {
+    None
 }

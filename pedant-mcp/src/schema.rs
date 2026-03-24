@@ -17,7 +17,7 @@ static TOOLS: LazyLock<Box<[Tool]>> = LazyLock::new(|| {
     .into()
 });
 
-/// All registered security and capability analysis tools.
+/// Return the static list of MCP tool definitions.
 pub fn all_tools() -> &'static [Tool] {
     &TOOLS
 }

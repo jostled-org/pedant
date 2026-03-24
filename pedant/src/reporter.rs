@@ -4,29 +4,29 @@ use pedant_core::GateVerdict;
 use pedant_core::json_format::JsonViolation;
 use pedant_core::violation::Violation;
 
-/// Output format for violation reports.
+/// Selects how violations and gate verdicts are rendered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::ValueEnum)]
 pub enum OutputFormat {
-    /// Human-readable text, one violation per line.
+    /// One violation per line, suitable for editor integration.
     #[default]
     Text,
-    /// JSON array of violation objects.
+    /// Machine-readable JSON array.
     Json,
 }
 
-/// Formats and writes violation reports to a writer.
+/// Writes violations and gate verdicts in the selected output format.
 pub struct Reporter {
     format: OutputFormat,
     quiet: bool,
 }
 
 impl Reporter {
-    /// Creates a reporter with the given format and quiet mode.
+    /// Construct with the desired format and summary suppression flag.
     pub fn new(format: OutputFormat, quiet: bool) -> Self {
         Self { format, quiet }
     }
 
-    /// Writes all violations to the given writer in the configured format.
+    /// Emit all violations to `writer` in the configured format.
     pub fn report<W: Write>(&self, violations: &[Violation], writer: &mut W) -> io::Result<()> {
         match self.format {
             OutputFormat::Text => self.report_text(violations, writer),
@@ -63,7 +63,7 @@ impl Reporter {
         Ok(())
     }
 
-    /// Writes gate verdicts to the given writer in the configured format.
+    /// Emit gate verdicts to `writer` in the configured format.
     pub fn report_gate<W: Write>(
         &self,
         verdicts: &[GateVerdict],

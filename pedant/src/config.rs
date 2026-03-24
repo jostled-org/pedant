@@ -3,7 +3,7 @@ use clap::Parser;
 use crate::reporter::OutputFormat;
 use pedant_core::check_config::{CheckConfig, ConfigFile};
 
-/// Command-line arguments for the pedant binary.
+/// CLI flags and arguments parsed by `clap`.
 #[derive(Parser, Debug)]
 #[command(name = "pedant")]
 #[command(about = "An opinionated Rust linter, with special focus on AI-generated code")]
@@ -92,7 +92,7 @@ pub struct Cli {
 }
 
 impl Cli {
-    /// Builds a [`CheckConfig`] by merging CLI flags with an optional file config.
+    /// Merge CLI flags with the file config, with CLI taking precedence.
     pub fn to_check_config(&self, file_config: Option<&ConfigFile>) -> CheckConfig {
         let mut base = file_config.map_or_else(CheckConfig::default, CheckConfig::from_config_file);
 

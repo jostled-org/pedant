@@ -40,7 +40,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
 fn test_index_discovers_workspace_crates() {
     let root = fixture_path("multi_crate");
     let config = Config::default();
-    let index = WorkspaceIndex::build(&root, &config).unwrap();
+    let index = WorkspaceIndex::build(&root, &config, None).unwrap();
 
     let names: Vec<&str> = index.crate_names().collect();
     assert!(names.contains(&"lib-a"), "missing lib-a: {names:?}");
@@ -51,7 +51,7 @@ fn test_index_discovers_workspace_crates() {
 fn test_index_caches_analysis_results() {
     let root = fixture_path("multi_crate");
     let config = Config::default();
-    let index = WorkspaceIndex::build(&root, &config).unwrap();
+    let index = WorkspaceIndex::build(&root, &config, None).unwrap();
 
     let profile = index.crate_profile("lib-a").expect("lib-a not indexed");
     let caps = profile.capabilities();
@@ -65,7 +65,7 @@ fn test_index_caches_analysis_results() {
 fn test_index_aggregates_crate_profile() {
     let root = fixture_path("multi_crate");
     let config = Config::default();
-    let index = WorkspaceIndex::build(&root, &config).unwrap();
+    let index = WorkspaceIndex::build(&root, &config, None).unwrap();
 
     let profile = index.crate_profile("lib-a").expect("lib-a not indexed");
     let caps = profile.capabilities();
@@ -83,7 +83,7 @@ fn test_index_aggregates_crate_profile() {
 fn test_index_empty_workspace() {
     let root = fixture_path("empty_workspace");
     let config = Config::default();
-    let index = WorkspaceIndex::build(&root, &config).unwrap();
+    let index = WorkspaceIndex::build(&root, &config, None).unwrap();
 
     let names: Vec<&str> = index.crate_names().collect();
     assert!(names.is_empty(), "expected no crates, found: {names:?}");
@@ -93,7 +93,7 @@ fn test_index_empty_workspace() {
 fn test_index_gate_verdicts() {
     let root = fixture_path("multi_crate");
     let config = Config::default();
-    let index = WorkspaceIndex::build(&root, &config).unwrap();
+    let index = WorkspaceIndex::build(&root, &config, None).unwrap();
 
     let verdicts = index.crate_verdicts("lib-a").expect("lib-a not indexed");
     let rules: Vec<&str> = verdicts.iter().map(|v| v.rule).collect();
@@ -125,7 +125,7 @@ fn test_workspace_discovery_from_subdirectory() {
 fn test_file_change_triggers_reindex() {
     let tmp = copy_fixture_to_temp("multi_crate");
     let config = Config::default();
-    let mut index = WorkspaceIndex::build(tmp.path(), &config).unwrap();
+    let mut index = WorkspaceIndex::build(tmp.path(), &config, None).unwrap();
 
     // lib-a/src/lib.rs has std::net — verify Network present
     let profile = index.crate_profile("lib-a").expect("lib-a not indexed");
@@ -163,7 +163,7 @@ fn test_file_change_triggers_reindex() {
 fn test_new_file_added_to_index() {
     let tmp = copy_fixture_to_temp("multi_crate");
     let config = Config::default();
-    let mut index = WorkspaceIndex::build(tmp.path(), &config).unwrap();
+    let mut index = WorkspaceIndex::build(tmp.path(), &config, None).unwrap();
 
     // Add a new file with std::fs import to lib-a
     let new_file = tmp.path().join("lib-a/src/extra.rs");
@@ -190,7 +190,7 @@ fn test_new_file_added_to_index() {
 fn test_file_deleted_from_index() {
     let tmp = copy_fixture_to_temp("multi_crate");
     let config = Config::default();
-    let mut index = WorkspaceIndex::build(tmp.path(), &config).unwrap();
+    let mut index = WorkspaceIndex::build(tmp.path(), &config, None).unwrap();
 
     // lib-a/src/other.rs has std::fs — verify FileRead present
     let profile = index.crate_profile("lib-a").expect("lib-a not indexed");
@@ -219,7 +219,7 @@ fn test_file_deleted_from_index() {
 fn test_gate_verdicts_recomputed_after_change() {
     let tmp = copy_fixture_to_temp("multi_crate");
     let config = Config::default();
-    let mut index = WorkspaceIndex::build(tmp.path(), &config).unwrap();
+    let mut index = WorkspaceIndex::build(tmp.path(), &config, None).unwrap();
 
     // lib-a has build.rs using reqwest — gate rule should fire
     let verdicts = index.crate_verdicts("lib-a").expect("lib-a not indexed");

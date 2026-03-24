@@ -3,16 +3,16 @@ use std::sync::Arc;
 
 pub use crate::checks::{ViolationType, lookup_rationale};
 
-/// Rationale explaining why a check exists and how to address it.
+/// Structured explanation of why a check exists, shown by `--explain`.
 #[derive(Debug, Clone, Copy, serde::Serialize)]
 pub struct CheckRationale {
-    /// What problem this check detects.
+    /// The code smell or risk this check detects.
     pub problem: &'static str,
-    /// How to fix code that triggers this check.
+    /// Concrete refactoring steps to eliminate the violation.
     pub fix: &'static str,
-    /// When exceptions to this check are acceptable.
+    /// Situations where suppression is justified.
     pub exception: &'static str,
-    /// Whether this check is particularly relevant for LLM-generated code.
+    /// `true` when the pattern is disproportionately common in LLM output.
     pub llm_specific: bool,
 }
 
@@ -26,7 +26,7 @@ impl fmt::Display for CheckRationale {
 }
 
 impl ViolationType {
-    /// Returns the matched pattern for pattern-based violations, or `None`.
+    /// The glob pattern that triggered this violation, for pattern-based checks only.
     pub fn pattern(&self) -> Option<&str> {
         match self {
             Self::ForbiddenAttribute { pattern }
@@ -44,23 +44,23 @@ impl fmt::Display for ViolationType {
     }
 }
 
-/// A single violation found during analysis.
+/// A located style violation with diagnostic message.
 #[derive(Debug, Clone)]
 pub struct Violation {
-    /// What kind of violation this is.
+    /// Which check produced this violation.
     pub violation_type: ViolationType,
-    /// Path to the file containing the violation.
+    /// Absolute path of the offending file.
     pub file_path: Arc<str>,
-    /// Line number (1-based).
+    /// 1-based line number.
     pub line: usize,
-    /// Column number (1-based).
+    /// 1-based column number.
     pub column: usize,
-    /// Human-readable description of the violation.
+    /// Diagnostic message describing the specific issue.
     pub message: Box<str>,
 }
 
 impl Violation {
-    /// Creates a new violation at the given source location.
+    /// Construct a violation at a specific file location.
     pub fn new(
         violation_type: ViolationType,
         file_path: Arc<str>,
@@ -77,7 +77,7 @@ impl Violation {
         }
     }
 
-    /// Returns the rationale for this violation's check.
+    /// Delegates to the violation type's check rationale.
     pub fn rationale(&self) -> CheckRationale {
         self.violation_type.rationale()
     }

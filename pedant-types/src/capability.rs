@@ -4,29 +4,29 @@ use serde::{Deserialize, Serialize};
 
 use crate::ParseCapabilityError;
 
-/// A capability that a crate may exercise.
+/// A runtime or compile-time capability that a crate may exercise.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub enum Capability {
-    /// Network access (TCP, UDP, HTTP, etc.)
+    /// TCP, UDP, HTTP, WebSocket, or DNS.
     Network,
-    /// Filesystem read operations
+    /// Reading files or walking directories.
     FileRead,
-    /// Filesystem write operations
+    /// Creating, writing, or deleting files and directories.
     FileWrite,
-    /// Process spawning or execution
+    /// Spawning child processes.
     ProcessExec,
-    /// Environment variable access
+    /// Reading environment variables.
     EnvAccess,
-    /// Use of unsafe code blocks
+    /// `unsafe` blocks, `unsafe fn`, or `unsafe impl`.
     UnsafeCode,
-    /// FFI or external function calls
+    /// Foreign function interface calls or `extern` blocks.
     Ffi,
-    /// Cryptographic operations
+    /// Encryption, hashing, signing, or embedded key material.
     Crypto,
-    /// System clock or time access
+    /// `SystemTime`, `Instant`, or third-party clock access.
     SystemTime,
-    /// Proc macro definition (compile-time code execution)
+    /// Proc macro definition (code execution at compile time).
     ProcMacro,
 }
 

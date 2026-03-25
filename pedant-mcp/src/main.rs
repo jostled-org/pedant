@@ -79,7 +79,10 @@ async fn main() {
 
 #[cfg(feature = "semantic")]
 fn load_semantic(workspace_root: &Path) -> Option<SemanticContext> {
-    SemanticContext::load(workspace_root)
+    match std::env::var_os("PEDANT_SEMANTIC") {
+        Some(val) if val == "1" || val == "true" => SemanticContext::load(workspace_root),
+        _ => None,
+    }
 }
 
 #[cfg(not(feature = "semantic"))]

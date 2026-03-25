@@ -3,9 +3,11 @@
 [![CI](https://github.com/jostled-org/pedant/actions/workflows/ci.yml/badge.svg)](https://github.com/jostled-org/pedant/actions/workflows/ci.yml)
 [![license](https://img.shields.io/crates/l/pedant)](LICENSE-MIT)
 
-You put "never use unwrap in production code" in your CLAUDE.md. Your AI assistant wrote `.unwrap()` anyway. Clippy catches it at compile time. pedant catches it at write time, before the code enters your project. Style rules in system prompts compete with training data, and training data wins. pedant enforces the rules your AI agent can't reliably follow.
+Clippy tells you what's wrong with your code. pedant tells you what your code can do.
 
-**pedant** is a Rust linter and security analyzer. It enforces style rules too subjective for Clippy, detects what a crate can do (capabilities), flags suspicious capability combinations (gate rules), and exposes all of this via an MCP server for AI agents.
+**pedant** is a Rust static analyzer that combines style enforcement, capability detection, and security rules. It answers three questions about any crate: Does the code follow your style rules? What system resources does it access? Are those access patterns expected?
+
+Style checks catch what Clippy considers too subjective — nesting depth, forbidden patterns, naming conventions. Capability detection maps every import, string literal, and attribute to concrete capabilities: network, filesystem, crypto, process exec. Gate rules evaluate capability profiles against known-suspicious patterns. An MCP server exposes all of this to AI agents as structured, queryable data.
 
 ## Proof
 

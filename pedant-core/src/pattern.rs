@@ -76,11 +76,28 @@ fn check_position_constraints(
 }
 
 /// Path-aware glob: `*` matches one segment, `**` matches zero or more segments.
+///
+/// When the pattern is relative and the path is absolute, tries matching
+/// against every suffix of the path (so `pedant/src/main.rs` matches
+/// `/Users/jem/.../pedant/src/main.rs`).
 pub(crate) fn matches_glob(pattern: &str, path: &str) -> bool {
     let path = path.strip_prefix("./").unwrap_or(path);
     let pat_segs: Box<[&str]> = pattern.split('/').collect::<Vec<_>>().into_boxed_slice();
     let path_segs: Box<[&str]> = path.split('/').collect::<Vec<_>>().into_boxed_slice();
-    matches_glob_at(&pat_segs, 0, &path_segs, 0)
+
+    // Direct match (both relative, or both absolute).
+    if matches_glob_at(&pat_segs, 0, &path_segs, 0) {
+        return true;
+    }
+
+    // Suffix match: try aligning the pattern against each tail of the path.
+    // Only when the pattern doesn't start with `/` or `**`.
+    let pattern_is_relative = !pattern.starts_with('/') && pat_segs.first() != Some(&"**");
+    match pattern_is_relative && path_segs.len() > pat_segs.len() {
+        true => (1..=path_segs.len() - pat_segs.len())
+            .any(|offset| matches_glob_at(&pat_segs, 0, &path_segs, offset)),
+        false => false,
+    }
 }
 
 fn matches_glob_at(pat_segs: &[&str], pi: usize, path_segs: &[&str], si: usize) -> bool {

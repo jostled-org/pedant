@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1](https://github.com/jostled-org/pedant/compare/pedant-core-v0.7.0...pedant-core-v0.7.1) - 2026-03-25
+
+### Other
+
+- *(deps)* bump ra_ap_* 0.0.324 → 0.0.325 and update lockfile
+
 ## [0.7.0](https://github.com/jostled-org/pedant/compare/pedant-core-v0.6.0...pedant-core-v0.7.0) - 2026-03-25
 
 ### Added

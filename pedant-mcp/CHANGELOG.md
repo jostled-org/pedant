@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/jostled-org/pedant/compare/pedant-mcp-v0.2.0...pedant-mcp-v0.3.0) - 2026-03-25
+
+### Added
+
+- [**breaking**] add data flow analysis with taint tracking and reachability
+
+### Fixed
+
+- match glob overrides against absolute paths and opt-in MCP semantic
+- *(mcp)* drop SemanticContext after indexing to satisfy Sync bound
+
 ## [0.2.0](https://github.com/jostled-org/pedant/compare/pedant-mcp-v0.1.1...pedant-mcp-v0.2.0) - 2026-03-23
 
 ### Other

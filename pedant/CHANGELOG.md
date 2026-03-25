@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.1](https://github.com/jostled-org/pedant/compare/pedant-v0.15.0...pedant-v0.15.1) - 2026-03-25
+
+### Other
+
+- update Cargo.lock dependencies
+
 ## [0.15.0](https://github.com/jostled-org/pedant/compare/pedant-v0.14.0...pedant-v0.15.0) - 2026-03-25
 
 ### Added

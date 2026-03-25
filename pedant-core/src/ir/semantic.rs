@@ -447,6 +447,7 @@ fn load_config_minimal() -> LoadCargoConfig {
         with_proc_macro_server: ProcMacroServerChoice::None,
         prefill_caches: false,
         proc_macro_processes: 0,
+        num_worker_threads: 1,
     }
 }
 

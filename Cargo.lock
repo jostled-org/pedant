@@ -1288,7 +1288,7 @@ checksum = "b867cad97c0791bbd3aaa6472142568c6c9e8f71937e98379f584cfb0cf35bec"
 
 [[package]]
 name = "pedant"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "clap",
  "pedant-core",
@@ -1301,7 +1301,7 @@ dependencies = [
 
 [[package]]
 name = "pedant-core"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "line-index",
  "pedant-types",
@@ -1323,7 +1323,7 @@ dependencies = [
 
 [[package]]
 name = "pedant-mcp"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "notify 7.0.0",
  "pedant-core",
@@ -1340,7 +1340,7 @@ dependencies = [
 
 [[package]]
 name = "pedant-types"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "rustc-hash 2.1.1",
  "serde",

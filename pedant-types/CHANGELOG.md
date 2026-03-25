@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0](https://github.com/jostled-org/pedant/compare/pedant-types-v0.8.0...pedant-types-v0.9.0) - 2026-03-25
+
+### Added
+
+- [**breaking**] add data flow analysis with taint tracking and reachability
+
 ## [0.8.0](https://github.com/jostled-org/pedant/compare/pedant-types-v0.7.0...pedant-types-v0.8.0) - 2026-03-23
 
 ### Other

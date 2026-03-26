@@ -17,7 +17,7 @@ use pedant_core::AnalysisResult;
 use pedant_core::SemanticContext;
 use pedant_core::check_config::{CheckConfig, ConfigFile, find_config_file, load_config_file};
 use pedant_core::checks::ALL_CHECKS;
-use pedant_core::gate::{GateSeverity, evaluate_gate_rules};
+use pedant_core::gate::{GateSeverity, all_gate_rules, evaluate_gate_rules};
 use pedant_core::hash::compute_source_hash;
 use pedant_core::lint::{analyze, analyze_build_script, discover_build_script};
 use pedant_core::violation::{Violation, lookup_rationale};
@@ -62,9 +62,7 @@ struct AnalysisAccumulator {
 }
 
 fn report_error(stderr: &mut impl Write, msg: std::fmt::Arguments<'_>) {
-    match writeln!(stderr, "{msg}") {
-        Ok(()) | Err(_) => {}
-    }
+    let _ = writeln!(stderr, "{msg}");
 }
 
 impl AnalysisAccumulator {
@@ -85,9 +83,10 @@ impl AnalysisAccumulator {
     ) {
         match result {
             Ok(r) => {
-                self.violations.extend(r.violations);
-                self.findings.extend(r.capabilities.findings);
-                self.data_flows.extend(r.data_flows);
+                self.violations.append(&mut r.violations.into_vec());
+                self.findings
+                    .append(&mut r.capabilities.findings.into_vec());
+                self.data_flows.append(&mut r.data_flows.into_vec());
             }
             Err(e) => {
                 report_error(stderr, format_args!("{context}: {e}"));
@@ -600,22 +599,43 @@ fn print_checks_list() -> io::Result<()> {
         )?;
     }
 
+    let gate_rules = all_gate_rules();
+    writeln!(stdout, "\nGate rules:\n")?;
+    writeln!(stdout, "{:<30} {:<8} DESCRIPTION", "RULE", "SEVERITY")?;
+    writeln!(stdout, "{:-<30} {:-<8} {:-<40}", "", "", "")?;
+
+    for rule in gate_rules.iter() {
+        writeln!(
+            stdout,
+            "{:<30} {:<8} {}",
+            rule.name, rule.default_severity, rule.description
+        )?;
+    }
+
     writeln!(stdout)?;
     writeln!(stdout, "Use --explain <CODE> for detailed rationale.")
 }
 
 fn print_explain(code: &str, stderr: &mut impl Write) -> ExitCode {
-    let Some(rationale) = lookup_rationale(code) else {
-        report_error(stderr, format_args!("Unknown check: {code}"));
-        report_error(
-            stderr,
-            format_args!("Use --list-checks to see available checks."),
-        );
-        return ExitCode::from(1);
-    };
+    if let Some(rationale) = lookup_rationale(code) {
+        return write_result_to_exit(write_explain(code, &rationale), stderr);
+    }
 
-    let result = write_explain(code, &rationale);
-    match result {
+    let gate_rules = all_gate_rules();
+    if let Some(rule) = gate_rules.iter().find(|r| r.name == code) {
+        return write_result_to_exit(write_gate_explain(rule), stderr);
+    }
+
+    report_error(stderr, format_args!("Unknown check: {code}"));
+    report_error(
+        stderr,
+        format_args!("Use --list-checks to see available checks."),
+    );
+    ExitCode::from(1)
+}
+
+fn write_result_to_exit(io_outcome: io::Result<()>, stderr: &mut impl Write) -> ExitCode {
+    match io_outcome {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             report_error(stderr, format_args!("error writing output: {e}"));
@@ -676,4 +696,12 @@ fn write_explain(code: &str, rationale: &pedant_core::violation::CheckRationale)
     let mut stdout = io::stdout().lock();
     writeln!(stdout, "Check: {code}\n")?;
     writeln!(stdout, "{rationale}")
+}
+
+fn write_gate_explain(rule: &pedant_core::gate::GateRuleInfo) -> io::Result<()> {
+    let mut stdout = io::stdout().lock();
+    writeln!(stdout, "Gate rule: {}\n", rule.name)?;
+    writeln!(stdout, "Severity: {}", rule.default_severity)?;
+    writeln!(stdout, "Description: {}\n", rule.description)?;
+    writeln!(stdout, "Rationale: {}", rule.rationale)
 }

@@ -20,11 +20,24 @@ pub(crate) fn classify_single_char(
 /// Returns the first identifier in a pattern, without allocating the full list.
 pub(crate) fn first_pat_ident(pat: &syn::Pat) -> Option<Box<str>> {
     let mut result = None;
-    let _cf = visit_pat_idents(pat, &mut |name| {
+    match visit_pat_idents(pat, &mut |name| {
         result = Some(name);
         std::ops::ControlFlow::Break(())
-    });
+    }) {
+        std::ops::ControlFlow::Continue(()) | std::ops::ControlFlow::Break(()) => {}
+    }
     result
+}
+
+/// Visits every identifier in a pattern, calling `f` for each one.
+/// Use this when early termination is not needed.
+pub(crate) fn for_each_pat_ident(pat: &syn::Pat, f: &mut impl FnMut(Box<str>)) {
+    match visit_pat_idents(pat, &mut |name| {
+        f(name);
+        std::ops::ControlFlow::Continue(())
+    }) {
+        std::ops::ControlFlow::Continue(()) | std::ops::ControlFlow::Break(()) => {}
+    }
 }
 
 /// Visits each identifier in a pattern, calling `f` for each one.
@@ -54,16 +67,6 @@ fn visit_pat_ident_elems<'a>(
         visit_pat_idents(elem, f)?;
     }
     std::ops::ControlFlow::Continue(())
-}
-
-pub(crate) fn receiver_ident(expr: &Expr) -> Option<&syn::Ident> {
-    let Expr::Path(ep) = expr else {
-        return None;
-    };
-    match ep.path.segments.len() {
-        1 => Some(&ep.path.segments[0].ident),
-        _ => None,
-    }
 }
 
 pub(crate) fn iter_expr_ident(expr: &Expr) -> Option<&syn::Ident> {

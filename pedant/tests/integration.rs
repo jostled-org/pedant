@@ -16,11 +16,8 @@ fn collect_rs_files(dir: &std::path::Path) -> Vec<PathBuf> {
         let path = entry.path();
         match path.is_dir() {
             true => files.extend(collect_rs_files(&path)),
-            false => {
-                if path.extension().is_some_and(|e| e == "rs") {
-                    files.push(path);
-                }
-            }
+            false if path.extension().is_some_and(|e| e == "rs") => files.push(path),
+            false => {}
         }
     }
     files
@@ -209,14 +206,25 @@ fn test_cli_capabilities_shows_reachable() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
+    // Exit code 1 is expected — the fixture intentionally contains patterns that
+    // trigger style violations. Exit code 2 would mean an actual error.
     assert!(
-        output.status.success(),
-        "expected success, stderr:\n{stderr}"
+        output.status.code() != Some(2),
+        "expected no error exit, stderr:\n{stderr}"
     );
 
-    // Parse the capabilities profile and verify reachable is set on findings.
+    // Parse the capabilities profile from stdout. The fixture has style violations
+    // that produce text output before the JSON block; extract the JSON portion.
+    let json_start = stdout
+        .find("\n{")
+        .map(|i| i + 1)
+        .or_else(|| match stdout.starts_with('{') {
+            true => Some(0),
+            false => None,
+        })
+        .expect("expected JSON object in stdout");
     let profile: pedant_types::CapabilityProfile =
-        serde_json::from_str(&stdout).expect("should parse capabilities JSON");
+        serde_json::from_str(&stdout[json_start..]).expect("should parse capabilities JSON");
     let has_reachable = profile.findings.iter().any(|f| f.reachable.is_some());
     assert!(
         has_reachable,
@@ -251,6 +259,70 @@ fn test_cli_gate_shows_flow_verdicts() {
         stdout.contains("env-to-network"),
         "expected env-to-network flow verdict in gate output, stdout:\n{stdout}\nstderr:\n{stderr}"
     );
+}
+
+/// 5.T1: CLI --gate output includes quality verdicts when semantic analysis detects issues.
+#[cfg(feature = "semantic")]
+#[test]
+fn test_cli_gate_shows_quality_verdicts() {
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("pedant crate should be in workspace")
+        .to_path_buf();
+    let lib_path = workspace_root.join("pedant-core/tests/fixtures/dataflow_workspace/src/lib.rs");
+
+    let output = common::run_pedant(&[lib_path.to_str().unwrap(), "--semantic", "--gate"], None);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // The fixture has a dead store in dead_store(), so the quality gate rule should fire.
+    assert!(
+        stdout.contains("dead-store"),
+        "expected dead-store verdict in gate output, stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+}
+
+/// 5.T3: Self-analysis with semantic — no deny-level verdicts from quality/perf/concurrency rules.
+#[cfg(feature = "semantic")]
+#[test]
+fn test_self_analysis_clean() {
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("pedant crate should be in workspace")
+        .to_path_buf();
+
+    let src_dirs = [
+        workspace_root.join("pedant-core/src"),
+        workspace_root.join("pedant-types/src"),
+        workspace_root.join("pedant/src"),
+        workspace_root.join("pedant-mcp/src"),
+    ];
+
+    let mut files: Vec<String> = Vec::new();
+    for dir in &src_dirs {
+        for file in collect_rs_files(dir) {
+            files.push(file.to_string_lossy().into_owned());
+        }
+    }
+
+    let mut args: Vec<&str> = files.iter().map(String::as_str).collect();
+    args.push("--semantic");
+    args.push("--gate");
+    let output = common::run_pedant(&args, None);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // Quality rules default to warn, performance to info, concurrency to deny.
+    // Pedant's own code should not trigger any deny-level verdicts from new rules.
+    let new_deny_rules = ["lock-across-await", "inconsistent-lock-order"];
+    for rule in new_deny_rules {
+        assert!(
+            !stdout.contains(rule),
+            "expected no {rule} verdict on self-analysis, stdout:\n{stdout}\nstderr:\n{stderr}"
+        );
+    }
 }
 
 /// 8.T1: Self-analysis with DataFlow — no deny-level flow verdicts, reachability annotated.

@@ -9,8 +9,8 @@ use syn::{Expr, ExprIf, FnArg, ReturnType, Signature, Type};
 
 use super::type_introspection::{
     classify_type_ref, collect_signature_type_names_into, collect_type_names_into,
-    contains_refcounted_type, first_pat_ident, first_type_name, get_type_span_start,
-    is_refcounted_type, is_string_type, iter_expr_ident, receiver_ident, visit_pat_idents,
+    contains_refcounted_type, first_pat_ident, first_type_name, for_each_pat_ident,
+    get_type_span_start, is_refcounted_type, is_string_type, iter_expr_ident,
 };
 use crate::graph::{extend_edges_from_names, extend_pairwise_edges};
 use crate::pattern::{
@@ -105,6 +105,12 @@ struct IrExtractor {
     string_bindings: BTreeSet<Box<str>>,
     fn_body_types: BTreeSet<Rc<str>>,
 
+    // Dedup set for use paths (O(log n) lookup instead of O(n) linear scan)
+    use_path_set: BTreeSet<Box<str>>,
+
+    // Scratch buffer for body type edge computation (reused across function bodies)
+    body_type_names_buf: Vec<Rc<str>>,
+
     // Scratch buffer for path building (reused across use-items and expr-paths)
     path_buf: String,
 }
@@ -137,6 +143,8 @@ impl IrExtractor {
             refcounted_containers: BTreeSet::new(),
             string_bindings: BTreeSet::new(),
             fn_body_types: BTreeSet::new(),
+            use_path_set: BTreeSet::new(),
+            body_type_names_buf: Vec::new(),
             path_buf: String::new(),
         }
     }
@@ -344,17 +352,11 @@ impl IrExtractor {
         let Some(ident) = iter_expr_ident(iter_expr) else {
             return;
         };
-        let ident_string = ident.to_string();
-        if !self
-            .refcounted_containers
-            .iter()
-            .any(|s| &**s == ident_string.as_str())
-        {
+        if !self.refcounted_containers.iter().any(|s| ident == &**s) {
             return;
         }
-        let _cf = visit_pat_idents(pat, &mut |name| {
+        for_each_pat_ident(pat, &mut |name| {
             self.refcounted_bindings.insert(name);
-            std::ops::ControlFlow::Continue(())
         });
     }
 
@@ -388,8 +390,11 @@ impl IrExtractor {
         let Some(seg) = path.segments.last() else {
             return;
         };
-        let name: Rc<str> = Rc::from(seg.ident.to_string());
-        self.fn_body_types.insert(name);
+        let ident_str = seg.ident.to_string();
+        if self.fn_body_types.contains(ident_str.as_str()) {
+            return;
+        }
+        self.fn_body_types.insert(Rc::from(ident_str));
     }
 
     fn collect_body_type_from_type(&mut self, ty: &Type) {
@@ -417,22 +422,22 @@ impl IrExtractor {
         );
 
         let path_str = self.path_buf.as_str();
-        let already_present = self
-            .use_paths
-            .iter()
-            .any(|existing| &*existing.path == path_str);
-        if !already_present {
-            self.use_paths.push(UsePathFact {
-                path: Box::from(path_str),
-                span: Self::span_from(span.start()),
-            });
+        if self.use_path_set.contains(path_str) {
+            return;
         }
+        self.use_path_set.insert(Box::from(path_str));
+        self.use_paths.push(UsePathFact {
+            path: Box::from(path_str),
+            span: Self::span_from(span.start()),
+        });
     }
 
-    fn fn_body_type_edges(&self) -> Box<[(Rc<str>, Rc<str>)]> {
-        let names: Vec<Rc<str>> = self.fn_body_types.iter().cloned().collect();
+    fn fn_body_type_edges(&mut self) -> Box<[(Rc<str>, Rc<str>)]> {
+        self.body_type_names_buf.clear();
+        self.body_type_names_buf
+            .extend(self.fn_body_types.iter().cloned());
         let mut edges = Vec::new();
-        extend_pairwise_edges(&names, &mut edges);
+        extend_pairwise_edges(&self.body_type_names_buf, &mut edges);
         edges.into_boxed_slice()
     }
 
@@ -505,9 +510,8 @@ impl IrExtractor {
         for input in &sig.inputs {
             match input {
                 FnArg::Typed(pt) => {
-                    let _cf = visit_pat_idents(&pt.pat, &mut |name| {
+                    for_each_pat_ident(&pt.pat, &mut |name| {
                         self.push_binding_fact(name, None, false, false, false, None);
-                        std::ops::ControlFlow::Continue(())
                     });
                 }
                 FnArg::Receiver(_) => {}
@@ -786,9 +790,8 @@ impl<'ast> Visit<'ast> for IrExtractor {
         let span = Self::span_from(node.for_token.span.start());
         self.visit_loop_body(ControlFlowKind::ForLoop, span, |s| {
             // Record pat names for naming check
-            let _cf = visit_pat_idents(&node.pat, &mut |name| {
+            for_each_pat_ident(&node.pat, &mut |name| {
                 s.push_binding_fact(name, None, false, false, false, None);
-                std::ops::ControlFlow::Continue(())
             });
             s.record_refcounted_loop_bindings(&node.pat, &node.expr);
             syn::visit::visit_expr_for_loop(s, node);
@@ -1059,7 +1062,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
         let span = Self::span_from(node.dot_token.span.start());
         let receiver_span = Self::span_from(node.receiver.span().start());
         let method_name: Box<str> = node.method.to_string().into_boxed_str();
-        let recv = receiver_ident(&node.receiver).map(|i| i.to_string().into_boxed_str());
+        let recv = iter_expr_ident(&node.receiver).map(|i| i.to_string().into_boxed_str());
 
         self.method_calls.push(MethodCallFact {
             method_name,
@@ -1091,13 +1094,9 @@ impl<'ast> Visit<'ast> for IrExtractor {
     fn visit_expr_lit(&mut self, node: &'ast syn::ExprLit) {
         if let syn::Lit::Str(ref lit_str) = node.lit {
             let value: Box<str> = lit_str.value().into_boxed_str();
-            let start = lit_str.span().start();
             self.string_literals.push(StringLitFact {
                 value,
-                span: IrSpan {
-                    line: start.line,
-                    column: start.column,
-                },
+                span: Self::span_from(lit_str.span().start()),
             });
         }
         syn::visit::visit_expr_lit(self, node);
@@ -1133,16 +1132,13 @@ fn enrich_ir(ir: &mut FileIr, ctx: &super::semantic::SemanticContext) {
     enrich_data_flows(ir, ctx);
 }
 
-/// Trace taint propagation per function and populate `ir.data_flows`.
+/// Trace taint propagation, detect quality, performance, and concurrency issues, populating `ir.data_flows`.
+///
+/// Delegates to `SemanticContext::enrich_all_data_flows` which parses the file
+/// once and runs all detection passes within that single parse context.
 #[cfg(feature = "semantic")]
 fn enrich_data_flows(ir: &mut FileIr, ctx: &super::semantic::SemanticContext) {
-    let file_path: &str = &ir.file_path;
-    let mut flows = Vec::new();
-    for func in ir.functions.iter() {
-        let fn_flows = ctx.trace_taints(file_path, &func.name);
-        flows.extend(fn_flows.into_vec());
-    }
-    ir.data_flows = flows.into_boxed_slice();
+    ir.data_flows = ctx.enrich_all_data_flows(&ir.file_path);
 }
 
 /// Resolve binding types through aliases and update `is_refcounted`.

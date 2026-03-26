@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use pedant_core::check_config::{GateConfig, GateRuleOverride};
 use pedant_core::gate::{GateSeverity, all_gate_rules, evaluate_gate_rules};
-use pedant_core::ir::{DataFlowFact, IrSpan};
+use pedant_core::ir::{DataFlowFact, DataFlowKind, IrSpan};
 use pedant_types::{Capability, CapabilityFinding, CapabilityProfile, SourceLocation};
 
 fn finding(capability: Capability, build_script: bool) -> CapabilityFinding {
@@ -178,8 +178,8 @@ fn test_all_gate_rules_returns_all_rules() {
     let rules = all_gate_rules();
     assert_eq!(
         rules.len(),
-        12,
-        "expected 12 rules (7 compile-time + 2 runtime + 3 flow-aware)"
+        21,
+        "expected 21 rules (9 capability + 3 flow + 9 quality/perf/concurrency)"
     );
     for rule in rules {
         assert!(!rule.name.is_empty(), "rule name must not be empty");
@@ -266,13 +266,27 @@ fn test_pem_key_material_network() {
 
 // --- Step 6: Flow-aware gate rules ---
 
-fn flow_fact(source: Capability, sink: Capability) -> DataFlowFact {
+fn kind_fact(kind: DataFlowKind, message: &str) -> DataFlowFact {
     DataFlowFact {
-        source_capability: source,
+        kind,
+        source_capability: None,
         source_span: IrSpan { line: 1, column: 0 },
-        sink_capability: sink,
+        sink_capability: None,
         sink_span: IrSpan { line: 5, column: 0 },
         call_chain: Box::new([]),
+        message: Box::from(message),
+    }
+}
+
+fn flow_fact(source: Capability, sink: Capability) -> DataFlowFact {
+    DataFlowFact {
+        kind: DataFlowKind::TaintFlow,
+        source_capability: Some(source),
+        source_span: IrSpan { line: 1, column: 0 },
+        sink_capability: Some(sink),
+        sink_span: IrSpan { line: 5, column: 0 },
+        call_chain: Box::new([]),
+        message: format!("{source:?} flows to {sink:?}").into_boxed_str(),
     }
 }
 
@@ -344,4 +358,129 @@ fn test_all_gate_rules_includes_flow_rules() {
         3,
         "expected 3 flow-aware rules in rule list"
     );
+}
+
+// --- Step 4: Quality, performance, and concurrency gate rules ---
+
+#[test]
+fn test_dead_store_gate_rule() {
+    let flows = [kind_fact(
+        DataFlowKind::DeadStore,
+        "x overwritten before read",
+    )];
+    let verdicts = evaluate_gate_rules(&[], &flows, &GateConfig::default());
+    let v = verdicts
+        .iter()
+        .find(|v| v.rule == "dead-store")
+        .expect("expected dead-store verdict");
+    assert_eq!(v.severity, GateSeverity::Warn);
+}
+
+#[test]
+fn test_unnecessary_clone_gate_rule() {
+    let flows = [kind_fact(
+        DataFlowKind::UnnecessaryClone,
+        "s.clone() but s never used after",
+    )];
+    let verdicts = evaluate_gate_rules(&[], &flows, &GateConfig::default());
+    let v = verdicts
+        .iter()
+        .find(|v| v.rule == "unnecessary-clone")
+        .expect("expected unnecessary-clone verdict");
+    assert_eq!(v.severity, GateSeverity::Info);
+}
+
+#[test]
+fn test_lock_across_await_gate_rule() {
+    let flows = [kind_fact(
+        DataFlowKind::LockAcrossAwait,
+        "guard held across .await",
+    )];
+    let verdicts = evaluate_gate_rules(&[], &flows, &GateConfig::default());
+    let v = verdicts
+        .iter()
+        .find(|v| v.rule == "lock-across-await")
+        .expect("expected lock-across-await verdict");
+    assert_eq!(v.severity, GateSeverity::Deny);
+}
+
+#[test]
+fn test_inconsistent_lock_order_gate_rule() {
+    let flows = [kind_fact(
+        DataFlowKind::InconsistentLockOrder,
+        "m1,m2 vs m2,m1",
+    )];
+    let verdicts = evaluate_gate_rules(&[], &flows, &GateConfig::default());
+    let v = verdicts
+        .iter()
+        .find(|v| v.rule == "inconsistent-lock-order")
+        .expect("expected inconsistent-lock-order verdict");
+    assert_eq!(v.severity, GateSeverity::Deny);
+}
+
+#[test]
+fn test_all_gate_rules_includes_new_rules() {
+    let rules = all_gate_rules();
+    assert_eq!(
+        rules.len(),
+        21,
+        "expected 21 rules (9 capability + 3 flow + 9 quality/perf/concurrency)"
+    );
+}
+
+#[test]
+fn test_data_flow_kind_display_returns_kebab_case() {
+    assert_eq!(DataFlowKind::TaintFlow.to_string(), "taint-flow");
+    assert_eq!(DataFlowKind::DeadStore.to_string(), "dead-store");
+    assert_eq!(
+        DataFlowKind::DiscardedResult.to_string(),
+        "discarded-result"
+    );
+    assert_eq!(
+        DataFlowKind::PartialErrorHandling.to_string(),
+        "partial-error-handling"
+    );
+    assert_eq!(DataFlowKind::RepeatedCall.to_string(), "repeated-call");
+    assert_eq!(
+        DataFlowKind::UnnecessaryClone.to_string(),
+        "unnecessary-clone"
+    );
+    assert_eq!(
+        DataFlowKind::AllocationInLoop.to_string(),
+        "allocation-in-loop"
+    );
+    assert_eq!(
+        DataFlowKind::RedundantCollect.to_string(),
+        "redundant-collect"
+    );
+    assert_eq!(
+        DataFlowKind::LockAcrossAwait.to_string(),
+        "lock-across-await"
+    );
+    assert_eq!(
+        DataFlowKind::InconsistentLockOrder.to_string(),
+        "inconsistent-lock-order"
+    );
+}
+
+#[test]
+fn test_quality_perf_rules_dont_fire_without_dataflow() {
+    let verdicts = evaluate_gate_rules(&[], &[], &GateConfig::default());
+    let new_rule_names = [
+        "dead-store",
+        "discarded-result",
+        "partial-error-handling",
+        "repeated-call",
+        "unnecessary-clone",
+        "allocation-in-loop",
+        "redundant-collect",
+        "lock-across-await",
+        "inconsistent-lock-order",
+    ];
+    for name in new_rule_names {
+        assert!(
+            !verdicts.iter().any(|v| v.rule == name),
+            "{name} should not fire without DataFlowFacts"
+        );
+    }
 }

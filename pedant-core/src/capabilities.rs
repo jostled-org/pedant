@@ -76,29 +76,29 @@ const ALL_PREFIX_TABLES: &[&[(&str, Capability)]] = &[
     SYSTEM_TIME_PREFIXES,
 ];
 
-/// Specific function-level overrides for filesystem capability splitting.
-const FS_WRITE_FUNCTIONS: &[&str] = &[
-    "std::fs::copy",
-    "std::fs::create_dir",
-    "std::fs::create_dir_all",
-    "std::fs::hard_link",
-    "std::fs::remove_dir",
-    "std::fs::remove_dir_all",
-    "std::fs::remove_file",
-    "std::fs::rename",
-    "std::fs::set_permissions",
-    "std::fs::write",
-    "tokio::fs::copy",
-    "tokio::fs::create_dir",
-    "tokio::fs::create_dir_all",
-    "tokio::fs::hard_link",
-    "tokio::fs::remove_dir",
-    "tokio::fs::remove_dir_all",
-    "tokio::fs::remove_file",
-    "tokio::fs::rename",
-    "tokio::fs::set_permissions",
-    "tokio::fs::write",
+/// Function suffixes that indicate filesystem write operations.
+const FS_WRITE_SUFFIXES: &[&str] = &[
+    "copy",
+    "create_dir",
+    "create_dir_all",
+    "hard_link",
+    "remove_dir",
+    "remove_dir_all",
+    "remove_file",
+    "rename",
+    "set_permissions",
+    "write",
 ];
+
+/// Prefixes for filesystem write function paths.
+const FS_WRITE_PREFIXES: &[&str] = &["std::fs::", "tokio::fs::"];
+
+fn is_fs_write_function(path: &str) -> bool {
+    FS_WRITE_PREFIXES.iter().any(|prefix| {
+        path.strip_prefix(prefix)
+            .is_some_and(|suffix| FS_WRITE_SUFFIXES.contains(&suffix))
+    })
+}
 
 use crate::ir::PATH_SEPARATOR;
 
@@ -113,7 +113,7 @@ fn path_matches_prefix(path: &str, prefix: &str) -> bool {
 
 /// Map a use-path to its capability, checking write-function overrides first.
 fn resolve_capabilities(path: &str) -> Option<Capability> {
-    if FS_WRITE_FUNCTIONS.binary_search(&path).is_ok() {
+    if is_fs_write_function(path) {
         return Some(Capability::FileWrite);
     }
 
@@ -218,10 +218,21 @@ fn check_string_for_hex_key(value: &str) -> bool {
     matches!(len, 64 | 96) || len >= 128
 }
 
-const BASE58_ALPHABET: &[u8; 58] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const fn base58_table() -> [bool; 256] {
+    let mut table = [false; 256];
+    let alphabet = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    let mut i = 0;
+    while i < alphabet.len() {
+        table[alphabet[i] as usize] = true;
+        i += 1;
+    }
+    table
+}
+
+const BASE58_TABLE: [bool; 256] = base58_table();
 
 fn is_base58(value: &str) -> bool {
-    value.bytes().all(|b| BASE58_ALPHABET.contains(&b))
+    value.bytes().all(|b| BASE58_TABLE[b as usize])
 }
 
 /// Check whether a string is a base58-encoded private key.

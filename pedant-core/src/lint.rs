@@ -161,8 +161,8 @@ pub fn analyze_with_build_script(
     let build_ir = ir::extract(build_path, &build_syntax, semantic);
     let build_caps = detect_capabilities(&build_ir, true);
 
-    let mut merged: Vec<pedant_types::CapabilityFinding> = result.capabilities.findings.into_vec();
-    merged.extend(build_caps.findings.into_vec());
+    let mut merged = result.capabilities.findings.into_vec();
+    merged.extend(build_caps.findings);
     result.capabilities.findings = merged.into_boxed_slice();
 
     Ok(result)
@@ -193,13 +193,13 @@ pub fn determine_analysis_tier(
 #[cfg(feature = "semantic")]
 fn enrich_reachability(findings: &mut [pedant_types::CapabilityFinding], ctx: &SemanticContext) {
     use std::collections::BTreeMap;
+    use std::sync::Arc;
 
     // Group finding indices by file so the call graph is built once per file.
-    // Collect owned keys to avoid borrowing `findings` across the mutation below.
-    let mut by_file: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    let mut by_file: BTreeMap<Arc<str>, Vec<usize>> = BTreeMap::new();
     for (idx, finding) in findings.iter().enumerate() {
         by_file
-            .entry(finding.location.file.to_string())
+            .entry(Arc::clone(&finding.location.file))
             .or_default()
             .push(idx);
     }

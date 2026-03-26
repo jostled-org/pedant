@@ -69,16 +69,6 @@ fn handle_fs_event(
     config: &Config,
     last_reindex: &Arc<RwLock<std::collections::BTreeMap<std::path::PathBuf, Instant>>>,
 ) {
-    let has_rs = event
-        .paths
-        .iter()
-        .any(|p| p.extension().is_some_and(|ext| ext == "rs"));
-
-    match has_rs {
-        true => {}
-        false => return,
-    }
-
     let now = Instant::now();
 
     // Check debounce timestamps before acquiring the expensive index write lock.

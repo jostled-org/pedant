@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::check_config::{CheckConfig, PatternCheck};
 use crate::graph::bfs_component;
 use crate::ir::type_introspection::classify_single_char;
-use crate::ir::{BranchContext, ControlFlowKind, FileIr, IrSpan, TypeRefContext};
+use crate::ir::{BindingFact, BranchContext, ControlFlowKind, FileIr, IrSpan, TypeRefContext};
 use crate::pattern::matches_pattern;
 use crate::violation::{Violation, ViolationType};
 
@@ -438,25 +438,35 @@ fn check_naming(ir: &FileIr, config: &CheckConfig, fp: &Arc<str>, violations: &m
     }
     let generic_names = &config.check_naming.generic_names;
 
-    for (fn_idx, func) in ir.functions.iter().enumerate() {
-        let has_arithmetic = func.has_arithmetic;
-        let mut total: usize = 0;
-        let mut offenders: Vec<&str> = Vec::new();
-
-        for b in ir.bindings.iter() {
-            if b.containing_fn != Some(fn_idx) || b.is_wildcard || b.name.starts_with('_') {
-                continue;
-            }
-            total += 1;
-            if is_generic_name(&b.name, b.loop_depth, has_arithmetic, generic_names) {
-                offenders.push(&b.name);
-            }
-        }
-
-        if total == 0 || offenders.len() < config.check_naming.min_generic_count {
+    let mut bindings_by_fn: BTreeMap<usize, Vec<&BindingFact>> = BTreeMap::new();
+    for b in &ir.bindings {
+        let Some(fn_idx) = b.containing_fn else {
+            continue;
+        };
+        if b.is_wildcard || b.name.starts_with('_') {
             continue;
         }
+        bindings_by_fn.entry(fn_idx).or_default().push(b);
+    }
+
+    for (fn_idx, func) in ir.functions.iter().enumerate() {
+        let has_arithmetic = func.has_arithmetic;
+        let fn_bindings = match bindings_by_fn.get(&fn_idx) {
+            Some(bs) => bs,
+            None => continue,
+        };
+
+        let total = fn_bindings.len();
+        let offenders: Vec<&str> = fn_bindings
+            .iter()
+            .filter(|b| is_generic_name(&b.name, b.loop_depth, has_arithmetic, generic_names))
+            .map(|b| b.name.as_ref())
+            .collect();
+
         let generic_count = offenders.len();
+        if total == 0 || generic_count < config.check_naming.min_generic_count {
+            continue;
+        }
         let ratio = generic_count as f64 / total as f64;
         if ratio <= config.check_naming.max_generic_ratio {
             continue;
@@ -486,39 +496,31 @@ fn check_mixed_concerns(
 
     let defined_types: BTreeSet<&str> = ir.type_defs.iter().map(|td| td.name.as_ref()).collect();
 
-    let type_def_edges: usize = ir.type_defs.iter().map(|td| td.edges.len()).sum();
-    let impl_edges: usize = ir.impl_blocks.iter().map(|ib| ib.edges.len()).sum();
-    let fn_edges: usize = ir
-        .functions
+    let type_def_iter = ir
+        .type_defs
         .iter()
-        .map(|f| {
-            let sig = f.signature_type_names.len();
-            f.body_type_edges.len() + sig * sig.saturating_sub(1) / 2
-        })
-        .sum();
-    let mut all_edges: Vec<(&str, &str)> =
-        Vec::with_capacity(type_def_edges + impl_edges + fn_edges);
+        .flat_map(|td| td.edges.iter().map(|(a, b)| (a.as_ref(), b.as_ref())));
 
-    for td in &ir.type_defs {
-        all_edges.extend(td.edges.iter().map(|(a, b)| (a.as_ref(), b.as_ref())));
-    }
+    let impl_iter = ir
+        .impl_blocks
+        .iter()
+        .flat_map(|ib| ib.edges.iter().map(|(a, b)| (a.as_ref(), b.as_ref())));
 
-    for ib in &ir.impl_blocks {
-        all_edges.extend(ib.edges.iter().map(|(a, b)| (a.as_ref(), b.as_ref())));
-    }
-
-    for func in &ir.functions {
-        if func.item_depth == 0 {
-            push_pairwise_edges(&func.signature_type_names, &mut all_edges);
-        }
-        all_edges.extend(
+    let fn_iter = ir.functions.iter().flat_map(|func| {
+        let pairwise = match func.item_depth {
+            0 => pairwise_edges(&func.signature_type_names),
+            _ => Vec::new(),
+        };
+        pairwise.into_iter().chain(
             func.body_type_edges
                 .iter()
                 .map(|(a, b)| (a.as_ref(), b.as_ref())),
-        );
-    }
+        )
+    });
 
-    let Some(message) = find_disconnected_groups(&defined_types, &all_edges) else {
+    let all_edges = type_def_iter.chain(impl_iter).chain(fn_iter);
+
+    let Some(message) = find_disconnected_groups(&defined_types, all_edges) else {
         return;
     };
     emit(
@@ -530,21 +532,23 @@ fn check_mixed_concerns(
     );
 }
 
-fn push_pairwise_edges<'a>(names: &'a [Rc<str>], edges: &mut Vec<(&'a str, &'a str)>) {
+fn pairwise_edges(names: &[Rc<str>]) -> Vec<(&str, &str)> {
+    let mut edges = Vec::with_capacity(names.len() * names.len().saturating_sub(1) / 2);
     crate::graph::for_each_pair(names.len(), |i, j| {
         edges.push((names[i].as_ref(), names[j].as_ref()));
     });
+    edges
 }
 
-fn find_disconnected_groups(
-    defined_types: &BTreeSet<&str>,
-    all_edges: &[(&str, &str)],
+fn find_disconnected_groups<'a>(
+    defined_types: &BTreeSet<&'a str>,
+    all_edges: impl Iterator<Item = (&'a str, &'a str)>,
 ) -> Option<Box<str>> {
     let mut adj: BTreeMap<&str, Vec<&str>> = defined_types
         .iter()
         .map(|&name| (name, Vec::new()))
         .collect();
-    for &(src, dst) in all_edges {
+    for (src, dst) in all_edges {
         if src == dst || !defined_types.contains(src) || !defined_types.contains(dst) {
             continue;
         }

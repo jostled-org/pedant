@@ -80,41 +80,48 @@ fn check_position_constraints(
 /// When the pattern is relative and the path is absolute, tries matching
 /// against every suffix of the path (so `pedant/src/main.rs` matches
 /// `/Users/jem/.../pedant/src/main.rs`).
-pub(crate) fn matches_glob(pattern: &str, path: &str) -> bool {
+pub fn matches_glob(pattern: &str, path: &str) -> bool {
     let path = path.strip_prefix("./").unwrap_or(path);
-    let pat_segs: Box<[&str]> = pattern.split('/').collect::<Vec<_>>().into_boxed_slice();
-    let path_segs: Box<[&str]> = path.split('/').collect::<Vec<_>>().into_boxed_slice();
+    let pat_segs: Vec<&str> = pattern.split('/').collect();
+    let path_segs: Vec<&str> = path.split('/').collect();
 
-    // Direct match (both relative, or both absolute).
-    if matches_glob_at(&pat_segs, 0, &path_segs, 0) {
+    if matches_glob_at(&pat_segs, &path_segs) {
         return true;
     }
 
     // Suffix match: try aligning the pattern against each tail of the path.
     // Only when the pattern doesn't start with `/` or `**`.
-    let pattern_is_relative = !pattern.starts_with('/') && pat_segs.first() != Some(&"**");
+    let pattern_is_relative =
+        !pattern.starts_with('/') && pat_segs.first().is_none_or(|s| *s != "**");
     match pattern_is_relative && path_segs.len() > pat_segs.len() {
         true => (1..=path_segs.len() - pat_segs.len())
-            .any(|offset| matches_glob_at(&pat_segs, 0, &path_segs, offset)),
+            .any(|offset| matches_glob_at(&pat_segs, &path_segs[offset..])),
         false => false,
     }
 }
 
-fn matches_glob_at(pat_segs: &[&str], pi: usize, path_segs: &[&str], si: usize) -> bool {
-    match (pat_segs.get(pi), path_segs.get(si)) {
-        (None, None) => true,
-        (Some(&"**"), _) => matches_double_star_at(pat_segs, pi + 1, path_segs, si),
-        (Some(p), Some(s)) if matches_segment(p, s) => {
-            matches_glob_at(pat_segs, pi + 1, path_segs, si + 1)
-        }
-        _ => false,
+fn matches_glob_at(pat: &[&str], path: &[&str]) -> bool {
+    let p = match pat.first() {
+        Some(seg) => *seg,
+        None => return path.is_empty(),
+    };
+
+    if p == "**" {
+        return matches_double_star_at(&pat[1..], path);
     }
+
+    let s = match path.first() {
+        Some(seg) => *seg,
+        None => return false,
+    };
+
+    matches_segment(p, s) && matches_glob_at(&pat[1..], &path[1..])
 }
 
-fn matches_double_star_at(pat_segs: &[&str], pi: usize, path_segs: &[&str], si: usize) -> bool {
-    match pat_segs.get(pi) {
-        None => true,
-        Some(_) => (si..=path_segs.len()).any(|i| matches_glob_at(pat_segs, pi, path_segs, i)),
+fn matches_double_star_at(pat: &[&str], path: &[&str]) -> bool {
+    match pat.is_empty() {
+        true => true,
+        false => (0..=path.len()).any(|i| matches_glob_at(pat, &path[i..])),
     }
 }
 

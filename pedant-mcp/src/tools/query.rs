@@ -90,11 +90,13 @@ struct ViolationOutput<'a> {
 
 #[derive(Serialize)]
 struct DataFlowOutput<'a> {
-    source: Capability,
+    kind: &'static str,
+    source: Option<Capability>,
     source_line: usize,
-    sink: Capability,
+    sink: Option<Capability>,
     sink_line: usize,
     call_chain: &'a [Box<str>],
+    message: &'a str,
 }
 
 #[derive(Serialize)]
@@ -374,11 +376,13 @@ fn verdict_output(v: &GateVerdict) -> VerdictOutput<'_> {
 
 fn data_flow_output(f: &DataFlowFact) -> DataFlowOutput<'_> {
     DataFlowOutput {
+        kind: f.kind.code(),
         source: f.source_capability,
         source_line: f.source_span.line,
         sink: f.sink_capability,
         sink_line: f.sink_span.line,
         call_chain: &f.call_chain,
+        message: &f.message,
     }
 }
 

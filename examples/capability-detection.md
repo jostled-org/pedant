@@ -203,11 +203,20 @@ Requires a Cargo workspace. Falls back to syntactic analysis if the workspace ca
 
 ## MCP Server
 
-`pedant-mcp` exposes pedant's analysis as MCP tools for AI agents:
+`pedant-mcp` exposes pedant's analysis as MCP tools for AI agents. Install and configure:
 
 ```bash
-# Start the server (indexes workspace from CWD, serves via stdio)
-pedant-mcp
+cargo install pedant-mcp
+
+# User-scope (all projects):
+claude mcp add --transport stdio --scope user pedant -- pedant-mcp
+
+# Or project-scope (.mcp.json in project root):
+echo '{"mcpServers":{"pedant":{"command":"pedant-mcp","args":[]}}}' > .mcp.json
 ```
 
-Tools: `query_capabilities`, `query_gate_verdicts`, `query_violations`, `search_by_capability`, `explain_finding`, `audit_crate`. The server watches source files and incrementally re-indexes on changes.
+Restart Claude Code after configuring. The server auto-discovers the Cargo workspace from CWD, indexes all crates, and watches for file changes.
+
+Tools: `query_capabilities`, `query_gate_verdicts`, `query_violations`, `search_by_capability`, `explain_finding`, `audit_crate`.
+
+For semantic analysis in the MCP server, set `PEDANT_SEMANTIC=1` before starting (requires the `semantic` feature to be compiled in).

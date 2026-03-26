@@ -140,11 +140,31 @@ env-access-network = "warn"
 ### MCP Server
 
 ```bash
-# Start the MCP server (indexes workspace, serves queries via stdio)
-pedant-mcp
+cargo install pedant-mcp
 ```
 
-`pedant-mcp` exposes pedant's analysis as MCP tools for AI agents. It indexes the workspace on startup, watches for file changes, and serves queries:
+`pedant-mcp` is a standard MCP stdio server. The `.mcp.json` config works with any MCP client (Claude Code, Cursor, Zed, etc.).
+
+Configure in Claude Code (user-scope, works in all projects):
+
+```bash
+claude mcp add --transport stdio --scope user pedant -- pedant-mcp
+```
+
+Or project-scope via `.mcp.json` in the project root:
+
+```json
+{
+  "mcpServers": {
+    "pedant": {
+      "command": "pedant-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+Restart Claude Code after adding. The server auto-discovers the Cargo workspace from CWD, indexes all crates, and watches for file changes. Tools:
 
 - `query_capabilities` — list capability findings for a crate, file, or workspace
 - `query_gate_verdicts` — evaluate gate rules for a crate or workspace

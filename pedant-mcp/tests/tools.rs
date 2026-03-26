@@ -262,6 +262,48 @@ fn test_mcp_audit_crate_includes_data_flows() {
 }
 
 // ---------------------------------------------------------------------------
+// 5.T2: audit_crate includes quality DataFlowFacts when semantic analysis is active
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "semantic")]
+#[test]
+fn test_mcp_audit_includes_quality_flows() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("pedant-core/tests/fixtures/dataflow_workspace");
+    let config = Config::default();
+    let semantic = pedant_core::SemanticContext::load(&root);
+    let index = WorkspaceIndex::build(&root, &config, semantic).unwrap();
+
+    let result = audit_crate(
+        AuditCrateParams {
+            crate_name: "dataflow-fixture".into(),
+        },
+        &index,
+    );
+
+    assert!(!is_error(&result));
+    let text = result_text(&result);
+    let audit: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let flows = audit["data_flows"]
+        .as_array()
+        .expect("expected data_flows array");
+
+    // With semantic analysis, quality data flow facts should be present.
+    let quality_kinds = ["dead-store", "discarded-result", "partial-error-handling"];
+    let has_quality = flows.iter().any(|f| {
+        f["kind"]
+            .as_str()
+            .is_some_and(|k| quality_kinds.contains(&k))
+    });
+    assert!(
+        has_quality,
+        "expected quality data flow facts in audit output, got flows: {flows:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // 2.T9: tools list contains all security tools
 // ---------------------------------------------------------------------------
 

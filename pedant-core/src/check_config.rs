@@ -437,11 +437,11 @@ macro_rules! assert_bool_fields_in_sync {
     ($($doc:literal, $field:ident, $default:expr;)*) => {
         #[cfg(test)]
         const _: () = {
-            $(
-                const fn $field(cf: &ConfigFile, po: &PathOverride) -> (bool, Option<bool>) {
-                    (cf.$field, po.$field)
-                }
-            )*
+            // Access each field on both structs. If a field is missing
+            // from either, this block fails to compile.
+            const fn _check(cf: &ConfigFile, po: &PathOverride) {
+                $( let _ = (cf.$field, po.$field); )*
+            }
         };
     };
 }

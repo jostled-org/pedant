@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0](https://github.com/jostled-org/pedant/compare/pedant-core-v0.8.0...pedant-core-v0.9.0) - 2026-03-28
+
+### Added
+
+- [**breaking**] high-param-count check, immutable-growable detection, structural duplicate tool
+
+### Fixed
+
+- eliminate dead_code warnings and add CI dependency caching
+- *(test)* update data_flow_fact_default_empty for immutable-growable
+
 ## [0.8.0](https://github.com/jostled-org/pedant/compare/pedant-core-v0.7.1...pedant-core-v0.8.0) - 2026-03-26
 
 ### Other

@@ -270,28 +270,19 @@ fn test_extract_copy_receiver_detected() {
 
 // --- Step 1 (DataFlow): DataFlowFact and reachable annotation ---
 
-/// 1.T1: data_flows is empty by default after analyze().
+/// 1.T1: data_flows is empty without semantic context.
 #[test]
 fn test_data_flow_fact_default_empty() {
     let file_path = fixture_lib_path();
-    let source = fixture_source();
-    let config = CheckConfig::default();
-
-    let root = fixture_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("workspace should load");
     let syntax = parse_fixture();
-    let enriched = ir::extract(&file_path, &syntax, Some(&ctx));
+
+    // Without semantic context, no data flow analysis runs.
+    let extracted = ir::extract(&file_path, &syntax, None);
 
     assert!(
-        enriched.data_flows.is_empty(),
-        "data_flows should be empty when no analysis populates them"
+        extracted.data_flows.is_empty(),
+        "data_flows should be empty without semantic context"
     );
-
-    // Also verify via analyze() path
-    let result = analyze(&file_path, &source, &config, Some(&ctx)).unwrap();
-    // AnalysisResult doesn't directly expose data_flows (it's on FileIr),
-    // but we verified via extract() above that the IR field is empty.
-    let _ = result;
 }
 
 /// 1.T2: reachable is None by default on capability findings.

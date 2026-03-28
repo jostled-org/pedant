@@ -8,6 +8,7 @@ use crate::capabilities::detect_capabilities;
 use crate::check_config::CheckConfig;
 use crate::ir;
 use crate::ir::DataFlowFact;
+use crate::ir::extract::compute_fingerprints;
 use crate::ir::semantic::SemanticContext;
 use crate::style::check_style;
 
@@ -69,10 +70,13 @@ fn analyze_inner(
         caps
     };
 
+    let fn_fingerprints = compute_fingerprints(&ir);
+
     Ok(AnalysisResult {
         violations,
         capabilities,
         data_flows: ir.data_flows,
+        fn_fingerprints,
     })
 }
 

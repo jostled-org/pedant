@@ -131,7 +131,7 @@ pub fn query_capabilities(
         .transpose()
     {
         Ok(f) => f,
-        Err(msg) => return error_result(&msg),
+        Err(msg) => return error_result(msg),
     };
     let build_only = params.build_script_only.unwrap_or(false);
 
@@ -199,7 +199,7 @@ pub fn search_by_capability(
 ) -> CallToolResult {
     let required = match parse_capability_pattern(&params.pattern) {
         Ok(caps) => caps,
-        Err(msg) => return error_result(&msg),
+        Err(msg) => return error_result(msg),
     };
 
     let results: Vec<CapabilitySearchResult<'_>> = index
@@ -222,7 +222,7 @@ pub fn audit_crate(params: AuditCrateParams, index: &WorkspaceIndex) -> CallTool
     let name = params.crate_name.as_ref();
     let profile = match index.crate_profile(name) {
         Some(p) => p,
-        None => return error_result(&format!("unknown crate: {name}")),
+        None => return error_result(format!("unknown crate: {name}")),
     };
 
     let verdicts = index.crate_verdicts(name).unwrap_or(&[]);
@@ -261,7 +261,7 @@ fn resolve_scope<T>(
         "workspace" => Ok(workspace_fn()),
         _ => crate_fn(scope)
             .or_else(|| file_fn(scope))
-            .ok_or_else(|| error_result(&format!("unknown scope: {scope}"))),
+            .ok_or_else(|| error_result(format!("unknown scope: {scope}"))),
     }
 }
 

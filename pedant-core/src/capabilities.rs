@@ -324,7 +324,7 @@ pub fn detect_capabilities(ir: &FileIr, build_script: bool) -> CapabilityProfile
     }
 }
 
-fn emit(
+fn emit_finding(
     findings: &mut Vec<CapabilityFinding>,
     capability: Capability,
     file: &Arc<str>,
@@ -356,7 +356,7 @@ fn detect_from_facts<'a, T: 'a>(
 ) {
     for fact in facts {
         if let Some((capability, line, column, evidence)) = mapper(fact) {
-            emit(
+            emit_finding(
                 findings,
                 capability,
                 file_path,
@@ -494,7 +494,7 @@ fn detect_string_literals(
             .iter()
             .find(|check| (check.checker)(&lit.value))
         {
-            emit(
+            emit_finding(
                 findings,
                 check.capability,
                 file_path,
@@ -506,7 +506,7 @@ fn detect_string_literals(
         }
         if KEY_MATERIAL_CHECKS.iter().any(|check| check(&lit.value)) {
             let evidence = truncate_evidence(&lit.value);
-            emit(
+            emit_finding(
                 findings,
                 Capability::Crypto,
                 file_path,

@@ -1,6 +1,6 @@
 use pedant_types::CapabilityProfile;
 
-use crate::ir::DataFlowFact;
+use crate::ir::{DataFlowFact, FnFingerprint};
 use crate::violation::Violation;
 
 /// Output of a single file analysis: violations and capabilities.
@@ -11,4 +11,6 @@ pub struct AnalysisResult {
     pub capabilities: CapabilityProfile,
     /// Cross-function data flow edges (populated only by semantic enrichment).
     pub data_flows: Box<[DataFlowFact]>,
+    /// Structural fingerprints for duplicate detection (one per function).
+    pub fn_fingerprints: Box<[FnFingerprint]>,
 }

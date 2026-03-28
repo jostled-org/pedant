@@ -1,7 +1,7 @@
 //! Quality issue detection.
 //!
-//! Identifies dead stores, discarded results, and partial error handling
-//! within function bodies.
+//! Identifies dead stores, discarded results, partial error handling,
+//! and immutable growable bindings within function bodies.
 
 use std::collections::BTreeMap;
 
@@ -25,6 +25,7 @@ pub(super) fn detect_quality_in_fn(
     detect_dead_stores(stmt_list, pf.line_index, &mut facts);
     detect_discarded_results(&pf.sema, stmt_list, pf.db, pf.line_index, &mut facts);
     detect_partial_error_handling(&pf.sema, stmt_list, pf.db, pf.line_index, &mut facts);
+    detect_immutable_growable(pf, stmt_list, pf.line_index, &mut facts);
     facts.into_boxed_slice()
 }
 
@@ -399,4 +400,214 @@ fn matches_result_handling(node: &SyntaxNode, binding_name: &str) -> bool {
         SyntaxKind::TRY_EXPR => expr_references_binding(node, binding_name),
         _ => false,
     }
+}
+
+// --- Immutable growable detection ---
+
+/// Methods that mutate `Vec<T>`.
+const VEC_MUTATION_METHODS: &[&str] = &[
+    "push",
+    "pop",
+    "insert",
+    "remove",
+    "swap_remove",
+    "truncate",
+    "clear",
+    "retain",
+    "reserve",
+    "resize",
+    "extend",
+    "append",
+    "splice",
+    "drain",
+    "dedup",
+    "dedup_by",
+    "dedup_by_key",
+    "sort",
+    "sort_by",
+    "sort_by_key",
+    "sort_unstable",
+    "sort_unstable_by",
+    "sort_unstable_by_key",
+    "reverse",
+    "rotate_left",
+    "rotate_right",
+    "fill",
+    "fill_with",
+];
+
+/// Methods that mutate `String` (in addition to shared Vec-like methods).
+const STRING_MUTATION_METHODS: &[&str] = &["push_str", "insert_str", "replace_range"];
+
+/// Detect Vec/String bindings that are never mutated after construction.
+fn detect_immutable_growable(
+    pf: &ParsedFile<'_>,
+    stmt_list: &ast::StmtList,
+    line_index: &LineIndex,
+    out: &mut Vec<DataFlowFact>,
+) {
+    for stmt in stmt_list.statements() {
+        let ast::Stmt::LetStmt(let_stmt) = &stmt else {
+            continue;
+        };
+        let Some(pat) = let_stmt.pat() else { continue };
+        let Some(name) = extract_binding_name(&pat) else {
+            continue;
+        };
+        let ann = classify_via_annotation(let_stmt);
+        let sem = classify_via_semantics(&pf.sema, let_stmt, pf.db);
+        let Some(type_label) = ann.or(sem) else {
+            continue;
+        };
+
+        let mutated = binding_is_mutated(&name, stmt_list);
+        let returned = binding_is_returned(&name, stmt_list);
+        let passed_mut = binding_passed_as_mut_ref(&name, stmt_list);
+
+        if !mutated && !returned && !passed_mut {
+            let span = span_from_node(let_stmt.syntax(), line_index);
+            out.push(quality_fact(
+                DataFlowKind::ImmutableGrowable,
+                span,
+                span,
+                format!(
+                    "`{name}` is a {type_label} that is never mutated; consider Box<[T]> or Box<str>"
+                )
+                .into_boxed_str(),
+            ));
+        }
+    }
+}
+
+/// Classify via RA semantic type resolution.
+fn classify_via_semantics(
+    sema: &Semantics<'_, RootDatabase>,
+    let_stmt: &ast::LetStmt,
+    db: &RootDatabase,
+) -> Option<&'static str> {
+    let ty = let_stmt
+        .initializer()
+        .and_then(|init| sema.type_of_expr(&init))
+        .map(|ti| ti.original)
+        .or_else(|| {
+            let_stmt
+                .pat()
+                .and_then(|pat| sema.type_of_pat(&pat))
+                .map(|ti| ti.original)
+        })?;
+
+    let adt = ty.as_adt()?;
+    let adt_name = adt.name(db);
+    match adt_name.as_str() {
+        "Vec" => Some("Vec"),
+        "String" => Some("String"),
+        _ => None,
+    }
+}
+
+/// Classify via explicit type annotation on the let statement.
+fn classify_via_annotation(let_stmt: &ast::LetStmt) -> Option<&'static str> {
+    let ty = let_stmt.ty()?;
+    let text = ty.syntax().text().to_string();
+    match text.as_str() {
+        s if s.starts_with("Vec<") || s.starts_with("Vec ") || s == "Vec" => Some("Vec"),
+        "String" => Some("String"),
+        _ => None,
+    }
+}
+
+/// Check whether a binding name has any mutation method calls in the statement list.
+fn binding_is_mutated(name: &str, stmt_list: &ast::StmtList) -> bool {
+    stmt_list
+        .syntax()
+        .descendants()
+        .any(|node| match node.kind() {
+            SyntaxKind::METHOD_CALL_EXPR => method_call_mutates(name, &node),
+            SyntaxKind::BIN_EXPR => bin_expr_mutates(name, &node),
+            _ => false,
+        })
+}
+
+/// Check whether a method call expression mutates the named binding.
+fn method_call_mutates(binding_name: &str, node: &SyntaxNode) -> bool {
+    let Some(mc) = ast::MethodCallExpr::cast(node.clone()) else {
+        return false;
+    };
+    let Some(receiver) = mc.receiver() else {
+        return false;
+    };
+    let receiver_text = receiver.syntax().text().to_string();
+    if receiver_text != binding_name {
+        return false;
+    }
+    let Some(method) = mc.name_ref() else {
+        return false;
+    };
+    let method_name = method.text();
+    VEC_MUTATION_METHODS
+        .iter()
+        .chain(STRING_MUTATION_METHODS.iter())
+        .any(|m| method_name == *m)
+}
+
+/// Check whether a binary expression is an assignment to the named binding.
+fn bin_expr_mutates(binding_name: &str, node: &SyntaxNode) -> bool {
+    let Some(bin) = ast::BinExpr::cast(node.clone()) else {
+        return false;
+    };
+    let is_assign = bin.op_token().is_some_and(|t| {
+        matches!(
+            t.kind(),
+            SyntaxKind::EQ | SyntaxKind::PLUSEQ | SyntaxKind::MINUSEQ
+        )
+    });
+    match is_assign {
+        true => {
+            let Some(lhs) = bin.lhs() else { return false };
+            let lhs_text = lhs.syntax().text().to_string();
+            // Matches `binding[...]` (index assignment) or `binding += ...`
+            lhs_text == binding_name || lhs_text.starts_with(&format!("{binding_name}["))
+        }
+        false => false,
+    }
+}
+
+/// Check whether the binding is directly returned (the value itself, not a derived expression).
+///
+/// Suppresses when the binding is the tail expression or a direct `return binding` statement.
+/// Does NOT suppress when the binding is merely referenced within a return expression
+/// (e.g., `items.len()` returns `usize`, not the `Vec`).
+fn binding_is_returned(name: &str, stmt_list: &ast::StmtList) -> bool {
+    let direct_tail = stmt_list
+        .tail_expr()
+        .is_some_and(|tail| is_direct_name_ref(&tail, name));
+
+    direct_tail
+        || stmt_list
+            .syntax()
+            .descendants()
+            .filter_map(ast::ReturnExpr::cast)
+            .filter_map(|ret| ret.expr())
+            .any(|expr| is_direct_name_ref(&expr, name))
+}
+
+/// Check whether an expression is a direct name reference to the given binding.
+fn is_direct_name_ref(expr: &ast::Expr, name: &str) -> bool {
+    matches!(expr, ast::Expr::PathExpr(pe)
+        if pe.path().is_some_and(|p| p.syntax().text() == name))
+}
+
+/// Check whether the binding is passed as `&mut` argument to any function call.
+fn binding_passed_as_mut_ref(name: &str, stmt_list: &ast::StmtList) -> bool {
+    stmt_list
+        .syntax()
+        .descendants()
+        .filter(|n| n.kind() == SyntaxKind::REF_EXPR)
+        .any(|n| {
+            let Some(ref_expr) = ast::RefExpr::cast(n.clone()) else {
+                return false;
+            };
+            ref_expr.mut_token().is_some()
+                && ref_expr.expr().is_some_and(|e| e.syntax().text() == name)
+        })
 }

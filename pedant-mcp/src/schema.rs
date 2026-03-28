@@ -13,6 +13,7 @@ static TOOLS: LazyLock<Box<[Tool]>> = LazyLock::new(|| {
         search_by_capability_tool(),
         explain_finding_tool(),
         audit_crate_tool(),
+        find_structural_duplicates_tool(),
     ]
     .into()
 });
@@ -133,6 +134,28 @@ fn audit_crate_tool() -> Tool {
                 }
             },
             "required": ["crate_name"]
+        }),
+    )
+}
+
+fn find_structural_duplicates_tool() -> Tool {
+    tool(
+        "find_structural_duplicates",
+        "Find structurally duplicated functions across files in a crate or workspace",
+        json!({
+            "type": "object",
+            "properties": {
+                "scope": {
+                    "type": "string",
+                    "description": "Crate name or 'workspace'"
+                },
+                "min_fact_count": {
+                    "type": "integer",
+                    "default": 3,
+                    "description": "Minimum fact count to include a function (filters trivial getters)"
+                }
+            },
+            "required": ["scope"]
         }),
     )
 }

@@ -19,9 +19,9 @@ use crate::pattern::{
 
 use super::facts::{
     AttributeFact, BindingFact, BranchContext, ControlFlowFact, ControlFlowKind, ElseInfo,
-    ExternBlockFact, FileIr, FnFact, ImplFact, IrSpan, MacroFact, MethodCallFact, ModuleFact,
-    ParamFact, StringLitFact, TypeDefFact, TypeDefKind, TypeInfo, TypeRefContext, TypeRefFact,
-    UnsafeFact, UnsafeKind, UsePathFact,
+    ExternBlockFact, FileIr, FnFact, FnFingerprint, ImplFact, IrSpan, MacroFact, MethodCallFact,
+    ModuleFact, ParamFact, StringLitFact, TypeDefFact, TypeDefKind, TypeInfo, TypeRefContext,
+    TypeRefFact, UnsafeFact, UnsafeKind, UsePathFact,
 };
 
 /// Single-pass AST visitor that populates a [`FileIr`] from a parsed source file.
@@ -628,6 +628,7 @@ impl IrExtractor {
             loop_depth: self.loop_depth,
             parent_branch: self.branch_context,
             else_info: None,
+            containing_fn: self.current_fn,
         });
 
         body(self);
@@ -755,6 +756,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
             loop_depth: self.loop_depth,
             parent_branch: self.branch_context,
             else_info,
+            containing_fn: self.current_fn,
         });
 
         self.depth += 1;
@@ -776,6 +778,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
             loop_depth: self.loop_depth,
             parent_branch: self.branch_context,
             else_info: None,
+            containing_fn: self.current_fn,
         });
 
         self.depth += 1;
@@ -825,6 +828,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
             loop_depth: self.loop_depth,
             parent_branch: self.branch_context,
             else_info: None,
+            containing_fn: self.current_fn,
         });
 
         syn::visit::visit_expr_closure(self, node);
@@ -1120,6 +1124,185 @@ impl<'ast> Visit<'ast> for IrExtractor {
         });
         syn::visit::visit_item_mod(self, node);
     }
+}
+
+/// FNV-1a hash: fold bytes into a running `u64` state.
+fn fnv1a_bytes(state: u64, bytes: &[u8]) -> u64 {
+    const PRIME: u64 = 0x0100_0000_01b3;
+    bytes
+        .iter()
+        .fold(state, |h, &b| (h ^ u64::from(b)).wrapping_mul(PRIME))
+}
+
+/// FNV-1a hash a `usize` value.
+fn fnv1a_usize(state: u64, value: usize) -> u64 {
+    fnv1a_bytes(state, &value.to_le_bytes())
+}
+
+/// FNV-1a hash a boolean value.
+fn fnv1a_bool(state: u64, value: bool) -> u64 {
+    fnv1a_bytes(state, &[u8::from(value)])
+}
+
+/// FNV-1a hash a discriminant (as its `u8` index).
+fn fnv1a_discriminant(state: u64, kind: ControlFlowKind) -> u64 {
+    let tag = match kind {
+        ControlFlowKind::If => 0u8,
+        ControlFlowKind::Match => 1,
+        ControlFlowKind::ForLoop => 2,
+        ControlFlowKind::WhileLoop => 3,
+        ControlFlowKind::Loop => 4,
+        ControlFlowKind::Closure => 5,
+    };
+    fnv1a_bytes(state, &[tag])
+}
+
+const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+
+/// Compute structural fingerprints for all functions in the IR.
+///
+/// Each function gets a skeleton hash (structure-only, names normalized) and
+/// an exact hash (includes method/type names). Downstream consumers use these
+/// to detect copy-paste and parametric duplicates across files.
+pub fn compute_fingerprints(ir: &FileIr) -> Box<[FnFingerprint]> {
+    let fn_count = ir.functions.len();
+    let cf_by_fn = bucket_control_flow(&ir.control_flow, fn_count);
+    let mc_by_fn = bucket_method_calls(&ir.method_calls, fn_count);
+    let bind_counts = count_bindings_by_fn(&ir.bindings, fn_count);
+    let tr_by_fn = bucket_type_refs(&ir.type_refs, fn_count);
+
+    ir.functions
+        .iter()
+        .enumerate()
+        .map(|(fn_index, func)| {
+            let param_count = func.params.len();
+            let has_return = func.return_type.is_some();
+
+            let cf_kinds = &cf_by_fn[fn_index];
+            let method_names = &mc_by_fn[fn_index];
+            let binding_count = bind_counts[fn_index];
+            let type_ref_texts = &tr_by_fn[fn_index];
+
+            let fact_count =
+                method_names.len() + binding_count + type_ref_texts.len() + cf_kinds.len();
+
+            let skeleton_hash = compute_skeleton_hash(
+                param_count,
+                has_return,
+                cf_kinds,
+                method_names.len(),
+                binding_count,
+                type_ref_texts.len(),
+            );
+
+            let exact_hash = compute_exact_hash(
+                param_count,
+                has_return,
+                cf_kinds,
+                method_names,
+                binding_count,
+                type_ref_texts,
+            );
+
+            FnFingerprint {
+                fn_index,
+                name: Box::from(&*func.name),
+                span: func.span,
+                skeleton_hash,
+                exact_hash,
+                fact_count,
+            }
+        })
+        .collect::<Vec<_>>()
+        .into_boxed_slice()
+}
+
+fn bucket_control_flow(facts: &[ControlFlowFact], fn_count: usize) -> Vec<Vec<ControlFlowKind>> {
+    let mut buckets = vec![Vec::new(); fn_count];
+    for fact in facts {
+        let Some(fn_idx) = fact.containing_fn else {
+            continue;
+        };
+        buckets[fn_idx].push(fact.kind);
+    }
+    buckets
+}
+
+fn bucket_method_calls(facts: &[MethodCallFact], fn_count: usize) -> Vec<Vec<&str>> {
+    let mut buckets = vec![Vec::new(); fn_count];
+    for fact in facts {
+        let Some(fn_idx) = fact.containing_fn else {
+            continue;
+        };
+        buckets[fn_idx].push(&*fact.method_name);
+    }
+    buckets
+}
+
+fn count_bindings_by_fn(facts: &[BindingFact], fn_count: usize) -> Vec<usize> {
+    let mut counts = vec![0usize; fn_count];
+    for fact in facts {
+        let Some(fn_idx) = fact.containing_fn else {
+            continue;
+        };
+        counts[fn_idx] += 1;
+    }
+    counts
+}
+
+fn bucket_type_refs(facts: &[TypeRefFact], fn_count: usize) -> Vec<Vec<&str>> {
+    let mut buckets = vec![Vec::new(); fn_count];
+    for fact in facts {
+        let Some(fn_idx) = fact.containing_fn else {
+            continue;
+        };
+        buckets[fn_idx].push(&*fact.text);
+    }
+    buckets
+}
+
+fn hash_common_prefix(param_count: usize, has_return: bool, cf_kinds: &[ControlFlowKind]) -> u64 {
+    let mut h = FNV_OFFSET_BASIS;
+    h = fnv1a_usize(h, param_count);
+    h = fnv1a_bool(h, has_return);
+    for &kind in cf_kinds {
+        h = fnv1a_discriminant(h, kind);
+    }
+    h
+}
+
+fn compute_skeleton_hash(
+    param_count: usize,
+    has_return: bool,
+    cf_kinds: &[ControlFlowKind],
+    method_count: usize,
+    binding_count: usize,
+    type_ref_count: usize,
+) -> u64 {
+    let mut h = hash_common_prefix(param_count, has_return, cf_kinds);
+    h = fnv1a_usize(h, method_count);
+    h = fnv1a_usize(h, binding_count);
+    h = fnv1a_usize(h, type_ref_count);
+    h
+}
+
+fn compute_exact_hash(
+    param_count: usize,
+    has_return: bool,
+    cf_kinds: &[ControlFlowKind],
+    method_names: &[&str],
+    binding_count: usize,
+    type_ref_texts: &[&str],
+) -> u64 {
+    let mut h = hash_common_prefix(param_count, has_return, cf_kinds);
+    for name in method_names {
+        h = fnv1a_bytes(h, name.as_bytes());
+    }
+    h = fnv1a_usize(h, binding_count);
+    for text in type_ref_texts {
+        h = fnv1a_bytes(h, text.as_bytes());
+    }
+    h
 }
 
 /// Enrich IR facts with resolved type information from semantic analysis.

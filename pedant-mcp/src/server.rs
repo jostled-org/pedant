@@ -11,8 +11,9 @@ use rmcp::service::RoleServer;
 use crate::index::WorkspaceIndex;
 use crate::schema::all_tools;
 use crate::tools::{
-    self, AuditCrateParams, ExplainFindingParams, QueryCapabilitiesParams, QueryGateVerdictsParams,
-    QueryViolationsParams, SearchByCapabilityParams, audit_crate, explain_finding,
+    self, AuditCrateParams, ExplainFindingParams, FindStructuralDuplicatesParams,
+    QueryCapabilitiesParams, QueryGateVerdictsParams, QueryViolationsParams,
+    SearchByCapabilityParams, audit_crate, explain_finding, find_structural_duplicates,
     query_capabilities, query_gate_verdicts, query_violations, search_by_capability,
 };
 
@@ -82,7 +83,10 @@ fn dispatch_tool(
         }),
         "explain_finding" => call_with(args, |p: ExplainFindingParams| explain_finding(p)),
         "audit_crate" => call_with(args, |p: AuditCrateParams| audit_crate(p, index)),
-        _ => tools::error_result(&format!("unknown tool: {name}")),
+        "find_structural_duplicates" => call_with(args, |p: FindStructuralDuplicatesParams| {
+            find_structural_duplicates(p, index)
+        }),
+        _ => tools::error_result(format!("unknown tool: {name}")),
     }
 }
 
@@ -98,6 +102,6 @@ where
     let wrapped = serde_json::Value::Object(tool_args.clone());
     match serde_json::from_value::<P>(wrapped) {
         Ok(params) => handler(params),
-        Err(e) => tools::error_result(&format!("invalid parameters: {e}")),
+        Err(e) => tools::error_result(format!("invalid parameters: {e}")),
     }
 }

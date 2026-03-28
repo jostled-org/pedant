@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::check_config::{CheckConfig, PatternCheck};
@@ -55,11 +54,12 @@ pub fn check_style(ir: &FileIr, config: &CheckConfig) -> Vec<Violation> {
     check_inline_tests(ir, config, fp, &mut violations);
     check_naming(ir, config, fp, &mut violations);
     check_mixed_concerns(ir, config, fp, &mut violations);
+    check_high_param_count(ir, config, fp, &mut violations);
 
     violations
 }
 
-fn emit(
+fn emit_violation(
     violations: &mut Vec<Violation>,
     fp: &Arc<str>,
     span: IrSpan,
@@ -83,7 +83,7 @@ fn check_control_flow(
 ) {
     for cf in &ir.control_flow {
         if cf.depth > config.max_depth {
-            emit(
+            emit_violation(
                 violations,
                 fp,
                 cf.span,
@@ -115,7 +115,7 @@ fn check_if_branching(
 ) {
     match cf.parent_branch {
         Some(BranchContext::If) if config.check_nested_if => {
-            emit(
+            emit_violation(
                 violations,
                 fp,
                 cf.span,
@@ -124,7 +124,7 @@ fn check_if_branching(
             );
         }
         Some(BranchContext::Match) if config.check_if_in_match => {
-            emit(
+            emit_violation(
                 violations,
                 fp,
                 cf.span,
@@ -145,7 +145,7 @@ fn check_if_branching(
             .chain_len
             .filter(|&len| len >= config.else_chain_threshold),
     ) {
-        emit(
+        emit_violation(
             violations,
             fp,
             cf.span,
@@ -155,7 +155,7 @@ fn check_if_branching(
     }
 
     if let (true, Some(else_sp)) = (config.forbid_else, else_info.span) {
-        emit(
+        emit_violation(
             violations,
             fp,
             else_sp,
@@ -173,7 +173,7 @@ fn check_match_branching(
 ) {
     match cf.parent_branch {
         Some(BranchContext::Match) if config.check_nested_match => {
-            emit(
+            emit_violation(
                 violations,
                 fp,
                 cf.span,
@@ -182,7 +182,7 @@ fn check_match_branching(
             );
         }
         Some(BranchContext::If) if config.check_match_in_if => {
-            emit(
+            emit_violation(
                 violations,
                 fp,
                 cf.span,
@@ -216,7 +216,7 @@ fn check_forbidden_patterns<'a>(
         let Some(pattern) = match_forbidden(check, text) else {
             continue;
         };
-        emit(violations, fp, span, make_violation(pattern), text);
+        emit_violation(violations, fp, span, make_violation(pattern), text);
     }
 }
 
@@ -262,7 +262,7 @@ fn check_dyn_dispatch(
             .find(|dc| dc.context == tr.context && (dc.enabled)(config) && tr.involves_dyn);
         match matched {
             Some(dc) => {
-                emit(
+                emit_violation(
                     violations,
                     fp,
                     tr.span,
@@ -271,7 +271,7 @@ fn check_dyn_dispatch(
                 );
             }
             None if config.check_vec_box_dyn && tr.is_vec_box_dyn => {
-                emit(
+                emit_violation(
                     violations,
                     fp,
                     tr.span,
@@ -297,7 +297,7 @@ fn check_default_hasher_refs(
         if !tr.is_default_hasher {
             continue;
         }
-        emit(
+        emit_violation(
             violations,
             fp,
             tr.span,
@@ -344,7 +344,7 @@ fn check_clone_in_loop(
         if is_refcounted {
             continue;
         }
-        emit(
+        emit_violation(
             violations,
             fp,
             mc.span,
@@ -368,7 +368,7 @@ fn check_let_underscore_result(
             continue;
         }
         let Some(span) = binding.span else { continue };
-        emit(
+        emit_violation(
             violations,
             fp,
             span,
@@ -386,7 +386,7 @@ fn check_unsafe(ir: &FileIr, config: &CheckConfig, fp: &Arc<str>, violations: &m
         if site.kind != crate::ir::UnsafeKind::Block {
             continue;
         }
-        emit(
+        emit_violation(
             violations,
             fp,
             site.span,
@@ -409,7 +409,7 @@ fn check_inline_tests(
         if !module.is_cfg_test {
             continue;
         }
-        emit(
+        emit_violation(
             violations,
             fp,
             module.span,
@@ -457,22 +457,27 @@ fn check_naming(ir: &FileIr, config: &CheckConfig, fp: &Arc<str>, violations: &m
         };
 
         let total = fn_bindings.len();
-        let offenders: Vec<&str> = fn_bindings
+        if total == 0 {
+            continue;
+        }
+        let generic_count = fn_bindings
             .iter()
             .filter(|b| is_generic_name(&b.name, b.loop_depth, has_arithmetic, generic_names))
-            .map(|b| b.name.as_ref())
-            .collect();
-
-        let generic_count = offenders.len();
-        if total == 0 || generic_count < config.check_naming.min_generic_count {
+            .count();
+        if generic_count < config.check_naming.min_generic_count {
             continue;
         }
         let ratio = generic_count as f64 / total as f64;
         if ratio <= config.check_naming.max_generic_ratio {
             continue;
         }
-        let offender_list = offenders.join(", ");
-        emit(
+        let offender_list: Vec<&str> = fn_bindings
+            .iter()
+            .filter(|b| is_generic_name(&b.name, b.loop_depth, has_arithmetic, generic_names))
+            .map(|b| b.name.as_ref())
+            .collect();
+        let offender_list = offender_list.join(", ");
+        emit_violation(
             violations,
             fp,
             func.span,
@@ -506,24 +511,27 @@ fn check_mixed_concerns(
         .iter()
         .flat_map(|ib| ib.edges.iter().map(|(a, b)| (a.as_ref(), b.as_ref())));
 
-    let fn_iter = ir.functions.iter().flat_map(|func| {
-        let pairwise = match func.item_depth {
-            0 => pairwise_edges(&func.signature_type_names),
-            _ => Vec::new(),
-        };
-        pairwise.into_iter().chain(
+    let mut fn_edges: Vec<(&str, &str)> = Vec::new();
+    for func in &ir.functions {
+        if func.item_depth == 0 {
+            let names = &func.signature_type_names;
+            crate::graph::for_each_pair(names.len(), |i, j| {
+                fn_edges.push((names[i].as_ref(), names[j].as_ref()));
+            });
+        }
+        fn_edges.extend(
             func.body_type_edges
                 .iter()
                 .map(|(a, b)| (a.as_ref(), b.as_ref())),
-        )
-    });
+        );
+    }
 
-    let all_edges = type_def_iter.chain(impl_iter).chain(fn_iter);
+    let all_edges = type_def_iter.chain(impl_iter).chain(fn_edges);
 
     let Some(message) = find_disconnected_groups(&defined_types, all_edges) else {
         return;
     };
-    emit(
+    emit_violation(
         violations,
         fp,
         IrSpan { line: 1, column: 0 },
@@ -532,12 +540,30 @@ fn check_mixed_concerns(
     );
 }
 
-fn pairwise_edges(names: &[Rc<str>]) -> Vec<(&str, &str)> {
-    let mut edges = Vec::with_capacity(names.len() * names.len().saturating_sub(1) / 2);
-    crate::graph::for_each_pair(names.len(), |i, j| {
-        edges.push((names[i].as_ref(), names[j].as_ref()));
-    });
-    edges
+fn check_high_param_count(
+    ir: &FileIr,
+    config: &CheckConfig,
+    fp: &Arc<str>,
+    violations: &mut Vec<Violation>,
+) {
+    if !config.check_high_param_count {
+        return;
+    }
+    for func in &ir.functions {
+        let count = func.params.iter().filter(|p| &*p.name != "self").count();
+        if count > config.max_params {
+            emit_violation(
+                violations,
+                fp,
+                func.span,
+                ViolationType::HighParamCount,
+                format!(
+                    "`{}` has {count} parameters (limit: {}), group into a struct",
+                    func.name, config.max_params
+                ),
+            );
+        }
+    }
 }
 
 fn find_disconnected_groups<'a>(

@@ -160,6 +160,9 @@ pub struct ConfigFile {
     /// Branch count that triggers `else-chain` (default: 3).
     #[serde(default = "default_else_chain_threshold")]
     pub else_chain_threshold: usize,
+    /// Maximum parameter count before `high-param-count` fires (default: 5).
+    #[serde(default = "default_max_params")]
+    pub max_params: usize,
     /// Banned attribute patterns (e.g., `allow(dead_code)`).
     #[serde(default)]
     pub forbid_attributes: PatternCheck,
@@ -223,6 +226,9 @@ pub struct ConfigFile {
     /// Flag `let _ = expr` that discards a Result.
     #[serde(default)]
     pub check_let_underscore_result: bool,
+    /// Flag functions with too many parameters.
+    #[serde(default)]
+    pub check_high_param_count: bool,
     /// Per-path configuration overrides keyed by glob pattern.
     #[serde(default)]
     pub overrides: BTreeMap<Box<str>, PathOverride>,
@@ -235,6 +241,8 @@ pub struct PathOverride {
     pub enabled: Option<bool>,
     /// Replace nesting depth limit.
     pub max_depth: Option<usize>,
+    /// Replace maximum parameter count.
+    pub max_params: Option<usize>,
     /// Replace forbidden attribute patterns.
     pub forbid_attributes: Option<PatternOverride>,
     /// Replace forbidden type patterns.
@@ -277,6 +285,8 @@ pub struct PathOverride {
     pub check_inline_tests: Option<bool>,
     /// Replace let-underscore-result check state.
     pub check_let_underscore_result: Option<bool>,
+    /// Replace high-param-count check state.
+    pub check_high_param_count: Option<bool>,
 }
 
 fn default_max_depth() -> usize {
@@ -285,6 +295,10 @@ fn default_max_depth() -> usize {
 
 fn default_else_chain_threshold() -> usize {
     3
+}
+
+fn default_max_params() -> usize {
+    5
 }
 
 fn default_true() -> bool {
@@ -336,6 +350,7 @@ macro_rules! for_each_bool_check {
             "Flag disconnected type groups in a single file.", check_mixed_concerns, false;
             "Flag `#[cfg(test)] mod` blocks in source files.", check_inline_tests, false;
             "Flag `let _ = expr` that discards a Result.", check_let_underscore_result, false;
+            "Flag functions with too many parameters.", check_high_param_count, false;
         }
     };
 }
@@ -351,6 +366,8 @@ macro_rules! impl_check_config {
             pub max_depth: usize,
             /// Minimum branches to trigger `else-chain`.
             pub else_chain_threshold: usize,
+            /// Maximum parameter count before `high-param-count` fires.
+            pub max_params: usize,
             /// Banned attribute patterns.
             pub forbid_attributes: PatternCheck,
             /// Banned type patterns.
@@ -370,8 +387,9 @@ macro_rules! impl_check_config {
         impl Default for CheckConfig {
             fn default() -> Self {
                 Self {
-                    max_depth: 3,
-                    else_chain_threshold: 3,
+                    max_depth: default_max_depth(),
+                    else_chain_threshold: default_else_chain_threshold(),
+                    max_params: default_max_params(),
                     forbid_attributes: PatternCheck::default(),
                     forbid_types: PatternCheck::default(),
                     forbid_calls: PatternCheck::default(),
@@ -388,6 +406,7 @@ macro_rules! impl_check_config {
                 Self {
                     max_depth: fc.max_depth,
                     else_chain_threshold: fc.else_chain_threshold,
+                    max_params: fc.max_params,
                     forbid_attributes: fc.forbid_attributes.clone(),
                     forbid_types: fc.forbid_types.clone(),
                     forbid_calls: fc.forbid_calls.clone(),
@@ -455,6 +474,9 @@ impl CheckConfig {
         let mut config = self.clone();
         if let Some(max_depth) = override_cfg.max_depth {
             config.max_depth = max_depth;
+        }
+        if let Some(max_params) = override_cfg.max_params {
+            config.max_params = max_params;
         }
 
         config.merge_bool_overrides(override_cfg);

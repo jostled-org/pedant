@@ -315,4 +315,13 @@ define_checks! {
         exception: "`write!`/`writeln!` to a `String` binding — fmt::Write for String is infallible.",
         llm_specific: true,
     },
+    HighParamCount => {
+        code: "high-param-count",
+        description: "Function has too many parameters",
+        category: "structure",
+        problem: "Functions with many parameters are hard to call correctly. Callers must remember argument order, and adding parameters is a breaking change at every call site.",
+        fix: "Group related parameters into a struct. Use the builder pattern for optional configuration. Split the function if parameters serve different concerns.",
+        exception: "FFI bindings that must match an external C signature.",
+        llm_specific: true,
+    },
 }

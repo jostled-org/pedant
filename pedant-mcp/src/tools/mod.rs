@@ -1,6 +1,8 @@
+mod duplicates;
 mod explain;
 mod query;
 
+pub use duplicates::{FindStructuralDuplicatesParams, find_structural_duplicates};
 pub use explain::{ExplainFindingParams, explain_finding};
 pub use query::{
     AuditCrateParams, QueryCapabilitiesParams, QueryGateVerdictsParams, QueryViolationsParams,
@@ -14,10 +16,10 @@ use serde::Serialize;
 pub(crate) fn json_result<T: Serialize>(value: &T) -> CallToolResult {
     match serde_json::to_string_pretty(value) {
         Ok(json) => CallToolResult::success(vec![Content::text(json)]),
-        Err(e) => error_result(&format!("serialization error: {e}")),
+        Err(e) => error_result(format!("serialization error: {e}")),
     }
 }
 
-pub(crate) fn error_result(message: &str) -> CallToolResult {
-    CallToolResult::error(vec![Content::text(message.to_string())])
+pub(crate) fn error_result(message: impl Into<String>) -> CallToolResult {
+    CallToolResult::error(vec![Content::text(message)])
 }

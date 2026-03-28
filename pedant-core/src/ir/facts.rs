@@ -38,6 +38,8 @@ pub enum DataFlowKind {
     LockAcrossAwait,
     /// Same locks acquired in different orders across functions (potential deadlock).
     InconsistentLockOrder,
+    /// Vec or String binding never mutated after construction.
+    ImmutableGrowable,
 }
 
 impl DataFlowKind {
@@ -54,6 +56,7 @@ impl DataFlowKind {
             Self::RedundantCollect => "redundant-collect",
             Self::LockAcrossAwait => "lock-across-await",
             Self::InconsistentLockOrder => "inconsistent-lock-order",
+            Self::ImmutableGrowable => "immutable-growable",
         }
     }
 }
@@ -185,6 +188,8 @@ pub struct ControlFlowFact {
     pub parent_branch: Option<BranchContext>,
     /// Present only for `If` nodes.
     pub else_info: Option<ElseInfo>,
+    /// Index of the function containing this construct.
+    pub containing_fn: Option<usize>,
 }
 
 /// Discriminant for control flow constructs.
@@ -395,6 +400,27 @@ pub enum UnsafeKind {
 pub struct ExternBlockFact {
     /// Location of the `extern` keyword.
     pub span: IrSpan,
+}
+
+/// Structural fingerprint for a function, used for duplicate detection.
+///
+/// Two functions with identical structure (same control flow, same method call
+/// count, same binding count) but different names produce the same `skeleton_hash`.
+/// `exact_hash` additionally includes method and type reference names.
+#[derive(Debug)]
+pub struct FnFingerprint {
+    /// Index into `FileIr::functions`.
+    pub fn_index: usize,
+    /// Function name.
+    pub name: Box<str>,
+    /// Location of the function definition.
+    pub span: IrSpan,
+    /// Hash of structural shape only (param count, control flow sequence, counts).
+    pub skeleton_hash: u64,
+    /// Hash of skeleton components plus method names and type reference texts.
+    pub exact_hash: u64,
+    /// Total number of facts (method calls + bindings + type refs + control flow).
+    pub fact_count: usize,
 }
 
 /// A `mod` declaration for inline-test detection.

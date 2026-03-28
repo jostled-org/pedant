@@ -15,7 +15,7 @@ pub struct ExplainFindingParams {
 pub fn explain_finding(params: ExplainFindingParams) -> CallToolResult {
     let rationale = match lookup_rationale(&params.check_name) {
         Some(r) => r,
-        None => return error_result(&format!("unknown check: {}", params.check_name)),
+        None => return error_result(format!("unknown check: {}", params.check_name)),
     };
 
     json_result(&rationale)

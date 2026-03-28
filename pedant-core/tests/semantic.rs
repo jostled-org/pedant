@@ -962,6 +962,110 @@ fn test_consistent_lock_order_not_flagged() {
     );
 }
 
+// --- Quality: immutable growable detection ---
+
+/// Immutable Vec detected.
+#[test]
+fn test_immutable_vec_detected() {
+    let root = dataflow_workspace_root();
+    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
+    let file = dataflow_lib_path();
+
+    let facts = ctx.detect_quality_issues(&file, "immutable_vec");
+    let findings: Vec<_> = facts
+        .iter()
+        .filter(|f| f.kind == DataFlowKind::ImmutableGrowable)
+        .collect();
+    assert_eq!(
+        findings.len(),
+        1,
+        "should find one ImmutableGrowable in immutable_vec(), got: {findings:?}"
+    );
+    assert!(
+        findings[0].message.contains("Vec"),
+        "message should mention Vec, got: {}",
+        findings[0].message
+    );
+}
+
+/// Immutable String detected.
+#[test]
+fn test_immutable_string_detected() {
+    let root = dataflow_workspace_root();
+    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
+    let file = dataflow_lib_path();
+
+    let facts = ctx.detect_quality_issues(&file, "immutable_string");
+    let findings: Vec<_> = facts
+        .iter()
+        .filter(|f| f.kind == DataFlowKind::ImmutableGrowable)
+        .collect();
+    assert_eq!(
+        findings.len(),
+        1,
+        "should find one ImmutableGrowable in immutable_string(), got: {findings:?}"
+    );
+    assert!(
+        findings[0].message.contains("String"),
+        "message should mention String, got: {}",
+        findings[0].message
+    );
+}
+
+/// Mutated Vec not flagged.
+#[test]
+fn test_mutated_vec_not_flagged() {
+    let root = dataflow_workspace_root();
+    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
+    let file = dataflow_lib_path();
+
+    let facts = ctx.detect_quality_issues(&file, "mutated_vec");
+    let findings: Vec<_> = facts
+        .iter()
+        .filter(|f| f.kind == DataFlowKind::ImmutableGrowable)
+        .collect();
+    assert!(
+        findings.is_empty(),
+        "should find no ImmutableGrowable in mutated_vec(), got: {findings:?}"
+    );
+}
+
+/// Returned Vec not flagged (caller may mutate).
+#[test]
+fn test_returned_vec_not_flagged() {
+    let root = dataflow_workspace_root();
+    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
+    let file = dataflow_lib_path();
+
+    let facts = ctx.detect_quality_issues(&file, "returned_vec");
+    let findings: Vec<_> = facts
+        .iter()
+        .filter(|f| f.kind == DataFlowKind::ImmutableGrowable)
+        .collect();
+    assert!(
+        findings.is_empty(),
+        "should find no ImmutableGrowable in returned_vec(), got: {findings:?}"
+    );
+}
+
+/// Vec passed as &mut ref not flagged.
+#[test]
+fn test_vec_passed_as_mut_ref_not_flagged() {
+    let root = dataflow_workspace_root();
+    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
+    let file = dataflow_lib_path();
+
+    let facts = ctx.detect_quality_issues(&file, "caller_passes_mut");
+    let findings: Vec<_> = facts
+        .iter()
+        .filter(|f| f.kind == DataFlowKind::ImmutableGrowable)
+        .collect();
+    assert!(
+        findings.is_empty(),
+        "should find no ImmutableGrowable in caller_passes_mut(), got: {findings:?}"
+    );
+}
+
 /// 5.T4: analysis tier is DataFlow when semantic context produces data flows.
 #[test]
 fn test_attestation_tier_dataflow() {

@@ -1,5 +1,6 @@
 use pedant_core::capabilities::detect_capabilities;
 use pedant_core::check_config::{CheckConfig, NamingCheck, PatternCheck};
+use pedant_core::ir::extract::compute_fingerprints;
 use pedant_core::ir::{
     BranchContext, ControlFlowKind, TypeDefKind, TypeRefContext, UnsafeKind, extract,
 };
@@ -955,5 +956,219 @@ fn test_analyze_single_parse() {
     assert!(
         !result.capabilities.findings.is_empty(),
         "expected capability findings from unsafe/network"
+    );
+}
+
+// 3.T1: Control flow facts track containing function
+#[test]
+fn test_control_flow_has_containing_fn() {
+    let source = r#"
+        fn first(x: i32) {
+            if x > 0 {
+                match x {
+                    1 => {}
+                    _ => {}
+                }
+            }
+        }
+        fn second(y: bool) {
+            if y {}
+        }
+    "#;
+    let ir = parse_and_extract(source);
+
+    // Should have functions "first" and "second"
+    assert_eq!(ir.functions.len(), 2);
+    let first_idx = ir
+        .functions
+        .iter()
+        .position(|f| &*f.name == "first")
+        .expect("missing 'first'");
+    let second_idx = ir
+        .functions
+        .iter()
+        .position(|f| &*f.name == "second")
+        .expect("missing 'second'");
+
+    // All control flow facts should have containing_fn set
+    for cf in &ir.control_flow {
+        assert!(
+            cf.containing_fn.is_some(),
+            "ControlFlowFact missing containing_fn"
+        );
+    }
+
+    // first() has an If and a Match
+    let first_cfs: Vec<_> = ir
+        .control_flow
+        .iter()
+        .filter(|cf| cf.containing_fn == Some(first_idx))
+        .collect();
+    assert_eq!(
+        first_cfs.len(),
+        2,
+        "first() should have 2 control flow facts"
+    );
+    assert!(first_cfs.iter().any(|cf| cf.kind == ControlFlowKind::If));
+    assert!(first_cfs.iter().any(|cf| cf.kind == ControlFlowKind::Match));
+
+    // second() has one If
+    let second_cfs: Vec<_> = ir
+        .control_flow
+        .iter()
+        .filter(|cf| cf.containing_fn == Some(second_idx))
+        .collect();
+    assert_eq!(
+        second_cfs.len(),
+        1,
+        "second() should have 1 control flow fact"
+    );
+    assert_eq!(second_cfs[0].kind, ControlFlowKind::If);
+}
+
+// ── Step 4: Structural fingerprints ──────────────────────────────────
+
+// 4.T1: Identical function bodies produce matching hashes
+#[test]
+fn test_identical_functions_same_hashes() {
+    let source = r#"
+        fn alpha(x: i32) -> i32 {
+            let a = vec![1, 2, 3];
+            if x > 0 {
+                a.len() as i32
+            } else {
+                0
+            }
+        }
+
+        fn beta(y: i32) -> i32 {
+            let b = vec![1, 2, 3];
+            if y > 0 {
+                b.len() as i32
+            } else {
+                0
+            }
+        }
+    "#;
+    let ir = parse_and_extract(source);
+    let fingerprints = compute_fingerprints(&ir);
+
+    assert_eq!(fingerprints.len(), 2);
+    let alpha = fingerprints.iter().find(|f| &*f.name == "alpha").unwrap();
+    let beta = fingerprints.iter().find(|f| &*f.name == "beta").unwrap();
+
+    assert_eq!(alpha.skeleton_hash, beta.skeleton_hash);
+    assert_eq!(alpha.exact_hash, beta.exact_hash);
+}
+
+// 4.T2: Same structure, different method names → same skeleton, different exact
+#[test]
+fn test_parametric_functions_same_skeleton_different_exact() {
+    let source = r#"
+        struct Ui;
+        impl Ui {
+            fn panels(&self) -> Vec<i32> { vec![] }
+            fn overlays(&self) -> Vec<i32> { vec![] }
+        }
+
+        fn render_panels(ui: &Ui) -> usize {
+            let items = ui.panels();
+            if items.is_empty() {
+                return 0;
+            }
+            items.len()
+        }
+
+        fn render_overlays(ui: &Ui) -> usize {
+            let items = ui.overlays();
+            if items.is_empty() {
+                return 0;
+            }
+            items.len()
+        }
+    "#;
+    let ir = parse_and_extract(source);
+    let fingerprints = compute_fingerprints(&ir);
+
+    let panels = fingerprints
+        .iter()
+        .find(|f| &*f.name == "render_panels")
+        .unwrap();
+    let overlays = fingerprints
+        .iter()
+        .find(|f| &*f.name == "render_overlays")
+        .unwrap();
+
+    assert_eq!(
+        panels.skeleton_hash, overlays.skeleton_hash,
+        "skeleton hashes should match for parametric duplicates"
+    );
+    assert_ne!(
+        panels.exact_hash, overlays.exact_hash,
+        "exact hashes should differ when method names differ"
+    );
+}
+
+// 4.T3: Different control flow structure → different skeleton
+#[test]
+fn test_different_structure_different_skeleton() {
+    let source = r#"
+        fn with_branch(x: i32) -> i32 {
+            if x > 0 {
+                match x {
+                    1 => 1,
+                    _ => 2,
+                }
+            } else {
+                0
+            }
+        }
+
+        fn with_loop(x: i32) -> i32 {
+            let mut sum = 0;
+            for i in 0..x {
+                sum += i;
+            }
+            sum
+        }
+    "#;
+    let ir = parse_and_extract(source);
+    let fingerprints = compute_fingerprints(&ir);
+
+    let branch = fingerprints
+        .iter()
+        .find(|f| &*f.name == "with_branch")
+        .unwrap();
+    let loopy = fingerprints
+        .iter()
+        .find(|f| &*f.name == "with_loop")
+        .unwrap();
+
+    assert_ne!(
+        branch.skeleton_hash, loopy.skeleton_hash,
+        "different control flow should produce different skeleton hashes"
+    );
+}
+
+// 4.T4: Trivial getter has low fact count
+#[test]
+fn test_trivial_functions_low_fact_count() {
+    let source = r#"
+        struct Config { value: i32 }
+
+        impl Config {
+            fn value(&self) -> i32 {
+                self.value
+            }
+        }
+    "#;
+    let ir = parse_and_extract(source);
+    let fingerprints = compute_fingerprints(&ir);
+
+    let getter = fingerprints.iter().find(|f| &*f.name == "value").unwrap();
+    assert!(
+        getter.fact_count < 3,
+        "trivial getter should have low fact_count, got {}",
+        getter.fact_count
     );
 }

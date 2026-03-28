@@ -221,3 +221,42 @@ pub fn lock_order_consistent(m1: &Mutex<()>, m2: &Mutex<()>) {
     let _a = m1.lock().unwrap();
     let _b = m2.lock().unwrap();
 }
+
+// --- Quality: immutable growable detection ---
+
+/// Vec binding never mutated — should fire ImmutableGrowable.
+pub fn immutable_vec() -> usize {
+    let items: Vec<i32> = vec![1, 2, 3];
+    items.len()
+}
+
+/// String binding never mutated — should fire ImmutableGrowable.
+pub fn immutable_string() -> usize {
+    let name: String = String::from("hello");
+    name.len()
+}
+
+/// Vec mutated via push — should NOT fire.
+pub fn mutated_vec() {
+    let mut items = Vec::new();
+    items.push(1);
+    items.push(2);
+    println!("{}", items.len());
+}
+
+/// Vec returned from function — caller may mutate, should NOT fire.
+pub fn returned_vec() -> Vec<i32> {
+    let items = vec![1, 2, 3];
+    items
+}
+
+/// Vec passed as &mut ref — should NOT fire.
+fn passed_mut(v: &mut Vec<i32>) {
+    v.push(1);
+}
+
+pub fn caller_passes_mut() {
+    let mut items = Vec::new();
+    passed_mut(&mut items);
+    println!("{}", items.len());
+}

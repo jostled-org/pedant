@@ -775,6 +775,81 @@ fn write_to_untyped() {
     assert_eq!(lur_violations.len(), 1);
 }
 
+#[test]
+fn test_high_param_count_detected() {
+    let source = include_str!("fixtures/high_param_count.rs");
+    let config = CheckConfig {
+        check_high_param_count: true,
+        max_params: 5,
+        ..permissive_config()
+    };
+    let violations = analyze("high_param_count.rs", source, &config, None)
+        .unwrap()
+        .violations;
+
+    let hpc_violations: Vec<_> = violations
+        .iter()
+        .filter(|v| matches!(v.violation_type, ViolationType::HighParamCount))
+        .collect();
+    assert_eq!(hpc_violations.len(), 1);
+    assert_eq!(hpc_violations[0].line, 1);
+}
+
+#[test]
+fn test_high_param_count_below_threshold() {
+    let source = include_str!("fixtures/high_param_count.rs");
+    let config = CheckConfig {
+        check_high_param_count: true,
+        max_params: 6,
+        ..permissive_config()
+    };
+    let violations = analyze("high_param_count.rs", source, &config, None)
+        .unwrap()
+        .violations;
+
+    assert!(
+        violations
+            .iter()
+            .all(|v| !matches!(v.violation_type, ViolationType::HighParamCount))
+    );
+}
+
+#[test]
+fn test_high_param_count_excludes_self() {
+    let source = include_str!("fixtures/high_param_count.rs");
+    let config = CheckConfig {
+        check_high_param_count: true,
+        max_params: 5,
+        ..permissive_config()
+    };
+    let violations = analyze("high_param_count.rs", source, &config, None)
+        .unwrap()
+        .violations;
+
+    // method_with_self has &self + 5 params, self excluded so count is 5 = threshold, no violation
+    let hpc_violations: Vec<_> = violations
+        .iter()
+        .filter(|v| matches!(v.violation_type, ViolationType::HighParamCount))
+        .collect();
+    assert_eq!(hpc_violations.len(), 1);
+    // Only many_params should be flagged, not method_with_self
+    assert!(hpc_violations[0].message.contains("many_params"));
+}
+
+#[test]
+fn test_high_param_count_disabled_by_default() {
+    let source = include_str!("fixtures/high_param_count.rs");
+    let violations = analyze("high_param_count.rs", source, &permissive_config(), None)
+        .unwrap()
+        .violations;
+
+    assert!(
+        violations
+            .iter()
+            .all(|v| !matches!(v.violation_type, ViolationType::HighParamCount))
+    );
+}
+
 fn naming_config() -> CheckConfig {
     CheckConfig {
         check_naming: NamingCheck {

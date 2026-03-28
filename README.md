@@ -54,7 +54,7 @@ pedant has several access paths. Each serves a different workflow:
 | Block bad code as it's written | **Post-hook** (`pedant-check.sh`) | Runs on every Edit/Write, catches violations before they enter the project |
 | Check a file or crate manually | **CLI** (`pedant src/*.rs`) | One-shot style check with immediate feedback |
 | Audit what a crate can do | **CLI** (`pedant --capabilities`) | Lists network, filesystem, crypto, etc. capabilities with evidence |
-| Check for supply chain risks | **CLI** (`pedant --gate`) | Evaluates 9+ rules against capability combinations |
+| Check for supply chain risks | **CLI** (`pedant --gate`) | Evaluates 22 rules against capability combinations and data flows |
 | Get a reproducible security snapshot | **CLI** (`pedant --attestation`) | Capability profile + source hash + crate identity |
 | Compare before/after a dependency change | **CLI** (`pedant --diff old.json new.json`) | Shows added/removed capabilities |
 | Let an AI agent query capabilities | **MCP server** (`pedant-mcp`) | Persistent service — AI agents ask questions, get structured answers |
@@ -122,7 +122,7 @@ pedant --gate src/**/*.rs
 pedant --gate --attestation --crate-name my-crate --crate-version 0.1.0 src/**/*.rs
 ```
 
-Gate rules flag suspicious capability combinations — build scripts with network access, proc macros spawning processes, embedded key material with network capability. 9 built-in rules with configurable severity.
+Gate rules flag suspicious capability combinations and data flow patterns — build scripts with network access, environment variables flowing to network sinks, lock guards held across await points. 22 built-in rules across security, quality, performance, and concurrency categories.
 
 Exit codes: `0` clean or warn-only, `1` deny-level verdict fired, `2` error.
 
@@ -172,6 +172,7 @@ Restart Claude Code after adding. The server auto-discovers the Cargo workspace 
 - `search_by_capability` — find crates matching a capability pattern (e.g., "network + crypto")
 - `explain_finding` — get rationale for a specific check
 - `audit_crate` — full security summary: capabilities, verdicts, violations
+- `find_structural_duplicates` — detect structurally similar functions across files
 
 See the [capability detection guide](examples/capability-detection.md) for output format, supported capabilities, attestation details, and diffing.
 
@@ -221,21 +222,21 @@ See `examples/` for a full global config and a project-level override.
 
 ## Checks
 
-22 checks across five categories. Nesting checks run by default. Everything else requires a config file.
+23 style checks across five categories. Nesting checks run by default. Everything else requires a config file.
 
 | Category | Checks |
 |----------|--------|
 | Nesting | `max-depth`, `nested-if`, `if-in-match`, `nested-match`, `match-in-if`, `else-chain` |
 | Forbidden patterns | `forbidden-attribute`, `forbidden-type`, `forbidden-call`, `forbidden-macro`, `forbidden-else`, `forbidden-unsafe` |
 | Performance & dispatch | `dyn-return`, `dyn-param`, `vec-box-dyn`, `dyn-field`, `clone-in-loop`, `default-hasher` |
-| Structure | `mixed-concerns`, `inline-tests`, `let-underscore-result` |
+| Structure | `mixed-concerns`, `inline-tests`, `let-underscore-result`, `high-param-count` |
 | Naming | `generic-naming` |
 
 Run `pedant --list-checks` to see all checks, or `pedant --explain <check>` for detailed rationale and fix guidance.
 
 ## Semantic Analysis
 
-With the `semantic` feature enabled, pedant resolves types through aliases using rust-analyzer's analysis engine (`ra_ap_ide`). This eliminates false positives in clone-in-loop, refcounted detection, and type classification checks.
+With the `semantic` feature enabled, pedant resolves types through aliases using rust-analyzer's analysis engine (`ra_ap_ide`). This eliminates false positives in clone-in-loop, refcounted detection, and type classification checks. It also enables data flow analysis: taint tracking (environment variables flowing to network sinks), quality checks (dead stores, discarded results), performance checks (unnecessary clones, allocation in loops), and concurrency checks (lock guards across await points).
 
 ```bash
 # Build with semantic support
@@ -243,9 +244,12 @@ cargo install pedant --features semantic
 
 # Run with type resolution (requires Cargo workspace)
 pedant --semantic src/**/*.rs
+
+# Combine with gate rules for full analysis
+pedant --semantic --gate src/**/*.rs
 ```
 
-When `--semantic` is active, the attestation's `analysis_tier` is set to `"semantic"` instead of `"syntactic"`, signaling higher-confidence results.
+When `--semantic` is active, the attestation's `analysis_tier` escalates from `"syntactic"` to `"semantic"` or `"data_flow"` depending on whether data flow findings are detected.
 
 ## License
 

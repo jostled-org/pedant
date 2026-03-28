@@ -80,7 +80,9 @@ Gate rules evaluate capability profiles for suspicious combinations. Run with `-
 pedant --gate src/**/*.rs
 ```
 
-9 built-in rules:
+22 built-in rules across five categories:
+
+**Compile-time execution** — build scripts and proc macros run at compile time with no sandboxing.
 
 | Rule | Condition | Default Severity |
 |------|-----------|-----------------|
@@ -91,8 +93,45 @@ pedant --gate src/**/*.rs
 | `proc-macro-network` | ProcMacro + Network | deny |
 | `proc-macro-exec` | ProcMacro + ProcessExec | deny |
 | `proc-macro-file-write` | ProcMacro + FileWrite | deny |
+
+**Runtime capability combinations** — suspicious pairings of runtime capabilities.
+
+| Rule | Condition | Default Severity |
+|------|-----------|-----------------|
 | `env-access-network` | EnvAccess + Network | info |
 | `key-material-network` | Embedded key material + Network | warn |
+
+**Data flow (taint tracking)** — requires `--semantic`. Tracks data from sources to sinks.
+
+| Rule | Condition | Default Severity |
+|------|-----------|-----------------|
+| `env-to-network` | Environment variable → network sink | deny |
+| `file-to-network` | File read → network sink | deny |
+| `network-to-exec` | Network source → process execution | deny |
+
+**Quality** — requires `--semantic`. Detects error handling and assignment issues.
+
+| Rule | Condition | Default Severity |
+|------|-----------|-----------------|
+| `dead-store` | Value assigned then overwritten before read | warn |
+| `discarded-result` | Result-returning function called without binding | warn |
+| `partial-error-handling` | Result handled on some paths, dropped on others | warn |
+
+**Performance** — requires `--semantic`. Detects allocation and iteration waste.
+
+| Rule | Condition | Default Severity |
+|------|-----------|-----------------|
+| `repeated-call` | Same function called with identical arguments | info |
+| `unnecessary-clone` | Clone called but original never used | info |
+| `allocation-in-loop` | Heap allocation inside loop body | info |
+| `redundant-collect` | Collect followed immediately by re-iteration | info |
+
+**Concurrency** — requires `--semantic`. Detects deadlock risks in async code.
+
+| Rule | Condition | Default Severity |
+|------|-----------|-----------------|
+| `lock-across-await` | Lock guard held across .await point | deny |
+| `inconsistent-lock-order` | Same locks acquired in different orders | deny |
 
 Configure in `.pedant.toml`:
 
@@ -217,6 +256,6 @@ echo '{"mcpServers":{"pedant":{"command":"pedant-mcp","args":[]}}}' > .mcp.json
 
 Restart Claude Code after configuring. The server auto-discovers the Cargo workspace from CWD, indexes all crates, and watches for file changes.
 
-Tools: `query_capabilities`, `query_gate_verdicts`, `query_violations`, `search_by_capability`, `explain_finding`, `audit_crate`.
+Tools: `query_capabilities`, `query_gate_verdicts`, `query_violations`, `search_by_capability`, `explain_finding`, `audit_crate`, `find_structural_duplicates`.
 
 For semantic analysis in the MCP server, set `PEDANT_SEMANTIC=1` before starting (requires the `semantic` feature to be compiled in).

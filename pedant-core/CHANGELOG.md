@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0](https://github.com/jostled-org/pedant/compare/pedant-core-v0.9.0...pedant-core-v0.10.0) - 2026-04-02
+
+### Added
+
+- [**breaking**] add swallowed-ok and unobserved-spawn detection
+
 ## [0.9.0](https://github.com/jostled-org/pedant/compare/pedant-core-v0.8.0...pedant-core-v0.9.0) - 2026-03-28
 
 ### Added

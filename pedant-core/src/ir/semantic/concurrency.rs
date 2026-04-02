@@ -1,7 +1,8 @@
 //! Concurrency issue detection.
 //!
-//! Detects lock guards held across `.await` points and inconsistent lock
-//! ordering across functions within a file.
+//! Detects lock guards held across `.await` points, inconsistent lock
+//! ordering across functions within a file, and unobserved spawn calls
+//! where the `JoinHandle` is dropped or unbound.
 
 use std::collections::BTreeMap;
 
@@ -10,7 +11,9 @@ use ra_ap_syntax::ast::{HasArgList, HasName};
 use ra_ap_syntax::{AstNode, SyntaxKind, ast};
 
 use super::super::facts::{DataFlowFact, DataFlowKind, IrSpan};
-use super::common::{ParsedFile, extract_binding_name, quality_fact, span_from_node};
+use super::common::{
+    ParsedFile, extract_binding_name, quality_fact, resolve_call_to_function, span_from_node,
+};
 
 /// Lock acquisition method names on `Mutex` and `RwLock`.
 const LOCK_METHODS: &[&str] = &["lock", "read", "write"];
@@ -315,7 +318,7 @@ fn collect_lock_ordering_violations(
 }
 
 /// Collect ordered lock pair indices from a single function's lock sequence.
-fn collect_pair_indices(seq_idx: usize, locks: &[LockAcquisition]) -> Vec<(usize, usize, usize)> {
+fn collect_pair_indices(seq_idx: usize, locks: &[LockAcquisition]) -> Box<[(usize, usize, usize)]> {
     let mut pairs = Vec::new();
     for (i, (recv_a, _)) in locks.iter().enumerate() {
         for (j, (recv_b, _)) in locks[i + 1..].iter().enumerate() {
@@ -324,5 +327,127 @@ fn collect_pair_indices(seq_idx: usize, locks: &[LockAcquisition]) -> Vec<(usize
             }
         }
     }
-    pairs
+    pairs.into_boxed_slice()
+}
+
+// --- Unobserved spawn detection ---
+
+/// Module path segments that identify standard spawn functions.
+const SPAWN_MODULE_MARKERS: &[&str] = &["thread", "tokio"];
+
+/// Detect all concurrency issues within a single function body.
+///
+/// Combines lock-across-await detection (for async functions) with
+/// unobserved spawn detection (`std::thread::spawn` / `tokio::spawn`
+/// where the `JoinHandle` is dropped or unbound).
+pub(super) fn detect_concurrency_in_fn(
+    pf: &ParsedFile<'_>,
+    fn_node: &ast::Fn,
+    stmt_list: &ast::StmtList,
+) -> Box<[DataFlowFact]> {
+    let mut facts = Vec::new();
+
+    if fn_node.async_token().is_some() {
+        detect_lock_across_await_in_stmts(stmt_list, pf.line_index, &mut facts);
+    }
+
+    for stmt in stmt_list.statements() {
+        match &stmt {
+            ast::Stmt::ExprStmt(expr_stmt) => {
+                check_expr_stmt_unobserved_spawn(pf, expr_stmt, &stmt, &mut facts);
+            }
+            ast::Stmt::LetStmt(let_stmt) => {
+                check_let_stmt_unobserved_spawn(pf, let_stmt, &stmt, &mut facts);
+            }
+            ast::Stmt::Item(_) => {}
+        }
+    }
+    facts.into_boxed_slice()
+}
+
+/// Check an expression statement for an unobserved spawn call.
+fn check_expr_stmt_unobserved_spawn(
+    pf: &ParsedFile<'_>,
+    expr_stmt: &ast::ExprStmt,
+    stmt: &ast::Stmt,
+    out: &mut Vec<DataFlowFact>,
+) {
+    let Some(expr) = expr_stmt.expr() else {
+        return;
+    };
+    let Some(call) = as_call_expr(&expr) else {
+        return;
+    };
+    emit_unobserved_spawn_if_known(
+        pf,
+        &call,
+        stmt,
+        "spawn() called without observing JoinHandle",
+        out,
+    );
+}
+
+/// Check a let statement with wildcard pattern for an unobserved spawn call.
+fn check_let_stmt_unobserved_spawn(
+    pf: &ParsedFile<'_>,
+    let_stmt: &ast::LetStmt,
+    stmt: &ast::Stmt,
+    out: &mut Vec<DataFlowFact>,
+) {
+    let Some(pat) = let_stmt.pat() else { return };
+    if !matches!(pat, ast::Pat::WildcardPat(_)) {
+        return;
+    }
+    let Some(init) = let_stmt.initializer() else {
+        return;
+    };
+    let Some(call) = as_call_expr(&init) else {
+        return;
+    };
+    emit_unobserved_spawn_if_known(pf, &call, stmt, "let _ = spawn() discards JoinHandle", out);
+}
+
+/// Validate the call targets a known spawn function and emit the finding.
+fn emit_unobserved_spawn_if_known(
+    pf: &ParsedFile<'_>,
+    call: &ast::CallExpr,
+    stmt: &ast::Stmt,
+    message: &str,
+    out: &mut Vec<DataFlowFact>,
+) {
+    if !is_known_spawn_call(pf, call) {
+        return;
+    }
+    let span = span_from_node(stmt.syntax(), pf.line_index);
+    out.push(quality_fact(
+        DataFlowKind::UnobservedSpawn,
+        span,
+        span,
+        Box::from(message),
+    ));
+}
+
+/// Extract a `CallExpr` from an expression.
+fn as_call_expr(expr: &ast::Expr) -> Option<ast::CallExpr> {
+    match expr {
+        ast::Expr::CallExpr(call) => Some(call.clone()),
+        _ => None,
+    }
+}
+
+/// Resolve a call expression and check if it targets a known spawn function.
+fn is_known_spawn_call(pf: &ParsedFile<'_>, call: &ast::CallExpr) -> bool {
+    let Some(func) = resolve_call_to_function(&pf.sema, call) else {
+        return false;
+    };
+    let name = func.name(pf.db);
+    if name.as_str() != "spawn" {
+        return false;
+    }
+    let module = func.module(pf.db);
+    let module_path = module.path_to_root(pf.db);
+    module_path.iter().any(|m| {
+        m.name(pf.db)
+            .is_some_and(|n| SPAWN_MODULE_MARKERS.contains(&n.as_str()))
+    })
 }

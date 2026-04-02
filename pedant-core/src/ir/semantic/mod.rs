@@ -133,8 +133,9 @@ impl SemanticContext {
     /// Detect quality issues within a single function body.
     ///
     /// Identifies dead stores (value overwritten before read), discarded results
-    /// (Result-returning calls without binding), and partial error handling
-    /// (Result handled on some paths, dropped on others).
+    /// (Result-returning calls without binding), partial error handling
+    /// (Result handled on some paths, dropped on others), swallowed `.ok()`
+    /// calls on Results, and immutable growable bindings.
     pub fn detect_quality_issues(&self, file: &str, fn_name: &str) -> Box<[DataFlowFact]> {
         with_fn_body(self, file, fn_name, |pf, _, _, stmt_list| {
             quality::detect_quality_in_fn(pf, stmt_list)
@@ -176,6 +177,18 @@ impl SemanticContext {
         with_parsed_file(self, file, concurrency::detect_lock_ordering).unwrap_or_default()
     }
 
+    /// Detect concurrency issues within a single function body.
+    ///
+    /// Identifies lock guards held across `.await` points and unobserved
+    /// spawn calls (`std::thread::spawn` or `tokio::spawn`) where the
+    /// `JoinHandle` is dropped or unbound.
+    pub fn detect_concurrency_issues(&self, file: &str, fn_name: &str) -> Box<[DataFlowFact]> {
+        with_fn_body(self, file, fn_name, |pf, fn_node, _, stmt_list| {
+            concurrency::detect_concurrency_in_fn(pf, fn_node, stmt_list)
+        })
+        .unwrap_or_default()
+    }
+
     /// Run all data-flow detection passes for every function in `file` using a
     /// single parse. Returns the combined results of taint, quality, performance,
     /// lock-across-await (per-function), and inconsistent lock ordering (file-wide).
@@ -196,7 +209,7 @@ impl SemanticContext {
                 flows.extend(quality::detect_quality_in_fn(pf, &stmt_list).into_vec());
                 flows.extend(perf::detect_perf_in_fn(pf, &body, &stmt_list).into_vec());
                 flows.extend(
-                    concurrency::detect_lock_await_in_fn(pf, &fn_node, &stmt_list).into_vec(),
+                    concurrency::detect_concurrency_in_fn(pf, &fn_node, &stmt_list).into_vec(),
                 );
             }
             flows.extend(concurrency::detect_lock_ordering(pf).into_vec());

@@ -260,3 +260,61 @@ pub fn caller_passes_mut() {
     passed_mut(&mut items);
     println!("{}", items.len());
 }
+
+// --- Quality: swallowed .ok() detection ---
+
+fn fallible_io() -> Result<(), std::io::Error> {
+    std::fs::remove_file("temp.txt")
+}
+
+/// .ok() on Result as statement — swallowed error.
+pub fn swallowed_ok_statement() {
+    fallible_io().ok();
+}
+
+/// let _ = expr.ok() — swallowed error.
+pub fn swallowed_ok_let_underscore() {
+    let _ = fallible_io().ok();
+}
+
+/// .ok() result is used — not swallowed.
+pub fn ok_used() -> bool {
+    let val = std::fs::read_to_string("x").ok();
+    val.is_some()
+}
+
+/// write!().ok() is exempt per audit ledger convention.
+pub fn write_ok_exempt() {
+    use std::fmt::Write;
+    let mut buf = String::new();
+    write!(buf, "hello").ok();
+    writeln!(buf, "world").ok();
+    println!("{buf}");
+}
+
+// --- Concurrency: unobserved spawn detection ---
+
+/// std::thread::spawn as statement — JoinHandle dropped.
+pub fn unobserved_thread_spawn() {
+    std::thread::spawn(|| {});
+}
+
+/// let _ = std::thread::spawn — JoinHandle explicitly discarded.
+pub fn unobserved_thread_spawn_let_underscore() {
+    let _ = std::thread::spawn(|| {});
+}
+
+/// JoinHandle bound and joined — observed spawn.
+pub fn observed_thread_spawn() {
+    let handle = std::thread::spawn(|| {});
+    handle.join().ok();
+}
+
+/// Local fn named `spawn` — not std::thread, should not fire.
+fn custom_spawn_impl(f: impl FnOnce()) {
+    f();
+}
+
+pub fn custom_spawn() {
+    custom_spawn_impl(|| {});
+}

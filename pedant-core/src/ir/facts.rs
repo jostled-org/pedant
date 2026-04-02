@@ -40,6 +40,10 @@ pub enum DataFlowKind {
     InconsistentLockOrder,
     /// Vec or String binding never mutated after construction.
     ImmutableGrowable,
+    /// `.ok()` called on Result where the resulting Option is discarded.
+    SwallowedOk,
+    /// Thread or task spawned with the JoinHandle dropped or unbound.
+    UnobservedSpawn,
 }
 
 impl DataFlowKind {
@@ -57,6 +61,8 @@ impl DataFlowKind {
             Self::LockAcrossAwait => "lock-across-await",
             Self::InconsistentLockOrder => "inconsistent-lock-order",
             Self::ImmutableGrowable => "immutable-growable",
+            Self::SwallowedOk => "swallowed-ok",
+            Self::UnobservedSpawn => "unobserved-spawn",
         }
     }
 }

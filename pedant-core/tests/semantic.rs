@@ -1057,6 +1057,158 @@ fn test_vec_passed_as_mut_ref_not_flagged() {
     );
 }
 
+// --- Quality: swallowed .ok() detection ---
+
+/// SwallowedOk: .ok() as statement on Result — detected.
+#[test]
+fn test_swallowed_ok_statement_detected() {
+    let root = dataflow_workspace_root();
+    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
+    let file = dataflow_lib_path();
+
+    let facts = ctx.detect_quality_issues(&file, "swallowed_ok_statement");
+    let findings: Vec<_> = facts
+        .iter()
+        .filter(|f| f.kind == DataFlowKind::SwallowedOk)
+        .collect();
+    assert_eq!(
+        findings.len(),
+        1,
+        "should find one SwallowedOk in swallowed_ok_statement(), got: {findings:?}"
+    );
+}
+
+/// SwallowedOk: let _ = expr.ok() — detected.
+#[test]
+fn test_swallowed_ok_let_underscore_detected() {
+    let root = dataflow_workspace_root();
+    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
+    let file = dataflow_lib_path();
+
+    let facts = ctx.detect_quality_issues(&file, "swallowed_ok_let_underscore");
+    let findings: Vec<_> = facts
+        .iter()
+        .filter(|f| f.kind == DataFlowKind::SwallowedOk)
+        .collect();
+    assert_eq!(
+        findings.len(),
+        1,
+        "should find one SwallowedOk in swallowed_ok_let_underscore(), got: {findings:?}"
+    );
+}
+
+/// .ok() result is used — not flagged.
+#[test]
+fn test_ok_used_not_flagged() {
+    let root = dataflow_workspace_root();
+    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
+    let file = dataflow_lib_path();
+
+    let facts = ctx.detect_quality_issues(&file, "ok_used");
+    let findings: Vec<_> = facts
+        .iter()
+        .filter(|f| f.kind == DataFlowKind::SwallowedOk)
+        .collect();
+    assert!(
+        findings.is_empty(),
+        "should find no SwallowedOk in ok_used(), got: {findings:?}"
+    );
+}
+
+/// write!().ok() is exempt per audit ledger.
+#[test]
+fn test_write_ok_exempt() {
+    let root = dataflow_workspace_root();
+    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
+    let file = dataflow_lib_path();
+
+    let facts = ctx.detect_quality_issues(&file, "write_ok_exempt");
+    let findings: Vec<_> = facts
+        .iter()
+        .filter(|f| f.kind == DataFlowKind::SwallowedOk)
+        .collect();
+    assert!(
+        findings.is_empty(),
+        "should find no SwallowedOk in write_ok_exempt(), got: {findings:?}"
+    );
+}
+
+// --- Concurrency: unobserved spawn detection ---
+
+/// UnobservedSpawn: std::thread::spawn as statement — detected.
+#[test]
+fn test_unobserved_thread_spawn_detected() {
+    let root = dataflow_workspace_root();
+    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
+    let file = dataflow_lib_path();
+
+    let facts = ctx.detect_concurrency_issues(&file, "unobserved_thread_spawn");
+    let findings: Vec<_> = facts
+        .iter()
+        .filter(|f| f.kind == DataFlowKind::UnobservedSpawn)
+        .collect();
+    assert_eq!(
+        findings.len(),
+        1,
+        "should find one UnobservedSpawn in unobserved_thread_spawn(), got: {findings:?}"
+    );
+}
+
+/// UnobservedSpawn: let _ = std::thread::spawn — detected.
+#[test]
+fn test_unobserved_thread_spawn_let_underscore_detected() {
+    let root = dataflow_workspace_root();
+    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
+    let file = dataflow_lib_path();
+
+    let facts = ctx.detect_concurrency_issues(&file, "unobserved_thread_spawn_let_underscore");
+    let findings: Vec<_> = facts
+        .iter()
+        .filter(|f| f.kind == DataFlowKind::UnobservedSpawn)
+        .collect();
+    assert_eq!(
+        findings.len(),
+        1,
+        "should find one UnobservedSpawn in unobserved_thread_spawn_let_underscore(), got: {findings:?}"
+    );
+}
+
+/// Observed spawn: JoinHandle bound and used — not flagged.
+#[test]
+fn test_observed_thread_spawn_not_flagged() {
+    let root = dataflow_workspace_root();
+    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
+    let file = dataflow_lib_path();
+
+    let facts = ctx.detect_concurrency_issues(&file, "observed_thread_spawn");
+    let findings: Vec<_> = facts
+        .iter()
+        .filter(|f| f.kind == DataFlowKind::UnobservedSpawn)
+        .collect();
+    assert!(
+        findings.is_empty(),
+        "should find no UnobservedSpawn in observed_thread_spawn(), got: {findings:?}"
+    );
+}
+
+/// Custom spawn function — not std::thread, not flagged.
+#[test]
+fn test_custom_spawn_not_flagged() {
+    let root = dataflow_workspace_root();
+    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
+    let file = dataflow_lib_path();
+
+    let facts = ctx.detect_concurrency_issues(&file, "custom_spawn");
+    let findings: Vec<_> = facts
+        .iter()
+        .filter(|f| f.kind == DataFlowKind::UnobservedSpawn)
+        .collect();
+    assert!(
+        findings.is_empty(),
+        "should find no UnobservedSpawn in custom_spawn(), got: {findings:?}"
+    );
+}
+
 /// 5.T4: analysis tier is DataFlow when semantic context produces data flows.
 #[test]
 fn test_attestation_tier_dataflow() {

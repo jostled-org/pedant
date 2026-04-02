@@ -248,6 +248,20 @@ const FLOW_RULES: &[Rule<DataFlowFact>] = &[
         rationale: "Inconsistent error handling — some branches swallow errors silently",
         predicate: |f| has_kind(f, DataFlowKind::PartialErrorHandling),
     },
+    Rule {
+        name: "swallowed-ok",
+        default_severity: GateSeverity::Warn,
+        description: ".ok() on Result where Option is discarded",
+        rationale: ".ok() silently drops the error — handle the Result or explicitly discard with comment",
+        predicate: |f| has_kind(f, DataFlowKind::SwallowedOk),
+    },
+    Rule {
+        name: "immutable-growable",
+        default_severity: GateSeverity::Info,
+        description: "Vec or String never mutated after construction",
+        rationale: "Immutable growable collection — use Box<[T]> or Box<str> instead",
+        predicate: |f| has_kind(f, DataFlowKind::ImmutableGrowable),
+    },
     // --- Performance rules ---
     Rule {
         name: "repeated-call",
@@ -291,6 +305,13 @@ const FLOW_RULES: &[Rule<DataFlowFact>] = &[
         description: "Same locks acquired in different orders across functions",
         rationale: "Inconsistent lock ordering across functions — potential deadlock",
         predicate: |f| has_kind(f, DataFlowKind::InconsistentLockOrder),
+    },
+    Rule {
+        name: "unobserved-spawn",
+        default_severity: GateSeverity::Warn,
+        description: "Thread/task spawned with dropped JoinHandle",
+        rationale: "Dropped JoinHandle means panics in the spawned thread/task vanish silently",
+        predicate: |f| has_kind(f, DataFlowKind::UnobservedSpawn),
     },
 ];
 

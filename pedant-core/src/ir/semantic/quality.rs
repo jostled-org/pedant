@@ -1,7 +1,7 @@
 //! Quality issue detection.
 //!
 //! Identifies dead stores, discarded results, partial error handling,
-//! and immutable growable bindings within function bodies.
+//! swallowed `.ok()` calls, and immutable growable bindings within function bodies.
 
 use std::collections::BTreeMap;
 
@@ -25,6 +25,7 @@ pub(super) fn detect_quality_in_fn(
     detect_dead_stores(stmt_list, pf.line_index, &mut facts);
     detect_discarded_results(&pf.sema, stmt_list, pf.db, pf.line_index, &mut facts);
     detect_partial_error_handling(&pf.sema, stmt_list, pf.db, pf.line_index, &mut facts);
+    detect_swallowed_ok(&pf.sema, stmt_list, pf.db, pf.line_index, &mut facts);
     detect_immutable_growable(pf, stmt_list, pf.line_index, &mut facts);
     facts.into_boxed_slice()
 }
@@ -402,6 +403,143 @@ fn matches_result_handling(node: &SyntaxNode, binding_name: &str) -> bool {
     }
 }
 
+// --- Swallowed .ok() detection ---
+
+/// Detect `.ok()` called on Result where the resulting Option is discarded.
+///
+/// Two forms: statement position (`expr.ok();`) and wildcard binding (`let _ = expr.ok();`).
+/// Exempt `write!`/`writeln!` macro receivers per audit ledger convention.
+fn detect_swallowed_ok(
+    sema: &Semantics<'_, RootDatabase>,
+    stmt_list: &ast::StmtList,
+    db: &RootDatabase,
+    line_index: &LineIndex,
+    out: &mut Vec<DataFlowFact>,
+) {
+    for stmt in stmt_list.statements() {
+        match &stmt {
+            ast::Stmt::ExprStmt(expr_stmt) => {
+                check_expr_stmt_swallowed_ok(sema, expr_stmt, db, line_index, &stmt, out);
+            }
+            ast::Stmt::LetStmt(let_stmt) => {
+                check_let_stmt_swallowed_ok(sema, let_stmt, db, line_index, &stmt, out);
+            }
+            ast::Stmt::Item(_) => {}
+        }
+    }
+}
+
+/// Check an expression statement for swallowed `.ok()` on Result.
+fn check_expr_stmt_swallowed_ok(
+    sema: &Semantics<'_, RootDatabase>,
+    expr_stmt: &ast::ExprStmt,
+    db: &RootDatabase,
+    line_index: &LineIndex,
+    stmt: &ast::Stmt,
+    out: &mut Vec<DataFlowFact>,
+) {
+    let Some(expr) = expr_stmt.expr() else {
+        return;
+    };
+    let Some(mc) = as_ok_method_call(&expr) else {
+        return;
+    };
+    emit_swallowed_ok_if_result(
+        sema,
+        &mc,
+        db,
+        line_index,
+        stmt,
+        ".ok() on Result discards the error silently",
+        out,
+    );
+}
+
+/// Check a let statement with wildcard pattern for swallowed `.ok()` on Result.
+fn check_let_stmt_swallowed_ok(
+    sema: &Semantics<'_, RootDatabase>,
+    let_stmt: &ast::LetStmt,
+    db: &RootDatabase,
+    line_index: &LineIndex,
+    stmt: &ast::Stmt,
+    out: &mut Vec<DataFlowFact>,
+) {
+    let Some(pat) = let_stmt.pat() else { return };
+    if !matches!(pat, ast::Pat::WildcardPat(_)) {
+        return;
+    }
+    let Some(init) = let_stmt.initializer() else {
+        return;
+    };
+    let Some(mc) = as_ok_method_call(&init) else {
+        return;
+    };
+    emit_swallowed_ok_if_result(
+        sema,
+        &mc,
+        db,
+        line_index,
+        stmt,
+        "let _ = .ok() on Result discards the error silently",
+        out,
+    );
+}
+
+/// Validate the `.ok()` receiver is a non-write-macro Result and emit the finding.
+fn emit_swallowed_ok_if_result(
+    sema: &Semantics<'_, RootDatabase>,
+    mc: &ast::MethodCallExpr,
+    db: &RootDatabase,
+    line_index: &LineIndex,
+    stmt: &ast::Stmt,
+    message: &str,
+    out: &mut Vec<DataFlowFact>,
+) {
+    let Some(receiver) = mc.receiver() else {
+        return;
+    };
+    if is_write_macro_expr(&receiver) {
+        return;
+    }
+    if !expr_returns_result(sema, &receiver, db) {
+        return;
+    }
+    let span = span_from_node(stmt.syntax(), line_index);
+    out.push(quality_fact(
+        DataFlowKind::SwallowedOk,
+        span,
+        span,
+        Box::from(message),
+    ));
+}
+
+/// Extract a `.ok()` method call from an expression, if present.
+fn as_ok_method_call(expr: &ast::Expr) -> Option<ast::MethodCallExpr> {
+    let ast::Expr::MethodCallExpr(mc) = expr else {
+        return None;
+    };
+    let name = mc.name_ref()?;
+    match name.text() == "ok" {
+        true => Some(mc.clone()),
+        false => None,
+    }
+}
+
+/// Check whether an expression is a `write!` or `writeln!` macro invocation.
+fn is_write_macro_expr(expr: &ast::Expr) -> bool {
+    let ast::Expr::MacroExpr(macro_expr) = expr else {
+        return false;
+    };
+    let Some(macro_call) = macro_expr.macro_call() else {
+        return false;
+    };
+    let Some(path) = macro_call.path() else {
+        return false;
+    };
+    let text = path.syntax().text();
+    text == "write" || text == "writeln"
+}
+
 // --- Immutable growable detection ---
 
 /// Methods that mutate `Vec<T>`.
@@ -508,11 +646,15 @@ fn classify_via_semantics(
 /// Classify via explicit type annotation on the let statement.
 fn classify_via_annotation(let_stmt: &ast::LetStmt) -> Option<&'static str> {
     let ty = let_stmt.ty()?;
-    let text = ty.syntax().text().to_string();
-    match text.as_str() {
-        s if s.starts_with("Vec<") || s.starts_with("Vec ") || s == "Vec" => Some("Vec"),
-        "String" => Some("String"),
-        _ => None,
+    let syntax_text = ty.syntax().text();
+    if syntax_text == "String" {
+        return Some("String");
+    }
+    // SyntaxText lacks starts_with; allocate only for the Vec prefix check.
+    let text = syntax_text.to_string();
+    match text.starts_with("Vec<") || text.starts_with("Vec ") || text == "Vec" {
+        true => Some("Vec"),
+        false => None,
     }
 }
 
@@ -536,8 +678,7 @@ fn method_call_mutates(binding_name: &str, node: &SyntaxNode) -> bool {
     let Some(receiver) = mc.receiver() else {
         return false;
     };
-    let receiver_text = receiver.syntax().text().to_string();
-    if receiver_text != binding_name {
+    if receiver.syntax().text() != binding_name {
         return false;
     }
     let Some(method) = mc.name_ref() else {
@@ -564,9 +705,12 @@ fn bin_expr_mutates(binding_name: &str, node: &SyntaxNode) -> bool {
     match is_assign {
         true => {
             let Some(lhs) = bin.lhs() else { return false };
-            let lhs_text = lhs.syntax().text().to_string();
+            let lhs_text = lhs.syntax().text();
             // Matches `binding[...]` (index assignment) or `binding += ...`
-            lhs_text == binding_name || lhs_text.starts_with(&format!("{binding_name}["))
+            lhs_text == binding_name || {
+                let s = lhs_text.to_string();
+                s.starts_with(binding_name) && s[binding_name.len()..].starts_with('[')
+            }
         }
         false => false,
     }

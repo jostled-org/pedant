@@ -178,8 +178,8 @@ fn test_all_gate_rules_returns_all_rules() {
     let rules = all_gate_rules();
     assert_eq!(
         rules.len(),
-        21,
-        "expected 21 rules (9 capability + 3 flow + 9 quality/perf/concurrency)"
+        24,
+        "expected 24 rules (9 capability + 3 flow + 12 quality/perf/concurrency/error)"
     );
     for rule in rules {
         assert!(!rule.name.is_empty(), "rule name must not be empty");
@@ -423,8 +423,8 @@ fn test_all_gate_rules_includes_new_rules() {
     let rules = all_gate_rules();
     assert_eq!(
         rules.len(),
-        21,
-        "expected 21 rules (9 capability + 3 flow + 9 quality/perf/concurrency)"
+        24,
+        "expected 24 rules (9 capability + 3 flow + 12 quality/perf/concurrency/error)"
     );
 }
 
@@ -461,6 +461,15 @@ fn test_data_flow_kind_display_returns_kebab_case() {
         DataFlowKind::InconsistentLockOrder.to_string(),
         "inconsistent-lock-order"
     );
+    assert_eq!(
+        DataFlowKind::ImmutableGrowable.to_string(),
+        "immutable-growable"
+    );
+    assert_eq!(DataFlowKind::SwallowedOk.to_string(), "swallowed-ok");
+    assert_eq!(
+        DataFlowKind::UnobservedSpawn.to_string(),
+        "unobserved-spawn"
+    );
 }
 
 #[test]
@@ -483,4 +492,48 @@ fn test_quality_perf_rules_dont_fire_without_dataflow() {
             "{name} should not fire without DataFlowFacts"
         );
     }
+}
+
+// --- Swallowed errors and silent panics gate rules ---
+
+#[test]
+fn swallowed_ok_gate_rule_fires_on_kind() {
+    let flows = [kind_fact(
+        DataFlowKind::SwallowedOk,
+        ".ok() on Result where Option is discarded",
+    )];
+    let verdicts = evaluate_gate_rules(&[], &flows, &GateConfig::default());
+    let v = verdicts
+        .iter()
+        .find(|v| v.rule == "swallowed-ok")
+        .expect("expected swallowed-ok verdict");
+    assert_eq!(v.severity, GateSeverity::Warn);
+}
+
+#[test]
+fn unobserved_spawn_gate_rule_fires_on_kind() {
+    let flows = [kind_fact(
+        DataFlowKind::UnobservedSpawn,
+        "Thread spawned with dropped JoinHandle",
+    )];
+    let verdicts = evaluate_gate_rules(&[], &flows, &GateConfig::default());
+    let v = verdicts
+        .iter()
+        .find(|v| v.rule == "unobserved-spawn")
+        .expect("expected unobserved-spawn verdict");
+    assert_eq!(v.severity, GateSeverity::Warn);
+}
+
+#[test]
+fn immutable_growable_gate_rule_fires_on_kind() {
+    let flows = [kind_fact(
+        DataFlowKind::ImmutableGrowable,
+        "Vec never mutated after construction",
+    )];
+    let verdicts = evaluate_gate_rules(&[], &flows, &GateConfig::default());
+    let v = verdicts
+        .iter()
+        .find(|v| v.rule == "immutable-growable")
+        .expect("expected immutable-growable verdict");
+    assert_eq!(v.severity, GateSeverity::Info);
 }

@@ -166,7 +166,7 @@ impl IrExtractor {
             unsafe_sites: self.unsafe_sites.into_boxed_slice(),
             extern_blocks: self.extern_blocks.into_boxed_slice(),
             modules: self.modules.into_boxed_slice(),
-            data_flows: Box::new([]),
+            data_flows: std::sync::Arc::from([]),
         }
     }
 
@@ -1164,227 +1164,167 @@ const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 /// Each function gets a skeleton hash (structure-only, names normalized) and
 /// an exact hash (includes method/type names). Downstream consumers use these
 /// to detect copy-paste and parametric duplicates across files.
+///
+/// Uses per-function hash accumulators fed by single passes over each fact
+/// array, avoiding intermediate bucket tables.
 pub fn compute_fingerprints(ir: &FileIr) -> Box<[FnFingerprint]> {
     let fn_count = ir.functions.len();
-    let cf_by_fn = bucket_control_flow(&ir.control_flow, fn_count);
-    let mc_by_fn = bucket_method_calls(&ir.method_calls, fn_count);
-    let bind_counts = count_bindings_by_fn(&ir.bindings, fn_count);
-    let tr_by_fn = bucket_type_refs(&ir.type_refs, fn_count);
 
+    // Parallel arrays for per-function accumulation.
+    let mut skeleton: Vec<u64> = Vec::with_capacity(fn_count);
+    let mut exact: Vec<u64> = Vec::with_capacity(fn_count);
+    let mut method_count = vec![0usize; fn_count];
+    let mut binding_count = vec![0usize; fn_count];
+    let mut type_ref_count = vec![0usize; fn_count];
+    let mut fact_count = vec![0usize; fn_count];
+
+    // Initialize hash state from function signatures (params + return).
+    for func in ir.functions.iter() {
+        let mut h = FNV_OFFSET_BASIS;
+        h = fnv1a_usize(h, func.params.len());
+        h = fnv1a_bool(h, func.return_type.is_some());
+        skeleton.push(h);
+        exact.push(h);
+    }
+
+    // Control flow: update both hashes with discriminant tags.
+    for fact in ir.control_flow.iter() {
+        let Some(fn_idx) = fact.containing_fn else {
+            continue;
+        };
+        skeleton[fn_idx] = fnv1a_discriminant(skeleton[fn_idx], fact.kind);
+        exact[fn_idx] = fnv1a_discriminant(exact[fn_idx], fact.kind);
+        fact_count[fn_idx] += 1;
+    }
+
+    // Method calls: exact hash gets name bytes, skeleton just counts.
+    for fact in ir.method_calls.iter() {
+        let Some(fn_idx) = fact.containing_fn else {
+            continue;
+        };
+        exact[fn_idx] = fnv1a_bytes(exact[fn_idx], fact.method_name.as_bytes());
+        method_count[fn_idx] += 1;
+        fact_count[fn_idx] += 1;
+    }
+
+    // Bindings: count only (both hashes use count, not content).
+    for fact in ir.bindings.iter() {
+        let Some(fn_idx) = fact.containing_fn else {
+            continue;
+        };
+        binding_count[fn_idx] += 1;
+        fact_count[fn_idx] += 1;
+    }
+
+    // Insert binding_count into exact hash before type refs.
+    for (ex, &bc) in exact.iter_mut().zip(binding_count.iter()) {
+        *ex = fnv1a_usize(*ex, bc);
+    }
+
+    // Type refs: exact hash gets text bytes, skeleton just counts.
+    for fact in ir.type_refs.iter() {
+        let Some(fn_idx) = fact.containing_fn else {
+            continue;
+        };
+        exact[fn_idx] = fnv1a_bytes(exact[fn_idx], fact.text.as_bytes());
+        type_ref_count[fn_idx] += 1;
+        fact_count[fn_idx] += 1;
+    }
+
+    // Finalize skeleton hashes with counts.
+    for i in 0..fn_count {
+        skeleton[i] = fnv1a_usize(skeleton[i], method_count[i]);
+        skeleton[i] = fnv1a_usize(skeleton[i], binding_count[i]);
+        skeleton[i] = fnv1a_usize(skeleton[i], type_ref_count[i]);
+    }
+
+    // Build fingerprints from accumulators.
     ir.functions
         .iter()
         .enumerate()
-        .map(|(fn_index, func)| {
-            let param_count = func.params.len();
-            let has_return = func.return_type.is_some();
-
-            let cf_kinds = &cf_by_fn[fn_index];
-            let method_names = &mc_by_fn[fn_index];
-            let binding_count = bind_counts[fn_index];
-            let type_ref_texts = &tr_by_fn[fn_index];
-
-            let fact_count =
-                method_names.len() + binding_count + type_ref_texts.len() + cf_kinds.len();
-
-            let skeleton_hash = compute_skeleton_hash(
-                param_count,
-                has_return,
-                cf_kinds,
-                method_names.len(),
-                binding_count,
-                type_ref_texts.len(),
-            );
-
-            let exact_hash = compute_exact_hash(
-                param_count,
-                has_return,
-                cf_kinds,
-                method_names,
-                binding_count,
-                type_ref_texts,
-            );
-
-            FnFingerprint {
-                fn_index,
-                name: Box::from(&*func.name),
-                span: func.span,
-                skeleton_hash,
-                exact_hash,
-                fact_count,
-            }
+        .map(|(fn_index, func)| FnFingerprint {
+            fn_index,
+            name: Box::from(&*func.name),
+            span: func.span,
+            skeleton_hash: skeleton[fn_index],
+            exact_hash: exact[fn_index],
+            fact_count: fact_count[fn_index],
         })
-        .collect::<Vec<_>>()
-        .into_boxed_slice()
-}
-
-fn bucket_control_flow(facts: &[ControlFlowFact], fn_count: usize) -> Vec<Vec<ControlFlowKind>> {
-    let mut buckets = vec![Vec::new(); fn_count];
-    for fact in facts {
-        let Some(fn_idx) = fact.containing_fn else {
-            continue;
-        };
-        buckets[fn_idx].push(fact.kind);
-    }
-    buckets
-}
-
-fn bucket_method_calls(facts: &[MethodCallFact], fn_count: usize) -> Vec<Vec<&str>> {
-    let mut buckets = vec![Vec::new(); fn_count];
-    for fact in facts {
-        let Some(fn_idx) = fact.containing_fn else {
-            continue;
-        };
-        buckets[fn_idx].push(&*fact.method_name);
-    }
-    buckets
-}
-
-fn count_bindings_by_fn(facts: &[BindingFact], fn_count: usize) -> Vec<usize> {
-    let mut counts = vec![0usize; fn_count];
-    for fact in facts {
-        let Some(fn_idx) = fact.containing_fn else {
-            continue;
-        };
-        counts[fn_idx] += 1;
-    }
-    counts
-}
-
-fn bucket_type_refs(facts: &[TypeRefFact], fn_count: usize) -> Vec<Vec<&str>> {
-    let mut buckets = vec![Vec::new(); fn_count];
-    for fact in facts {
-        let Some(fn_idx) = fact.containing_fn else {
-            continue;
-        };
-        buckets[fn_idx].push(&*fact.text);
-    }
-    buckets
-}
-
-fn hash_common_prefix(param_count: usize, has_return: bool, cf_kinds: &[ControlFlowKind]) -> u64 {
-    let mut h = FNV_OFFSET_BASIS;
-    h = fnv1a_usize(h, param_count);
-    h = fnv1a_bool(h, has_return);
-    for &kind in cf_kinds {
-        h = fnv1a_discriminant(h, kind);
-    }
-    h
-}
-
-fn compute_skeleton_hash(
-    param_count: usize,
-    has_return: bool,
-    cf_kinds: &[ControlFlowKind],
-    method_count: usize,
-    binding_count: usize,
-    type_ref_count: usize,
-) -> u64 {
-    let mut h = hash_common_prefix(param_count, has_return, cf_kinds);
-    h = fnv1a_usize(h, method_count);
-    h = fnv1a_usize(h, binding_count);
-    h = fnv1a_usize(h, type_ref_count);
-    h
-}
-
-fn compute_exact_hash(
-    param_count: usize,
-    has_return: bool,
-    cf_kinds: &[ControlFlowKind],
-    method_names: &[&str],
-    binding_count: usize,
-    type_ref_texts: &[&str],
-) -> u64 {
-    let mut h = hash_common_prefix(param_count, has_return, cf_kinds);
-    for name in method_names {
-        h = fnv1a_bytes(h, name.as_bytes());
-    }
-    h = fnv1a_usize(h, binding_count);
-    for text in type_ref_texts {
-        h = fnv1a_bytes(h, text.as_bytes());
-    }
-    h
+        .collect()
 }
 
 /// Enrich IR facts with resolved type information from semantic analysis.
+///
+/// Calls `analyze_file` once to get the cached `SemanticFileAnalysis`, then
+/// reads data flows (shared via `Arc`) and resolved types (from the eagerly
+/// populated cache) without reparsing the file.
 #[cfg(feature = "semantic")]
 fn enrich_ir(ir: &mut FileIr, ctx: &super::semantic::SemanticContext) {
     let file_path: &str = &ir.file_path;
-    enrich_bindings(&mut ir.bindings, file_path, ctx);
-    enrich_type_refs(&mut ir.type_refs, file_path, ctx);
-    enrich_method_calls(&mut ir.method_calls, &ir.bindings);
-    enrich_data_flows(ir, ctx);
-}
 
-/// Trace taint propagation, detect quality, performance, and concurrency issues, populating `ir.data_flows`.
-///
-/// Delegates to `SemanticContext::enrich_all_data_flows` which parses the file
-/// once and runs all detection passes within that single parse context.
-#[cfg(feature = "semantic")]
-fn enrich_data_flows(ir: &mut FileIr, ctx: &super::semantic::SemanticContext) {
-    ir.data_flows = ctx.enrich_all_data_flows(&ir.file_path);
-}
+    let Some(analysis) = ctx.analyze_file(file_path) else {
+        enrich_method_calls(&mut ir.method_calls, &ir.bindings);
+        return;
+    };
 
-/// Resolve binding types through aliases and update `is_refcounted`.
-#[cfg(feature = "semantic")]
-fn enrich_bindings(
-    bindings: &mut [BindingFact],
-    file_path: &str,
-    ctx: &super::semantic::SemanticContext,
-) {
-    for binding in bindings.iter_mut() {
-        let Some(type_span) = binding.type_annotation_span else {
+    // Share data flows via Arc — no deep copy.
+    ir.data_flows = std::sync::Arc::clone(analysis.data_flows());
+
+    // Resolve binding types from the cached analysis.
+    for i in 0..ir.bindings.len() {
+        let Some(span) = ir.bindings[i].type_annotation_span else {
             continue;
         };
-        let Some(resolved) = ctx.resolve_type(file_path, type_span.line, type_span.column) else {
+        let Some(resolved_type) = analysis.resolve_type(span.line, span.column) else {
             continue;
         };
-        if resolved.contains("Arc<") || resolved.contains("Rc<") {
-            binding.is_refcounted = true;
+        let owned: Box<str> = Box::from(resolved_type);
+        if owned.contains("Arc<") || owned.contains("Rc<") {
+            ir.bindings[i].is_refcounted = true;
         }
-        binding.resolved_type = Some(resolved);
+        ir.bindings[i].resolved_type = Some(owned);
     }
-}
 
-/// Resolve type references through aliases and update classification flags.
-#[cfg(feature = "semantic")]
-fn enrich_type_refs(
-    type_refs: &mut [TypeRefFact],
-    file_path: &str,
-    ctx: &super::semantic::SemanticContext,
-) {
-    for tr in type_refs.iter_mut() {
-        let Some(resolved) = ctx.resolve_type(file_path, tr.span.line, tr.span.column) else {
+    // Resolve type ref classification flags from the cached analysis.
+    for tr in ir.type_refs.iter_mut() {
+        let Some(resolved_type) = analysis.resolve_type(tr.span.line, tr.span.column) else {
             continue;
         };
-        if resolved.contains("dyn ") {
+        if resolved_type.contains("dyn ") {
             tr.involves_dyn = true;
         }
-        if resolved.contains("HashMap") && !resolved.contains("BuildHasher") {
+        if resolved_type.contains("HashMap") && !resolved_type.contains("BuildHasher") {
             tr.is_default_hasher = true;
         }
-        if resolved.contains("Vec") && resolved.contains("Box") && resolved.contains("dyn ") {
+        if resolved_type.contains("Vec")
+            && resolved_type.contains("Box")
+            && resolved_type.contains("dyn ")
+        {
             tr.is_vec_box_dyn = true;
         }
     }
+
+    enrich_method_calls(&mut ir.method_calls, &ir.bindings);
 }
 
 /// Resolve method call receiver types using enriched binding data.
 ///
 /// Looks up the receiver identifier's resolved type from the binding facts
-/// (already enriched by `enrich_bindings`). This works because `resolve_type`
-/// resolves type annotations but not expression-level references.
+/// (already enriched by `enrich_bindings`). Multiple calls on the same binding
+/// share a single `Arc<str>` allocation for the resolved type.
 #[cfg(feature = "semantic")]
 fn enrich_method_calls(method_calls: &mut [MethodCallFact], bindings: &[BindingFact]) {
     use std::collections::BTreeMap;
+    use std::sync::Arc;
 
-    let mut binding_types: BTreeMap<(Option<usize>, &str), &str> = BTreeMap::new();
+    let mut binding_types: BTreeMap<(Option<usize>, &str), Arc<str>> = BTreeMap::new();
     for b in bindings {
         let Some(resolved) = b.resolved_type.as_deref() else {
             continue;
         };
         binding_types
             .entry((b.containing_fn, &b.name))
-            .or_insert(resolved);
+            .or_insert_with(|| Arc::from(resolved));
     }
 
     for mc in method_calls.iter_mut() {
@@ -1395,6 +1335,6 @@ fn enrich_method_calls(method_calls: &mut [MethodCallFact], bindings: &[BindingF
             continue;
         };
         mc.is_copy_receiver = super::semantic::SemanticContext::is_copy(resolved);
-        mc.receiver_type = Some(Box::from(*resolved));
+        mc.receiver_type = Some(Arc::clone(resolved));
     }
 }

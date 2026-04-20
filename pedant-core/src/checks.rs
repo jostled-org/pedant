@@ -22,7 +22,7 @@ pub struct CheckInfo {
 /// Defines all check metadata in one place and generates:
 /// - `ViolationType` enum (unit and data-carrying variants)
 /// - `ViolationType::code()` returning the short code string
-/// - `ViolationType::check_name()` returning the category
+/// - `ViolationType::category()` returning the category
 /// - `ViolationType::rationale()` returning `CheckRationale`
 /// - `lookup_rationale()` free function
 /// - `ALL_CHECKS` constant array of `CheckInfo`
@@ -64,7 +64,7 @@ macro_rules! define_checks {
             }
 
             /// Returns the check category name (e.g., `"nesting"`, `"dispatch"`).
-            pub fn check_name(&self) -> &'static str {
+            pub fn category(&self) -> &'static str {
                 match self {
                     $(
                         Self::$variant $({ $field: _ })? => $cat,

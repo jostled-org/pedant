@@ -42,7 +42,9 @@ fn net_finding() -> CapabilityFinding {
             column: 0,
         },
         evidence: Arc::from("use std::net::TcpStream"),
-        build_script: false,
+        origin: None,
+        language: None,
+        execution_context: None,
         reachable: None,
     }
 }
@@ -56,7 +58,9 @@ fn fs_finding() -> CapabilityFinding {
             column: 0,
         },
         evidence: Arc::from("use std::fs::read"),
-        build_script: false,
+        origin: None,
+        language: None,
+        execution_context: None,
         reachable: None,
     }
 }
@@ -156,19 +160,17 @@ fn mixed_attestation_and_bare_profile() {
 #[test]
 fn missing_file_exit_2() {
     let existing = write_json_file(&make_profile(vec![]));
+    let missing_path = "/nonexistent/file.json";
 
     let output = common::run_pedant(
-        &[
-            "--diff",
-            existing.path().to_str().unwrap(),
-            "/nonexistent/file.json",
-        ],
+        &["--diff", existing.path().to_str().unwrap(), missing_path],
         None,
     );
 
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("failed to read diff input"));
+    assert!(stderr.contains(missing_path));
 }
 
 #[test]
@@ -176,19 +178,39 @@ fn invalid_json_exit_2() {
     let mut bad = NamedTempFile::new().unwrap();
     bad.write_all(b"not json at all").unwrap();
     let good = write_json_file(&make_profile(vec![]));
+    let bad_path = bad.path().to_str().unwrap().to_owned();
 
-    let output = common::run_pedant(
-        &[
-            "--diff",
-            good.path().to_str().unwrap(),
-            bad.path().to_str().unwrap(),
-        ],
-        None,
-    );
+    let output = common::run_pedant(&["--diff", good.path().to_str().unwrap(), &bad_path], None);
 
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("failed to parse diff input"));
+    assert!(stderr.contains(&bad_path));
+}
+
+#[test]
+fn malformed_attestation_reports_attestation_parse_error() {
+    let mut bad = NamedTempFile::new().unwrap();
+    bad.write_all(
+        br#"{
+  "spec_version": "0.1.0",
+  "crate_name": "test",
+  "crate_version": "0.0.1",
+  "analysis_tier": "syntactic",
+  "timestamp": 0,
+  "profile": { "findings": [] }
+}"#,
+    )
+    .unwrap();
+    let good = write_json_file(&make_profile(vec![]));
+    let bad_path = bad.path().to_str().unwrap().to_owned();
+
+    let output = common::run_pedant(&["--diff", good.path().to_str().unwrap(), &bad_path], None);
+
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("failed to parse diff input"));
+    assert!(stderr.contains("source_hash"), "stderr was: {stderr}");
 }
 
 #[test]

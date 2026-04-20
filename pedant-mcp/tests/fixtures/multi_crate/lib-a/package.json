@@ -1,0 +1,7 @@
+{
+  "name": "lib-a-hooks",
+  "version": "1.0.0",
+  "scripts": {
+    "postinstall": "node setup.js"
+  }
+}

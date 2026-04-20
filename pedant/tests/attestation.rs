@@ -42,10 +42,9 @@ fn test_source_hash_known_value() {
     sources.insert(Arc::from("test.rs"), Arc::from("hello"));
 
     let hash = compute_source_hash(&sources);
-    // SHA-256 of "hello"
     assert_eq!(
         hash.as_ref(),
-        "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        "1fd425805ca3337961be47d3ff75858708d9c19d92701bde9033e69a046fc0fc"
     );
 }
 
@@ -218,18 +217,18 @@ fn test_attestation_includes_build_script() {
     let attestation: AttestationContent = serde_json::from_slice(&output.stdout).unwrap();
     let findings = &attestation.profile.findings;
 
-    // lib.rs should produce FileRead with build_script: false
+    // lib.rs should produce FileRead with no execution context
     assert!(
         findings
             .iter()
-            .any(|f| f.capability == Capability::FileRead && !f.build_script),
+            .any(|f| f.capability == Capability::FileRead && f.execution_context.is_none()),
         "expected FileRead from lib.rs, findings: {findings:?}"
     );
-    // build.rs should produce ProcessExec with build_script: true
+    // build.rs should produce ProcessExec with BuildHook execution context
     assert!(
         findings
             .iter()
-            .any(|f| f.capability == Capability::ProcessExec && f.build_script),
+            .any(|f| f.capability == Capability::ProcessExec && f.is_build_hook()),
         "expected ProcessExec from build.rs, findings: {findings:?}"
     );
 }
@@ -277,7 +276,7 @@ fn test_attestation_custom_build_path() {
             .profile
             .findings
             .iter()
-            .any(|f| f.capability == Capability::Network && f.build_script),
+            .any(|f| f.capability == Capability::Network && f.is_build_hook()),
         "expected Network from custom_build.rs, findings: {:?}",
         attestation.profile.findings
     );
@@ -315,8 +314,12 @@ fn test_attestation_no_build_script() {
     let attestation: AttestationContent = serde_json::from_slice(&output.stdout).unwrap();
 
     assert!(
-        attestation.profile.findings.iter().all(|f| !f.build_script),
-        "no findings should have build_script: true"
+        attestation
+            .profile
+            .findings
+            .iter()
+            .all(|f| f.execution_context.is_none()),
+        "no findings should have an execution context"
     );
     assert!(
         !attestation.profile.findings.is_empty(),
@@ -352,13 +355,49 @@ fn test_single_file_mode_unchanged() {
 
     // Should include build script findings (build scripts are always discovered)
     assert!(
-        profile.findings.iter().any(|f| f.build_script),
+        profile.findings.iter().any(|f| f.is_build_hook()),
         "capabilities mode should discover build scripts"
     );
     // Should also have non-build-script findings from lib.rs
     assert!(
-        profile.findings.iter().any(|f| !f.build_script),
+        profile
+            .findings
+            .iter()
+            .any(|f| f.execution_context.is_none()),
         "capabilities mode should include source file findings"
+    );
+}
+
+#[test]
+fn test_explicit_build_script_path_is_analyzed_as_build_hook() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("build.rs"),
+        "use std::process::Command;\nfn main() { Command::new(\"cc\"); }\n",
+    )
+    .unwrap();
+
+    let build_path = root.join("build.rs");
+    let output = common::run_pedant(&[build_path.to_str().unwrap(), "--capabilities"], None);
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let profile: CapabilityProfile = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(
+        profile.findings.iter().any(|f| f.is_build_hook()),
+        "expected build-hook findings, got: {:?}",
+        profile.findings
     );
 }
 

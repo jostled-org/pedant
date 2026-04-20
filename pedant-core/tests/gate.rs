@@ -2,19 +2,26 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use pedant_core::check_config::{GateConfig, GateRuleOverride};
-use pedant_core::gate::{GateSeverity, all_gate_rules, evaluate_gate_rules};
+use pedant_core::gate::{GateInputSummary, GateSeverity, all_gate_rules, evaluate_gate_rules};
 use pedant_core::ir::{DataFlowFact, DataFlowKind, IrSpan};
-use pedant_types::{Capability, CapabilityFinding, CapabilityProfile, SourceLocation};
+use pedant_types::{
+    Capability, CapabilityFinding, CapabilityProfile, ExecutionContext, FindingOrigin,
+    SourceLocation,
+};
 
-fn finding(capability: Capability, build_script: bool) -> CapabilityFinding {
-    finding_with_evidence(capability, build_script, "test evidence")
+fn finding(capability: Capability, build_hook: bool) -> CapabilityFinding {
+    finding_with_evidence(capability, build_hook, "test evidence")
 }
 
 fn finding_with_evidence(
     capability: Capability,
-    build_script: bool,
+    build_hook: bool,
     evidence: &str,
 ) -> CapabilityFinding {
+    let execution_context = match build_hook {
+        true => Some(ExecutionContext::BuildHook),
+        false => None,
+    };
     CapabilityFinding {
         capability,
         location: SourceLocation {
@@ -23,8 +30,21 @@ fn finding_with_evidence(
             column: 1,
         },
         evidence: Arc::from(evidence),
-        build_script,
+        origin: None,
+        language: None,
+        execution_context,
         reachable: None,
+    }
+}
+
+fn finding_with_origin(
+    capability: Capability,
+    origin: FindingOrigin,
+    evidence: &str,
+) -> CapabilityFinding {
+    CapabilityFinding {
+        origin: Some(origin),
+        ..finding_with_evidence(capability, false, evidence)
     }
 }
 
@@ -34,10 +54,20 @@ fn profile(findings: Vec<CapabilityFinding>) -> CapabilityProfile {
     }
 }
 
+/// Convenience wrapper: build summary and evaluate in one call.
+fn eval(
+    findings: &[CapabilityFinding],
+    data_flows: &[DataFlowFact],
+    config: &GateConfig,
+) -> Box<[pedant_core::gate::GateVerdict]> {
+    let summary = GateInputSummary::from_analysis(findings, data_flows);
+    evaluate_gate_rules(&summary, config)
+}
+
 #[test]
 fn test_build_script_network_denied() {
     let p = profile(vec![finding(Capability::Network, true)]);
-    let verdicts = evaluate_gate_rules(&p.findings, &[], &GateConfig::default());
+    let verdicts = eval(&p.findings, &[], &GateConfig::default());
     let v = verdicts
         .iter()
         .find(|v| v.rule == "build-script-network")
@@ -51,7 +81,7 @@ fn test_build_script_download_exec_denied() {
         finding(Capability::Network, true),
         finding(Capability::ProcessExec, true),
     ]);
-    let verdicts = evaluate_gate_rules(&p.findings, &[], &GateConfig::default());
+    let verdicts = eval(&p.findings, &[], &GateConfig::default());
 
     let download_exec = verdicts
         .iter()
@@ -68,7 +98,7 @@ fn test_build_script_download_exec_denied() {
 #[test]
 fn test_build_script_exec_warns() {
     let p = profile(vec![finding(Capability::ProcessExec, true)]);
-    let verdicts = evaluate_gate_rules(&p.findings, &[], &GateConfig::default());
+    let verdicts = eval(&p.findings, &[], &GateConfig::default());
     let v = verdicts
         .iter()
         .find(|v| v.rule == "build-script-exec")
@@ -82,7 +112,7 @@ fn test_proc_macro_network_denied() {
         finding(Capability::ProcMacro, false),
         finding(Capability::Network, false),
     ]);
-    let verdicts = evaluate_gate_rules(&p.findings, &[], &GateConfig::default());
+    let verdicts = eval(&p.findings, &[], &GateConfig::default());
     let v = verdicts
         .iter()
         .find(|v| v.rule == "proc-macro-network")
@@ -93,7 +123,7 @@ fn test_proc_macro_network_denied() {
 #[test]
 fn test_clean_profile_no_verdicts() {
     let p = profile(vec![finding(Capability::FileRead, false)]);
-    let verdicts = evaluate_gate_rules(&p.findings, &[], &GateConfig::default());
+    let verdicts = eval(&p.findings, &[], &GateConfig::default());
     assert!(
         verdicts.is_empty(),
         "expected no verdicts for clean profile"
@@ -106,7 +136,7 @@ fn test_runtime_findings_skip_build_rules() {
         finding(Capability::Network, false),
         finding(Capability::ProcessExec, false),
     ]);
-    let verdicts = evaluate_gate_rules(&p.findings, &[], &GateConfig::default());
+    let verdicts = eval(&p.findings, &[], &GateConfig::default());
     let build_verdicts: Vec<_> = verdicts
         .iter()
         .filter(|v| v.rule.starts_with("build-script-"))
@@ -129,7 +159,7 @@ fn test_rule_disabled_via_config() {
         enabled: true,
         overrides,
     };
-    let verdicts = evaluate_gate_rules(&p.findings, &[], &config);
+    let verdicts = eval(&p.findings, &[], &config);
     assert!(
         !verdicts.iter().any(|v| v.rule == "build-script-network"),
         "disabled rule should not produce a verdict"
@@ -148,7 +178,7 @@ fn test_severity_override_via_config() {
         enabled: true,
         overrides,
     };
-    let verdicts = evaluate_gate_rules(&p.findings, &[], &config);
+    let verdicts = eval(&p.findings, &[], &config);
     let v = verdicts
         .iter()
         .find(|v| v.rule == "build-script-network")
@@ -166,10 +196,27 @@ fn test_gate_disabled_entirely() {
         enabled: false,
         overrides: BTreeMap::new(),
     };
-    let verdicts = evaluate_gate_rules(&p.findings, &[], &config);
+    let verdicts = eval(&p.findings, &[], &config);
     assert!(
         verdicts.is_empty(),
         "disabled gate should produce no verdicts"
+    );
+}
+
+#[test]
+fn test_gate_config_rejects_unknown_rule_name() {
+    let error = toml::from_str::<GateConfig>(
+        r#"
+        enabled = true
+        unknown-rule = "warn"
+        "#,
+    )
+    .expect_err("unknown gate rule should fail");
+
+    assert!(
+        error
+            .to_string()
+            .contains("unknown gate rule 'unknown-rule'")
     );
 }
 
@@ -198,7 +245,7 @@ fn test_env_access_network_info() {
         finding(Capability::EnvAccess, false),
         finding(Capability::Network, false),
     ]);
-    let verdicts = evaluate_gate_rules(&p.findings, &[], &GateConfig::default());
+    let verdicts = eval(&p.findings, &[], &GateConfig::default());
     let v = verdicts
         .iter()
         .find(|v| v.rule == "env-access-network")
@@ -209,7 +256,7 @@ fn test_env_access_network_info() {
 #[test]
 fn test_env_access_alone_no_verdict() {
     let p = profile(vec![finding(Capability::EnvAccess, false)]);
-    let verdicts = evaluate_gate_rules(&p.findings, &[], &GateConfig::default());
+    let verdicts = eval(&p.findings, &[], &GateConfig::default());
     assert!(
         !verdicts.iter().any(|v| v.rule == "env-access-network"),
         "env-access-network should not fire without Network"
@@ -226,7 +273,7 @@ fn test_key_material_network_warns() {
         ),
         finding(Capability::Network, false),
     ]);
-    let verdicts = evaluate_gate_rules(&p.findings, &[], &GateConfig::default());
+    let verdicts = eval(&p.findings, &[], &GateConfig::default());
     let v = verdicts
         .iter()
         .find(|v| v.rule == "key-material-network")
@@ -240,7 +287,7 @@ fn test_crypto_import_network_no_key_material_verdict() {
         finding_with_evidence(Capability::Crypto, false, "sha2::Digest"),
         finding(Capability::Network, false),
     ]);
-    let verdicts = evaluate_gate_rules(&p.findings, &[], &GateConfig::default());
+    let verdicts = eval(&p.findings, &[], &GateConfig::default());
     assert!(
         !verdicts.iter().any(|v| v.rule == "key-material-network"),
         "import-based crypto should not trigger key-material-network"
@@ -257,7 +304,7 @@ fn test_pem_key_material_network() {
         ),
         finding(Capability::Network, false),
     ]);
-    let verdicts = evaluate_gate_rules(&p.findings, &[], &GateConfig::default());
+    let verdicts = eval(&p.findings, &[], &GateConfig::default());
     assert!(
         verdicts.iter().any(|v| v.rule == "key-material-network"),
         "PEM key material with network should trigger key-material-network"
@@ -293,7 +340,7 @@ fn flow_fact(source: Capability, sink: Capability) -> DataFlowFact {
 #[test]
 fn test_env_to_network_gate_rule() {
     let flows = [flow_fact(Capability::EnvAccess, Capability::Network)];
-    let verdicts = evaluate_gate_rules(&[], &flows, &GateConfig::default());
+    let verdicts = eval(&[], &flows, &GateConfig::default());
     let v = verdicts
         .iter()
         .find(|v| v.rule == "env-to-network")
@@ -304,7 +351,7 @@ fn test_env_to_network_gate_rule() {
 #[test]
 fn test_file_to_network_gate_rule() {
     let flows = [flow_fact(Capability::FileRead, Capability::Network)];
-    let verdicts = evaluate_gate_rules(&[], &flows, &GateConfig::default());
+    let verdicts = eval(&[], &flows, &GateConfig::default());
     let v = verdicts
         .iter()
         .find(|v| v.rule == "file-to-network")
@@ -315,7 +362,7 @@ fn test_file_to_network_gate_rule() {
 #[test]
 fn test_network_to_exec_gate_rule() {
     let flows = [flow_fact(Capability::Network, Capability::ProcessExec)];
-    let verdicts = evaluate_gate_rules(&[], &flows, &GateConfig::default());
+    let verdicts = eval(&[], &flows, &GateConfig::default());
     let v = verdicts
         .iter()
         .find(|v| v.rule == "network-to-exec")
@@ -329,7 +376,7 @@ fn test_flow_rules_dont_fire_without_data_flows() {
         finding(Capability::EnvAccess, false),
         finding(Capability::Network, false),
     ];
-    let verdicts = evaluate_gate_rules(&findings, &[], &GateConfig::default());
+    let verdicts = eval(&findings, &[], &GateConfig::default());
 
     // Flow-aware rules should NOT fire without data flows
     assert!(
@@ -368,7 +415,7 @@ fn test_dead_store_gate_rule() {
         DataFlowKind::DeadStore,
         "x overwritten before read",
     )];
-    let verdicts = evaluate_gate_rules(&[], &flows, &GateConfig::default());
+    let verdicts = eval(&[], &flows, &GateConfig::default());
     let v = verdicts
         .iter()
         .find(|v| v.rule == "dead-store")
@@ -382,7 +429,7 @@ fn test_unnecessary_clone_gate_rule() {
         DataFlowKind::UnnecessaryClone,
         "s.clone() but s never used after",
     )];
-    let verdicts = evaluate_gate_rules(&[], &flows, &GateConfig::default());
+    let verdicts = eval(&[], &flows, &GateConfig::default());
     let v = verdicts
         .iter()
         .find(|v| v.rule == "unnecessary-clone")
@@ -396,7 +443,7 @@ fn test_lock_across_await_gate_rule() {
         DataFlowKind::LockAcrossAwait,
         "guard held across .await",
     )];
-    let verdicts = evaluate_gate_rules(&[], &flows, &GateConfig::default());
+    let verdicts = eval(&[], &flows, &GateConfig::default());
     let v = verdicts
         .iter()
         .find(|v| v.rule == "lock-across-await")
@@ -410,7 +457,7 @@ fn test_inconsistent_lock_order_gate_rule() {
         DataFlowKind::InconsistentLockOrder,
         "m1,m2 vs m2,m1",
     )];
-    let verdicts = evaluate_gate_rules(&[], &flows, &GateConfig::default());
+    let verdicts = eval(&[], &flows, &GateConfig::default());
     let v = verdicts
         .iter()
         .find(|v| v.rule == "inconsistent-lock-order")
@@ -474,7 +521,7 @@ fn test_data_flow_kind_display_returns_kebab_case() {
 
 #[test]
 fn test_quality_perf_rules_dont_fire_without_dataflow() {
-    let verdicts = evaluate_gate_rules(&[], &[], &GateConfig::default());
+    let verdicts = eval(&[], &[], &GateConfig::default());
     let new_rule_names = [
         "dead-store",
         "discarded-result",
@@ -502,7 +549,7 @@ fn swallowed_ok_gate_rule_fires_on_kind() {
         DataFlowKind::SwallowedOk,
         ".ok() on Result where Option is discarded",
     )];
-    let verdicts = evaluate_gate_rules(&[], &flows, &GateConfig::default());
+    let verdicts = eval(&[], &flows, &GateConfig::default());
     let v = verdicts
         .iter()
         .find(|v| v.rule == "swallowed-ok")
@@ -516,7 +563,7 @@ fn unobserved_spawn_gate_rule_fires_on_kind() {
         DataFlowKind::UnobservedSpawn,
         "Thread spawned with dropped JoinHandle",
     )];
-    let verdicts = evaluate_gate_rules(&[], &flows, &GateConfig::default());
+    let verdicts = eval(&[], &flows, &GateConfig::default());
     let v = verdicts
         .iter()
         .find(|v| v.rule == "unobserved-spawn")
@@ -530,10 +577,132 @@ fn immutable_growable_gate_rule_fires_on_kind() {
         DataFlowKind::ImmutableGrowable,
         "Vec never mutated after construction",
     )];
-    let verdicts = evaluate_gate_rules(&[], &flows, &GateConfig::default());
+    let verdicts = eval(&[], &flows, &GateConfig::default());
     let v = verdicts
         .iter()
         .find(|v| v.rule == "immutable-growable")
         .expect("expected immutable-growable verdict");
     assert_eq!(v.severity, GateSeverity::Info);
+}
+
+// --- Step 4: Origin-aware key material gate rule ---
+
+#[test]
+fn key_material_gate_uses_origin_import_not_key_material() {
+    // Import-based crypto finding should NOT count as embedded key material.
+    let p = profile(vec![
+        finding_with_origin(Capability::Crypto, FindingOrigin::Import, "sha2::Digest"),
+        finding(Capability::Network, false),
+    ]);
+    let verdicts = eval(&p.findings, &[], &GateConfig::default());
+    assert!(
+        !verdicts.iter().any(|v| v.rule == "key-material-network"),
+        "import-based crypto with origin metadata should not trigger key-material-network"
+    );
+}
+
+#[test]
+fn key_material_gate_uses_origin_string_literal_is_key_material() {
+    // String-literal crypto finding SHOULD count as embedded key material.
+    let p = profile(vec![
+        finding_with_origin(
+            Capability::Crypto,
+            FindingOrigin::StringLiteral,
+            "0a1b2c3d…0a1b",
+        ),
+        finding(Capability::Network, false),
+    ]);
+    let verdicts = eval(&p.findings, &[], &GateConfig::default());
+    assert!(
+        verdicts.iter().any(|v| v.rule == "key-material-network"),
+        "string-literal crypto with origin metadata should trigger key-material-network"
+    );
+}
+
+#[test]
+fn key_material_gate_falls_back_to_heuristic_for_legacy() {
+    // Findings without origin metadata should still work via the evidence heuristic.
+    let p = profile(vec![
+        finding_with_evidence(
+            Capability::Crypto,
+            false,
+            "0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b",
+        ),
+        finding(Capability::Network, false),
+    ]);
+    let verdicts = eval(&p.findings, &[], &GateConfig::default());
+    assert!(
+        verdicts.iter().any(|v| v.rule == "key-material-network"),
+        "legacy finding without origin should fall back to evidence heuristic"
+    );
+}
+
+// --- Step 4: Summary-based gate evaluation ---
+
+#[test]
+fn gate_verdicts_match_before_and_after_summary_evaluation() {
+    // Mix of capability findings triggering multiple rule categories.
+    let findings = vec![
+        finding(Capability::Network, true),     // build-script-network
+        finding(Capability::ProcessExec, true), // build-script-exec, build-script-download-exec
+        finding(Capability::FileWrite, true),   // build-script-file-write
+        finding(Capability::ProcMacro, false),  // proc-macro-network (with Network above)
+        finding(Capability::EnvAccess, false),  // env-access-network (with Network)
+        finding(Capability::Network, false),    // runtime network
+        finding_with_origin(
+            // key-material-network
+            Capability::Crypto,
+            FindingOrigin::StringLiteral,
+            "0a1b2c3d…0a1b",
+        ),
+    ];
+    // Mix of data-flow facts triggering flow and quality/perf/concurrency rules.
+    let data_flows = vec![
+        flow_fact(Capability::EnvAccess, Capability::Network), // env-to-network
+        flow_fact(Capability::FileRead, Capability::Network),  // file-to-network
+        kind_fact(DataFlowKind::DeadStore, "x overwritten"),   // dead-store
+        kind_fact(DataFlowKind::LockAcrossAwait, "guard held"), // lock-across-await
+        kind_fact(DataFlowKind::UnnecessaryClone, "s.clone()"), // unnecessary-clone
+    ];
+    let config = GateConfig::default();
+
+    // Build summary and evaluate through the summary path.
+    let summary = GateInputSummary::from_analysis(&findings, &data_flows);
+    let verdicts = evaluate_gate_rules(&summary, &config);
+
+    // All expected rules must fire.
+    let rules: Vec<&str> = verdicts.iter().map(|v| v.rule).collect();
+    let expected = [
+        "build-script-network",
+        "build-script-exec",
+        "build-script-download-exec",
+        "build-script-file-write",
+        "proc-macro-network",
+        "env-access-network",
+        "key-material-network",
+        "env-to-network",
+        "file-to-network",
+        "dead-store",
+        "lock-across-await",
+        "unnecessary-clone",
+    ];
+    for name in expected {
+        assert!(
+            rules.contains(&name),
+            "expected rule {name} to fire, got: {rules:?}"
+        );
+    }
+
+    // Rules that should NOT fire (no matching data).
+    let absent = [
+        "network-to-exec",
+        "redundant-collect",
+        "inconsistent-lock-order",
+    ];
+    for name in absent {
+        assert!(
+            !rules.contains(&name),
+            "rule {name} should not fire, got: {rules:?}"
+        );
+    }
 }

@@ -47,7 +47,9 @@ pub use check_config::{
     PatternOverride,
 };
 pub use checks::{ALL_CHECKS, CheckInfo};
-pub use gate::{GateRuleInfo, GateSeverity, GateVerdict, all_gate_rules, evaluate_gate_rules};
+pub use gate::{
+    GateInputSummary, GateRuleInfo, GateSeverity, GateVerdict, all_gate_rules, evaluate_gate_rules,
+};
 pub use lint::{
     LintError, analyze, analyze_build_script, analyze_with_build_script, determine_analysis_tier,
     discover_build_script, discover_workspace_root, lint_file, lint_str,
@@ -57,4 +59,6 @@ pub use violation::{CheckRationale, Violation, ViolationType, lookup_rationale};
 /// Alias for `syn::Error`, used by consumers that call [`analyze`] directly.
 pub use syn::Error as ParseError;
 
-pub use ir::semantic::SemanticContext;
+#[cfg(feature = "semantic")]
+pub use ir::semantic::FunctionAnalysisSummary;
+pub use ir::semantic::{SemanticContext, SemanticFileAnalysis};

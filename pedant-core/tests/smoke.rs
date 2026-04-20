@@ -82,7 +82,7 @@ fn connect() {
 "#;
     let syntax = syn::parse_file(source).unwrap();
     let file_ir = ir::extract("test.rs", &syntax, None);
-    let profile = detect_capabilities(&file_ir, false);
+    let profile = detect_capabilities(&file_ir, None);
     let caps = profile.capabilities();
 
     assert!(caps.contains(&Capability::Network));

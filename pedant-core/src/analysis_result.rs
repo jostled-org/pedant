@@ -10,7 +10,8 @@ pub struct AnalysisResult {
     /// Capability findings from use-path and string-literal detection.
     pub capabilities: CapabilityProfile,
     /// Cross-function data flow edges (populated only by semantic enrichment).
-    pub data_flows: Box<[DataFlowFact]>,
+    /// `Arc<[T]>` shared with the semantic file analysis cache — no deep copy.
+    pub data_flows: std::sync::Arc<[DataFlowFact]>,
     /// Structural fingerprints for duplicate detection (one per function).
     pub fn_fingerprints: Box<[FnFingerprint]>,
 }

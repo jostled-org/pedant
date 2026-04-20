@@ -1,7 +1,15 @@
 use clap::Parser;
-
-use crate::reporter::OutputFormat;
 use pedant_core::check_config::{CheckConfig, ConfigFile};
+
+/// Selects how violations and gate verdicts are rendered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::ValueEnum)]
+pub enum OutputFormat {
+    /// One violation per line, suitable for editor integration.
+    #[default]
+    Text,
+    /// Machine-readable JSON array.
+    Json,
+}
 
 /// CLI flags and arguments parsed by `clap`.
 #[derive(Parser, Debug)]
@@ -84,6 +92,10 @@ pub struct Cli {
     /// Crate version for attestation output
     #[arg(long, value_name = "VERSION")]
     pub crate_version: Option<String>,
+
+    /// Merge findings across all languages for gate evaluation
+    #[arg(long)]
+    pub cross_language: bool,
 
     /// Enable semantic analysis via rust-analyzer for type-aware checks
     #[cfg(feature = "semantic")]

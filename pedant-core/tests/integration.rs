@@ -1,6 +1,7 @@
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use pedant_core::check_config::{CheckConfig, NamingCheck, PatternCheck};
+use pedant_core::check_config::{CheckConfig, ConfigFile, NamingCheck, PathOverride, PatternCheck};
 use pedant_core::lint::analyze;
 use pedant_core::violation::ViolationType;
 use pedant_core::{Config, lint_file, lint_str};
@@ -848,6 +849,129 @@ fn test_high_param_count_disabled_by_default() {
             .iter()
             .all(|v| !matches!(v.violation_type, ViolationType::HighParamCount))
     );
+}
+
+/// Most specific (longest) matching override wins, regardless of insertion order.
+#[test]
+fn test_path_override_precedence_matches_documented_behavior() {
+    let base = CheckConfig::default();
+
+    // Two overlapping overrides: broad "src/**" sets max_depth=10,
+    // specific "src/hot/**" sets max_depth=2.
+    // The specific one should win for "src/hot/inner.rs".
+    let mut overrides = BTreeMap::new();
+    overrides.insert(
+        Box::from("src/**"),
+        PathOverride {
+            max_depth: Some(10),
+            ..PathOverride::default()
+        },
+    );
+    overrides.insert(
+        Box::from("src/hot/**"),
+        PathOverride {
+            max_depth: Some(2),
+            ..PathOverride::default()
+        },
+    );
+
+    let fc = ConfigFile {
+        overrides,
+        ..ConfigFile::default()
+    };
+
+    // "src/hot/inner.rs" matches both; the more specific "src/hot/**" should win.
+    let resolved = base
+        .resolve_for_path("src/hot/inner.rs", Some(&fc))
+        .expect("override should not disable analysis");
+    assert_eq!(resolved.max_depth, 2, "most-specific override should win");
+
+    // "src/other.rs" matches only "src/**"; should get max_depth=10.
+    let resolved = base
+        .resolve_for_path("src/other.rs", Some(&fc))
+        .expect("override should not disable analysis");
+    assert_eq!(
+        resolved.max_depth, 10,
+        "only matching override should apply"
+    );
+
+    // "lib/foo.rs" matches neither; should get base default.
+    let resolved = base
+        .resolve_for_path("lib/foo.rs", Some(&fc))
+        .expect("no override, base config returned");
+    assert_eq!(
+        resolved.max_depth,
+        CheckConfig::default().max_depth,
+        "non-matching path gets base config"
+    );
+}
+
+/// When an override disables analysis, resolve_for_path returns None.
+#[test]
+fn test_path_override_disabled_most_specific_wins() {
+    let base = CheckConfig::default();
+
+    let mut overrides = BTreeMap::new();
+    // Broad pattern enables, specific pattern disables.
+    overrides.insert(
+        Box::from("tests/**"),
+        PathOverride {
+            max_depth: Some(10),
+            ..PathOverride::default()
+        },
+    );
+    overrides.insert(
+        Box::from("tests/generated/**"),
+        PathOverride {
+            enabled: Some(false),
+            ..PathOverride::default()
+        },
+    );
+
+    let fc = ConfigFile {
+        overrides,
+        ..ConfigFile::default()
+    };
+
+    // "tests/generated/foo.rs" should be disabled by the more specific override.
+    let resolved = base.resolve_for_path("tests/generated/foo.rs", Some(&fc));
+    assert!(
+        resolved.is_none(),
+        "most-specific override disables analysis"
+    );
+
+    // "tests/unit.rs" should still get the broad override.
+    let resolved = base
+        .resolve_for_path("tests/unit.rs", Some(&fc))
+        .expect("broad override applies");
+    assert_eq!(resolved.max_depth, 10);
+}
+
+#[test]
+fn test_config_file_rejects_unknown_top_level_key() {
+    let error = toml::from_str::<ConfigFile>(
+        r#"
+        max_depth = 4
+        unknown_key = true
+        "#,
+    )
+    .expect_err("unknown top-level key should fail");
+
+    assert!(error.to_string().contains("unknown field `unknown_key`"));
+}
+
+#[test]
+fn test_config_file_rejects_unknown_path_override_key() {
+    let error = toml::from_str::<ConfigFile>(
+        r#"
+        [overrides."src/**"]
+        max_depth = 4
+        unknown_key = true
+        "#,
+    )
+    .expect_err("unknown override key should fail");
+
+    assert!(error.to_string().contains("unknown field `unknown_key`"));
 }
 
 fn naming_config() -> CheckConfig {

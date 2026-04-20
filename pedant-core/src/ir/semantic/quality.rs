@@ -5,28 +5,24 @@
 
 use std::collections::BTreeMap;
 
-use line_index::LineIndex;
 use ra_ap_hir::Semantics;
 use ra_ap_ide::RootDatabase;
 use ra_ap_syntax::{AstNode, SyntaxKind, SyntaxNode, ast};
 
 use super::super::facts::{DataFlowFact, DataFlowKind, IrSpan};
 use super::common::{
-    ParsedFile, expr_references_binding, extract_binding_name, quality_fact,
+    FnContext, expr_references_binding, extract_binding_name, quality_fact,
     resolve_call_to_function, span_from_node,
 };
 
 /// Detect all quality issues within a function body.
-pub(super) fn detect_quality_in_fn(
-    pf: &ParsedFile<'_>,
-    stmt_list: &ast::StmtList,
-) -> Box<[DataFlowFact]> {
+pub(super) fn detect(ctx: &FnContext<'_>) -> Box<[DataFlowFact]> {
     let mut facts = Vec::new();
-    detect_dead_stores(stmt_list, pf.line_index, &mut facts);
-    detect_discarded_results(&pf.sema, stmt_list, pf.db, pf.line_index, &mut facts);
-    detect_partial_error_handling(&pf.sema, stmt_list, pf.db, pf.line_index, &mut facts);
-    detect_swallowed_ok(&pf.sema, stmt_list, pf.db, pf.line_index, &mut facts);
-    detect_immutable_growable(pf, stmt_list, pf.line_index, &mut facts);
+    detect_dead_stores(ctx, &mut facts);
+    detect_discarded_results(ctx, &mut facts);
+    detect_partial_error_handling(ctx, &mut facts);
+    detect_swallowed_ok(ctx, &mut facts);
+    detect_immutable_growable(ctx, &mut facts);
     facts.into_boxed_slice()
 }
 
@@ -36,17 +32,13 @@ pub(super) fn detect_quality_in_fn(
 type BindingState = (bool, IrSpan);
 
 /// Detect dead stores: a mutable binding reassigned without the previous value being read.
-fn detect_dead_stores(
-    stmt_list: &ast::StmtList,
-    line_index: &LineIndex,
-    out: &mut Vec<DataFlowFact>,
-) {
+fn detect_dead_stores(ctx: &FnContext<'_>, out: &mut Vec<DataFlowFact>) {
     let mut bindings: BTreeMap<Box<str>, BindingState> = BTreeMap::new();
 
-    for stmt in stmt_list.statements() {
-        process_stmt_for_dead_stores(&stmt, line_index, &mut bindings, out);
+    for stmt in ctx.stmts.iter() {
+        process_stmt_for_dead_stores(stmt, ctx, &mut bindings, out);
     }
-    if let Some(tail) = stmt_list.tail_expr() {
+    if let Some(tail) = &ctx.tail_expr {
         mark_reads_in_node(tail.syntax(), &mut bindings);
     }
 }
@@ -54,16 +46,16 @@ fn detect_dead_stores(
 /// Process a single statement for dead store tracking.
 fn process_stmt_for_dead_stores(
     stmt: &ast::Stmt,
-    line_index: &LineIndex,
+    ctx: &FnContext<'_>,
     bindings: &mut BTreeMap<Box<str>, BindingState>,
     out: &mut Vec<DataFlowFact>,
 ) {
     match stmt {
         ast::Stmt::LetStmt(let_stmt) => {
-            process_let_for_dead_stores(let_stmt, stmt, line_index, bindings);
+            process_let_for_dead_stores(let_stmt, stmt, ctx, bindings);
         }
         ast::Stmt::ExprStmt(expr_stmt) => {
-            process_expr_stmt_for_dead_stores(expr_stmt, stmt, line_index, bindings, out);
+            process_expr_stmt_for_dead_stores(expr_stmt, stmt, ctx, bindings, out);
         }
         ast::Stmt::Item(_) => {}
     }
@@ -73,7 +65,7 @@ fn process_stmt_for_dead_stores(
 fn process_let_for_dead_stores(
     let_stmt: &ast::LetStmt,
     stmt: &ast::Stmt,
-    line_index: &LineIndex,
+    ctx: &FnContext<'_>,
     bindings: &mut BTreeMap<Box<str>, BindingState>,
 ) {
     let Some(pat) = let_stmt.pat() else { return };
@@ -83,7 +75,7 @@ fn process_let_for_dead_stores(
             let Some(name) = extract_binding_name(&pat) else {
                 return;
             };
-            let span = span_from_node(stmt.syntax(), line_index);
+            let span = ctx.span(stmt.syntax());
             bindings
                 .entry(name)
                 .and_modify(|state| *state = (false, span))
@@ -97,13 +89,12 @@ fn process_let_for_dead_stores(
 fn process_expr_stmt_for_dead_stores(
     expr_stmt: &ast::ExprStmt,
     stmt: &ast::Stmt,
-    line_index: &LineIndex,
+    ctx: &FnContext<'_>,
     bindings: &mut BTreeMap<Box<str>, BindingState>,
     out: &mut Vec<DataFlowFact>,
 ) {
     let Some(expr) = expr_stmt.expr() else { return };
-    let assignment = extract_assignment(&expr);
-    let Some((lhs_name, rhs)) = assignment else {
+    let Some((lhs_name, rhs)) = extract_assignment(&expr) else {
         mark_reads_in_node(stmt.syntax(), bindings);
         return;
     };
@@ -120,12 +111,12 @@ fn process_expr_stmt_for_dead_stores(
         out.push(quality_fact(
             DataFlowKind::DeadStore,
             state.1,
-            span_from_node(stmt.syntax(), line_index),
+            ctx.span(stmt.syntax()),
             format!("value of `{lhs_name}` overwritten before being read").into_boxed_str(),
         ));
     }
 
-    *state = (false, span_from_node(stmt.syntax(), line_index));
+    *state = (false, ctx.span(stmt.syntax()));
 }
 
 /// Extract (lhs_name, rhs_expr) from an assignment expression, or None.
@@ -202,14 +193,8 @@ fn mark_format_captures(text: &str, bindings: &mut BTreeMap<Box<str>, BindingSta
 // --- Discarded result detection ---
 
 /// Detect discarded results: call expressions as statements where the callee returns Result.
-fn detect_discarded_results(
-    sema: &Semantics<'_, RootDatabase>,
-    stmt_list: &ast::StmtList,
-    db: &RootDatabase,
-    line_index: &LineIndex,
-    out: &mut Vec<DataFlowFact>,
-) {
-    for stmt in stmt_list.statements() {
+fn detect_discarded_results(ctx: &FnContext<'_>, out: &mut Vec<DataFlowFact>) {
+    for stmt in ctx.stmts.iter() {
         let ast::Stmt::ExprStmt(expr_stmt) = &stmt else {
             continue;
         };
@@ -219,10 +204,10 @@ fn detect_discarded_results(
         if extract_assignment(&expr).is_some() {
             continue;
         }
-        if !expr_returns_result(sema, &expr, db) {
+        if !expr_returns_result(ctx.sema, &expr, ctx.db) {
             continue;
         }
-        let span = span_from_node(stmt.syntax(), line_index);
+        let span = ctx.span(stmt.syntax());
         out.push(quality_fact(
             DataFlowKind::DiscardedResult,
             span,
@@ -272,39 +257,31 @@ fn callee_returns_result(
 // --- Partial error handling detection ---
 
 /// Detect partial error handling: Result-typed bindings handled in some match arms but not others.
-fn detect_partial_error_handling(
-    sema: &Semantics<'_, RootDatabase>,
-    stmt_list: &ast::StmtList,
-    db: &RootDatabase,
-    line_index: &LineIndex,
-    out: &mut Vec<DataFlowFact>,
-) {
-    let result_bindings = collect_result_bindings(sema, stmt_list, db, line_index);
+///
+/// Uses precomputed `ctx.match_exprs` instead of rescanning the statement
+/// list per Result binding.
+fn detect_partial_error_handling(ctx: &FnContext<'_>, out: &mut Vec<DataFlowFact>) {
+    let result_bindings = collect_result_bindings(ctx);
 
     for (name, def_span) in &*result_bindings {
-        check_partial_handling_in_stmts(name, def_span, stmt_list, line_index, out);
+        check_partial_handling(name, def_span, &ctx.match_exprs, ctx.line_index, out);
     }
 }
 
 /// Collect all Result-typed let bindings from a statement list.
-fn collect_result_bindings(
-    sema: &Semantics<'_, RootDatabase>,
-    stmt_list: &ast::StmtList,
-    db: &RootDatabase,
-    line_index: &LineIndex,
-) -> Box<[(Box<str>, IrSpan)]> {
-    stmt_list
-        .statements()
+fn collect_result_bindings(ctx: &FnContext<'_>) -> Box<[(Box<str>, IrSpan)]> {
+    ctx.stmts
+        .iter()
         .filter_map(|stmt| {
             let ast::Stmt::LetStmt(let_stmt) = &stmt else {
                 return None;
             };
             let pat = let_stmt.pat()?;
             let init = let_stmt.initializer()?;
-            match expr_returns_result(sema, &init, db) {
+            match expr_returns_result(ctx.sema, &init, ctx.db) {
                 true => {
                     let name = extract_binding_name(&pat)?;
-                    let span = span_from_node(let_stmt.syntax(), line_index);
+                    let span = span_from_node(let_stmt.syntax(), ctx.line_index);
                     Some((name, span))
                 }
                 false => None,
@@ -314,22 +291,16 @@ fn collect_result_bindings(
         .into_boxed_slice()
 }
 
-/// Check a statement list for partial handling of a Result binding in match arms.
-fn check_partial_handling_in_stmts(
+/// Check precomputed match expressions for partial handling of a Result binding.
+fn check_partial_handling(
     name: &str,
     def_span: &IrSpan,
-    stmt_list: &ast::StmtList,
-    line_index: &LineIndex,
+    match_exprs: &[ast::MatchExpr],
+    line_index: &line_index::LineIndex,
     out: &mut Vec<DataFlowFact>,
 ) {
-    for node in stmt_list.syntax().descendants() {
-        if node.kind() != SyntaxKind::MATCH_EXPR {
-            continue;
-        }
-        let Some(match_expr) = ast::MatchExpr::cast(node) else {
-            continue;
-        };
-        check_match_for_partial_handling(name, def_span, &match_expr, line_index, out);
+    for match_expr in match_exprs {
+        check_match_for_partial_handling(name, def_span, match_expr, line_index, out);
     }
 }
 
@@ -338,7 +309,7 @@ fn check_match_for_partial_handling(
     name: &str,
     def_span: &IrSpan,
     match_expr: &ast::MatchExpr,
-    line_index: &LineIndex,
+    line_index: &line_index::LineIndex,
     out: &mut Vec<DataFlowFact>,
 ) {
     let Some(arm_list) = match_expr.match_arm_list() else {
@@ -409,20 +380,14 @@ fn matches_result_handling(node: &SyntaxNode, binding_name: &str) -> bool {
 ///
 /// Two forms: statement position (`expr.ok();`) and wildcard binding (`let _ = expr.ok();`).
 /// Exempt `write!`/`writeln!` macro receivers per audit ledger convention.
-fn detect_swallowed_ok(
-    sema: &Semantics<'_, RootDatabase>,
-    stmt_list: &ast::StmtList,
-    db: &RootDatabase,
-    line_index: &LineIndex,
-    out: &mut Vec<DataFlowFact>,
-) {
-    for stmt in stmt_list.statements() {
+fn detect_swallowed_ok(ctx: &FnContext<'_>, out: &mut Vec<DataFlowFact>) {
+    for stmt in ctx.stmts.iter() {
         match &stmt {
             ast::Stmt::ExprStmt(expr_stmt) => {
-                check_expr_stmt_swallowed_ok(sema, expr_stmt, db, line_index, &stmt, out);
+                check_expr_stmt_swallowed_ok(ctx, expr_stmt, stmt, out);
             }
             ast::Stmt::LetStmt(let_stmt) => {
-                check_let_stmt_swallowed_ok(sema, let_stmt, db, line_index, &stmt, out);
+                check_let_stmt_swallowed_ok(ctx, let_stmt, stmt, out);
             }
             ast::Stmt::Item(_) => {}
         }
@@ -431,10 +396,8 @@ fn detect_swallowed_ok(
 
 /// Check an expression statement for swallowed `.ok()` on Result.
 fn check_expr_stmt_swallowed_ok(
-    sema: &Semantics<'_, RootDatabase>,
+    ctx: &FnContext<'_>,
     expr_stmt: &ast::ExprStmt,
-    db: &RootDatabase,
-    line_index: &LineIndex,
     stmt: &ast::Stmt,
     out: &mut Vec<DataFlowFact>,
 ) {
@@ -445,10 +408,8 @@ fn check_expr_stmt_swallowed_ok(
         return;
     };
     emit_swallowed_ok_if_result(
-        sema,
+        ctx,
         &mc,
-        db,
-        line_index,
         stmt,
         ".ok() on Result discards the error silently",
         out,
@@ -457,10 +418,8 @@ fn check_expr_stmt_swallowed_ok(
 
 /// Check a let statement with wildcard pattern for swallowed `.ok()` on Result.
 fn check_let_stmt_swallowed_ok(
-    sema: &Semantics<'_, RootDatabase>,
+    ctx: &FnContext<'_>,
     let_stmt: &ast::LetStmt,
-    db: &RootDatabase,
-    line_index: &LineIndex,
     stmt: &ast::Stmt,
     out: &mut Vec<DataFlowFact>,
 ) {
@@ -475,10 +434,8 @@ fn check_let_stmt_swallowed_ok(
         return;
     };
     emit_swallowed_ok_if_result(
-        sema,
+        ctx,
         &mc,
-        db,
-        line_index,
         stmt,
         "let _ = .ok() on Result discards the error silently",
         out,
@@ -487,10 +444,8 @@ fn check_let_stmt_swallowed_ok(
 
 /// Validate the `.ok()` receiver is a non-write-macro Result and emit the finding.
 fn emit_swallowed_ok_if_result(
-    sema: &Semantics<'_, RootDatabase>,
+    ctx: &FnContext<'_>,
     mc: &ast::MethodCallExpr,
-    db: &RootDatabase,
-    line_index: &LineIndex,
     stmt: &ast::Stmt,
     message: &str,
     out: &mut Vec<DataFlowFact>,
@@ -501,10 +456,10 @@ fn emit_swallowed_ok_if_result(
     if is_write_macro_expr(&receiver) {
         return;
     }
-    if !expr_returns_result(sema, &receiver, db) {
+    if !expr_returns_result(ctx.sema, &receiver, ctx.db) {
         return;
     }
-    let span = span_from_node(stmt.syntax(), line_index);
+    let span = ctx.span(stmt.syntax());
     out.push(quality_fact(
         DataFlowKind::SwallowedOk,
         span,
@@ -542,49 +497,12 @@ fn is_write_macro_expr(expr: &ast::Expr) -> bool {
 
 // --- Immutable growable detection ---
 
-/// Methods that mutate `Vec<T>`.
-const VEC_MUTATION_METHODS: &[&str] = &[
-    "push",
-    "pop",
-    "insert",
-    "remove",
-    "swap_remove",
-    "truncate",
-    "clear",
-    "retain",
-    "reserve",
-    "resize",
-    "extend",
-    "append",
-    "splice",
-    "drain",
-    "dedup",
-    "dedup_by",
-    "dedup_by_key",
-    "sort",
-    "sort_by",
-    "sort_by_key",
-    "sort_unstable",
-    "sort_unstable_by",
-    "sort_unstable_by_key",
-    "reverse",
-    "rotate_left",
-    "rotate_right",
-    "fill",
-    "fill_with",
-];
-
-/// Methods that mutate `String` (in addition to shared Vec-like methods).
-const STRING_MUTATION_METHODS: &[&str] = &["push_str", "insert_str", "replace_range"];
-
 /// Detect Vec/String bindings that are never mutated after construction.
-fn detect_immutable_growable(
-    pf: &ParsedFile<'_>,
-    stmt_list: &ast::StmtList,
-    line_index: &LineIndex,
-    out: &mut Vec<DataFlowFact>,
-) {
-    for stmt in stmt_list.statements() {
+///
+/// Uses precomputed mutation, return, and `&mut` pass flags from `FnContext`
+/// instead of rescanning the statement list per binding.
+fn detect_immutable_growable(ctx: &FnContext<'_>, out: &mut Vec<DataFlowFact>) {
+    for stmt in ctx.stmts.iter() {
         let ast::Stmt::LetStmt(let_stmt) = &stmt else {
             continue;
         };
@@ -593,27 +511,28 @@ fn detect_immutable_growable(
             continue;
         };
         let ann = classify_via_annotation(let_stmt);
-        let sem = classify_via_semantics(&pf.sema, let_stmt, pf.db);
+        let sem = classify_via_semantics(ctx.sema, let_stmt, ctx.db);
         let Some(type_label) = ann.or(sem) else {
             continue;
         };
 
-        let mutated = binding_is_mutated(&name, stmt_list);
-        let returned = binding_is_returned(&name, stmt_list);
-        let passed_mut = binding_passed_as_mut_ref(&name, stmt_list);
-
-        if !mutated && !returned && !passed_mut {
-            let span = span_from_node(let_stmt.syntax(), line_index);
-            out.push(quality_fact(
-                DataFlowKind::ImmutableGrowable,
-                span,
-                span,
-                format!(
-                    "`{name}` is a {type_label} that is never mutated; consider Box<[T]> or Box<str>"
-                )
-                .into_boxed_str(),
-            ));
+        if ctx.binding_is_mutated(&name)
+            || ctx.binding_is_returned(&name)
+            || ctx.binding_passed_as_mut_ref(&name)
+        {
+            continue;
         }
+
+        let span = ctx.span(let_stmt.syntax());
+        out.push(quality_fact(
+            DataFlowKind::ImmutableGrowable,
+            span,
+            span,
+            format!(
+                "`{name}` is a {type_label} that is never mutated; consider Box<[T]> or Box<str>"
+            )
+            .into_boxed_str(),
+        ));
     }
 }
 
@@ -656,102 +575,4 @@ fn classify_via_annotation(let_stmt: &ast::LetStmt) -> Option<&'static str> {
         true => Some("Vec"),
         false => None,
     }
-}
-
-/// Check whether a binding name has any mutation method calls in the statement list.
-fn binding_is_mutated(name: &str, stmt_list: &ast::StmtList) -> bool {
-    stmt_list
-        .syntax()
-        .descendants()
-        .any(|node| match node.kind() {
-            SyntaxKind::METHOD_CALL_EXPR => method_call_mutates(name, &node),
-            SyntaxKind::BIN_EXPR => bin_expr_mutates(name, &node),
-            _ => false,
-        })
-}
-
-/// Check whether a method call expression mutates the named binding.
-fn method_call_mutates(binding_name: &str, node: &SyntaxNode) -> bool {
-    let Some(mc) = ast::MethodCallExpr::cast(node.clone()) else {
-        return false;
-    };
-    let Some(receiver) = mc.receiver() else {
-        return false;
-    };
-    if receiver.syntax().text() != binding_name {
-        return false;
-    }
-    let Some(method) = mc.name_ref() else {
-        return false;
-    };
-    let method_name = method.text();
-    VEC_MUTATION_METHODS
-        .iter()
-        .chain(STRING_MUTATION_METHODS.iter())
-        .any(|m| method_name == *m)
-}
-
-/// Check whether a binary expression is an assignment to the named binding.
-fn bin_expr_mutates(binding_name: &str, node: &SyntaxNode) -> bool {
-    let Some(bin) = ast::BinExpr::cast(node.clone()) else {
-        return false;
-    };
-    let is_assign = bin.op_token().is_some_and(|t| {
-        matches!(
-            t.kind(),
-            SyntaxKind::EQ | SyntaxKind::PLUSEQ | SyntaxKind::MINUSEQ
-        )
-    });
-    match is_assign {
-        true => {
-            let Some(lhs) = bin.lhs() else { return false };
-            let lhs_text = lhs.syntax().text();
-            // Matches `binding[...]` (index assignment) or `binding += ...`
-            lhs_text == binding_name || {
-                let s = lhs_text.to_string();
-                s.starts_with(binding_name) && s[binding_name.len()..].starts_with('[')
-            }
-        }
-        false => false,
-    }
-}
-
-/// Check whether the binding is directly returned (the value itself, not a derived expression).
-///
-/// Suppresses when the binding is the tail expression or a direct `return binding` statement.
-/// Does NOT suppress when the binding is merely referenced within a return expression
-/// (e.g., `items.len()` returns `usize`, not the `Vec`).
-fn binding_is_returned(name: &str, stmt_list: &ast::StmtList) -> bool {
-    let direct_tail = stmt_list
-        .tail_expr()
-        .is_some_and(|tail| is_direct_name_ref(&tail, name));
-
-    direct_tail
-        || stmt_list
-            .syntax()
-            .descendants()
-            .filter_map(ast::ReturnExpr::cast)
-            .filter_map(|ret| ret.expr())
-            .any(|expr| is_direct_name_ref(&expr, name))
-}
-
-/// Check whether an expression is a direct name reference to the given binding.
-fn is_direct_name_ref(expr: &ast::Expr, name: &str) -> bool {
-    matches!(expr, ast::Expr::PathExpr(pe)
-        if pe.path().is_some_and(|p| p.syntax().text() == name))
-}
-
-/// Check whether the binding is passed as `&mut` argument to any function call.
-fn binding_passed_as_mut_ref(name: &str, stmt_list: &ast::StmtList) -> bool {
-    stmt_list
-        .syntax()
-        .descendants()
-        .filter(|n| n.kind() == SyntaxKind::REF_EXPR)
-        .any(|n| {
-            let Some(ref_expr) = ast::RefExpr::cast(n.clone()) else {
-                return false;
-            };
-            ref_expr.mut_token().is_some()
-                && ref_expr.expr().is_some_and(|e| e.syntax().text() == name)
-        })
 }

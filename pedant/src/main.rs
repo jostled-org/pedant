@@ -1,35 +1,27 @@
 //! CLI interface for the pedant linter and capability analyzer.
 
+mod analysis;
 mod config;
+mod explain;
+mod output;
 mod reporter;
 
-use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
-use std::io::{self, Read, Write};
-use std::path::Path;
+use std::collections::BTreeMap;
+use std::io::{self, Write};
 use std::process::ExitCode;
-#[cfg(feature = "semantic")]
-use std::time::Instant;
-use std::time::SystemTime;
 
 use clap::Parser;
-use pedant_core::AnalysisResult;
-use pedant_core::SemanticContext;
-use pedant_core::check_config::{CheckConfig, ConfigFile, find_config_file, load_config_file};
-use pedant_core::checks::ALL_CHECKS;
-use pedant_core::gate::{GateSeverity, all_gate_rules, evaluate_gate_rules};
-use pedant_core::hash::compute_source_hash;
-use pedant_core::lint::{analyze, analyze_build_script, discover_build_script};
-use pedant_core::violation::{Violation, lookup_rationale};
-use pedant_types::{
-    AnalysisTier, AttestationContent, CapabilityDiff, CapabilityFinding, CapabilityProfile,
-};
+use pedant_core::check_config::{find_config_file, load_config_file};
+use pedant_core::gate::{self, GateInputSummary, evaluate_gate_rules};
+use pedant_types::Language;
 
+use crate::analysis::{AnalysisAccumulator, AnalysisContext, run_analysis};
 use crate::config::Cli;
+use crate::config::OutputFormat;
 use crate::reporter::Reporter;
 
 #[derive(Debug, thiserror::Error)]
-enum ProcessError {
+pub(crate) enum ProcessError {
     #[error("failed to read stdin: {0}")]
     StdinRead(#[source] std::io::Error),
     #[error("parse error: {0}")]
@@ -46,54 +38,21 @@ enum ProcessError {
         #[source]
         source: serde_json::Error,
     },
+    #[error("failed to compute current timestamp: {source}")]
+    Timestamp {
+        #[source]
+        source: std::time::SystemTimeError,
+    },
+    #[error("failed for crate root {crate_root}: {source}")]
+    BuildScriptDiscovery {
+        crate_root: Box<str>,
+        #[source]
+        source: pedant_core::lint::LintError,
+    },
 }
 
-struct AnalysisContext<'a> {
-    base_config: &'a CheckConfig,
-    file_config: Option<&'a ConfigFile>,
-    semantic: Option<&'a SemanticContext>,
-}
-
-struct AnalysisAccumulator {
-    violations: Vec<Violation>,
-    findings: Vec<CapabilityFinding>,
-    data_flows: Vec<pedant_core::ir::DataFlowFact>,
-    had_error: bool,
-}
-
-fn report_error(stderr: &mut impl Write, msg: std::fmt::Arguments<'_>) {
+pub(crate) fn report_error(stderr: &mut impl Write, msg: std::fmt::Arguments<'_>) {
     let _ = writeln!(stderr, "{msg}");
-}
-
-impl AnalysisAccumulator {
-    fn with_capacity(file_count: usize) -> Self {
-        Self {
-            violations: Vec::with_capacity(file_count),
-            findings: Vec::with_capacity(file_count),
-            data_flows: Vec::new(),
-            had_error: false,
-        }
-    }
-
-    fn handle(
-        &mut self,
-        result: Result<AnalysisResult, ProcessError>,
-        context: &str,
-        stderr: &mut impl Write,
-    ) {
-        match result {
-            Ok(r) => {
-                self.violations.append(&mut r.violations.into_vec());
-                self.findings
-                    .append(&mut r.capabilities.findings.into_vec());
-                self.data_flows.append(&mut r.data_flows.into_vec());
-            }
-            Err(e) => {
-                report_error(stderr, format_args!("{context}: {e}"));
-                self.had_error = true;
-            }
-        }
-    }
 }
 
 fn main() -> ExitCode {
@@ -101,15 +60,15 @@ fn main() -> ExitCode {
     let mut stderr = io::stderr().lock();
 
     if cli.list_checks {
-        return run_print_checks_list(&mut stderr);
+        return explain::run_print_checks_list(&mut stderr);
     }
 
     if let Some(ref code) = cli.explain {
-        return print_explain(code, &mut stderr);
+        return explain::print_explain(code, &mut stderr);
     }
 
     if let [old_path, new_path] = cli.diff.as_slice() {
-        return run_diff(old_path, new_path, &mut stderr);
+        return output::run_diff(old_path, new_path, &mut stderr);
     }
 
     let file_config = match load_file_config(&cli, &mut stderr) {
@@ -119,7 +78,7 @@ fn main() -> ExitCode {
     let base_config = cli.to_check_config(file_config.as_ref());
     let mut acc = AnalysisAccumulator::with_capacity(cli.files.len());
 
-    let semantic = load_semantic_if_requested(&cli, &mut stderr);
+    let semantic = analysis::load_semantic_if_requested(&cli, &mut stderr);
 
     let ctx = AnalysisContext {
         base_config: &base_config,
@@ -130,24 +89,51 @@ fn main() -> ExitCode {
     let source_hash = run_analysis(&cli, &ctx, &mut acc, &mut stderr);
     let analysis_tier = pedant_core::determine_analysis_tier(semantic.as_ref(), &acc.data_flows);
 
-    let reporter = Reporter::new(cli.format, cli.quiet);
-    let mut stdout = io::stdout().lock();
-    if let Err(e) = reporter.report(&acc.violations, &mut stdout) {
-        report_error(&mut stderr, format_args!("error writing output: {e}"));
-        return ExitCode::from(2);
-    }
-
     // Evaluate gate rules before findings are consumed by attestation/capabilities output.
     let default_gate = pedant_core::GateConfig::default();
     let gate_verdicts = match cli.gate {
         true => {
             let gate_config = file_config.as_ref().map_or(&default_gate, |fc| &fc.gate);
-            evaluate_gate_rules(&acc.findings, &acc.data_flows, gate_config)
+            evaluate_gate(
+                &acc.findings,
+                &acc.data_flows,
+                gate_config,
+                cli.cross_language,
+            )
         }
         false => Box::new([]),
     };
 
-    if let Err(exit) = dispatch_output(
+    let reporter = Reporter::new(cli.quiet);
+    let mut stdout = io::stdout().lock();
+    match cli.format {
+        OutputFormat::Json => {
+            return write_json_exit(
+                &cli,
+                source_hash,
+                acc,
+                analysis_tier,
+                &gate_verdicts,
+                &mut stdout,
+                &mut stderr,
+            );
+        }
+        OutputFormat::Text => {}
+    }
+
+    // When attestation or capabilities will produce JSON on stdout,
+    // send violation and gate text to stderr to keep stdout clean.
+    let json_on_stdout = cli.attestation || cli.capabilities;
+    let violation_result = match json_on_stdout {
+        true => reporter.report(&acc.violations, &mut stderr),
+        false => reporter.report(&acc.violations, &mut stdout),
+    };
+    if let Err(e) = violation_result {
+        report_error(&mut stderr, format_args!("error writing output: {e}"));
+        return ExitCode::from(2);
+    }
+
+    if let Err(exit) = output::dispatch_output(
         &cli,
         source_hash,
         acc.findings,
@@ -158,323 +144,61 @@ fn main() -> ExitCode {
         return exit;
     }
 
-    if let (true, Err(e)) = (cli.gate, reporter.report_gate(&gate_verdicts, &mut stdout)) {
+    let gate_result = match json_on_stdout {
+        true => reporter.report_gate(&gate_verdicts, &mut stderr),
+        false => reporter.report_gate(&gate_verdicts, &mut stdout),
+    };
+    if let (true, Err(e)) = (cli.gate, gate_result) {
         report_error(&mut stderr, format_args!("error writing gate output: {e}"));
         return ExitCode::from(2);
     }
 
-    compute_exit_code(acc.had_error, acc.violations.is_empty(), &gate_verdicts)
+    output::compute_exit_code(acc.had_error, acc.violations.is_empty(), &gate_verdicts)
 }
 
-/// Select the input source (stdin vs files) and run analysis, returning a source
-/// hash when attestation mode requires one.
-fn run_analysis(
-    cli: &Cli,
-    ctx: &AnalysisContext<'_>,
-    acc: &mut AnalysisAccumulator,
-    stderr: &mut impl Write,
-) -> Option<Box<str>> {
-    match (cli.attestation, cli.stdin) {
-        (true, true) => attest_stdin(ctx.base_config, acc, stderr),
-        (true, false) => Some(attest_files(cli, ctx, acc, stderr)),
-        (false, true) => {
-            acc.handle(process_stdin(ctx.base_config), "error", stderr);
-            None
-        }
-        (false, false) => {
-            analyze_file_list(cli, ctx, None, acc, stderr);
-            None
-        }
-    }
-}
-
-/// Dispatch output based on mode: attestation JSON, capabilities JSON, or nothing.
-fn dispatch_output(
+fn write_json_exit(
     cli: &Cli,
     source_hash: Option<Box<str>>,
-    findings: Vec<CapabilityFinding>,
-    analysis_tier: AnalysisTier,
+    acc: AnalysisAccumulator,
+    analysis_tier: pedant_types::AnalysisTier,
+    gate_verdicts: &[pedant_core::gate::GateVerdict],
     stdout: &mut impl Write,
     stderr: &mut impl Write,
-) -> Result<(), ExitCode> {
-    match (cli.attestation, cli.capabilities) {
-        (true, _) => {
-            let Some(hash) = source_hash else {
-                return Err(ExitCode::from(2));
-            };
-            let Some(crate_name) = cli.crate_name.as_deref() else {
-                report_error(
-                    stderr,
-                    format_args!("error: --crate-name required for attestation"),
-                );
-                return Err(ExitCode::from(2));
-            };
-            let Some(crate_version) = cli.crate_version.as_deref() else {
-                report_error(
-                    stderr,
-                    format_args!("error: --crate-version required for attestation"),
-                );
-                return Err(ExitCode::from(2));
-            };
-            write_attestation(
-                stdout,
-                stderr,
-                findings,
-                hash,
-                Box::from(crate_name),
-                Box::from(crate_version),
-                analysis_tier,
-            )
-        }
-        (false, true) => write_capabilities(stdout, stderr, findings),
-        (false, false) => Ok(()),
-    }
-}
-
-/// Compute the process exit code from error state, violations, and gate verdicts.
-fn compute_exit_code(
-    had_error: bool,
-    violations_empty: bool,
-    gate_verdicts: &[pedant_core::gate::GateVerdict],
 ) -> ExitCode {
-    let has_deny = gate_verdicts
-        .iter()
-        .any(|v| v.severity == GateSeverity::Deny);
-
-    match (had_error, violations_empty, has_deny) {
-        (true, _, _) => ExitCode::from(2),
-        (_, false, _) | (_, _, true) => ExitCode::from(1),
-        (false, true, false) => ExitCode::from(0),
+    let result = output::write_json_analysis_output(
+        output::JsonOutputContext {
+            cli,
+            source_hash,
+            violations: &acc.violations,
+            findings: acc.findings,
+            analysis_tier,
+            gate_verdicts,
+            had_error: acc.had_error,
+        },
+        stdout,
+        stderr,
+    );
+    match result {
+        Ok(()) => {
+            output::compute_exit_code(acc.had_error, acc.violations.is_empty(), gate_verdicts)
+        }
+        Err(exit) => exit,
     }
 }
 
-fn attest_stdin(
-    config: &CheckConfig,
-    acc: &mut AnalysisAccumulator,
-    stderr: &mut impl Write,
-) -> Option<Box<str>> {
-    let source = match read_stdin_source() {
-        Ok(s) => s,
-        Err(e) => {
-            report_error(stderr, format_args!("error: {e}"));
-            acc.had_error = true;
-            return None;
-        }
-    };
-    acc.handle(
-        analyze("<stdin>", &source, config, None).map_err(ProcessError::from),
-        "error",
-        stderr,
-    );
-    let mut sources = BTreeMap::new();
-    sources.insert(Box::<str>::from("<stdin>"), source);
-    Some(compute_source_hash(&sources))
-}
-
-fn attest_files(
+fn load_file_config(
     cli: &Cli,
-    ctx: &AnalysisContext<'_>,
-    acc: &mut AnalysisAccumulator,
     stderr: &mut impl Write,
-) -> Box<str> {
-    let mut sources = BTreeMap::new();
-    analyze_file_list(cli, ctx, Some(&mut sources), acc, stderr);
-    compute_source_hash(&sources)
-}
-
-fn analyze_file_list(
-    cli: &Cli,
-    ctx: &AnalysisContext<'_>,
-    mut sources: Option<&mut BTreeMap<Box<str>, String>>,
-    acc: &mut AnalysisAccumulator,
-    stderr: &mut impl Write,
-) {
-    let mut seen_build_roots: BTreeSet<Box<Path>> = BTreeSet::new();
-    for file_path in &cli.files {
-        let Some(cfg) = ctx.base_config.resolve_for_path(file_path, ctx.file_config) else {
-            continue;
-        };
-        analyze_single_file(
-            file_path,
-            analyze,
-            &cfg,
-            ctx.semantic,
-            sources.as_deref_mut(),
-            acc,
-            stderr,
-        );
-        discover_and_analyze_build_script(
-            file_path,
-            &cli.files,
-            &cfg,
-            sources.as_deref_mut(),
-            &mut seen_build_roots,
-            acc,
-            stderr,
-        );
-    }
-}
-
-/// Find the crate root by walking up from a file path to locate `Cargo.toml`.
-fn find_crate_root(file_path: &str) -> Option<&Path> {
-    let mut dir = Path::new(file_path).parent()?;
-    loop {
-        match dir.join("Cargo.toml").is_file() {
-            true => return Some(dir),
-            false => dir = dir.parent()?,
-        }
-    }
-}
-
-/// Load `SemanticContext` when `--semantic` is requested.
-///
-/// Returns `None` (with a stderr warning) if loading fails or the flag is absent.
-#[cfg(feature = "semantic")]
-fn load_semantic_if_requested(cli: &Cli, stderr: &mut impl Write) -> Option<SemanticContext> {
-    use pedant_core::lint::discover_workspace_root;
-
-    if !cli.semantic {
-        return None;
-    }
-
-    let first_file = cli.files.first()?;
-    let Some(root) =
-        discover_workspace_root(Path::new(first_file.as_str())).map(|p| p.into_boxed_path())
-    else {
-        report_error(
-            stderr,
-            format_args!(
-                "warning: --semantic: no Cargo.toml found, falling back to syntactic analysis"
-            ),
-        );
-        return None;
-    };
-
-    let start = Instant::now();
-    let ctx = SemanticContext::load(&root);
-    let elapsed = start.elapsed();
-
-    match ctx {
-        Some(c) => {
-            report_error(
-                stderr,
-                format_args!(
-                    "semantic: loaded workspace in {:.1}s",
-                    elapsed.as_secs_f64()
-                ),
-            );
-            Some(c)
-        }
-        None => {
-            report_error(
-                stderr,
-                format_args!(
-                    "warning: --semantic: failed to load workspace at {}, falling back to syntactic analysis",
-                    root.display()
-                ),
-            );
-            None
-        }
-    }
-}
-
-/// Stub when the `semantic` feature is disabled — always returns `None`.
-#[cfg(not(feature = "semantic"))]
-fn load_semantic_if_requested(_cli: &Cli, _stderr: &mut impl Write) -> Option<SemanticContext> {
-    None
-}
-
-fn discover_and_analyze_build_script(
-    file_path: &str,
-    cli_files: &[String],
-    config: &CheckConfig,
-    sources: Option<&mut BTreeMap<Box<str>, String>>,
-    seen_roots: &mut BTreeSet<Box<Path>>,
-    acc: &mut AnalysisAccumulator,
-    stderr: &mut impl Write,
-) {
-    let Some(crate_root) = find_crate_root(file_path) else {
-        return;
-    };
-    if seen_roots.contains(crate_root) {
-        return;
-    }
-    seen_roots.insert(Box::from(crate_root));
-    let build_path = match discover_build_script(crate_root) {
-        Ok(Some(path)) => path,
-        Ok(None) => return,
-        Err(e) => {
-            report_error(stderr, format_args!("build script discovery: {e}"));
-            return;
-        }
-    };
-    let Some(build_path_str) = build_path.to_str() else {
-        report_error(
-            stderr,
-            format_args!(
-                "build script path is not valid UTF-8: {}",
-                build_path.display()
-            ),
-        );
-        return;
-    };
-    // Skip if the build script is already in the CLI file list (analyzed as a regular file).
-    if cli_files
-        .iter()
-        .any(|f| Path::new(f.as_str()) == build_path)
-    {
-        return;
-    }
-    analyze_single_file(
-        build_path_str,
-        analyze_build_script,
-        config,
-        None,
-        sources,
-        acc,
-        stderr,
-    );
-}
-
-fn analyze_single_file(
-    file_path: &str,
-    analyze_fn: fn(
-        &str,
-        &str,
-        &CheckConfig,
-        Option<&SemanticContext>,
-    ) -> Result<AnalysisResult, pedant_core::ParseError>,
-    config: &CheckConfig,
-    semantic: Option<&SemanticContext>,
-    sources: Option<&mut BTreeMap<Box<str>, String>>,
-    acc: &mut AnalysisAccumulator,
-    stderr: &mut impl Write,
-) {
-    let source = match fs::read_to_string(file_path) {
-        Ok(s) => s,
-        Err(e) => {
-            report_error(stderr, format_args!("{file_path}: {e}"));
-            acc.had_error = true;
-            return;
-        }
-    };
-    acc.handle(
-        analyze_fn(file_path, &source, config, semantic).map_err(ProcessError::from),
-        file_path,
-        stderr,
-    );
-    if let Some(sources) = sources {
-        sources.insert(Box::from(file_path), source);
-    }
-}
-
-fn load_file_config(cli: &Cli, stderr: &mut impl Write) -> Result<Option<ConfigFile>, ExitCode> {
+) -> Result<Option<pedant_core::check_config::ConfigFile>, ExitCode> {
     let explicit = cli.config.is_some();
-    let config_path = cli
-        .config
-        .as_deref()
-        .map(std::path::PathBuf::from)
-        .or_else(find_config_file);
+    let config_path = match (cli.config.as_deref(), find_config_file()) {
+        (Some(path), _) => Some(std::path::PathBuf::from(path)),
+        (None, Ok(path)) => path,
+        (None, Err(error)) => {
+            report_error(stderr, format_args!("warning: {error}"));
+            return Ok(None);
+        }
+    };
 
     let Some(config_path) = config_path else {
         return Ok(None);
@@ -493,215 +217,49 @@ fn load_file_config(cli: &Cli, stderr: &mut impl Write) -> Result<Option<ConfigF
     }
 }
 
-fn read_stdin_source() -> Result<String, ProcessError> {
-    let mut source = String::new();
-    io::stdin()
-        .read_to_string(&mut source)
-        .map_err(ProcessError::StdinRead)?;
-    Ok(source)
-}
-
-fn process_stdin(config: &CheckConfig) -> Result<AnalysisResult, ProcessError> {
-    let source = read_stdin_source()?;
-    Ok(analyze("<stdin>", &source, config, None)?)
-}
-
-const SPEC_VERSION: &str = "0.1.0";
-
-/// Returns seconds since Unix epoch. Falls back to 0 if the system clock
-/// is before 1970, which cannot happen on any supported platform.
-fn current_timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
-}
-
-fn write_json(
-    stdout: &mut impl Write,
-    stderr: &mut impl Write,
-    payload: &impl serde::Serialize,
-    context: &str,
-) -> Result<(), ExitCode> {
-    if let Err(e) = serde_json::to_writer_pretty(&mut *stdout, payload) {
-        report_error(stderr, format_args!("error writing {context}: {e}"));
-        return Err(ExitCode::from(2));
-    }
-    if let Err(e) = writeln!(stdout) {
-        report_error(
-            stderr,
-            format_args!("error writing trailing newline for {context}: {e}"),
-        );
-        return Err(ExitCode::from(2));
-    }
-    Ok(())
-}
-
-fn write_attestation(
-    stdout: &mut impl Write,
-    stderr: &mut impl Write,
-    findings: Vec<CapabilityFinding>,
-    source_hash: Box<str>,
-    crate_name: Box<str>,
-    crate_version: Box<str>,
-    analysis_tier: AnalysisTier,
-) -> Result<(), ExitCode> {
-    let attestation = AttestationContent {
-        spec_version: Box::from(SPEC_VERSION),
-        source_hash,
-        crate_name,
-        crate_version,
-        analysis_tier,
-        timestamp: current_timestamp(),
-        profile: CapabilityProfile {
-            findings: findings.into_boxed_slice(),
-        },
-    };
-    write_json(stdout, stderr, &attestation, "attestation")
-}
-
-fn write_capabilities(
-    stdout: &mut impl Write,
-    stderr: &mut impl Write,
-    findings: Vec<CapabilityFinding>,
-) -> Result<(), ExitCode> {
-    let profile = CapabilityProfile {
-        findings: findings.into_boxed_slice(),
-    };
-    write_json(stdout, stderr, &profile, "capabilities")
-}
-
-fn run_print_checks_list(stderr: &mut impl Write) -> ExitCode {
-    match print_checks_list() {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(e) => {
-            report_error(stderr, format_args!("error writing output: {e}"));
-            ExitCode::from(2)
+/// Evaluate gate rules, grouping by language unless `cross_language` is set.
+///
+/// Per-language evaluation prevents findings from different languages from
+/// combining to trigger false-positive capability-combination rules.
+fn evaluate_gate(
+    findings: &[pedant_types::CapabilityFinding],
+    flows: &[pedant_core::ir::DataFlowFact],
+    config: &pedant_core::GateConfig,
+    cross_language: bool,
+) -> Box<[gate::GateVerdict]> {
+    match cross_language {
+        true => {
+            let summary = GateInputSummary::from_analysis(findings, flows);
+            evaluate_gate_rules(&summary, config)
         }
+        false => evaluate_gate_per_language(findings, flows, config),
     }
 }
 
-fn print_checks_list() -> io::Result<()> {
-    let mut stdout = io::stdout().lock();
-    writeln!(stdout, "Available checks:\n")?;
-    writeln!(stdout, "{:<20} {:<8} DESCRIPTION", "CODE", "LLM?")?;
-    writeln!(stdout, "{:-<20} {:-<8} {:-<30}", "", "", "")?;
+/// Group findings by language and evaluate gate rules independently per group.
+///
+/// Data flows are only included in the Rust (language=None) group since flow
+/// analysis is only available for Rust source.
+fn evaluate_gate_per_language(
+    findings: &[pedant_types::CapabilityFinding],
+    flows: &[pedant_core::ir::DataFlowFact],
+    config: &pedant_core::GateConfig,
+) -> Box<[gate::GateVerdict]> {
+    let mut groups: BTreeMap<Option<Language>, Vec<&pedant_types::CapabilityFinding>> =
+        BTreeMap::new();
+    for finding in findings {
+        groups.entry(finding.language).or_default().push(finding);
+    }
 
-    for check in ALL_CHECKS {
-        let llm_marker = match check.llm_specific {
-            true => "yes",
-            false => "",
+    let mut all_verdicts = Vec::new();
+    for (language, group_findings) in &groups {
+        // Data flows come from Rust analysis only (language=None).
+        let group_flows: &[pedant_core::ir::DataFlowFact] = match language {
+            None => flows,
+            Some(_) => &[],
         };
-        writeln!(
-            stdout,
-            "{:<20} {:<8} {}",
-            check.code, llm_marker, check.description
-        )?;
+        let summary = GateInputSummary::from_refs(group_findings, group_flows);
+        all_verdicts.extend(evaluate_gate_rules(&summary, config).into_vec());
     }
-
-    let gate_rules = all_gate_rules();
-    writeln!(stdout, "\nGate rules:\n")?;
-    writeln!(stdout, "{:<30} {:<8} DESCRIPTION", "RULE", "SEVERITY")?;
-    writeln!(stdout, "{:-<30} {:-<8} {:-<40}", "", "", "")?;
-
-    for rule in gate_rules.iter() {
-        writeln!(
-            stdout,
-            "{:<30} {:<8} {}",
-            rule.name, rule.default_severity, rule.description
-        )?;
-    }
-
-    writeln!(stdout)?;
-    writeln!(stdout, "Use --explain <CODE> for detailed rationale.")
-}
-
-fn print_explain(code: &str, stderr: &mut impl Write) -> ExitCode {
-    if let Some(rationale) = lookup_rationale(code) {
-        return write_result_to_exit(write_explain(code, &rationale), stderr);
-    }
-
-    let gate_rules = all_gate_rules();
-    if let Some(rule) = gate_rules.iter().find(|r| r.name == code) {
-        return write_result_to_exit(write_gate_explain(rule), stderr);
-    }
-
-    report_error(stderr, format_args!("Unknown check: {code}"));
-    report_error(
-        stderr,
-        format_args!("Use --list-checks to see available checks."),
-    );
-    ExitCode::from(1)
-}
-
-fn write_result_to_exit(io_outcome: io::Result<()>, stderr: &mut impl Write) -> ExitCode {
-    match io_outcome {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(e) => {
-            report_error(stderr, format_args!("error writing output: {e}"));
-            ExitCode::from(2)
-        }
-    }
-}
-
-fn load_profile(path: &str) -> Result<CapabilityProfile, ProcessError> {
-    let raw_json = fs::read_to_string(path).map_err(|e| ProcessError::DiffRead {
-        path: path.into(),
-        source: e,
-    })?;
-
-    // Try as attestation (has spec_version); fall back to bare profile.
-    serde_json::from_str::<AttestationContent>(&raw_json)
-        .map(|att| att.profile)
-        .or_else(|_| serde_json::from_str(&raw_json))
-        .map_err(|e| ProcessError::DiffParse {
-            path: path.into(),
-            source: e,
-        })
-}
-
-fn load_diff_profiles(
-    old_path: &str,
-    new_path: &str,
-    stderr: &mut impl Write,
-) -> Option<(CapabilityProfile, CapabilityProfile)> {
-    let old = load_profile(old_path)
-        .map_err(|e| report_error(stderr, format_args!("{e}")))
-        .ok()?;
-    let new = load_profile(new_path)
-        .map_err(|e| report_error(stderr, format_args!("{e}")))
-        .ok()?;
-    Some((old, new))
-}
-
-fn run_diff(old_path: &str, new_path: &str, stderr: &mut impl Write) -> ExitCode {
-    let Some((old, new)) = load_diff_profiles(old_path, new_path, stderr) else {
-        return ExitCode::from(2);
-    };
-
-    let diff = CapabilityDiff::compute(&old, &new);
-    let mut stdout = io::stdout().lock();
-
-    if let Err(exit) = write_json(&mut stdout, stderr, &diff, "diff") {
-        return exit;
-    }
-
-    match diff.is_empty() {
-        true => ExitCode::from(0),
-        false => ExitCode::from(1),
-    }
-}
-
-fn write_explain(code: &str, rationale: &pedant_core::violation::CheckRationale) -> io::Result<()> {
-    let mut stdout = io::stdout().lock();
-    writeln!(stdout, "Check: {code}\n")?;
-    writeln!(stdout, "{rationale}")
-}
-
-fn write_gate_explain(rule: &pedant_core::gate::GateRuleInfo) -> io::Result<()> {
-    let mut stdout = io::stdout().lock();
-    writeln!(stdout, "Gate rule: {}\n", rule.name)?;
-    writeln!(stdout, "Severity: {}", rule.default_severity)?;
-    writeln!(stdout, "Description: {}\n", rule.description)?;
-    writeln!(stdout, "Rationale: {}", rule.rationale)
+    all_verdicts.into_boxed_slice()
 }

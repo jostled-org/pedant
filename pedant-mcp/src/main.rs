@@ -11,69 +11,52 @@ use pedant_mcp::watcher::start_watcher;
 use rmcp::ServiceExt;
 use rmcp::transport::io::stdio;
 
+fn exit_with_error(message: impl std::fmt::Display) -> ! {
+    let _ = writeln!(std::io::stderr(), "error: {message}");
+    process::exit(1);
+}
+
 #[tokio::main]
 async fn main() {
     let cwd = match std::env::current_dir() {
         Ok(d) => d,
-        Err(e) => {
-            let _ = writeln!(
-                std::io::stderr(),
-                "error: cannot read current directory: {e}"
-            );
-            process::exit(1);
-        }
+        Err(e) => exit_with_error(format_args!("cannot read current directory: {e}")),
     };
 
     let workspace_root = match discover_workspace_root(&cwd) {
-        Some(root) => root,
-        None => {
-            let _ = writeln!(
-                std::io::stderr(),
-                "error: no Cargo workspace found (walked up from {})",
-                cwd.display()
-            );
-            process::exit(1);
-        }
+        Ok(Some(root)) => root,
+        Ok(None) => exit_with_error(format_args!(
+            "no Cargo workspace found (walked up from {})",
+            cwd.display()
+        )),
+        Err(error) => exit_with_error(format_args!(
+            "failed to discover workspace root from {}: {error}",
+            cwd.display()
+        )),
     };
 
     let semantic = load_semantic(&workspace_root);
     let config = Arc::new(Config::default());
     let index = match WorkspaceIndex::build(&workspace_root, &config, semantic) {
         Ok(idx) => idx,
-        Err(e) => {
-            let _ = writeln!(std::io::stderr(), "error: failed to index workspace: {e}");
-            process::exit(1);
-        }
+        Err(e) => exit_with_error(format_args!("failed to index workspace: {e}")),
     };
 
     let index = Arc::new(RwLock::new(index));
 
     let _watcher = match start_watcher(&index, Arc::clone(&config)) {
         Ok(w) => w,
-        Err(e) => {
-            let _ = writeln!(
-                std::io::stderr(),
-                "warning: file watcher failed to start: {e}"
-            );
-            process::exit(1);
-        }
+        Err(e) => exit_with_error(format_args!("file watcher failed to start: {e}")),
     };
 
     let server = PedantServer::new(Arc::clone(&index));
     let running = match server.serve(stdio()).await {
         Ok(r) => r,
-        Err(e) => {
-            let _ = writeln!(std::io::stderr(), "error: MCP server failed to start: {e}");
-            process::exit(1);
-        }
+        Err(e) => exit_with_error(format_args!("MCP server failed to start: {e}")),
     };
 
     if let Err(e) = running.waiting().await {
-        let _ = writeln!(
-            std::io::stderr(),
-            "error: MCP server exited with error: {e}"
-        );
-        process::exit(1);
+        exit_with_error(format_args!("MCP server exited with error: {e}"));
     }
 }
 

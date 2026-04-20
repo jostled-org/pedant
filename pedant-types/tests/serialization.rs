@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use pedant_types::{
     AnalysisTier, AttestationContent, Capability, CapabilityDiff, CapabilityFinding,
-    CapabilityProfile, SourceLocation,
+    CapabilityProfile, ExecutionContext, FindingOrigin, Language, SourceLocation,
 };
 
 fn sample_finding(capability: Capability, file: &str, line: usize) -> CapabilityFinding {
@@ -14,7 +14,9 @@ fn sample_finding(capability: Capability, file: &str, line: usize) -> Capability
             column: 1,
         },
         evidence: Arc::from("test evidence"),
-        build_script: false,
+        origin: None,
+        language: None,
+        execution_context: None,
         reachable: None,
     }
 }
@@ -258,4 +260,254 @@ fn capability_finding_reachable_some_serialized() {
 
     let back_false: CapabilityFinding = serde_json::from_str(&json_false).unwrap();
     assert_eq!(back_false.reachable, Some(false));
+}
+
+// --- Step 1 tests: Language, ExecutionContext, migration ---
+
+#[test]
+fn language_enum_round_trip() {
+    let variants = [
+        Language::Python,
+        Language::JavaScript,
+        Language::TypeScript,
+        Language::Go,
+        Language::Bash,
+    ];
+    for lang in variants {
+        let json = serde_json::to_string(&lang).unwrap();
+        let back: Language = serde_json::from_str(&json).unwrap();
+        assert_eq!(lang, back);
+    }
+}
+
+#[test]
+fn execution_context_round_trip() {
+    let variants = [
+        ExecutionContext::Runtime,
+        ExecutionContext::BuildHook,
+        ExecutionContext::InstallHook,
+        ExecutionContext::Generator,
+    ];
+    for ctx in variants {
+        let json = serde_json::to_string(&ctx).unwrap();
+        let back: ExecutionContext = serde_json::from_str(&json).unwrap();
+        assert_eq!(ctx, back);
+    }
+}
+
+#[test]
+fn capability_finding_language_none_omitted() {
+    let finding = sample_finding(Capability::Network, "src/lib.rs", 10);
+    assert!(finding.language.is_none());
+    assert!(finding.execution_context.is_none());
+
+    let json = serde_json::to_string(&finding).unwrap();
+    assert!(
+        !json.contains("language"),
+        "JSON should not contain 'language' when None, got: {json}"
+    );
+    assert!(
+        !json.contains("execution_context"),
+        "JSON should not contain 'execution_context' when None, got: {json}"
+    );
+    assert!(
+        !json.contains("build_script"),
+        "JSON should not contain 'build_script' (field removed), got: {json}"
+    );
+
+    let back: CapabilityFinding = serde_json::from_str(&json).unwrap();
+    assert_eq!(finding, back);
+}
+
+#[test]
+fn capability_finding_language_some_serialized() {
+    let finding = CapabilityFinding {
+        language: Some(Language::Python),
+        execution_context: Some(ExecutionContext::InstallHook),
+        ..sample_finding(Capability::ProcessExec, "setup.py", 5)
+    };
+    let json = serde_json::to_string(&finding).unwrap();
+    assert!(
+        json.contains(r#""language":"python""#),
+        "JSON should contain language: python, got: {json}"
+    );
+    assert!(
+        json.contains(r#""execution_context":"install_hook""#),
+        "JSON should contain execution_context: install_hook, got: {json}"
+    );
+
+    let back: CapabilityFinding = serde_json::from_str(&json).unwrap();
+    assert_eq!(finding, back);
+}
+
+#[test]
+fn capability_finding_origin_none_omitted() {
+    let finding = sample_finding(Capability::Network, "src/lib.rs", 10);
+    assert!(finding.origin.is_none());
+
+    let json = serde_json::to_string(&finding).unwrap();
+    assert!(
+        !json.contains("origin"),
+        "JSON should not contain 'origin' when None, got: {json}"
+    );
+
+    let back: CapabilityFinding = serde_json::from_str(&json).unwrap();
+    assert!(back.origin.is_none());
+}
+
+#[test]
+fn capability_finding_origin_round_trip() {
+    let variants = [
+        FindingOrigin::Import,
+        FindingOrigin::StringLiteral,
+        FindingOrigin::Attribute,
+        FindingOrigin::CodeSite,
+        FindingOrigin::ManifestHook,
+    ];
+    for origin in variants {
+        let json = serde_json::to_string(&origin).unwrap();
+        let back: FindingOrigin = serde_json::from_str(&json).unwrap();
+        assert_eq!(origin, back, "round-trip failed for {origin:?}");
+    }
+}
+
+#[test]
+fn capability_finding_with_origin_serialized() {
+    let finding = CapabilityFinding {
+        origin: Some(FindingOrigin::Import),
+        ..sample_finding(Capability::Crypto, "src/lib.rs", 5)
+    };
+    let json = serde_json::to_string(&finding).unwrap();
+    assert!(
+        json.contains(r#""origin":"import""#),
+        "JSON should contain origin: import, got: {json}"
+    );
+
+    let back: CapabilityFinding = serde_json::from_str(&json).unwrap();
+    assert_eq!(finding, back);
+}
+
+#[test]
+fn capability_finding_origin_all_variants_in_finding() {
+    let origins = [
+        (FindingOrigin::Import, "import"),
+        (FindingOrigin::StringLiteral, "string_literal"),
+        (FindingOrigin::Attribute, "attribute"),
+        (FindingOrigin::CodeSite, "code_site"),
+        (FindingOrigin::ManifestHook, "manifest_hook"),
+    ];
+    for (origin, expected_str) in origins {
+        let finding = CapabilityFinding {
+            origin: Some(origin),
+            ..sample_finding(Capability::Network, "src/lib.rs", 1)
+        };
+        let json = serde_json::to_string(&finding).unwrap();
+        let expected = format!(r#""origin":"{expected_str}""#);
+        assert!(
+            json.contains(&expected),
+            "expected {expected} in JSON, got: {json}"
+        );
+        let back: CapabilityFinding = serde_json::from_str(&json).unwrap();
+        assert_eq!(finding, back);
+    }
+}
+
+#[test]
+fn capability_display_matches_from_str() {
+    let variants = [
+        Capability::Network,
+        Capability::FileRead,
+        Capability::FileWrite,
+        Capability::ProcessExec,
+        Capability::EnvAccess,
+        Capability::UnsafeCode,
+        Capability::Ffi,
+        Capability::Crypto,
+        Capability::SystemTime,
+        Capability::ProcMacro,
+    ];
+    for cap in variants {
+        let display = cap.to_string();
+        let parsed: Capability = display.parse().unwrap();
+        assert_eq!(cap, parsed, "Display/FromStr mismatch for {cap:?}");
+    }
+}
+
+#[test]
+fn capability_finding_build_script_migration() {
+    // Legacy JSON with "build_script": true should deserialize to BuildHook
+    let legacy_json = r#"{
+        "capability": "network",
+        "location": {"file": "build.rs", "line": 10, "column": 1},
+        "evidence": "reqwest::get",
+        "build_script": true
+    }"#;
+    let finding: CapabilityFinding = serde_json::from_str(legacy_json).unwrap();
+    assert_eq!(
+        finding.execution_context,
+        Some(ExecutionContext::BuildHook),
+        "build_script: true should map to ExecutionContext::BuildHook"
+    );
+    assert!(finding.language.is_none());
+
+    // Legacy JSON with "build_script": false should deserialize to None
+    let legacy_false = r#"{
+        "capability": "file_read",
+        "location": {"file": "src/lib.rs", "line": 5, "column": 1},
+        "evidence": "std::fs::read",
+        "build_script": false
+    }"#;
+    let finding_false: CapabilityFinding = serde_json::from_str(legacy_false).unwrap();
+    assert_eq!(finding_false.execution_context, None);
+
+    // Consistent legacy and new fields may coexist.
+    let both_consistent_json = r#"{
+        "capability": "network",
+        "location": {"file": "build.rs", "line": 10, "column": 1},
+        "evidence": "reqwest::get",
+        "build_script": true,
+        "execution_context": "build_hook"
+    }"#;
+    let finding_both: CapabilityFinding = serde_json::from_str(both_consistent_json).unwrap();
+    assert_eq!(
+        finding_both.execution_context,
+        Some(ExecutionContext::BuildHook)
+    );
+
+    // Contradictory legacy and new fields are rejected.
+    let both_json = r#"{
+        "capability": "network",
+        "location": {"file": "build.rs", "line": 10, "column": 1},
+        "evidence": "reqwest::get",
+        "build_script": true,
+        "execution_context": "runtime"
+    }"#;
+    let error = serde_json::from_str::<CapabilityFinding>(both_json)
+        .expect_err("contradictory execution_context and build_script should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("contradicts legacy build_script=true"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn capability_finding_rejects_build_hook_with_legacy_false() {
+    let contradictory_json = r#"{
+        "capability": "network",
+        "location": {"file": "build.rs", "line": 10, "column": 1},
+        "evidence": "reqwest::get",
+        "build_script": false,
+        "execution_context": "build_hook"
+    }"#;
+
+    let error = serde_json::from_str::<CapabilityFinding>(contradictory_json)
+        .expect_err("build_hook with build_script=false should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("contradicts legacy build_script=false"),
+        "unexpected error: {error}"
+    );
 }

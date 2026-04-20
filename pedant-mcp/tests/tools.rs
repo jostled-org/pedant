@@ -2,13 +2,14 @@ use std::path::Path;
 
 use pedant_core::Config;
 use pedant_mcp::index::WorkspaceIndex;
-use pedant_mcp::schema::all_tools;
+use pedant_mcp::registry;
 use pedant_mcp::tools::{
     AuditCrateParams, ExplainFindingParams, FindStructuralDuplicatesParams,
     QueryCapabilitiesParams, QueryGateVerdictsParams, QueryViolationsParams,
     SearchByCapabilityParams, audit_crate, explain_finding, find_structural_duplicates,
     query_capabilities, query_gate_verdicts, query_violations, search_by_capability,
 };
+use serde_json::Value;
 
 fn fixture_path(name: &str) -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -49,7 +50,7 @@ fn test_query_capabilities_returns_findings() {
         QueryCapabilitiesParams {
             scope: "lib-a".into(),
             capability: None,
-            build_script_only: None,
+            execution_context: None,
         },
         &index,
     );
@@ -73,7 +74,7 @@ fn test_query_capabilities_filtered() {
         QueryCapabilitiesParams {
             scope: "lib-a".into(),
             capability: Some("crypto".into()),
-            build_script_only: None,
+            execution_context: None,
         },
         &index,
     );
@@ -84,6 +85,26 @@ fn test_query_capabilities_filtered() {
     assert!(
         findings.is_empty(),
         "expected no crypto findings in lib-a: {text}"
+    );
+}
+
+#[test]
+fn test_query_capabilities_build_hook_filter() {
+    let index = fixture_index();
+    let result = query_capabilities(
+        QueryCapabilitiesParams {
+            scope: "lib-a".into(),
+            capability: None,
+            execution_context: Some("build_hook".into()),
+        },
+        &index,
+    );
+
+    assert!(!is_error(&result));
+    let text = result_text(&result);
+    assert!(
+        text.contains("build_hook"),
+        "expected build-hook findings: {text}"
     );
 }
 
@@ -120,6 +141,7 @@ fn test_query_violations() {
         QueryViolationsParams {
             scope: "lib-b".into(),
             check: None,
+            category: None,
         },
         &index,
     );
@@ -142,6 +164,7 @@ fn test_search_by_capability() {
     let result = search_by_capability(
         SearchByCapabilityParams {
             pattern: "network".into(),
+            language: None,
         },
         &index,
     );
@@ -168,6 +191,7 @@ fn test_search_by_capability_combination() {
     let result = search_by_capability(
         SearchByCapabilityParams {
             pattern: "network + crypto".into(),
+            language: None,
         },
         &index,
     );
@@ -187,7 +211,7 @@ fn test_search_by_capability_combination() {
 #[test]
 fn test_explain_finding_check() {
     let result = explain_finding(ExplainFindingParams {
-        check_name: "max-depth".into(),
+        code: "max-depth".into(),
     });
 
     assert!(!is_error(&result));
@@ -202,6 +226,39 @@ fn test_explain_finding_check() {
     );
 }
 
+#[test]
+fn test_explain_finding_schema_uses_code() {
+    let tool = registry::all_tools()
+        .iter()
+        .find(|tool| tool.name == "explain_finding")
+        .expect("missing explain_finding tool");
+
+    let required = tool.input_schema["required"]
+        .as_array()
+        .expect("required must be an array");
+    assert!(required.iter().any(|value| value == "code"));
+    assert!(tool.input_schema["properties"]["code"].is_object());
+    assert!(tool.input_schema["properties"]["check_name"].is_null());
+}
+
+#[test]
+fn test_explain_finding_dispatch_accepts_code() {
+    let index = fixture_index();
+    let arguments = serde_json::from_value::<serde_json::Map<String, Value>>(serde_json::json!({
+        "code": "max-depth"
+    }))
+    .expect("arguments should deserialize");
+
+    let result = registry::dispatch("explain_finding", Some(&arguments), &index);
+
+    assert!(!is_error(&result));
+    let text = result_text(&result);
+    assert!(
+        text.contains("problem"),
+        "expected rationale output: {text}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // 2.T8: audit_crate
 // ---------------------------------------------------------------------------
@@ -211,7 +268,7 @@ fn test_audit_crate() {
     let index = fixture_index();
     let result = audit_crate(
         AuditCrateParams {
-            crate_name: "lib-a".into(),
+            scope: "lib-a".into(),
         },
         &index,
     );
@@ -242,7 +299,7 @@ fn test_mcp_audit_crate_includes_data_flows() {
     let index = fixture_index();
     let result = audit_crate(
         AuditCrateParams {
-            crate_name: "lib-a".into(),
+            scope: "lib-a".into(),
         },
         &index,
     );
@@ -279,7 +336,7 @@ fn test_mcp_audit_includes_quality_flows() {
 
     let result = audit_crate(
         AuditCrateParams {
-            crate_name: "dataflow-fixture".into(),
+            scope: "dataflow-fixture".into(),
         },
         &index,
     );
@@ -310,14 +367,18 @@ fn test_mcp_audit_includes_quality_flows() {
 
 #[test]
 fn test_tools_list_contains_all_security_tools() {
-    let tools = all_tools();
+    let tools = registry::all_tools();
     assert!(
         tools.len() >= 6,
         "expected at least 6 tools, found {}",
         tools.len()
     );
 
-    let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
+    let names: Box<[&str]> = tools
+        .iter()
+        .map(|t| t.name.as_ref())
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
     for expected in [
         "query_capabilities",
         "query_gate_verdicts",
@@ -350,13 +411,14 @@ fn test_tools_list_contains_all_security_tools() {
 // Duplicate detection helpers
 // ---------------------------------------------------------------------------
 
-fn group_fn_names(group: &serde_json::Value) -> Vec<String> {
+fn group_fn_names<'a>(group: &'a serde_json::Value) -> Box<[&'a str]> {
     group["functions"]
         .as_array()
         .map(|fns| {
             fns.iter()
-                .filter_map(|f| f["name"].as_str().map(String::from))
-                .collect()
+                .filter_map(|f| f["name"].as_str())
+                .collect::<Vec<_>>()
+                .into_boxed_slice()
         })
         .unwrap_or_default()
 }
@@ -383,7 +445,7 @@ fn test_find_structural_duplicates_exact_match() {
     // Should find a group containing process_items and process_widgets
     let has_exact_pair = groups.iter().any(|g| {
         let names = group_fn_names(g);
-        names.iter().any(|n| n == "process_items") && names.iter().any(|n| n == "process_widgets")
+        names.iter().any(|n| *n == "process_items") && names.iter().any(|n| *n == "process_widgets")
     });
     assert!(
         has_exact_pair,
@@ -413,9 +475,9 @@ fn test_find_structural_duplicates_parametric_match() {
     // Should find a skeleton group containing all three: process_items, process_widgets, handle_items
     let has_skeleton_group = groups.iter().any(|g| {
         let names = group_fn_names(g);
-        names.iter().any(|n| n == "process_items")
-            && names.iter().any(|n| n == "process_widgets")
-            && names.iter().any(|n| n == "handle_items")
+        names.iter().any(|n| *n == "process_items")
+            && names.iter().any(|n| *n == "process_widgets")
+            && names.iter().any(|n| *n == "handle_items")
     });
     assert!(
         has_skeleton_group,
@@ -425,7 +487,7 @@ fn test_find_structural_duplicates_parametric_match() {
     // handle_items should have a different exact_hash than process_items
     let skeleton_group = groups
         .iter()
-        .find(|g| group_fn_names(g).iter().any(|n| n == "handle_items"))
+        .find(|g| group_fn_names(g).iter().any(|n| *n == "handle_items"))
         .expect("expected group containing handle_items");
 
     let exact_subgroups = skeleton_group["exact_subgroups"]
@@ -459,7 +521,7 @@ fn test_find_structural_duplicates_filters_trivial() {
     // get_name is a trivial getter — should not appear in any group
     let has_trivial = groups
         .iter()
-        .any(|g| group_fn_names(g).iter().any(|n| n == "get_name"));
+        .any(|g| group_fn_names(g).iter().any(|n| *n == "get_name"));
     assert!(
         !has_trivial,
         "trivial getter get_name should be filtered out: {text}"
@@ -485,5 +547,238 @@ fn test_find_structural_duplicates_unknown_scope() {
         is_error(&result),
         "expected error for unknown scope, got: {}",
         result_text(&result)
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 3.T1: all registered tools are dispatchable
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_all_registered_tools_are_dispatchable() {
+    use pedant_mcp::registry;
+
+    let index = fixture_index();
+    let tool_names: Box<[&str]> = registry::all_tools()
+        .iter()
+        .map(|t| t.name.as_ref())
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
+
+    for name in &tool_names {
+        // Every tool in the schema must route through dispatch without
+        // returning "unknown tool".
+        let result = registry::dispatch(name, None, &index);
+        let text = result_text(&result);
+        assert!(
+            !text.contains("unknown tool"),
+            "tool '{name}' listed in schema but not dispatchable"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 3.T2: duplicate tool name rejected
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_duplicate_tool_name_rejected() {
+    use pedant_mcp::registry;
+    use std::collections::HashSet;
+
+    let tools = registry::all_tools();
+    let mut seen = HashSet::new();
+    for tool in tools.iter() {
+        assert!(
+            seen.insert(tool.name.as_ref()),
+            "duplicate tool name: {}",
+            tool.name
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 3.T3: schema and dispatch share same registry
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_schema_and_dispatch_share_same_registry() {
+    use pedant_mcp::registry;
+
+    let schema_names: Box<[&str]> = registry::all_tools()
+        .iter()
+        .map(|t| t.name.as_ref())
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
+
+    let dispatch_names = registry::dispatchable_names();
+
+    assert_eq!(
+        schema_names.len(),
+        dispatch_names.len(),
+        "schema tool count ({}) != dispatch tool count ({})",
+        schema_names.len(),
+        dispatch_names.len()
+    );
+
+    for name in &schema_names {
+        assert!(
+            dispatch_names.contains(name),
+            "tool '{name}' in schema but not in dispatch"
+        );
+    }
+
+    for name in &dispatch_names {
+        assert!(
+            schema_names.contains(name),
+            "tool '{name}' in dispatch but not in schema"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 6.T1: query_capabilities includes language field for non-Rust findings
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_mcp_query_capabilities_includes_language() {
+    let index = fixture_index();
+    let result = query_capabilities(
+        QueryCapabilitiesParams {
+            scope: "lib-a".into(),
+            capability: None,
+            execution_context: None,
+        },
+        &index,
+    );
+
+    assert!(!is_error(&result));
+    let text = result_text(&result);
+    let findings: Vec<Value> = serde_json::from_str(&text).unwrap();
+
+    // lib-a has scripts/fetch_data.py with `import requests` → network finding
+    let python_findings: Box<[_]> = findings
+        .iter()
+        .filter(|f| f["language"].as_str() == Some("python"))
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
+    assert!(
+        !python_findings.is_empty(),
+        "expected Python-language findings in lib-a: {text}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 6.T2: audit_crate includes findings from both Rust and non-Rust sources
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_mcp_audit_crate_multi_language() {
+    let index = fixture_index();
+    let result = audit_crate(
+        AuditCrateParams {
+            scope: "lib-a".into(),
+        },
+        &index,
+    );
+
+    assert!(!is_error(&result));
+    let text = result_text(&result);
+    let audit: Value = serde_json::from_str(&text).unwrap();
+    let capabilities = audit["capabilities"]
+        .as_array()
+        .expect("expected capabilities array");
+
+    // Should have both Rust findings (no language field) and Python findings
+    let has_rust = capabilities
+        .iter()
+        .any(|f| f.get("language").is_none() || f["language"].is_null());
+    let has_python = capabilities
+        .iter()
+        .any(|f| f["language"].as_str() == Some("python"));
+    assert!(has_rust, "expected Rust findings in audit: {text}");
+    assert!(has_python, "expected Python findings in audit: {text}");
+}
+
+// ---------------------------------------------------------------------------
+// 6.T3: search_by_capability with language filter
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_mcp_search_by_capability_language_filter() {
+    let index = fixture_index();
+
+    // Search for network with language filter "python"
+    let result = search_by_capability(
+        SearchByCapabilityParams {
+            pattern: "network".into(),
+            language: Some("python".into()),
+        },
+        &index,
+    );
+
+    assert!(!is_error(&result));
+    let text = result_text(&result);
+    let results: Vec<Value> = serde_json::from_str(&text).unwrap();
+
+    // lib-a has Python network findings (fetch_data.py)
+    let lib_a = results.iter().find(|r| r["crate_name"] == "lib-a");
+    assert!(
+        lib_a.is_some(),
+        "expected lib-a in Python network search: {text}"
+    );
+
+    // All returned findings should be Python
+    for result_obj in &results {
+        let findings = result_obj["findings"].as_array().unwrap();
+        for f in findings {
+            assert_eq!(
+                f["language"].as_str(),
+                Some("python"),
+                "expected only Python findings with language filter: {text}"
+            );
+        }
+    }
+
+    // lib-c has Rust network findings but no Python → should not appear
+    let lib_c = results.iter().find(|r| r["crate_name"] == "lib-c");
+    assert!(
+        lib_c.is_none(),
+        "lib-c has no Python network findings, should not appear: {text}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 6.T4: manifest/hook findings are indexed with execution context
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_mcp_manifest_hook_findings_indexed() {
+    let index = fixture_index();
+    let result = query_capabilities(
+        QueryCapabilitiesParams {
+            scope: "lib-a".into(),
+            capability: None,
+            execution_context: Some("install_hook".into()),
+        },
+        &index,
+    );
+
+    assert!(!is_error(&result));
+    let text = result_text(&result);
+    let findings: Vec<Value> = serde_json::from_str(&text).unwrap();
+
+    // lib-a/package.json has a postinstall hook → install_hook context
+    assert!(
+        !findings.is_empty(),
+        "expected install_hook findings from package.json: {text}"
+    );
+
+    let has_postinstall = findings
+        .iter()
+        .any(|f| f["evidence"].as_str() == Some("postinstall"));
+    assert!(
+        has_postinstall,
+        "expected postinstall evidence in hook findings: {text}"
     );
 }

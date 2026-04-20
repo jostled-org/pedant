@@ -1,14 +1,17 @@
 #![cfg(feature = "semantic")]
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use pedant_core::SemanticContext;
+use pedant_core::SemanticFileAnalysis;
 use pedant_core::check_config::CheckConfig;
 use pedant_core::ir;
 use pedant_core::ir::DataFlowKind;
-use pedant_core::lint::{analyze, determine_analysis_tier};
+use pedant_core::ir::{DataFlowFact, IrSpan};
+use pedant_core::lint::{analyze, analyze_with_build_script, determine_analysis_tier};
 use pedant_core::violation::ViolationType;
-use pedant_types::AnalysisTier;
+use pedant_types::{AnalysisTier, Capability};
 
 fn fixture_workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -68,16 +71,14 @@ fn test_resolve_type_unknown_position_returns_none() {
 #[test]
 fn test_is_copy_for_primitive() {
     let root = fixture_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("workspace should load");
-    let _ = ctx;
+    SemanticContext::load(&root).expect("workspace should load");
     assert!(SemanticContext::is_copy("i32"), "i32 should implement Copy");
 }
 
 #[test]
 fn test_is_copy_for_string() {
     let root = fixture_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("workspace should load");
-    let _ = ctx;
+    SemanticContext::load(&root).expect("workspace should load");
     assert!(
         !SemanticContext::is_copy("String"),
         "String should not implement Copy"
@@ -96,17 +97,17 @@ fn test_load_missing_workspace_returns_none() {
 
 #[test]
 fn test_load_invalid_workspace_returns_none() {
-    let tmp = std::env::temp_dir().join("pedant_test_invalid_workspace");
-    std::fs::create_dir_all(&tmp).unwrap();
-    std::fs::write(tmp.join("Cargo.toml"), "[invalid\nbroken toml").unwrap();
+    let workspace_dir = std::env::temp_dir().join("pedant_test_invalid_workspace");
+    std::fs::create_dir_all(&workspace_dir).unwrap();
+    std::fs::write(workspace_dir.join("Cargo.toml"), "[invalid\nbroken toml").unwrap();
 
-    let ctx = SemanticContext::load(&tmp);
+    let loaded = SemanticContext::load(&workspace_dir);
     assert!(
-        ctx.is_none(),
+        loaded.is_none(),
         "SemanticContext::load should return None for a malformed workspace"
     );
 
-    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::remove_dir_all(&workspace_dir).unwrap();
 }
 
 // --- Step 2: IR extraction enrichment tests ---
@@ -268,6 +269,45 @@ fn test_extract_copy_receiver_detected() {
     );
 }
 
+// --- Step 5: Receiver type enrichment reuses binding types ---
+
+/// 5.T2: Multiple method calls on the same binding all get receiver_type populated.
+#[test]
+fn test_receiver_type_enrichment_reuses_binding_types() {
+    let root = fixture_workspace_root();
+    let ctx = SemanticContext::load(&root).expect("workspace should load");
+    let file_path = fixture_lib_path();
+    let syntax = parse_fixture();
+
+    let enriched = ir::extract(&file_path, &syntax, Some(&ctx));
+
+    let fn_idx = enriched
+        .functions
+        .iter()
+        .position(|f| &*f.name == "repeated_method_calls_same_binding")
+        .expect("should find repeated_method_calls_same_binding function");
+
+    let calls_in_fn: Vec<_> = enriched
+        .method_calls
+        .iter()
+        .filter(|mc| mc.containing_fn == Some(fn_idx) && mc.receiver_type.is_some())
+        .collect();
+
+    assert!(
+        calls_in_fn.len() >= 3,
+        "expected at least 3 method calls with resolved receiver_type, got {}",
+        calls_in_fn.len()
+    );
+
+    for mc in &calls_in_fn {
+        let rt = mc.receiver_type.as_deref().unwrap();
+        assert!(
+            rt.contains("String"),
+            "receiver_type should resolve to String, got: {rt}"
+        );
+    }
+}
+
 // --- Step 1 (DataFlow): DataFlowFact and reachable annotation ---
 
 /// 1.T1: data_flows is empty without semantic context.
@@ -330,7 +370,10 @@ fn test_call_graph_direct_call() {
     let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
     let file = dataflow_lib_path();
 
-    let edges = ctx.call_graph(&file);
+    let analysis = ctx
+        .analyze_file(&file)
+        .expect("should produce file analysis");
+    let edges = analysis.call_graph();
 
     let has_run_fetch = edges
         .iter()
@@ -348,7 +391,10 @@ fn test_call_graph_no_calls() {
     let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
     let file = dataflow_lib_path();
 
-    let edges = ctx.call_graph(&file);
+    let analysis = ctx
+        .analyze_file(&file)
+        .expect("should produce file analysis");
+    let edges = analysis.call_graph();
 
     let no_calls_edges: Vec<_> = edges
         .iter()
@@ -369,7 +415,11 @@ fn test_trace_taints_env_to_network() {
     let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
     let file = dataflow_lib_path();
 
-    let taints = ctx.trace_taints(&file, "leak_env");
+    let analysis = ctx
+        .analyze_file(&file)
+        .expect("should produce file analysis");
+    let summary = analysis.function("leak_env").expect("should find leak_env");
+    let taints = summary.taint_flows();
 
     assert_eq!(
         taints.len(),
@@ -393,7 +443,11 @@ fn test_trace_taints_no_flow() {
     let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
     let file = dataflow_lib_path();
 
-    let taints = ctx.trace_taints(&file, "safe_env");
+    let analysis = ctx
+        .analyze_file(&file)
+        .expect("should produce file analysis");
+    let summary = analysis.function("safe_env").expect("should find safe_env");
+    let taints = summary.taint_flows();
 
     assert!(
         taints.is_empty(),
@@ -410,9 +464,13 @@ fn test_is_reachable_public_fn() {
     let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
     let file = dataflow_lib_path();
 
+    let analysis = ctx
+        .analyze_file(&file)
+        .expect("should produce file analysis");
+
     // reachable_network() is pub and uses TcpStream at line 20
     assert!(
-        ctx.is_reachable(&file, 20),
+        analysis.is_line_reachable(20),
         "pub fn reachable_network should be reachable"
     );
 }
@@ -424,9 +482,13 @@ fn test_is_reachable_dead_code() {
     let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
     let file = dataflow_lib_path();
 
+    let analysis = ctx
+        .analyze_file(&file)
+        .expect("should produce file analysis");
+
     // unreachable_private() is private and never called — line 25
     assert!(
-        !ctx.is_reachable(&file, 25),
+        !analysis.is_line_reachable(25),
         "private fn unreachable_private should not be reachable"
     );
 }
@@ -515,7 +577,7 @@ fn test_analyze_with_semantic_detects_aliased_hasher() {
 #[test]
 fn test_analyze_with_semantic_resolves_capability_alias() {
     let root = fixture_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("workspace should load");
+    let semantic_ctx = SemanticContext::load(&root).expect("workspace should load");
     let file_path = fixture_lib_path();
     let source = fixture_source();
     let config = CheckConfig {
@@ -527,12 +589,12 @@ fn test_analyze_with_semantic_resolves_capability_alias() {
     // Verify analyze with semantic context does not break capability detection.
     // The fixture uses std::sync::Arc and std::collections::HashMap —
     // these are stdlib imports, not external capabilities.
-    let result = analyze(&file_path, &source, &config, Some(&ctx)).unwrap();
+    let analysis = analyze(&file_path, &source, &config, Some(&semantic_ctx)).unwrap();
     // No network/filesystem capabilities in the fixture
     assert!(
-        result.capabilities.findings.is_empty(),
+        analysis.capabilities.findings.is_empty(),
         "fixture should not trigger capability findings, got: {:?}",
-        result.capabilities.findings
+        analysis.capabilities.findings
     );
 }
 
@@ -633,42 +695,106 @@ fn test_analyze_without_semantic_no_data_flows() {
     }
 }
 
+#[test]
+fn test_analyze_with_build_script_preserves_semantic_reachability() {
+    let root = dataflow_workspace_root();
+    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
+    let file_path = dataflow_lib_path();
+    let source = dataflow_source();
+    let config = CheckConfig::default();
+
+    let result = analyze_with_build_script(
+        &file_path,
+        &source,
+        &config,
+        Some(&ctx),
+        Some((&file_path, &source)),
+    )
+    .unwrap();
+
+    let build_findings: Vec<_> = result
+        .capabilities
+        .findings
+        .iter()
+        .filter(|finding| finding.is_build_hook())
+        .collect();
+
+    assert!(!build_findings.is_empty(), "expected build-script findings");
+    assert!(
+        build_findings
+            .iter()
+            .all(|finding| finding.reachable.is_some()),
+        "build findings should keep semantic reachability"
+    );
+}
+
+// --- Helpers for dataflow per-function issue assertions ---
+
+enum IssueCategory {
+    Quality,
+    Performance,
+    Concurrency,
+}
+
+/// Load the dataflow fixture's file analysis (shared across tests).
+fn dataflow_file_analysis() -> Arc<SemanticFileAnalysis> {
+    let root = dataflow_workspace_root();
+    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
+    let file = dataflow_lib_path();
+    ctx.analyze_file(&file)
+        .expect("should produce file analysis")
+}
+
+/// Assert that `fn_name` produces exactly `expected` findings of `kind`
+/// in the given issue category. Panics with a descriptive message on mismatch.
+fn assert_function_issue_count(
+    analysis: &SemanticFileAnalysis,
+    fn_name: &str,
+    category: IssueCategory,
+    kind: DataFlowKind,
+    expected: usize,
+) {
+    let summary = analysis
+        .function(fn_name)
+        .unwrap_or_else(|| panic!("should find {fn_name}"));
+    let facts = match category {
+        IssueCategory::Quality => summary.quality_issues(),
+        IssueCategory::Performance => summary.performance_issues(),
+        IssueCategory::Concurrency => summary.concurrency_issues(),
+    };
+    let matched: Vec<_> = facts.iter().filter(|f| f.kind == kind).collect();
+    assert_eq!(
+        matched.len(),
+        expected,
+        "expected {expected} {kind:?} in {fn_name}(), got: {matched:?}"
+    );
+}
+
 // --- Quality: dead store detection ---
 
 /// Dead store: value overwritten before read.
 #[test]
 fn test_dead_store_detected() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_quality_issues(&file, "dead_store");
-    let dead_stores: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::DeadStore)
-        .collect();
-    assert_eq!(
-        dead_stores.len(),
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "dead_store",
+        IssueCategory::Quality,
+        DataFlowKind::DeadStore,
         1,
-        "should find one dead store in dead_store(), got: {dead_stores:?}"
     );
 }
 
 /// No dead store when value is read before reassignment.
 #[test]
 fn test_dead_store_not_flagged_when_read() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_quality_issues(&file, "no_dead_store");
-    let dead_stores: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::DeadStore)
-        .collect();
-    assert!(
-        dead_stores.is_empty(),
-        "should find no dead stores in no_dead_store(), got: {dead_stores:?}"
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "no_dead_store",
+        IssueCategory::Quality,
+        DataFlowKind::DeadStore,
+        0,
     );
 }
 
@@ -677,37 +803,26 @@ fn test_dead_store_not_flagged_when_read() {
 /// Result-returning function called without binding.
 #[test]
 fn test_discarded_result_detected() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_quality_issues(&file, "discarded_result");
-    let discarded: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::DiscardedResult)
-        .collect();
-    assert_eq!(
-        discarded.len(),
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "discarded_result",
+        IssueCategory::Quality,
+        DataFlowKind::DiscardedResult,
         1,
-        "should find one discarded result in discarded_result(), got: {discarded:?}"
     );
 }
 
 /// Result bound with `let _ =` is intentional discard — not flagged.
 #[test]
 fn test_discarded_result_not_flagged_when_bound() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_quality_issues(&file, "discarded_result_bound");
-    let discarded: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::DiscardedResult)
-        .collect();
-    assert!(
-        discarded.is_empty(),
-        "should find no discarded results in discarded_result_bound(), got: {discarded:?}"
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "discarded_result_bound",
+        IssueCategory::Quality,
+        DataFlowKind::DiscardedResult,
+        0,
     );
 }
 
@@ -716,19 +831,13 @@ fn test_discarded_result_not_flagged_when_bound() {
 /// Result handled on some paths, dropped on others.
 #[test]
 fn test_partial_error_handling_detected() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_quality_issues(&file, "partial_error_handling");
-    let partial: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::PartialErrorHandling)
-        .collect();
-    assert_eq!(
-        partial.len(),
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "partial_error_handling",
+        IssueCategory::Quality,
+        DataFlowKind::PartialErrorHandling,
         1,
-        "should find one partial error handling in partial_error_handling(), got: {partial:?}"
     );
 }
 
@@ -737,37 +846,26 @@ fn test_partial_error_handling_detected() {
 /// Repeated call: same function, same args within a scope.
 #[test]
 fn test_repeated_call_detected() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_performance_issues(&file, "repeated_call_same_args");
-    let repeated: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::RepeatedCall)
-        .collect();
-    assert_eq!(
-        repeated.len(),
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "repeated_call_same_args",
+        IssueCategory::Performance,
+        DataFlowKind::RepeatedCall,
         1,
-        "should find one repeated call in repeated_call_same_args(), got: {repeated:?}"
     );
 }
 
 /// Different arguments — no repeated call.
 #[test]
 fn test_repeated_call_different_args_not_flagged() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_performance_issues(&file, "repeated_call_different_args");
-    let repeated: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::RepeatedCall)
-        .collect();
-    assert!(
-        repeated.is_empty(),
-        "should find no repeated calls in repeated_call_different_args(), got: {repeated:?}"
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "repeated_call_different_args",
+        IssueCategory::Performance,
+        DataFlowKind::RepeatedCall,
+        0,
     );
 }
 
@@ -776,37 +874,26 @@ fn test_repeated_call_different_args_not_flagged() {
 /// Clone where original is never used after.
 #[test]
 fn test_unnecessary_clone_detected() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_performance_issues(&file, "unnecessary_clone");
-    let clones: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::UnnecessaryClone)
-        .collect();
-    assert_eq!(
-        clones.len(),
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "unnecessary_clone",
+        IssueCategory::Performance,
+        DataFlowKind::UnnecessaryClone,
         1,
-        "should find one unnecessary clone in unnecessary_clone(), got: {clones:?}"
     );
 }
 
 /// Clone where original is used after — necessary.
 #[test]
 fn test_clone_needed_not_flagged() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_performance_issues(&file, "clone_needed");
-    let clones: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::UnnecessaryClone)
-        .collect();
-    assert!(
-        clones.is_empty(),
-        "should find no unnecessary clones in clone_needed(), got: {clones:?}"
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "clone_needed",
+        IssueCategory::Performance,
+        DataFlowKind::UnnecessaryClone,
+        0,
     );
 }
 
@@ -815,19 +902,13 @@ fn test_clone_needed_not_flagged() {
 /// Vec allocated inside loop body.
 #[test]
 fn test_allocation_in_loop_detected() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_performance_issues(&file, "allocation_in_loop");
-    let allocs: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::AllocationInLoop)
-        .collect();
-    assert_eq!(
-        allocs.len(),
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "allocation_in_loop",
+        IssueCategory::Performance,
+        DataFlowKind::AllocationInLoop,
         1,
-        "should find one allocation in loop in allocation_in_loop(), got: {allocs:?}"
     );
 }
 
@@ -836,19 +917,13 @@ fn test_allocation_in_loop_detected() {
 /// Collect then immediately re-iterate.
 #[test]
 fn test_redundant_collect_detected() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_performance_issues(&file, "redundant_collect");
-    let collects: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::RedundantCollect)
-        .collect();
-    assert_eq!(
-        collects.len(),
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "redundant_collect",
+        IssueCategory::Performance,
+        DataFlowKind::RedundantCollect,
         1,
-        "should find one redundant collect in redundant_collect(), got: {collects:?}"
     );
 }
 
@@ -857,56 +932,39 @@ fn test_redundant_collect_detected() {
 /// Lock guard held across await point — direct.
 #[test]
 fn test_lock_across_await_direct() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_lock_across_await(&file, "lock_across_await_direct");
-    let findings: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::LockAcrossAwait)
-        .collect();
-    assert_eq!(
-        findings.len(),
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "lock_across_await_direct",
+        IssueCategory::Concurrency,
+        DataFlowKind::LockAcrossAwait,
         1,
-        "should find one lock-across-await in lock_across_await_direct(), got: {findings:?}"
     );
 }
 
 /// Lock guard held across async function call — cross-function.
 #[test]
 fn test_lock_across_await_cross_function() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_lock_across_await(&file, "lock_across_await_cross_fn");
-    let findings: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::LockAcrossAwait)
-        .collect();
-    assert_eq!(
-        findings.len(),
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "lock_across_await_cross_fn",
+        IssueCategory::Concurrency,
+        DataFlowKind::LockAcrossAwait,
         1,
-        "should find one lock-across-await in lock_across_await_cross_fn(), got: {findings:?}"
     );
 }
 
 /// Lock guard dropped before await — safe pattern, not flagged.
 #[test]
 fn test_lock_dropped_before_await_not_flagged() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_lock_across_await(&file, "lock_dropped_before_await");
-    let findings: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::LockAcrossAwait)
-        .collect();
-    assert!(
-        findings.is_empty(),
-        "should find no lock-across-await in lock_dropped_before_await(), got: {findings:?}"
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "lock_dropped_before_await",
+        IssueCategory::Concurrency,
+        DataFlowKind::LockAcrossAwait,
+        0,
     );
 }
 
@@ -915,12 +973,9 @@ fn test_lock_dropped_before_await_not_flagged() {
 /// Inconsistent lock ordering across lock_order_a and lock_order_b.
 #[test]
 fn test_inconsistent_lock_order_detected() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_inconsistent_lock_ordering(&file);
-    let findings: Vec<_> = facts
+    let analysis = dataflow_file_analysis();
+    let findings: Vec<_> = analysis
+        .data_flows()
         .iter()
         .filter(|f| f.kind == DataFlowKind::InconsistentLockOrder)
         .collect();
@@ -933,14 +988,11 @@ fn test_inconsistent_lock_order_detected() {
 /// Consistent lock ordering — not flagged.
 #[test]
 fn test_consistent_lock_order_not_flagged() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_inconsistent_lock_ordering(&file);
+    let analysis = dataflow_file_analysis();
     // The finding should reference lock_order_a and lock_order_b (inconsistent pair).
     // lock_order_consistent and lock_order_a have the same ordering — no finding between them.
-    let findings: Vec<_> = facts
+    let findings: Vec<_> = analysis
+        .data_flows()
         .iter()
         .filter(|f| {
             f.kind == DataFlowKind::InconsistentLockOrder
@@ -958,102 +1010,87 @@ fn test_consistent_lock_order_not_flagged() {
 /// Immutable Vec detected.
 #[test]
 fn test_immutable_vec_detected() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_quality_issues(&file, "immutable_vec");
-    let findings: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::ImmutableGrowable)
-        .collect();
-    assert_eq!(
-        findings.len(),
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "immutable_vec",
+        IssueCategory::Quality,
+        DataFlowKind::ImmutableGrowable,
         1,
-        "should find one ImmutableGrowable in immutable_vec(), got: {findings:?}"
     );
+    let summary = analysis.function("immutable_vec").unwrap();
+    let finding = summary
+        .quality_issues()
+        .iter()
+        .find(|f| f.kind == DataFlowKind::ImmutableGrowable)
+        .unwrap();
     assert!(
-        findings[0].message.contains("Vec"),
+        finding.message.contains("Vec"),
         "message should mention Vec, got: {}",
-        findings[0].message
+        finding.message
     );
 }
 
 /// Immutable String detected.
 #[test]
 fn test_immutable_string_detected() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_quality_issues(&file, "immutable_string");
-    let findings: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::ImmutableGrowable)
-        .collect();
-    assert_eq!(
-        findings.len(),
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "immutable_string",
+        IssueCategory::Quality,
+        DataFlowKind::ImmutableGrowable,
         1,
-        "should find one ImmutableGrowable in immutable_string(), got: {findings:?}"
     );
+    let summary = analysis.function("immutable_string").unwrap();
+    let finding = summary
+        .quality_issues()
+        .iter()
+        .find(|f| f.kind == DataFlowKind::ImmutableGrowable)
+        .unwrap();
     assert!(
-        findings[0].message.contains("String"),
+        finding.message.contains("String"),
         "message should mention String, got: {}",
-        findings[0].message
+        finding.message
     );
 }
 
 /// Mutated Vec not flagged.
 #[test]
 fn test_mutated_vec_not_flagged() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_quality_issues(&file, "mutated_vec");
-    let findings: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::ImmutableGrowable)
-        .collect();
-    assert!(
-        findings.is_empty(),
-        "should find no ImmutableGrowable in mutated_vec(), got: {findings:?}"
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "mutated_vec",
+        IssueCategory::Quality,
+        DataFlowKind::ImmutableGrowable,
+        0,
     );
 }
 
 /// Returned Vec not flagged (caller may mutate).
 #[test]
 fn test_returned_vec_not_flagged() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_quality_issues(&file, "returned_vec");
-    let findings: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::ImmutableGrowable)
-        .collect();
-    assert!(
-        findings.is_empty(),
-        "should find no ImmutableGrowable in returned_vec(), got: {findings:?}"
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "returned_vec",
+        IssueCategory::Quality,
+        DataFlowKind::ImmutableGrowable,
+        0,
     );
 }
 
 /// Vec passed as &mut ref not flagged.
 #[test]
 fn test_vec_passed_as_mut_ref_not_flagged() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_quality_issues(&file, "caller_passes_mut");
-    let findings: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::ImmutableGrowable)
-        .collect();
-    assert!(
-        findings.is_empty(),
-        "should find no ImmutableGrowable in caller_passes_mut(), got: {findings:?}"
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "caller_passes_mut",
+        IssueCategory::Quality,
+        DataFlowKind::ImmutableGrowable,
+        0,
     );
 }
 
@@ -1062,74 +1099,52 @@ fn test_vec_passed_as_mut_ref_not_flagged() {
 /// SwallowedOk: .ok() as statement on Result — detected.
 #[test]
 fn test_swallowed_ok_statement_detected() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_quality_issues(&file, "swallowed_ok_statement");
-    let findings: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::SwallowedOk)
-        .collect();
-    assert_eq!(
-        findings.len(),
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "swallowed_ok_statement",
+        IssueCategory::Quality,
+        DataFlowKind::SwallowedOk,
         1,
-        "should find one SwallowedOk in swallowed_ok_statement(), got: {findings:?}"
     );
 }
 
 /// SwallowedOk: let _ = expr.ok() — detected.
 #[test]
 fn test_swallowed_ok_let_underscore_detected() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_quality_issues(&file, "swallowed_ok_let_underscore");
-    let findings: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::SwallowedOk)
-        .collect();
-    assert_eq!(
-        findings.len(),
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "swallowed_ok_let_underscore",
+        IssueCategory::Quality,
+        DataFlowKind::SwallowedOk,
         1,
-        "should find one SwallowedOk in swallowed_ok_let_underscore(), got: {findings:?}"
     );
 }
 
 /// .ok() result is used — not flagged.
 #[test]
 fn test_ok_used_not_flagged() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_quality_issues(&file, "ok_used");
-    let findings: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::SwallowedOk)
-        .collect();
-    assert!(
-        findings.is_empty(),
-        "should find no SwallowedOk in ok_used(), got: {findings:?}"
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "ok_used",
+        IssueCategory::Quality,
+        DataFlowKind::SwallowedOk,
+        0,
     );
 }
 
 /// write!().ok() is exempt per audit ledger.
 #[test]
 fn test_write_ok_exempt() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_quality_issues(&file, "write_ok_exempt");
-    let findings: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::SwallowedOk)
-        .collect();
-    assert!(
-        findings.is_empty(),
-        "should find no SwallowedOk in write_ok_exempt(), got: {findings:?}"
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "write_ok_exempt",
+        IssueCategory::Quality,
+        DataFlowKind::SwallowedOk,
+        0,
     );
 }
 
@@ -1138,74 +1153,52 @@ fn test_write_ok_exempt() {
 /// UnobservedSpawn: std::thread::spawn as statement — detected.
 #[test]
 fn test_unobserved_thread_spawn_detected() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_concurrency_issues(&file, "unobserved_thread_spawn");
-    let findings: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::UnobservedSpawn)
-        .collect();
-    assert_eq!(
-        findings.len(),
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "unobserved_thread_spawn",
+        IssueCategory::Concurrency,
+        DataFlowKind::UnobservedSpawn,
         1,
-        "should find one UnobservedSpawn in unobserved_thread_spawn(), got: {findings:?}"
     );
 }
 
 /// UnobservedSpawn: let _ = std::thread::spawn — detected.
 #[test]
 fn test_unobserved_thread_spawn_let_underscore_detected() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_concurrency_issues(&file, "unobserved_thread_spawn_let_underscore");
-    let findings: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::UnobservedSpawn)
-        .collect();
-    assert_eq!(
-        findings.len(),
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "unobserved_thread_spawn_let_underscore",
+        IssueCategory::Concurrency,
+        DataFlowKind::UnobservedSpawn,
         1,
-        "should find one UnobservedSpawn in unobserved_thread_spawn_let_underscore(), got: {findings:?}"
     );
 }
 
 /// Observed spawn: JoinHandle bound and used — not flagged.
 #[test]
 fn test_observed_thread_spawn_not_flagged() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_concurrency_issues(&file, "observed_thread_spawn");
-    let findings: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::UnobservedSpawn)
-        .collect();
-    assert!(
-        findings.is_empty(),
-        "should find no UnobservedSpawn in observed_thread_spawn(), got: {findings:?}"
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "observed_thread_spawn",
+        IssueCategory::Concurrency,
+        DataFlowKind::UnobservedSpawn,
+        0,
     );
 }
 
 /// Custom spawn function — not std::thread, not flagged.
 #[test]
 fn test_custom_spawn_not_flagged() {
-    let root = dataflow_workspace_root();
-    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
-    let file = dataflow_lib_path();
-
-    let facts = ctx.detect_concurrency_issues(&file, "custom_spawn");
-    let findings: Vec<_> = facts
-        .iter()
-        .filter(|f| f.kind == DataFlowKind::UnobservedSpawn)
-        .collect();
-    assert!(
-        findings.is_empty(),
-        "should find no UnobservedSpawn in custom_spawn(), got: {findings:?}"
+    let analysis = dataflow_file_analysis();
+    assert_function_issue_count(
+        &analysis,
+        "custom_spawn",
+        IssueCategory::Concurrency,
+        DataFlowKind::UnobservedSpawn,
+        0,
     );
 }
 
@@ -1235,4 +1228,481 @@ fn test_attestation_tier_dataflow() {
     // Semantic but no flows: Semantic tier
     let semantic_no_flow_tier = determine_analysis_tier(Some(&ctx), &[]);
     assert_eq!(semantic_no_flow_tier, AnalysisTier::Semantic);
+}
+
+#[test]
+fn test_analysis_tier_requires_semantic_context_for_dataflow() {
+    let data_flows = [DataFlowFact {
+        kind: DataFlowKind::DiscardedResult,
+        source_capability: Some(Capability::FileRead),
+        source_span: IrSpan { line: 1, column: 1 },
+        sink_capability: Some(Capability::Network),
+        sink_span: IrSpan { line: 2, column: 1 },
+        call_chain: Box::new([]),
+        message: Box::from("synthetic flow"),
+    }];
+
+    let tier = determine_analysis_tier(None, &data_flows);
+    assert_eq!(tier, AnalysisTier::Syntactic);
+}
+
+// --- Cache: public queries match pre-cache behavior (T1) ---
+
+/// T1: Run all public semantic queries on the dataflow fixture and verify
+/// outputs match expected behavior. Guards against regressions when
+/// introducing file-level analysis caching.
+#[test]
+fn test_semantic_public_queries_match_pre_cache_behavior() {
+    let root = dataflow_workspace_root();
+    let ctx = SemanticContext::load(&root).expect("workspace should load");
+    let file = dataflow_lib_path();
+
+    let analysis = ctx
+        .analyze_file(&file)
+        .expect("should produce file analysis");
+
+    // call_graph: run→fetch edge exists
+    let edges = analysis.call_graph();
+    assert!(
+        edges.iter().any(|(c, e)| &**c == "run" && &**e == "fetch"),
+        "call_graph should contain (run, fetch) edge"
+    );
+
+    // trace_taints: leak_env has env→network flow
+    let summary = analysis.function("leak_env").expect("should find leak_env");
+    let taints = summary.taint_flows();
+    assert_eq!(taints.len(), 1, "leak_env should have one taint flow");
+
+    // detect_quality_issues: dead_store detects DeadStore
+    let summary = analysis
+        .function("dead_store")
+        .expect("should find dead_store");
+    let quality = summary.quality_issues();
+    assert!(
+        quality.iter().any(|f| f.kind == DataFlowKind::DeadStore),
+        "dead_store should produce DeadStore finding"
+    );
+
+    // detect_performance_issues: repeated_call_same_args detects RepeatedCall
+    let summary = analysis
+        .function("repeated_call_same_args")
+        .expect("should find repeated_call_same_args");
+    let perf = summary.performance_issues();
+    assert!(
+        perf.iter().any(|f| f.kind == DataFlowKind::RepeatedCall),
+        "repeated_call_same_args should produce RepeatedCall finding"
+    );
+
+    // detect_concurrency_issues: unobserved_thread_spawn detects UnobservedSpawn
+    let summary = analysis
+        .function("unobserved_thread_spawn")
+        .expect("should find unobserved_thread_spawn");
+    let conc = summary.concurrency_issues();
+    assert!(
+        conc.iter().any(|f| f.kind == DataFlowKind::UnobservedSpawn),
+        "unobserved_thread_spawn should produce UnobservedSpawn finding"
+    );
+
+    // is_reachable: pub fn is reachable, private uncalled is not
+    assert!(
+        analysis.is_line_reachable(20),
+        "pub fn reachable_network should be reachable"
+    );
+    assert!(
+        !analysis.is_line_reachable(25),
+        "private fn unreachable_private should not be reachable"
+    );
+
+    // detect_inconsistent_lock_ordering: file has ordering violation
+    assert!(
+        analysis
+            .data_flows()
+            .iter()
+            .any(|f| f.kind == DataFlowKind::InconsistentLockOrder),
+        "should detect inconsistent lock ordering"
+    );
+}
+
+// --- Cache: multiple queries reuse cached file state (T2) ---
+
+/// T2: Multiple semantic queries on the same file should reuse cached
+/// file-level analysis (call graph, function entries, reachable set)
+/// instead of rebuilding from scratch.
+#[test]
+fn test_semantic_multiple_queries_reuse_cached_file_state() {
+    let root = dataflow_workspace_root();
+    let ctx = SemanticContext::load(&root).expect("workspace should load");
+    let file = dataflow_lib_path();
+
+    // First query: analyze_file triggers file-level analysis
+    let analysis = ctx
+        .analyze_file(&file)
+        .expect("should produce file analysis");
+    let count_after_first = ctx.file_setup_count();
+
+    // Second query: is_line_reachable should reuse cached state
+    let _reachable = analysis.is_line_reachable(20);
+    let count_after_second = ctx.file_setup_count();
+
+    // Third query: check_reachability_batch should reuse cached state
+    let _batch = analysis.check_reachability_batch(&[20, 25]);
+    let count_after_third = ctx.file_setup_count();
+
+    assert!(
+        count_after_first >= 1,
+        "first query should trigger file setup"
+    );
+    assert_eq!(
+        count_after_first, count_after_second,
+        "is_line_reachable should reuse cached state, not re-setup file"
+    );
+    assert_eq!(
+        count_after_second, count_after_third,
+        "check_reachability_batch should reuse cached state"
+    );
+}
+
+// --- Cache: batched and individual queries agree (T3) ---
+
+/// T3: The batched data-flow enrichment (via analyze()) should produce
+/// the same findings as the union of individual per-function queries.
+#[test]
+fn test_enrich_all_data_flows_and_individual_queries_agree() {
+    let root = dataflow_workspace_root();
+    let ctx = SemanticContext::load(&root).expect("workspace should load");
+    let file_path = dataflow_lib_path();
+    let source = dataflow_source();
+    let config = CheckConfig::default();
+
+    // Batched results via analyze()
+    let result = analyze(&file_path, &source, &config, Some(&ctx)).unwrap();
+    let batched = &result.data_flows;
+
+    // Individual results: query each function's analysis summary
+    let file = dataflow_lib_path();
+    let analysis = ctx
+        .analyze_file(&file)
+        .expect("should produce file analysis");
+    let all_fn_names: &[&str] = &[
+        "fetch",
+        "run",
+        "no_calls",
+        "reachable_network",
+        "unreachable_private",
+        "leak_env",
+        "safe_env",
+        "compute_something",
+        "compute_other",
+        "use_value",
+        "dead_store",
+        "no_dead_store",
+        "discarded_result",
+        "discarded_result_bound",
+        "partial_error_handling",
+        "expensive_compute",
+        "use_both",
+        "repeated_call_same_args",
+        "repeated_call_different_args",
+        "consume",
+        "unnecessary_clone",
+        "clone_needed",
+        "fill",
+        "process",
+        "allocation_in_loop",
+        "redundant_collect",
+        "do_async_work",
+        "lock_across_await_direct",
+        "helper_async",
+        "lock_across_await_cross_fn",
+        "lock_dropped_before_await",
+        "lock_order_a",
+        "lock_order_b",
+        "lock_order_consistent",
+        "immutable_vec",
+        "immutable_string",
+        "mutated_vec",
+        "returned_vec",
+        "passed_mut",
+        "caller_passes_mut",
+        "fallible_io",
+        "swallowed_ok_statement",
+        "swallowed_ok_let_underscore",
+        "ok_used",
+        "write_ok_exempt",
+        "unobserved_thread_spawn",
+        "unobserved_thread_spawn_let_underscore",
+        "observed_thread_spawn",
+        "custom_spawn_impl",
+        "custom_spawn",
+    ];
+
+    let mut individual: Vec<ir::DataFlowFact> = Vec::new();
+    for fn_name in all_fn_names {
+        if let Some(summary) = analysis.function(fn_name) {
+            individual.extend_from_slice(summary.taint_flows());
+            individual.extend_from_slice(summary.quality_issues());
+            individual.extend_from_slice(summary.performance_issues());
+            individual.extend_from_slice(summary.concurrency_issues());
+        }
+    }
+    // File-level inconsistent lock ordering facts
+    individual.extend(
+        analysis
+            .data_flows()
+            .iter()
+            .filter(|f| f.kind == DataFlowKind::InconsistentLockOrder)
+            .cloned(),
+    );
+
+    // Compare by DataFlowKind counts
+    let batched_counts = count_by_kind(batched);
+    let individual_counts = count_by_kind(&individual);
+
+    for (kind_label, count) in &batched_counts {
+        let ind_count = individual_counts.get(kind_label).copied().unwrap_or(0);
+        assert_eq!(
+            *count, ind_count,
+            "kind {kind_label}: batched={count}, individual={ind_count}"
+        );
+    }
+    for (kind_label, count) in &individual_counts {
+        let bat_count = batched_counts.get(kind_label).copied().unwrap_or(0);
+        assert_eq!(
+            *count, bat_count,
+            "kind {kind_label}: individual={count}, batched={bat_count}"
+        );
+    }
+}
+
+// --- Semantic file analysis cache (Step 1) ---
+
+/// T1: Multiple queries on the same file through analyze_file reuse the cached analysis.
+#[test]
+fn test_semantic_multiple_queries_reuse_cached_file_analysis() {
+    let root = dataflow_workspace_root();
+    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
+    let file = dataflow_lib_path();
+
+    let analysis1 = ctx.analyze_file(&file);
+    assert!(analysis1.is_some(), "analyze_file should return Some");
+
+    let analysis2 = ctx.analyze_file(&file);
+    assert!(analysis2.is_some(), "second call should also return Some");
+
+    assert_eq!(
+        ctx.file_setup_count(),
+        1,
+        "file should be parsed exactly once across multiple analyze_file calls"
+    );
+}
+
+/// T2: Queries through the SemanticFileAnalysis object match existing behavior.
+#[test]
+fn test_semantic_file_analysis_public_queries_match_existing_behavior() {
+    let root = dataflow_workspace_root();
+    let ctx = SemanticContext::load(&root).expect("dataflow workspace should load");
+    let file = dataflow_lib_path();
+
+    let analysis = ctx
+        .analyze_file(&file)
+        .expect("should produce file analysis");
+
+    // Call graph: (run, fetch) edge should be present
+    let has_run_fetch = analysis
+        .call_graph()
+        .iter()
+        .any(|(caller, callee)| &**caller == "run" && &**callee == "fetch");
+    assert!(
+        has_run_fetch,
+        "call graph should contain (run, fetch) edge, got: {:?}",
+        analysis.call_graph()
+    );
+
+    // Reachability: pub fn at line 20 reachable, private fn at line 25 not
+    assert!(
+        analysis.is_line_reachable(20),
+        "pub fn reachable_network should be reachable"
+    );
+    assert!(
+        !analysis.is_line_reachable(25),
+        "private fn unreachable_private should not be reachable"
+    );
+
+    // Data flows: EnvAccess→Network taint flow should be present
+    let has_taint = analysis.data_flows().iter().any(|f| {
+        f.source_capability == Some(pedant_types::Capability::EnvAccess)
+            && f.sink_capability == Some(pedant_types::Capability::Network)
+    });
+    assert!(
+        has_taint,
+        "should contain EnvAccess→Network taint flow, got: {:?}",
+        analysis.data_flows()
+    );
+}
+
+fn count_by_kind(facts: &[ir::DataFlowFact]) -> std::collections::BTreeMap<Box<str>, usize> {
+    let mut counts = std::collections::BTreeMap::new();
+    for fact in facts {
+        *counts
+            .entry(format!("{:?}", fact.kind).into_boxed_str())
+            .or_insert(0) += 1;
+    }
+    counts
+}
+
+// --- Semantic file analysis cache (Step 3): FunctionAnalysisSummary ---
+
+/// 3.T1: Quality, perf, and concurrency queries through the file-analysis
+/// path preserve the same findings as the flat data_flows() output.
+#[test]
+fn test_quality_perf_concurrency_queries_preserve_existing_findings() {
+    let root = dataflow_workspace_root();
+    let ctx = SemanticContext::load(&root).expect("workspace should load");
+    let file = dataflow_lib_path();
+
+    let analysis = ctx
+        .analyze_file(&file)
+        .expect("should produce file analysis");
+
+    // Per-function queries through FunctionAnalysisSummary
+    let dead_store_summary = analysis
+        .function("dead_store")
+        .expect("should find dead_store function");
+    assert!(
+        dead_store_summary
+            .quality_issues()
+            .iter()
+            .any(|f| f.kind == DataFlowKind::DeadStore),
+        "dead_store function should produce DeadStore finding via summary"
+    );
+
+    let repeated_summary = analysis
+        .function("repeated_call_same_args")
+        .expect("should find repeated_call_same_args function");
+    assert!(
+        repeated_summary
+            .performance_issues()
+            .iter()
+            .any(|f| f.kind == DataFlowKind::RepeatedCall),
+        "repeated_call_same_args should produce RepeatedCall finding via summary"
+    );
+
+    let spawn_summary = analysis
+        .function("unobserved_thread_spawn")
+        .expect("should find unobserved_thread_spawn function");
+    assert!(
+        spawn_summary
+            .concurrency_issues()
+            .iter()
+            .any(|f| f.kind == DataFlowKind::UnobservedSpawn),
+        "unobserved_thread_spawn should produce UnobservedSpawn finding via summary"
+    );
+}
+
+/// 3.T2: Call graph and batch reachability queries reuse cached state —
+/// file setup counter does not grow after the initial analysis.
+#[test]
+fn test_call_graph_and_reachability_reuse_cached_state() {
+    let root = dataflow_workspace_root();
+    let ctx = SemanticContext::load(&root).expect("workspace should load");
+    let file = dataflow_lib_path();
+
+    let analysis = ctx
+        .analyze_file(&file)
+        .expect("should produce file analysis");
+    let count_after_first = ctx.file_setup_count();
+
+    // Repeated queries on the cached analysis should not trigger file setup
+    let _edges = analysis.call_graph();
+    let _reachable = analysis.is_line_reachable(20);
+    let _batch = analysis.check_reachability_batch(&[20, 25]);
+
+    // Second analyze_file call should hit cache
+    let _analysis2 = ctx
+        .analyze_file(&file)
+        .expect("should produce file analysis");
+    let count_after_all = ctx.file_setup_count();
+
+    assert_eq!(
+        count_after_first, count_after_all,
+        "repeated queries and analyze_file calls should not trigger additional file setup"
+    );
+}
+
+/// 3.T3: Batch reachability answers match the existing per-line behavior.
+#[test]
+fn test_batch_reachability_answers_match_existing_public_behavior() {
+    let root = dataflow_workspace_root();
+    let ctx = SemanticContext::load(&root).expect("workspace should load");
+    let file = dataflow_lib_path();
+
+    let analysis = ctx
+        .analyze_file(&file)
+        .expect("should produce file analysis");
+
+    let lines = [20, 25, 1, 999];
+    let batch = analysis.check_reachability_batch(&lines);
+
+    for (i, &line) in lines.iter().enumerate() {
+        assert_eq!(
+            batch[i],
+            analysis.is_line_reachable(line),
+            "batch reachability at line {line} should match individual check"
+        );
+    }
+
+    // Line 20 (pub fn reachable_network) should be reachable
+    assert!(batch[0], "line 20 should be reachable");
+    // Line 25 (private unreachable_private) should not
+    assert!(!batch[1], "line 25 should not be reachable");
+}
+
+/// 3.T4: data_flows() includes taint, quality, perf, and concurrency findings
+/// from a single cached file-analysis path.
+#[test]
+fn test_taint_quality_perf_and_concurrency_flows_share_one_file_analysis() {
+    let root = dataflow_workspace_root();
+    let ctx = SemanticContext::load(&root).expect("workspace should load");
+    let file = dataflow_lib_path();
+
+    let analysis = ctx
+        .analyze_file(&file)
+        .expect("should produce file analysis");
+
+    let flows = analysis.data_flows();
+
+    let has_taint = flows.iter().any(|f| f.kind == DataFlowKind::TaintFlow);
+    let has_quality = flows.iter().any(|f| {
+        matches!(
+            f.kind,
+            DataFlowKind::DeadStore | DataFlowKind::DiscardedResult
+        )
+    });
+    let has_perf = flows.iter().any(|f| {
+        matches!(
+            f.kind,
+            DataFlowKind::RepeatedCall | DataFlowKind::UnnecessaryClone
+        )
+    });
+    let has_concurrency = flows.iter().any(|f| {
+        matches!(
+            f.kind,
+            DataFlowKind::UnobservedSpawn | DataFlowKind::LockAcrossAwait
+        )
+    });
+
+    assert!(has_taint, "data_flows should include taint findings");
+    assert!(has_quality, "data_flows should include quality findings");
+    assert!(has_perf, "data_flows should include performance findings");
+    assert!(
+        has_concurrency,
+        "data_flows should include concurrency findings"
+    );
+
+    // All flows should be reachable through the same file analysis
+    assert_eq!(
+        ctx.file_setup_count(),
+        1,
+        "all domain findings should come from a single file analysis"
+    );
 }

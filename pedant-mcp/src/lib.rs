@@ -2,9 +2,9 @@
 
 /// Workspace discovery, per-crate analysis caching, and incremental reindex.
 pub mod index;
-/// MCP tool JSON-Schema definitions built once via `LazyLock`.
-pub mod schema;
-/// MCP protocol handler routing `call_tool` to query/explain/audit functions.
+/// Single source of truth for MCP tool definitions, schemas, and dispatch.
+pub mod registry;
+/// MCP protocol handler routing `call_tool` through the tool registry.
 pub mod server;
 /// Tool handler implementations for security and capability queries.
 pub mod tools;

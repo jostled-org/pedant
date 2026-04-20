@@ -236,7 +236,7 @@ async fn test_stdio_tools_call_audit_crate() {
         "params": {
             "name": "audit_crate",
             "arguments": {
-                "crate_name": "lib-a"
+                "scope": "lib-a"
             }
         }
     });
@@ -351,7 +351,7 @@ async fn test_self_analysis_via_mcp() {
         "params": {
             "name": "audit_crate",
             "arguments": {
-                "crate_name": "pedant-core"
+                "scope": "pedant-core"
             }
         }
     });

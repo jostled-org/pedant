@@ -3,9 +3,10 @@
 //! Capability-combination rules fire on suspicious co-occurrence of capabilities.
 //! Flow-aware rules fire when taint analysis detects a data path from source to sink.
 
+use std::collections::BTreeSet;
 use std::fmt;
 
-use pedant_types::{Capability, CapabilityFinding};
+use pedant_types::{Capability, CapabilityFinding, FindingOrigin};
 use serde::Serialize;
 
 use crate::check_config::GateConfig;
@@ -57,16 +58,125 @@ pub struct GateRuleInfo {
     pub rationale: &'static str,
 }
 
-/// Internal rule definition pairing metadata with a predicate over `T` findings.
-struct Rule<T> {
+/// Precomputed summary of capability findings and data flows for gate evaluation.
+///
+/// Built once per evaluation from raw findings and flows. Every rule predicate
+/// reads from this summary instead of rescanning the original slices.
+pub struct GateInputSummary {
+    all_capabilities: BTreeSet<Capability>,
+    build_hook_capabilities: BTreeSet<Capability>,
+    has_key_material: bool,
+    flow_kinds: BTreeSet<DataFlowKind>,
+    taint_pairs: BTreeSet<(Capability, Capability)>,
+}
+
+/// Check if a single finding represents embedded key material (not a crypto import).
+///
+/// When `origin` metadata is present, uses it directly: `StringLiteral` origin
+/// indicates embedded key material. Falls back to evidence-based heuristic
+/// (no `::` in evidence) for legacy findings without origin metadata.
+fn is_key_material(f: &CapabilityFinding) -> bool {
+    match (f.capability, f.origin) {
+        (Capability::Crypto, Some(FindingOrigin::StringLiteral)) => true,
+        (Capability::Crypto, None) => !f.evidence.contains("::"),
+        _ => false,
+    }
+}
+
+impl GateInputSummary {
+    /// Build a summary from raw findings and data flow facts.
+    pub fn from_analysis(findings: &[CapabilityFinding], flows: &[DataFlowFact]) -> Self {
+        let mut all_capabilities = BTreeSet::new();
+        let mut build_hook_capabilities = BTreeSet::new();
+        let has_key_material = findings.iter().any(is_key_material);
+
+        for finding in findings {
+            all_capabilities.insert(finding.capability);
+            if finding.is_build_hook() {
+                build_hook_capabilities.insert(finding.capability);
+            }
+        }
+
+        Self::with_capability_sets(
+            all_capabilities,
+            build_hook_capabilities,
+            has_key_material,
+            flows,
+        )
+    }
+
+    /// Build a summary from borrowed finding references and data flow facts.
+    pub fn from_refs(findings: &[&CapabilityFinding], flows: &[DataFlowFact]) -> Self {
+        let mut all_capabilities = BTreeSet::new();
+        let mut build_hook_capabilities = BTreeSet::new();
+        let has_key_material = findings.iter().any(|f| is_key_material(f));
+
+        for finding in findings {
+            all_capabilities.insert(finding.capability);
+            if finding.is_build_hook() {
+                build_hook_capabilities.insert(finding.capability);
+            }
+        }
+
+        Self::with_capability_sets(
+            all_capabilities,
+            build_hook_capabilities,
+            has_key_material,
+            flows,
+        )
+    }
+
+    fn with_capability_sets(
+        all_capabilities: BTreeSet<Capability>,
+        build_hook_capabilities: BTreeSet<Capability>,
+        has_key_material: bool,
+        flows: &[DataFlowFact],
+    ) -> Self {
+        let mut flow_kinds = BTreeSet::new();
+        let mut taint_pairs = BTreeSet::new();
+        for flow in flows {
+            flow_kinds.insert(flow.kind);
+            if let (Some(src), Some(sink)) = (flow.source_capability, flow.sink_capability) {
+                taint_pairs.insert((src, sink));
+            }
+        }
+
+        Self {
+            all_capabilities,
+            build_hook_capabilities,
+            has_key_material,
+            flow_kinds,
+            taint_pairs,
+        }
+    }
+
+    fn has_capability(&self, cap: Capability) -> bool {
+        self.all_capabilities.contains(&cap)
+    }
+
+    fn has_build_hook_capability(&self, cap: Capability) -> bool {
+        self.build_hook_capabilities.contains(&cap)
+    }
+
+    fn has_flow(&self, source: Capability, sink: Capability) -> bool {
+        self.taint_pairs.contains(&(source, sink))
+    }
+
+    fn has_kind(&self, kind: DataFlowKind) -> bool {
+        self.flow_kinds.contains(&kind)
+    }
+}
+
+/// Internal rule definition pairing metadata with a predicate over `GateInputSummary`.
+struct Rule {
     name: &'static str,
     default_severity: GateSeverity,
     description: &'static str,
     rationale: &'static str,
-    predicate: fn(&[T]) -> bool,
+    predicate: fn(&GateInputSummary) -> bool,
 }
 
-impl<T> Rule<T> {
+impl Rule {
     /// Extract public metadata from this rule.
     fn info(&self) -> GateRuleInfo {
         GateRuleInfo {
@@ -77,11 +187,11 @@ impl<T> Rule<T> {
         }
     }
 
-    /// Evaluate this rule against `data`, returning a verdict if the predicate fires
-    /// and the rule is not disabled by config.
-    fn evaluate(&self, data: &[T], config: &GateConfig) -> Option<GateVerdict> {
+    /// Evaluate this rule against the summary, returning a verdict if the predicate
+    /// fires and the rule is not disabled by config.
+    fn evaluate(&self, summary: &GateInputSummary, config: &GateConfig) -> Option<GateVerdict> {
         let severity = resolve_severity(self.name, self.default_severity, config)?;
-        (self.predicate)(data).then_some(GateVerdict {
+        (self.predicate)(summary).then_some(GateVerdict {
             rule: self.name,
             severity,
             rationale: self.rationale,
@@ -89,40 +199,30 @@ impl<T> Rule<T> {
     }
 }
 
-fn has_capability(
-    findings: &[CapabilityFinding],
-    cap: Capability,
-    build_script_only: bool,
-) -> bool {
-    findings
-        .iter()
-        .any(|f| f.capability == cap && (!build_script_only || f.build_script))
-}
-
-const BUILTIN_RULES: &[Rule<CapabilityFinding>] = &[
+const RULES: &[Rule] = &[
     // --- Compile-time execution rules (build scripts) ---
     Rule {
         name: "build-script-network",
         default_severity: GateSeverity::Deny,
         description: "Build script with network access",
         rationale: "Build scripts should not make network requests",
-        predicate: |f| has_capability(f, Capability::Network, true),
+        predicate: |s| s.has_build_hook_capability(Capability::Network),
     },
     Rule {
         name: "build-script-exec",
         default_severity: GateSeverity::Warn,
         description: "Build script spawning processes",
         rationale: "Build scripts spawning processes is common (cc, pkg-config) but risky",
-        predicate: |f| has_capability(f, Capability::ProcessExec, true),
+        predicate: |s| s.has_build_hook_capability(Capability::ProcessExec),
     },
     Rule {
         name: "build-script-download-exec",
         default_severity: GateSeverity::Deny,
         description: "Build script with network access and process execution",
         rationale: "Download-and-execute in build script — classic supply chain attack",
-        predicate: |f| {
-            has_capability(f, Capability::Network, true)
-                && has_capability(f, Capability::ProcessExec, true)
+        predicate: |s| {
+            s.has_build_hook_capability(Capability::Network)
+                && s.has_build_hook_capability(Capability::ProcessExec)
         },
     },
     Rule {
@@ -130,7 +230,7 @@ const BUILTIN_RULES: &[Rule<CapabilityFinding>] = &[
         default_severity: GateSeverity::Warn,
         description: "Build script with filesystem write access",
         rationale: "Build scripts writing outside OUT_DIR is suspicious",
-        predicate: |f| has_capability(f, Capability::FileWrite, true),
+        predicate: |s| s.has_build_hook_capability(Capability::FileWrite),
     },
     // --- Compile-time execution rules (proc macros) ---
     Rule {
@@ -138,9 +238,8 @@ const BUILTIN_RULES: &[Rule<CapabilityFinding>] = &[
         default_severity: GateSeverity::Deny,
         description: "Proc macro with network access",
         rationale: "Proc macros have no legitimate reason for network access",
-        predicate: |f| {
-            has_capability(f, Capability::ProcMacro, false)
-                && has_capability(f, Capability::Network, false)
+        predicate: |s| {
+            s.has_capability(Capability::ProcMacro) && s.has_capability(Capability::Network)
         },
     },
     Rule {
@@ -148,9 +247,8 @@ const BUILTIN_RULES: &[Rule<CapabilityFinding>] = &[
         default_severity: GateSeverity::Deny,
         description: "Proc macro spawning processes",
         rationale: "Proc macros have no legitimate reason to spawn processes",
-        predicate: |f| {
-            has_capability(f, Capability::ProcMacro, false)
-                && has_capability(f, Capability::ProcessExec, false)
+        predicate: |s| {
+            s.has_capability(Capability::ProcMacro) && s.has_capability(Capability::ProcessExec)
         },
     },
     Rule {
@@ -158,9 +256,8 @@ const BUILTIN_RULES: &[Rule<CapabilityFinding>] = &[
         default_severity: GateSeverity::Deny,
         description: "Proc macro with filesystem write access",
         rationale: "Proc macros should not write to the filesystem",
-        predicate: |f| {
-            has_capability(f, Capability::ProcMacro, false)
-                && has_capability(f, Capability::FileWrite, false)
+        predicate: |s| {
+            s.has_capability(Capability::ProcMacro) && s.has_capability(Capability::FileWrite)
         },
     },
     // --- Runtime combination rules ---
@@ -169,9 +266,8 @@ const BUILTIN_RULES: &[Rule<CapabilityFinding>] = &[
         default_severity: GateSeverity::Info,
         description: "Environment variable access with network capability",
         rationale: "Reading environment variables and accessing network — review for credential harvesting",
-        predicate: |f| {
-            has_capability(f, Capability::EnvAccess, false)
-                && has_capability(f, Capability::Network, false)
+        predicate: |s| {
+            s.has_capability(Capability::EnvAccess) && s.has_capability(Capability::Network)
         },
     },
     Rule {
@@ -179,52 +275,29 @@ const BUILTIN_RULES: &[Rule<CapabilityFinding>] = &[
         default_severity: GateSeverity::Warn,
         description: "Embedded key material with network access",
         rationale: "Embedded key material with network access — verify intent",
-        predicate: |f| has_capability(f, Capability::Network, false) && has_key_material(f),
+        predicate: |s| s.has_capability(Capability::Network) && s.has_key_material,
     },
-];
-
-/// Check if findings contain Crypto entries from key material (not import paths).
-///
-/// Key material findings have evidence that is NOT a module path (no `::`)
-/// and is not just a constant marker. Import-based findings like `sha2::Digest`
-/// contain `::`.
-fn has_key_material(findings: &[CapabilityFinding]) -> bool {
-    findings
-        .iter()
-        .any(|f| f.capability == Capability::Crypto && !f.evidence.contains("::"))
-}
-
-fn has_flow(data_flows: &[DataFlowFact], source: Capability, sink: Capability) -> bool {
-    data_flows
-        .iter()
-        .any(|f| f.source_capability == Some(source) && f.sink_capability == Some(sink))
-}
-
-fn has_kind(data_flows: &[DataFlowFact], kind: DataFlowKind) -> bool {
-    data_flows.iter().any(|f| f.kind == kind)
-}
-
-const FLOW_RULES: &[Rule<DataFlowFact>] = &[
+    // --- Flow-aware rules ---
     Rule {
         name: "env-to-network",
         default_severity: GateSeverity::Deny,
         description: "Data flows from environment variable to network sink",
         rationale: "Environment variable value reaches a network call — potential credential exfiltration",
-        predicate: |f| has_flow(f, Capability::EnvAccess, Capability::Network),
+        predicate: |s| s.has_flow(Capability::EnvAccess, Capability::Network),
     },
     Rule {
         name: "file-to-network",
         default_severity: GateSeverity::Deny,
         description: "Data flows from file read to network sink",
         rationale: "File content reaches a network call — potential data exfiltration",
-        predicate: |f| has_flow(f, Capability::FileRead, Capability::Network),
+        predicate: |s| s.has_flow(Capability::FileRead, Capability::Network),
     },
     Rule {
         name: "network-to-exec",
         default_severity: GateSeverity::Deny,
         description: "Data flows from network source to process execution",
         rationale: "Network-sourced data reaches process execution — remote code execution risk",
-        predicate: |f| has_flow(f, Capability::Network, Capability::ProcessExec),
+        predicate: |s| s.has_flow(Capability::Network, Capability::ProcessExec),
     },
     // --- Quality rules ---
     Rule {
@@ -232,35 +305,35 @@ const FLOW_RULES: &[Rule<DataFlowFact>] = &[
         default_severity: GateSeverity::Warn,
         description: "Value assigned then overwritten before read",
         rationale: "Dead store indicates wasted computation or a missing read",
-        predicate: |f| has_kind(f, DataFlowKind::DeadStore),
+        predicate: |s| s.has_kind(DataFlowKind::DeadStore),
     },
     Rule {
         name: "discarded-result",
         default_severity: GateSeverity::Warn,
         description: "Result-returning function called without binding the return",
         rationale: "Discarded Result silently drops errors — handle or explicitly discard",
-        predicate: |f| has_kind(f, DataFlowKind::DiscardedResult),
+        predicate: |s| s.has_kind(DataFlowKind::DiscardedResult),
     },
     Rule {
         name: "partial-error-handling",
         default_severity: GateSeverity::Warn,
         description: "Result handled on some paths, dropped on others",
         rationale: "Inconsistent error handling — some branches swallow errors silently",
-        predicate: |f| has_kind(f, DataFlowKind::PartialErrorHandling),
+        predicate: |s| s.has_kind(DataFlowKind::PartialErrorHandling),
     },
     Rule {
         name: "swallowed-ok",
         default_severity: GateSeverity::Warn,
         description: ".ok() on Result where Option is discarded",
         rationale: ".ok() silently drops the error — handle the Result or explicitly discard with comment",
-        predicate: |f| has_kind(f, DataFlowKind::SwallowedOk),
+        predicate: |s| s.has_kind(DataFlowKind::SwallowedOk),
     },
     Rule {
         name: "immutable-growable",
         default_severity: GateSeverity::Info,
         description: "Vec or String never mutated after construction",
         rationale: "Immutable growable collection — use Box<[T]> or Box<str> instead",
-        predicate: |f| has_kind(f, DataFlowKind::ImmutableGrowable),
+        predicate: |s| s.has_kind(DataFlowKind::ImmutableGrowable),
     },
     // --- Performance rules ---
     Rule {
@@ -268,28 +341,28 @@ const FLOW_RULES: &[Rule<DataFlowFact>] = &[
         default_severity: GateSeverity::Info,
         description: "Same function called with identical arguments in single scope",
         rationale: "Repeated call with same arguments — cache the result in a local binding",
-        predicate: |f| has_kind(f, DataFlowKind::RepeatedCall),
+        predicate: |s| s.has_kind(DataFlowKind::RepeatedCall),
     },
     Rule {
         name: "unnecessary-clone",
         default_severity: GateSeverity::Info,
         description: "Clone called but original never used afterward",
         rationale: "Unnecessary clone — move the original instead of copying",
-        predicate: |f| has_kind(f, DataFlowKind::UnnecessaryClone),
+        predicate: |s| s.has_kind(DataFlowKind::UnnecessaryClone),
     },
     Rule {
         name: "allocation-in-loop",
         default_severity: GateSeverity::Info,
         description: "Heap allocation inside loop body",
         rationale: "Allocation per iteration — hoist outside the loop and reuse with clear()",
-        predicate: |f| has_kind(f, DataFlowKind::AllocationInLoop),
+        predicate: |s| s.has_kind(DataFlowKind::AllocationInLoop),
     },
     Rule {
         name: "redundant-collect",
         default_severity: GateSeverity::Info,
         description: "Collect followed immediately by re-iteration",
         rationale: "Redundant collect — chain iterator operations without intermediate Vec",
-        predicate: |f| has_kind(f, DataFlowKind::RedundantCollect),
+        predicate: |s| s.has_kind(DataFlowKind::RedundantCollect),
     },
     // --- Concurrency rules ---
     Rule {
@@ -297,55 +370,42 @@ const FLOW_RULES: &[Rule<DataFlowFact>] = &[
         default_severity: GateSeverity::Deny,
         description: "Lock guard held across .await point",
         rationale: "Lock guard held across await — potential deadlock or task starvation",
-        predicate: |f| has_kind(f, DataFlowKind::LockAcrossAwait),
+        predicate: |s| s.has_kind(DataFlowKind::LockAcrossAwait),
     },
     Rule {
         name: "inconsistent-lock-order",
         default_severity: GateSeverity::Deny,
         description: "Same locks acquired in different orders across functions",
         rationale: "Inconsistent lock ordering across functions — potential deadlock",
-        predicate: |f| has_kind(f, DataFlowKind::InconsistentLockOrder),
+        predicate: |s| s.has_kind(DataFlowKind::InconsistentLockOrder),
     },
     Rule {
         name: "unobserved-spawn",
         default_severity: GateSeverity::Warn,
         description: "Thread/task spawned with dropped JoinHandle",
         rationale: "Dropped JoinHandle means panics in the spawned thread/task vanish silently",
-        predicate: |f| has_kind(f, DataFlowKind::UnobservedSpawn),
+        predicate: |s| s.has_kind(DataFlowKind::UnobservedSpawn),
     },
 ];
 
 /// Enumerate every built-in gate rule with its default severity and description.
 pub fn all_gate_rules() -> Box<[GateRuleInfo]> {
-    BUILTIN_RULES
-        .iter()
-        .map(Rule::info)
-        .chain(FLOW_RULES.iter().map(Rule::info))
-        .collect()
+    RULES.iter().map(Rule::info).collect()
 }
 
-/// Run every enabled gate rule against the findings, returning fired verdicts.
+/// Run every enabled gate rule against a precomputed summary, returning fired verdicts.
 ///
-/// Evaluates both capability-combination rules (from `findings`) and
-/// flow-aware rules (from `data_flows`). Respects per-rule config overrides.
-pub fn evaluate_gate_rules(
-    findings: &[CapabilityFinding],
-    data_flows: &[DataFlowFact],
-    config: &GateConfig,
-) -> Box<[GateVerdict]> {
+/// Build the summary via `GateInputSummary::from_analysis` before calling this.
+/// Respects per-rule config overrides.
+pub fn evaluate_gate_rules(summary: &GateInputSummary, config: &GateConfig) -> Box<[GateVerdict]> {
     if !config.enabled {
         return Box::new([]);
     }
 
-    let capability_verdicts = BUILTIN_RULES
+    RULES
         .iter()
-        .filter_map(|rule| rule.evaluate(findings, config));
-
-    let flow_verdicts = FLOW_RULES
-        .iter()
-        .filter_map(|rule| rule.evaluate(data_flows, config));
-
-    capability_verdicts.chain(flow_verdicts).collect()
+        .filter_map(|rule| rule.evaluate(summary, config))
+        .collect()
 }
 
 /// Resolve the effective severity for a rule, returning `None` if disabled.

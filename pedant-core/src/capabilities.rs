@@ -1,7 +1,10 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use pedant_types::{Capability, CapabilityFinding, CapabilityProfile, SourceLocation};
+use pedant_types::{
+    Capability, CapabilityFinding, CapabilityProfile, ExecutionContext, FindingOrigin,
+    SourceLocation,
+};
 
 use crate::ir::FileIr;
 
@@ -306,144 +309,163 @@ fn starts_with_github_prefix(value: &str) -> bool {
 
 // --- IR-based capability detection ---
 
+/// Accumulator for building capability findings during detection.
+struct FindingEmitter<'a> {
+    findings: &'a mut Vec<CapabilityFinding>,
+    file: &'a Arc<str>,
+    origin: FindingOrigin,
+    execution_context: Option<ExecutionContext>,
+}
+
+impl FindingEmitter<'_> {
+    fn emit(&mut self, capability: Capability, line: usize, column: usize, evidence: &str) {
+        self.findings.push(CapabilityFinding {
+            capability,
+            location: SourceLocation {
+                file: Arc::clone(self.file),
+                line,
+                column: column + 1,
+            },
+            evidence: Arc::from(evidence),
+            origin: Some(self.origin),
+            language: None,
+            execution_context: self.execution_context,
+            reachable: None,
+        });
+    }
+
+    /// Iterate IR facts, map each to a capability finding, and emit matches.
+    fn emit_from_facts<'a, T: 'a>(
+        &mut self,
+        facts: &'a [T],
+        mut mapper: impl FnMut(&'a T) -> Option<(Capability, usize, usize, &'a str)>,
+    ) {
+        for fact in facts {
+            if let Some((capability, line, column, evidence)) = mapper(fact) {
+                self.emit(capability, line, column, evidence);
+            }
+        }
+    }
+}
+
+/// Key-material checks that are mutually exclusive (a string matches at most one).
+const KEY_MATERIAL_CHECKS: &[fn(&str) -> bool] = &[
+    check_string_for_hex_key,
+    check_string_for_base58_key,
+    check_string_for_key_prefix,
+    check_string_for_credential_prefix,
+];
+
+type StringLiteralCheck = (fn(&str) -> bool, Capability);
+
+const STRING_LITERAL_CHECKS: &[StringLiteralCheck] = &[
+    (check_string_for_endpoint, Capability::Network),
+    (check_string_for_pem, Capability::Crypto),
+];
+
 /// Scan all IR facts for capability usage and produce a profile.
 ///
-/// When `build_script` is true, every finding is tagged with `build_script: true`.
-pub fn detect_capabilities(ir: &FileIr, build_script: bool) -> CapabilityProfile {
+/// When `execution_context` is `Some`, every finding is tagged with that context
+/// (e.g., `BuildHook` for `build.rs`).
+pub fn detect_capabilities(
+    ir: &FileIr,
+    execution_context: Option<ExecutionContext>,
+) -> CapabilityProfile {
     let file_path = &ir.file_path;
     let mut findings = Vec::new();
 
-    detect_use_paths(ir, file_path, build_script, &mut findings);
-    detect_unsafe_sites(ir, file_path, build_script, &mut findings);
-    detect_extern_blocks(ir, file_path, build_script, &mut findings);
-    detect_attributes(ir, file_path, build_script, &mut findings);
-    detect_string_literals(ir, file_path, build_script, &mut findings);
+    detect_use_paths(ir, file_path, execution_context, &mut findings);
+    detect_unsafe_sites(ir, file_path, execution_context, &mut findings);
+    detect_extern_blocks(ir, file_path, execution_context, &mut findings);
+    detect_attributes(ir, file_path, execution_context, &mut findings);
+    detect_string_literals(ir, file_path, execution_context, &mut findings);
 
     CapabilityProfile {
         findings: findings.into_boxed_slice(),
     }
 }
 
-fn emit_finding(
-    findings: &mut Vec<CapabilityFinding>,
-    capability: Capability,
-    file: &Arc<str>,
-    line: usize,
-    column: usize,
-    evidence: &str,
-    build_script: bool,
-) {
-    findings.push(CapabilityFinding {
-        capability,
-        location: SourceLocation {
-            file: Arc::clone(file),
-            line,
-            column: column + 1,
-        },
-        evidence: Arc::from(evidence),
-        build_script,
-        reachable: None,
-    });
-}
-
-/// Shared helper: iterate IR facts, map each to zero or more capability findings, and emit them.
-fn detect_from_facts<'a, T: 'a>(
-    facts: &'a [T],
-    file_path: &Arc<str>,
-    build_script: bool,
-    findings: &mut Vec<CapabilityFinding>,
-    mut mapper: impl FnMut(&'a T) -> Option<(Capability, usize, usize, &'a str)>,
-) {
-    for fact in facts {
-        if let Some((capability, line, column, evidence)) = mapper(fact) {
-            emit_finding(
-                findings,
-                capability,
-                file_path,
-                line,
-                column,
-                evidence,
-                build_script,
-            );
-        }
-    }
-}
-
 fn detect_use_paths(
     ir: &FileIr,
     file_path: &Arc<str>,
-    build_script: bool,
+    execution_context: Option<ExecutionContext>,
     findings: &mut Vec<CapabilityFinding>,
 ) {
-    detect_from_facts(
-        &ir.use_paths,
-        file_path,
-        build_script,
+    let mut emitter = FindingEmitter {
         findings,
-        |use_path| {
-            resolve_capabilities(&use_path.path).map(|cap| {
-                (
-                    cap,
-                    use_path.span.line,
-                    use_path.span.column,
-                    use_path.path.as_ref(),
-                )
-            })
-        },
-    );
+        file: file_path,
+        origin: FindingOrigin::Import,
+        execution_context,
+    };
+    emitter.emit_from_facts(&ir.use_paths, |use_path| {
+        resolve_capabilities(&use_path.path).map(|cap| {
+            (
+                cap,
+                use_path.span.line,
+                use_path.span.column,
+                use_path.path.as_ref(),
+            )
+        })
+    });
 }
 
 fn detect_unsafe_sites(
     ir: &FileIr,
     file_path: &Arc<str>,
-    build_script: bool,
+    execution_context: Option<ExecutionContext>,
     findings: &mut Vec<CapabilityFinding>,
 ) {
-    detect_from_facts(
-        &ir.unsafe_sites,
-        file_path,
-        build_script,
+    let mut emitter = FindingEmitter {
         findings,
-        |site| {
-            Some((
-                Capability::UnsafeCode,
-                site.span.line,
-                site.span.column,
-                site.evidence.as_ref(),
-            ))
-        },
-    );
+        file: file_path,
+        origin: FindingOrigin::CodeSite,
+        execution_context,
+    };
+    emitter.emit_from_facts(&ir.unsafe_sites, |site| {
+        Some((
+            Capability::UnsafeCode,
+            site.span.line,
+            site.span.column,
+            site.evidence.as_ref(),
+        ))
+    });
 }
 
 fn detect_extern_blocks(
     ir: &FileIr,
     file_path: &Arc<str>,
-    build_script: bool,
+    execution_context: Option<ExecutionContext>,
     findings: &mut Vec<CapabilityFinding>,
 ) {
-    detect_from_facts(
-        &ir.extern_blocks,
-        file_path,
-        build_script,
+    let mut emitter = FindingEmitter {
         findings,
-        |block| {
-            Some((
-                Capability::Ffi,
-                block.span.line,
-                block.span.column,
-                "extern block",
-            ))
-        },
-    );
+        file: file_path,
+        origin: FindingOrigin::CodeSite,
+        execution_context,
+    };
+    emitter.emit_from_facts(&ir.extern_blocks, |block| {
+        Some((
+            Capability::Ffi,
+            block.span.line,
+            block.span.column,
+            "extern block",
+        ))
+    });
 }
 
 fn detect_attributes(
     ir: &FileIr,
     file_path: &Arc<str>,
-    build_script: bool,
+    execution_context: Option<ExecutionContext>,
     findings: &mut Vec<CapabilityFinding>,
 ) {
-    detect_from_facts(&ir.attributes, file_path, build_script, findings, |attr| {
+    let mut emitter = FindingEmitter {
+        findings,
+        file: file_path,
+        origin: FindingOrigin::Attribute,
+        execution_context,
+    };
+    emitter.emit_from_facts(&ir.attributes, |attr| {
         let (cap, evidence) = match &*attr.name {
             "link" => (Capability::Ffi, "#[link]"),
             "proc_macro" => (Capability::ProcMacro, "#[proc_macro]"),
@@ -455,66 +477,31 @@ fn detect_attributes(
     });
 }
 
-/// Key-material checks that are mutually exclusive (a string matches at most one).
-const KEY_MATERIAL_CHECKS: &[fn(&str) -> bool] = &[
-    check_string_for_hex_key,
-    check_string_for_base58_key,
-    check_string_for_key_prefix,
-    check_string_for_credential_prefix,
-];
-
-/// String literal detection entry: checker function and capability.
-struct StringLiteralCheck {
-    checker: fn(&str) -> bool,
-    capability: Capability,
-}
-
-const STRING_LITERAL_CHECKS: &[StringLiteralCheck] = &[
-    StringLiteralCheck {
-        checker: check_string_for_endpoint,
-        capability: Capability::Network,
-    },
-    StringLiteralCheck {
-        checker: check_string_for_pem,
-        capability: Capability::Crypto,
-    },
-];
-
 fn detect_string_literals(
     ir: &FileIr,
     file_path: &Arc<str>,
-    build_script: bool,
+    execution_context: Option<ExecutionContext>,
     findings: &mut Vec<CapabilityFinding>,
 ) {
+    let mut emitter = FindingEmitter {
+        findings,
+        file: file_path,
+        origin: FindingOrigin::StringLiteral,
+        execution_context,
+    };
     for lit in &ir.string_literals {
         let line = lit.span.line;
         let column = lit.span.column;
 
-        if let Some(check) = STRING_LITERAL_CHECKS
+        if let Some(&(_, capability)) = STRING_LITERAL_CHECKS
             .iter()
-            .find(|check| (check.checker)(&lit.value))
+            .find(|&&(checker, _)| checker(&lit.value))
         {
-            emit_finding(
-                findings,
-                check.capability,
-                file_path,
-                line,
-                column,
-                &lit.value,
-                build_script,
-            );
+            emitter.emit(capability, line, column, &lit.value);
         }
         if KEY_MATERIAL_CHECKS.iter().any(|check| check(&lit.value)) {
             let evidence = truncate_evidence(&lit.value);
-            emit_finding(
-                findings,
-                Capability::Crypto,
-                file_path,
-                line,
-                column,
-                &evidence,
-                build_script,
-            );
+            emitter.emit(Capability::Crypto, line, column, &evidence);
         }
     }
 }

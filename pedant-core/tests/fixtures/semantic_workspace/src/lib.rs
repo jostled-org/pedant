@@ -53,3 +53,12 @@ pub fn clone_copy_in_loop() {
         let _ = n.clone();
     }
 }
+
+/// Function with multiple method calls on the same String binding.
+/// Tests that receiver type enrichment resolves all calls correctly.
+pub fn repeated_method_calls_same_binding() {
+    let s: String = String::new();
+    let _ = s.len();
+    let _ = s.is_empty();
+    let _ = s.clone();
+}

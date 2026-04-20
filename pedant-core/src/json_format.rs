@@ -7,6 +7,7 @@ use crate::violation::Violation;
 pub struct JsonViolation<'a> {
     r#type: &'a str,
     check: &'static str,
+    category: &'static str,
     file: &'a str,
     line: usize,
     column: usize,
@@ -20,7 +21,8 @@ impl<'a> From<&'a Violation> for JsonViolation<'a> {
     fn from(v: &'a Violation) -> Self {
         Self {
             r#type: v.violation_type.code(),
-            check: v.violation_type.check_name(),
+            check: v.violation_type.code(),
+            category: v.violation_type.category(),
             file: &*v.file_path,
             line: v.line,
             column: v.column,

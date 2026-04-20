@@ -36,7 +36,8 @@ fn json_output_has_expected_fields() {
 
     let first = &parsed[0];
     assert_eq!(first["type"], "max-depth");
-    assert_eq!(first["check"], "nesting");
+    assert_eq!(first["check"], "max-depth");
+    assert_eq!(first["category"], "nesting");
     assert_eq!(first["file"], "foo.rs");
     assert_eq!(first["line"], 5);
     assert_eq!(first["column"], 1);
@@ -45,7 +46,8 @@ fn json_output_has_expected_fields() {
 
     let second = &parsed[1];
     assert_eq!(second["type"], "forbidden-call");
-    assert_eq!(second["check"], "forbid_calls");
+    assert_eq!(second["check"], "forbidden-call");
+    assert_eq!(second["category"], "forbid_calls");
     assert_eq!(second["pattern"], "unwrap");
 }
 

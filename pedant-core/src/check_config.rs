@@ -98,6 +98,7 @@ impl NamingCheck {
 
 /// Path-specific overrides for the naming check. `None` inherits from base config.
 #[derive(Debug, Deserialize, Default, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct NamingOverride {
     /// Replace the enabled state.
     pub enabled: Option<bool>,
@@ -140,6 +141,7 @@ fn default_min_generic_count() -> usize {
 
 /// Path-specific overrides for a pattern check. `None` inherits from base config.
 #[derive(Debug, Deserialize, Default, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct PatternOverride {
     /// Replace the enabled state.
     pub enabled: Option<bool>,
@@ -150,6 +152,7 @@ pub struct PatternOverride {
 
 /// Deserialized `.pedant.toml` file with all check settings.
 #[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct ConfigFile {
     /// Security gate rules configuration.
     #[serde(default)]
@@ -236,6 +239,7 @@ pub struct ConfigFile {
 
 /// Per-path overrides (e.g., for `tests/**`). `None` inherits from base config.
 #[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct PathOverride {
     /// `Some(false)` disables all checks for matched paths.
     pub enabled: Option<bool>,
@@ -305,17 +309,22 @@ fn default_true() -> bool {
     true
 }
 
-/// Find the first `[overrides]` entry whose glob matches `file_path`.
+/// Find the most specific `[overrides]` entry whose glob matches `file_path`.
+///
+/// When multiple patterns match, the longest pattern wins. If two patterns
+/// have the same length, lexicographic (sorted) order breaks the tie.
+/// This makes override precedence deterministic and independent of
+/// declaration order in the config file.
 pub fn check_path_override<'a>(
     file_path: &str,
     config: &'a ConfigFile,
 ) -> Option<&'a PathOverride> {
-    for (pattern, override_config) in &config.overrides {
-        if matches_glob(pattern, file_path) {
-            return Some(override_config);
-        }
-    }
-    None
+    config
+        .overrides
+        .iter()
+        .filter(|(pattern, _)| matches_glob(pattern, file_path))
+        .max_by_key(|(pattern, _)| pattern.len())
+        .map(|(_, override_config)| override_config)
 }
 
 /// Single source of truth for boolean check fields.
@@ -435,7 +444,6 @@ for_each_bool_check!(impl_check_config!);
 /// Adding a field to the macro without updating these structs is a compile error.
 macro_rules! assert_bool_fields_in_sync {
     ($($doc:literal, $field:ident, $default:expr;)*) => {
-        #[cfg(test)]
         const _: () = {
             // Access each field on both structs. If a field is missing
             // from either, this block fails to compile.
@@ -516,13 +524,14 @@ pub fn load_config_file(path: &Path) -> Result<ConfigFile, ConfigError> {
 }
 
 /// Search `.pedant.toml` in the project root, then `$XDG_CONFIG_HOME/pedant/config.toml`.
-pub fn find_config_file() -> Option<std::path::PathBuf> {
-    find_project_config_file().or_else(find_global_config_file)
+pub fn find_config_file() -> Result<Option<std::path::PathBuf>, ConfigError> {
+    let project_config = find_project_config_file()?;
+    Ok(project_config.or_else(find_global_config_file))
 }
 
-fn find_project_config_file() -> Option<std::path::PathBuf> {
-    let config_path = std::env::current_dir().ok()?.join(".pedant.toml");
-    config_path.exists().then_some(config_path)
+fn find_project_config_file() -> Result<Option<std::path::PathBuf>, ConfigError> {
+    let config_path = std::env::current_dir()?.join(".pedant.toml");
+    Ok(config_path.exists().then_some(config_path))
 }
 
 fn find_global_config_file() -> Option<std::path::PathBuf> {
@@ -589,6 +598,9 @@ impl<'de> Deserialize<'de> for GateConfig {
                 ("enabled", GateTomlValue::String(_)) => {
                     return Err(D::Error::custom("'enabled' must be a boolean"));
                 }
+                (_, _) if !is_known_gate_rule(&key) => {
+                    return Err(D::Error::custom(format!("unknown gate rule '{key}'")));
+                }
                 (_, GateTomlValue::Bool(false)) => {
                     overrides.insert(key, GateRuleOverride::Disabled);
                 }
@@ -606,6 +618,12 @@ impl<'de> Deserialize<'de> for GateConfig {
 
         Ok(GateConfig { enabled, overrides })
     }
+}
+
+fn is_known_gate_rule(rule_name: &str) -> bool {
+    crate::gate::all_gate_rules()
+        .iter()
+        .any(|rule| rule.name == rule_name)
 }
 
 fn parse_gate_severity(s: &str) -> Option<crate::gate::GateSeverity> {

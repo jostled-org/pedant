@@ -16,7 +16,7 @@ pub struct IrSpan {
 }
 
 /// Discriminant for data flow findings.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DataFlowKind {
     /// Tainted data flows from a capability source to a capability sink.
     TaintFlow,
@@ -126,7 +126,9 @@ pub struct FileIr {
     /// Module declarations for inline-test detection.
     pub modules: Box<[ModuleFact]>,
     /// Populated only by semantic enrichment; empty otherwise.
-    pub data_flows: Box<[DataFlowFact]>,
+    /// `Arc<[T]>` because semantic enrichment shares the cached analysis's
+    /// flow slice — no deep copy. Non-semantic paths use an empty Arc.
+    pub data_flows: std::sync::Arc<[DataFlowFact]>,
 }
 
 /// Extracted metadata for a function or method definition.
@@ -345,7 +347,8 @@ pub struct MethodCallFact {
     /// Index into `FileIr::functions`; links to enclosing function.
     pub containing_fn: Option<usize>,
     /// Filled by semantic enrichment; canonical receiver type.
-    pub receiver_type: Option<Box<str>>,
+    /// `Arc<str>` so multiple calls on the same binding share one allocation.
+    pub receiver_type: Option<Arc<str>>,
     /// Filled by semantic enrichment; suppresses clone-in-loop for `Copy` types.
     pub is_copy_receiver: bool,
 }

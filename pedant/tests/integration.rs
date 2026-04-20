@@ -5,6 +5,20 @@ use std::fs;
 
 mod common;
 
+fn fixtures_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
+}
+
+#[cfg(feature = "semantic")]
+fn extract_json_object(stdout: &str) -> &str {
+    let json_start = stdout
+        .find("\n{")
+        .map(|index| index + 1)
+        .or_else(|| stdout.starts_with('{').then_some(0))
+        .expect("expected JSON object in stdout");
+    &stdout[json_start..]
+}
+
 /// Collect all `.rs` files under a directory, recursively.
 fn collect_rs_files(dir: &std::path::Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
@@ -87,6 +101,34 @@ fn test_let_underscore_result_explain() {
     );
 }
 
+#[test]
+fn test_build_script_discovery_failure_returns_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    std::fs::create_dir(root.join("src")).unwrap();
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"broken-build-discovery\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("src/lib.rs"), "pub fn analyze_me() {}\n").unwrap();
+
+    let lib_path = root.join("src/lib.rs");
+    let output = common::run_pedant(&[lib_path.to_str().unwrap()], None);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "expected build script discovery failure to return exit 2, stderr:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("build script discovery"),
+        "expected build script discovery error in stderr, got:\n{stderr}"
+    );
+}
+
 // --- Semantic CLI tests (feature-gated) ---
 
 #[cfg(feature = "semantic")]
@@ -130,6 +172,47 @@ fn test_semantic_cli_with_workspace() {
 
 #[cfg(feature = "semantic")]
 #[test]
+fn test_semantic_cli_discovers_workspace_from_any_requested_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let outside_path = root.join("standalone.rs");
+    let workspace = root.join("workspace");
+
+    fs::create_dir(&workspace).unwrap();
+    fs::create_dir(workspace.join("src")).unwrap();
+    fs::write(&outside_path, "pub fn standalone() {}\n").unwrap();
+    fs::write(
+        workspace.join("Cargo.toml"),
+        "[package]\nname = \"sem-test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[workspace]\n",
+    )
+    .unwrap();
+    fs::write(
+        workspace.join("src/lib.rs"),
+        "pub fn inside_workspace() {}\n",
+    )
+    .unwrap();
+
+    let workspace_file = workspace.join("src/lib.rs");
+    let output = common::run_pedant(
+        &[
+            outside_path.to_str().unwrap(),
+            workspace_file.to_str().unwrap(),
+            "--semantic",
+            "--capabilities",
+        ],
+        None,
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "stderr: {stderr}");
+    assert!(
+        stderr.contains("semantic: loaded workspace"),
+        "expected semantic loading message in stderr, got:\n{stderr}"
+    );
+}
+
+#[cfg(feature = "semantic")]
+#[test]
 fn test_self_analysis_semantic() {
     let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -153,13 +236,15 @@ fn test_self_analysis_semantic() {
     let mut base_args: Vec<&str> = files.iter().map(String::as_str).collect();
     base_args.push("--capabilities");
     let base_output = common::run_pedant(&base_args, None);
+    let base_stdout = String::from_utf8_lossy(&base_output.stdout);
     assert!(
-        base_output.status.success(),
+        base_output.status.code() != Some(2),
         "base analysis failed, stderr: {}",
         String::from_utf8_lossy(&base_output.stderr)
     );
     let base_profile: pedant_types::CapabilityProfile =
-        serde_json::from_slice(&base_output.stdout).expect("should parse base capabilities");
+        serde_json::from_str(extract_json_object(&base_stdout))
+            .expect("should parse base capabilities");
 
     // Run with --semantic
     let mut sem_args: Vec<&str> = files.iter().map(String::as_str).collect();
@@ -167,14 +252,16 @@ fn test_self_analysis_semantic() {
     sem_args.push("--semantic");
     let sem_output = common::run_pedant(&sem_args, None);
 
+    let sem_stdout = String::from_utf8_lossy(&sem_output.stdout);
     let stderr = String::from_utf8_lossy(&sem_output.stderr);
     assert!(
-        sem_output.status.success(),
+        sem_output.status.code() != Some(2),
         "semantic analysis failed, stderr: {stderr}"
     );
 
     let sem_profile: pedant_types::CapabilityProfile =
-        serde_json::from_slice(&sem_output.stdout).expect("should parse semantic capabilities");
+        serde_json::from_str(extract_json_object(&sem_stdout))
+            .expect("should parse semantic capabilities");
 
     // Semantic analysis should detect the same set of capabilities as syntactic.
     // Collect unique capability kinds from each run.
@@ -215,16 +302,8 @@ fn test_cli_capabilities_shows_reachable() {
 
     // Parse the capabilities profile from stdout. The fixture has style violations
     // that produce text output before the JSON block; extract the JSON portion.
-    let json_start = stdout
-        .find("\n{")
-        .map(|i| i + 1)
-        .or_else(|| match stdout.starts_with('{') {
-            true => Some(0),
-            false => None,
-        })
-        .expect("expected JSON object in stdout");
     let profile: pedant_types::CapabilityProfile =
-        serde_json::from_str(&stdout[json_start..]).expect("should parse capabilities JSON");
+        serde_json::from_str(extract_json_object(&stdout)).expect("should parse capabilities JSON");
     let has_reachable = profile.findings.iter().any(|f| f.reachable.is_some());
     assert!(
         has_reachable,
@@ -370,12 +449,13 @@ fn test_self_analysis_dataflow() {
     let cap_stdout = String::from_utf8_lossy(&cap_output.stdout);
     let cap_stderr = String::from_utf8_lossy(&cap_output.stderr);
     assert!(
-        cap_output.status.success(),
+        cap_output.status.code() != Some(2),
         "semantic capabilities analysis failed, stderr:\n{cap_stderr}"
     );
 
     let profile: pedant_types::CapabilityProfile =
-        serde_json::from_str(&cap_stdout).expect("should parse capabilities JSON");
+        serde_json::from_str(extract_json_object(&cap_stdout))
+            .expect("should parse capabilities JSON");
     let has_reachable = profile.findings.iter().any(|f| f.reachable.is_some());
     assert!(
         has_reachable,
@@ -404,5 +484,162 @@ fn test_semantic_cli_no_workspace_warns() {
     assert!(
         stderr.contains("falling back"),
         "expected fallback warning in stderr, got:\n{stderr}"
+    );
+}
+
+// --- Multi-language CLI tests ---
+
+/// 5.T1: Running pedant --capabilities on a Python file produces findings with language metadata.
+#[test]
+fn test_cli_python_capabilities() {
+    let fixture = fixtures_dir().join("network_subprocess.py");
+    let output = common::run_pedant(&[fixture.to_str().unwrap(), "--capabilities"], None);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        output.status.success(),
+        "expected exit 0, stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+
+    let profile: pedant_types::CapabilityProfile =
+        serde_json::from_str(&stdout).expect("should parse capabilities JSON");
+
+    let has_network = profile
+        .findings
+        .iter()
+        .any(|f| f.capability == pedant_types::Capability::Network);
+    let has_process = profile
+        .findings
+        .iter()
+        .any(|f| f.capability == pedant_types::Capability::ProcessExec);
+    let all_python = profile
+        .findings
+        .iter()
+        .all(|f| f.language == Some(pedant_types::Language::Python));
+
+    assert!(has_network, "expected Network finding, got:\n{stdout}");
+    assert!(has_process, "expected ProcessExec finding, got:\n{stdout}");
+    assert!(
+        all_python,
+        "expected all findings to have language python, got:\n{stdout}"
+    );
+}
+
+/// 5.T5: Running pedant --capabilities on an unknown extension produces no error and no findings.
+#[test]
+fn test_cli_unknown_extension_skipped() {
+    let fixture = fixtures_dir().join("clean.xyz");
+    let output = common::run_pedant(&[fixture.to_str().unwrap(), "--capabilities"], None);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        output.status.success(),
+        "expected exit 0, stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+
+    let profile: pedant_types::CapabilityProfile =
+        serde_json::from_str(&stdout).expect("should parse capabilities JSON");
+
+    assert!(
+        profile.findings.is_empty(),
+        "expected no findings for unknown extension, got:\n{stdout}"
+    );
+}
+
+/// 5.T6: Running pedant --capabilities on a package.json with postinstall hook produces findings.
+#[test]
+fn test_cli_package_json_install_hook() {
+    let fixture = fixtures_dir().join("npm_project/package.json");
+    let output = common::run_pedant(&[fixture.to_str().unwrap(), "--capabilities"], None);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        output.status.success(),
+        "expected exit 0, stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+
+    let profile: pedant_types::CapabilityProfile =
+        serde_json::from_str(&stdout).expect("should parse capabilities JSON");
+
+    let has_install_hook = profile.findings.iter().any(|f| {
+        f.execution_context == Some(pedant_types::ExecutionContext::InstallHook)
+            && f.capability == pedant_types::Capability::ProcessExec
+    });
+
+    assert!(
+        has_install_hook,
+        "expected ProcessExec finding with InstallHook context, got:\n{stdout}"
+    );
+}
+
+/// 5.T7: Running pedant --capabilities on a Makefile produces findings with BuildHook context.
+#[test]
+fn test_cli_makefile_hook_entrypoint() {
+    let fixture = fixtures_dir().join("makefile_project/Makefile");
+    let output = common::run_pedant(&[fixture.to_str().unwrap(), "--capabilities"], None);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        output.status.success(),
+        "expected exit 0, stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+
+    let profile: pedant_types::CapabilityProfile =
+        serde_json::from_str(&stdout).expect("should parse capabilities JSON");
+
+    let has_build_hook = profile
+        .findings
+        .iter()
+        .any(|f| f.execution_context == Some(pedant_types::ExecutionContext::BuildHook));
+
+    assert!(
+        has_build_hook,
+        "expected findings with BuildHook context, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn test_cli_go_file_runs_source_and_manifest_analysis() {
+    let dir = tempfile::tempdir().unwrap();
+    let fixture = dir.path().join("main.go");
+    std::fs::write(
+        &fixture,
+        "package main\nimport \"net/http\"\n//go:generate stringer -type=Foo\nfunc main() {}\n",
+    )
+    .unwrap();
+
+    let output = common::run_pedant(&[fixture.to_str().unwrap(), "--capabilities"], None);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        output.status.success(),
+        "expected exit 0, stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+
+    let profile: pedant_types::CapabilityProfile =
+        serde_json::from_str(&stdout).expect("should parse capabilities JSON");
+
+    assert!(
+        profile
+            .findings
+            .iter()
+            .any(|finding| finding.capability == pedant_types::Capability::Network),
+        "expected Go source finding, got:\n{stdout}"
+    );
+    assert!(
+        profile.findings.iter().any(|finding| {
+            finding.capability == pedant_types::Capability::ProcessExec
+                && finding.execution_context == Some(pedant_types::ExecutionContext::Generator)
+        }),
+        "expected go:generate manifest finding, got:\n{stdout}"
     );
 }

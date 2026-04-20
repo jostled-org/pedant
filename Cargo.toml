@@ -1,4 +1,4 @@
 [workspace]
-members = ["pedant", "pedant-core", "pedant-mcp", "pedant-types"]
+members = ["pedant", "pedant-core", "pedant-lang", "pedant-mcp", "pedant-types"]
 exclude = ["pedant-core/tests/fixtures/semantic_workspace"]
 resolver = "3"

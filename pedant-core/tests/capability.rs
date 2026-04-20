@@ -2,7 +2,7 @@ use pedant_core::capabilities::{detect_capabilities, truncate_evidence};
 use pedant_core::check_config::CheckConfig;
 use pedant_core::ir;
 use pedant_core::lint::analyze;
-use pedant_types::Capability;
+use pedant_types::{Capability, FindingOrigin};
 
 fn permissive_config() -> CheckConfig {
     CheckConfig {
@@ -376,16 +376,20 @@ fn main() {
     let syntax = syn::parse_file(source).unwrap();
     let ir_data = ir::extract("build.rs", &syntax, None);
 
-    let profile_build = detect_capabilities(&ir_data, true);
+    let profile_build =
+        detect_capabilities(&ir_data, Some(pedant_types::ExecutionContext::BuildHook));
     assert!(
-        profile_build.findings.iter().all(|f| f.build_script),
-        "all findings should be tagged build_script=true"
+        profile_build.findings.iter().all(|f| f.is_build_hook()),
+        "all findings should have execution_context=BuildHook"
     );
 
-    let profile_normal = detect_capabilities(&ir_data, false);
+    let profile_normal = detect_capabilities(&ir_data, None);
     assert!(
-        profile_normal.findings.iter().all(|f| !f.build_script),
-        "all findings should be tagged build_script=false"
+        profile_normal
+            .findings
+            .iter()
+            .all(|f| f.execution_context.is_none()),
+        "all findings should have execution_context=None"
     );
 }
 
@@ -394,12 +398,12 @@ fn test_build_script_network_detection() {
     let source = include_str!("fixtures/build_script_network.rs");
     let syntax = syn::parse_file(source).unwrap();
     let ir_data = ir::extract("build.rs", &syntax, None);
-    let profile = detect_capabilities(&ir_data, true);
+    let profile = detect_capabilities(&ir_data, Some(pedant_types::ExecutionContext::BuildHook));
 
     let net_findings: Vec<_> = profile
         .findings
         .iter()
-        .filter(|f| f.capability == Capability::Network && f.build_script)
+        .filter(|f| f.capability == Capability::Network && f.is_build_hook())
         .collect();
     assert!(
         !net_findings.is_empty(),
@@ -412,12 +416,12 @@ fn test_build_script_process_detection() {
     let source = include_str!("fixtures/build_script_process.rs");
     let syntax = syn::parse_file(source).unwrap();
     let ir_data = ir::extract("build.rs", &syntax, None);
-    let profile = detect_capabilities(&ir_data, true);
+    let profile = detect_capabilities(&ir_data, Some(pedant_types::ExecutionContext::BuildHook));
 
     let proc_findings: Vec<_> = profile
         .findings
         .iter()
-        .filter(|f| f.capability == Capability::ProcessExec && f.build_script)
+        .filter(|f| f.capability == Capability::ProcessExec && f.is_build_hook())
         .collect();
     assert!(
         !proc_findings.is_empty(),
@@ -431,8 +435,12 @@ fn test_existing_findings_default_false() {
     let result = analyze("lib.rs", source, &permissive_config(), None).unwrap();
 
     assert!(
-        result.capabilities.findings.iter().all(|f| !f.build_script),
-        "existing findings should have build_script=false"
+        result
+            .capabilities
+            .findings
+            .iter()
+            .all(|f| f.execution_context.is_none()),
+        "existing findings should have execution_context=None"
     );
 }
 
@@ -530,7 +538,7 @@ fn foo() {
 "#;
     let syntax = syn::parse_file(source).unwrap();
     let ir_data = ir::extract("hex_odd.rs", &syntax, None);
-    let profile = detect_capabilities(&ir_data, false);
+    let profile = detect_capabilities(&ir_data, None);
     // Should have at most 1 finding (base58), not 2 (hex would be a second)
     let crypto_findings: Vec<_> = profile
         .findings
@@ -819,6 +827,168 @@ fn foo() {
     );
 }
 
+// --- Finding origin metadata tests ---
+
+#[test]
+fn import_finding_has_import_origin() {
+    let source = "use std::net::TcpStream;\n";
+    let syntax = syn::parse_file(source).unwrap();
+    let ir_data = ir::extract("import_origin.rs", &syntax, None);
+    let profile = detect_capabilities(&ir_data, None);
+
+    assert_eq!(profile.findings.len(), 1);
+    assert_eq!(
+        profile.findings[0].origin,
+        Some(FindingOrigin::Import),
+        "use-path finding should have Import origin"
+    );
+}
+
+#[test]
+fn string_literal_finding_has_string_literal_origin() {
+    let source = r#"
+fn foo() {
+    let _url = "https://api.example.com/v1/data";
+}
+"#;
+    let syntax = syn::parse_file(source).unwrap();
+    let ir_data = ir::extract("string_origin.rs", &syntax, None);
+    let profile = detect_capabilities(&ir_data, None);
+
+    let net_findings: Vec<_> = profile
+        .findings
+        .iter()
+        .filter(|f| f.capability == Capability::Network)
+        .collect();
+    assert_eq!(net_findings.len(), 1);
+    assert_eq!(
+        net_findings[0].origin,
+        Some(FindingOrigin::StringLiteral),
+        "URL string finding should have StringLiteral origin"
+    );
+}
+
+#[test]
+fn key_material_finding_has_string_literal_origin() {
+    let source = r#"
+fn foo() {
+    let _key = "-----BEGIN PRIVATE KEY-----\ndata\n-----END PRIVATE KEY-----";
+}
+"#;
+    let syntax = syn::parse_file(source).unwrap();
+    let ir_data = ir::extract("pem_origin.rs", &syntax, None);
+    let profile = detect_capabilities(&ir_data, None);
+
+    let crypto_findings: Vec<_> = profile
+        .findings
+        .iter()
+        .filter(|f| f.capability == Capability::Crypto)
+        .collect();
+    assert!(!crypto_findings.is_empty());
+    assert!(
+        crypto_findings
+            .iter()
+            .all(|f| f.origin == Some(FindingOrigin::StringLiteral)),
+        "PEM key material finding should have StringLiteral origin"
+    );
+}
+
+#[test]
+fn attribute_finding_has_attribute_origin() {
+    let source = r#"
+#[proc_macro]
+fn my_macro(input: TokenStream) -> TokenStream {
+    input
+}
+"#;
+    let syntax = syn::parse_file(source).unwrap();
+    let ir_data = ir::extract("attr_origin.rs", &syntax, None);
+    let profile = detect_capabilities(&ir_data, None);
+
+    let proc_findings: Vec<_> = profile
+        .findings
+        .iter()
+        .filter(|f| f.capability == Capability::ProcMacro)
+        .collect();
+    assert_eq!(proc_findings.len(), 1);
+    assert_eq!(
+        proc_findings[0].origin,
+        Some(FindingOrigin::Attribute),
+        "proc_macro attribute finding should have Attribute origin"
+    );
+}
+
+#[test]
+fn unsafe_block_finding_has_code_site_origin() {
+    let source = r#"
+fn foo() {
+    let _val = unsafe { 42 };
+}
+"#;
+    let syntax = syn::parse_file(source).unwrap();
+    let ir_data = ir::extract("unsafe_origin.rs", &syntax, None);
+    let profile = detect_capabilities(&ir_data, None);
+
+    let unsafe_findings: Vec<_> = profile
+        .findings
+        .iter()
+        .filter(|f| f.capability == Capability::UnsafeCode)
+        .collect();
+    assert_eq!(unsafe_findings.len(), 1);
+    assert_eq!(
+        unsafe_findings[0].origin,
+        Some(FindingOrigin::CodeSite),
+        "unsafe block finding should have CodeSite origin"
+    );
+}
+
+#[test]
+fn extern_block_finding_has_code_site_origin() {
+    let source = r#"
+extern "C" {
+    fn my_c_function(x: i32) -> i32;
+}
+"#;
+    let syntax = syn::parse_file(source).unwrap();
+    let ir_data = ir::extract("extern_origin.rs", &syntax, None);
+    let profile = detect_capabilities(&ir_data, None);
+
+    let ffi_findings: Vec<_> = profile
+        .findings
+        .iter()
+        .filter(|f| f.capability == Capability::Ffi)
+        .collect();
+    assert_eq!(ffi_findings.len(), 1);
+    assert_eq!(
+        ffi_findings[0].origin,
+        Some(FindingOrigin::CodeSite),
+        "extern block finding should have CodeSite origin"
+    );
+}
+
+#[test]
+fn link_attribute_finding_has_attribute_origin() {
+    let source = r#"
+#[link(name = "mylib")]
+extern "C" {
+    fn my_c_function(x: i32) -> i32;
+}
+"#;
+    let syntax = syn::parse_file(source).unwrap();
+    let ir_data = ir::extract("link_origin.rs", &syntax, None);
+    let profile = detect_capabilities(&ir_data, None);
+
+    let attr_findings: Vec<_> = profile
+        .findings
+        .iter()
+        .filter(|f| f.origin == Some(FindingOrigin::Attribute))
+        .collect();
+    assert!(
+        !attr_findings.is_empty(),
+        "#[link] finding should have Attribute origin"
+    );
+}
+
 // --- Self-analysis validation ---
 
 #[test]
@@ -826,7 +996,7 @@ fn test_self_analysis_no_false_positives() {
     let source = include_str!("../../pedant-core/src/capabilities.rs");
     let syntax = syn::parse_file(source).unwrap();
     let ir_data = ir::extract("capabilities.rs", &syntax, None);
-    let profile = detect_capabilities(&ir_data, false);
+    let profile = detect_capabilities(&ir_data, None);
 
     let crypto_findings: Vec<_> = profile
         .findings

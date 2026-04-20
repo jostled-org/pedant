@@ -27,7 +27,7 @@ toml = "1"
 serde = { version = "1", features = ["derive"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = "1"
-pedant-types = { version = "0.9.0", path = "../pedant-types" }
+pedant-types = { version = "0.10.0", path = "../pedant-types" }
 thiserror = "2"
 sha2 = "0.10"
 serde_json = "1"

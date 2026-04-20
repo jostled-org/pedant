@@ -2,4 +2,13 @@
 name = "pedant-types"
 
 [[package]]
+name = "pedant-core"
+
+[[package]]
+name = "pedant-lang"
+
+[[package]]
+name = "pedant-mcp"
+
+[[package]]
 name = "pedant"

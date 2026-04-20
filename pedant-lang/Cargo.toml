@@ -1,6 +1,6 @@
 [package]
 name = "pedant-lang"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.85"
 description = "Multi-language capability detection for pedant"
@@ -16,7 +16,7 @@ ts-go = ["dep:tree-sitter", "dep:tree-sitter-go"]
 ts-bash = ["dep:tree-sitter", "dep:tree-sitter-bash"]
 
 [dependencies]
-pedant-types = { version = "0.10.0", path = "../pedant-types" }
+pedant-types = { version = "0.10.1", path = "../pedant-types" }
 tree-sitter = { version = "0.26", optional = true }
 tree-sitter-python = { version = "0.25", optional = true }
 tree-sitter-javascript = { version = "0.25", optional = true }

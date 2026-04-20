@@ -14,8 +14,8 @@ path = "src/main.rs"
 
 [dependencies]
 pedant-core = { version = "0.11.0", path = "../pedant-core" }
-pedant-lang = { version = "0.1.0", path = "../pedant-lang" }
-pedant-types = { version = "0.10.0", path = "../pedant-types" }
+pedant-lang = { version = "0.1.1", path = "../pedant-lang" }
+pedant-types = { version = "0.10.1", path = "../pedant-types" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "1"

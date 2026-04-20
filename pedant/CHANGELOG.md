@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0](https://github.com/jostled-org/pedant/compare/pedant-v0.17.1...pedant-v0.18.0) - 2026-04-20
+
+### Added
+
+- add supply chain check action and rewrite documentation
+- [**breaking**] multi-language capability detection, semantic cache, and CLI stream fix
+
+### Fixed
+
+- bump pedant-types to 0.10.0 and register all crates with release-plz
+
 ## [0.17.1](https://github.com/jostled-org/pedant/compare/pedant-v0.17.0...pedant-v0.17.1) - 2026-04-02
 
 ### Other

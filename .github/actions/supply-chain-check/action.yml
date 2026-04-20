@@ -1,0 +1,49 @@
+name: 'Pedant Supply Chain Check'
+description: 'Detect dependency capability changes and tag-swap attacks using pedant attestations'
+
+inputs:
+  baseline-path:
+    description: 'Path to stored baselines'
+    default: '.pedant/baselines'
+  fail-on:
+    description: 'Fail on: hash-mismatch, new-capability, new-dependency, or none'
+    default: 'hash-mismatch'
+  ecosystems:
+    description: 'Comma-separated ecosystems to scan (auto-detected if empty)'
+    default: ''
+  update-baselines:
+    description: 'Update baselines after scan (use on main branch merges)'
+    default: 'false'
+
+outputs:
+  status:
+    description: 'Overall result: clean, new-dependency, capability-change, hash-mismatch'
+    value: ${{ steps.scan.outputs.status }}
+  report:
+    description: 'Path to the full JSON report'
+    value: ${{ steps.scan.outputs.report }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Build pedant from action source
+      shell: bash
+      run: |
+        if command -v pedant &>/dev/null; then
+          echo "pedant already installed"
+        else
+          # Build from the same commit as the action checkout.
+          # No registry fetch — the action ref pins both the script and the binary.
+          PEDANT_ROOT="$(cd "${{ github.action_path }}/../../.." && pwd)"
+          cargo install --path "$PEDANT_ROOT/pedant" --locked
+        fi
+
+    - name: Scan dependencies
+      id: scan
+      shell: bash
+      env:
+        BASELINE_PATH: ${{ inputs.baseline-path }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        ECOSYSTEMS: ${{ inputs.ecosystems }}
+        UPDATE_BASELINES: ${{ inputs.update-baselines }}
+      run: bash ${{ github.action_path }}/scan.sh

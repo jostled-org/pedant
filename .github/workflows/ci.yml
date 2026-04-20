@@ -9,11 +9,11 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@a54c7afe936fefeb4456b2dd8068152669aa8211 # stable
         with:
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
       - run: cargo fmt --check
       - run: cargo clippy -- -D warnings
       - run: cargo clippy --workspace --features semantic -- -D warnings
@@ -23,3 +23,15 @@ jobs:
       - run: RUSTDOCFLAGS="-D missing_docs" cargo doc --no-deps
       - run: RUSTDOCFLAGS="-D missing_docs" cargo doc --no-deps --features semantic
       - run: cargo install cargo-deny && cargo deny check
+
+  supply-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@a54c7afe936fefeb4456b2dd8068152669aa8211 # stable
+      - uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+      - uses: ./.github/actions/supply-chain-check
+        with:
+          baseline-path: .pedant/baselines
+          fail-on: hash-mismatch
+          update-baselines: ${{ github.ref == 'refs/heads/main' && 'true' || 'false' }}

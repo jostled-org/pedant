@@ -1,17 +1,20 @@
 # Capability Detection
 
-Pedant detects what a crate *can do* — network access, filesystem operations, unsafe code, cryptography — by scanning imports, function signatures, attributes, and string literals. Capability findings enumerate behavior without judging it.
+Pedant detects what code *can do* — network access, filesystem operations, unsafe code, cryptography — by scanning imports, function signatures, attributes, and string literals across Rust, Python, JavaScript/TypeScript, Go, and Bash. Capability findings enumerate behavior without judging it.
 
 ## Usage
 
 ```bash
-# Scan files for capabilities
+# Scan Rust files for capabilities
 pedant --capabilities src/**/*.rs
+
+# Scan any supported language
+pedant --capabilities src/**/*.rs scripts/*.py *.sh
 
 # Pipe source and get JSON output
 echo 'use std::net::TcpStream;' | pedant --stdin --capabilities
 
-# Combine with linting
+# Combine with linting (Rust only)
 pedant --capabilities -f json src/lib.rs
 ```
 
@@ -59,6 +62,45 @@ Each finding includes the capability type, source location, and evidence (the im
 }
 ```
 
+## Multi-Language Support
+
+Beyond Rust, pedant detects capabilities in Python, JavaScript/TypeScript, Go, and Bash. Pass any supported file to the CLI — language detection is automatic via file extension or shebang line.
+
+```bash
+# Scan a mixed project
+pedant --capabilities src/**/*.rs scripts/*.py *.sh
+
+# Gate rules evaluate per language group by default
+pedant --gate src/**/*.rs scripts/*.py
+
+# Merge all languages for combined gate evaluation
+pedant --gate --cross-language src/**/*.rs scripts/*.py
+```
+
+| Language | Extensions | Detection method |
+|----------|-----------|-----------------|
+| Python | `.py` | Tree-sitter AST + regex fallback |
+| JavaScript | `.js`, `.mjs`, `.cjs` | Tree-sitter AST + regex fallback |
+| TypeScript | `.ts`, `.tsx`, `.mts` | Tree-sitter AST + regex fallback |
+| Go | `.go` | Tree-sitter AST + regex fallback |
+| Bash | `.sh`, `.bash`, `.zsh` | Tree-sitter AST + regex fallback |
+
+Each language detects capabilities appropriate to its ecosystem — Python `import subprocess` produces `process_exec`, Go `import "net/http"` produces `network`, Bash `curl` produces `network`. Findings carry a `language` field in JSON output.
+
+### Manifest Analysis
+
+Package manifests are scanned for lifecycle hook capabilities:
+
+| File | What's detected |
+|------|----------------|
+| `package.json` | `scripts` hooks (`preinstall`, `postinstall`, etc.) |
+| `setup.py` | `cmdclass` overrides |
+| `pyproject.toml` | Build backend references |
+| `Makefile` / `justfile` | Recipe commands |
+| `.go` files | `//go:generate` directives |
+
+Gate rules evaluate per language group by default, preventing cross-language false positives (e.g., a Python script importing `crypto` and a JS file using `fetch` won't combine to trigger `crypto-network`). Use `--cross-language` to merge all findings for combined evaluation.
+
 ## String Literal Analysis
 
 Beyond import scanning, pedant inspects string literals for:
@@ -80,7 +122,7 @@ Gate rules evaluate capability profiles for suspicious combinations. Run with `-
 pedant --gate src/**/*.rs
 ```
 
-22 built-in rules across five categories:
+24 built-in rules across five categories:
 
 **Compile-time execution** — build scripts and proc macros run at compile time with no sandboxing.
 
@@ -116,6 +158,8 @@ pedant --gate src/**/*.rs
 | `dead-store` | Value assigned then overwritten before read | warn |
 | `discarded-result` | Result-returning function called without binding | warn |
 | `partial-error-handling` | Result handled on some paths, dropped on others | warn |
+| `swallowed-ok` | `.ok()` on Result where resulting Option is discarded | warn |
+| `immutable-growable` | Vec or String never mutated after construction | info |
 
 **Performance** — requires `--semantic`. Detects allocation and iteration waste.
 
@@ -132,6 +176,7 @@ pedant --gate src/**/*.rs
 |------|-----------|-----------------|
 | `lock-across-await` | Lock guard held across .await point | deny |
 | `inconsistent-lock-order` | Same locks acquired in different orders | deny |
+| `unobserved-spawn` | Thread/task spawned with dropped JoinHandle | warn |
 
 Configure in `.pedant.toml`:
 
@@ -180,7 +225,7 @@ The `analysis_tier` field is `"syntactic"` for default analysis or `"semantic"` 
 
 ## Build Scripts
 
-Build scripts (`build.rs` or custom paths from `Cargo.toml`'s `[package].build`) are automatically discovered and analyzed. Findings from build scripts carry `"build_script": true` in the JSON output, distinguishing compile-time capabilities from runtime capabilities. The `location.file` field identifies which file triggered each finding.
+Build scripts (`build.rs` or custom paths from `Cargo.toml`'s `[package].build`) are automatically discovered and analyzed. Findings from build scripts carry `"execution_context": "build_hook"` in the JSON output, distinguishing compile-time capabilities from runtime capabilities. The `location.file` field identifies which file triggered each finding.
 
 Build script discovery works by walking up from each source file to find a `Cargo.toml`, then checking for the build script path. Each crate root is only scanned once, even when multiple source files are passed.
 

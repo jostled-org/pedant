@@ -1,6 +1,6 @@
 [package]
 name = "pedant-mcp"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2024"
 rust-version = "1.85"
 description = "MCP server exposing pedant security and capability analysis"
@@ -13,7 +13,7 @@ name = "pedant-mcp"
 path = "src/main.rs"
 
 [dependencies]
-pedant-core = { version = "0.11.0", path = "../pedant-core" }
+pedant-core = { version = "0.11.1", path = "../pedant-core" }
 pedant-lang = { version = "0.1.1", path = "../pedant-lang" }
 pedant-types = { version = "0.10.1", path = "../pedant-types" }
 serde = { version = "1", features = ["derive"] }

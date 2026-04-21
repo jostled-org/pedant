@@ -1,6 +1,6 @@
 [package]
 name = "pedant"
-version = "0.18.0"
+version = "0.18.1"
 edition = "2024"
 rust-version = "1.85"
 description = "An opinionated Rust linter, with special focus on AI-generated code"
@@ -21,7 +21,7 @@ name = "pedant"
 path = "src/main.rs"
 
 [dependencies]
-pedant-core = { version = "0.11.0", path = "../pedant-core" }
+pedant-core = { version = "0.11.1", path = "../pedant-core" }
 pedant-lang = { version = "0.1.1", path = "../pedant-lang" }
 pedant-types = { version = "0.10.1", path = "../pedant-types" }
 clap = { version = "4", features = ["derive"] }

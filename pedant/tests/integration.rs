@@ -9,16 +9,6 @@ fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
 
-#[cfg(feature = "semantic")]
-fn extract_json_object(stdout: &str) -> &str {
-    let json_start = stdout
-        .find("\n{")
-        .map(|index| index + 1)
-        .or_else(|| stdout.starts_with('{').then_some(0))
-        .expect("expected JSON object in stdout");
-    &stdout[json_start..]
-}
-
 /// Collect all `.rs` files under a directory, recursively.
 fn collect_rs_files(dir: &std::path::Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
@@ -57,10 +47,8 @@ fn test_self_analysis_gate_clean() {
             args.push(file.to_string_lossy().into_owned());
         }
     }
-    args.push("--gate".to_owned());
-
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let output = common::run_pedant(&arg_refs, None);
+    let output = common::run_subcommand("gate", &arg_refs, None);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -75,7 +63,7 @@ fn test_self_analysis_gate_clean() {
 
 #[test]
 fn test_let_underscore_result_in_list_checks() {
-    let output = common::run_pedant(&["--list-checks"], None);
+    let output = common::run_pedant(&["list-checks"], None);
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     assert!(output.status.success());
@@ -87,7 +75,7 @@ fn test_let_underscore_result_in_list_checks() {
 
 #[test]
 fn test_let_underscore_result_explain() {
-    let output = common::run_pedant(&["--explain", "let-underscore-result"], None);
+    let output = common::run_pedant(&["explain", "let-underscore-result"], None);
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     assert!(output.status.success());
@@ -115,7 +103,7 @@ fn test_build_script_discovery_failure_returns_error() {
     std::fs::write(root.join("src/lib.rs"), "pub fn analyze_me() {}\n").unwrap();
 
     let lib_path = root.join("src/lib.rs");
-    let output = common::run_pedant(&[lib_path.to_str().unwrap()], None);
+    let output = common::run_subcommand("check", &[lib_path.to_str().unwrap()], None);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     assert_eq!(
@@ -134,11 +122,11 @@ fn test_build_script_discovery_failure_returns_error() {
 #[cfg(feature = "semantic")]
 #[test]
 fn test_semantic_cli_flag_exists() {
-    let output = common::run_pedant(&["--help"], None);
+    let output = common::run_pedant(&["capabilities", "--help"], None);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains("--semantic"),
-        "expected --help to list --semantic flag, got:\n{stdout}"
+        "expected capabilities --help to list --semantic flag, got:\n{stdout}"
     );
 }
 
@@ -157,8 +145,9 @@ fn test_semantic_cli_with_workspace() {
     fs::write(root.join("src/lib.rs"), "pub fn f() -> i32 { 42 }\n").unwrap();
 
     let lib_path = root.join("src/lib.rs");
-    let output = common::run_pedant(
-        &[lib_path.to_str().unwrap(), "--semantic", "--capabilities"],
+    let output = common::run_subcommand(
+        "capabilities",
+        &[lib_path.to_str().unwrap(), "--semantic"],
         None,
     );
 
@@ -193,12 +182,12 @@ fn test_semantic_cli_discovers_workspace_from_any_requested_file() {
     .unwrap();
 
     let workspace_file = workspace.join("src/lib.rs");
-    let output = common::run_pedant(
+    let output = common::run_subcommand(
+        "capabilities",
         &[
             outside_path.to_str().unwrap(),
             workspace_file.to_str().unwrap(),
             "--semantic",
-            "--capabilities",
         ],
         None,
     );
@@ -233,9 +222,8 @@ fn test_self_analysis_semantic() {
     }
 
     // Run without --semantic to get baseline capabilities
-    let mut base_args: Vec<&str> = files.iter().map(String::as_str).collect();
-    base_args.push("--capabilities");
-    let base_output = common::run_pedant(&base_args, None);
+    let base_args: Vec<&str> = files.iter().map(String::as_str).collect();
+    let base_output = common::run_subcommand("capabilities", &base_args, None);
     let base_stdout = String::from_utf8_lossy(&base_output.stdout);
     assert!(
         base_output.status.code() != Some(2),
@@ -243,14 +231,12 @@ fn test_self_analysis_semantic() {
         String::from_utf8_lossy(&base_output.stderr)
     );
     let base_profile: pedant_types::CapabilityProfile =
-        serde_json::from_str(extract_json_object(&base_stdout))
-            .expect("should parse base capabilities");
+        serde_json::from_str(&base_stdout).expect("should parse base capabilities");
 
     // Run with --semantic
     let mut sem_args: Vec<&str> = files.iter().map(String::as_str).collect();
-    sem_args.push("--capabilities");
     sem_args.push("--semantic");
-    let sem_output = common::run_pedant(&sem_args, None);
+    let sem_output = common::run_subcommand("capabilities", &sem_args, None);
 
     let sem_stdout = String::from_utf8_lossy(&sem_output.stdout);
     let stderr = String::from_utf8_lossy(&sem_output.stderr);
@@ -260,8 +246,7 @@ fn test_self_analysis_semantic() {
     );
 
     let sem_profile: pedant_types::CapabilityProfile =
-        serde_json::from_str(extract_json_object(&sem_stdout))
-            .expect("should parse semantic capabilities");
+        serde_json::from_str(&sem_stdout).expect("should parse semantic capabilities");
 
     // Semantic analysis should detect the same set of capabilities as syntactic.
     // Collect unique capability kinds from each run.
@@ -286,8 +271,9 @@ fn test_cli_capabilities_shows_reachable() {
         .to_path_buf();
     let lib_path = workspace_root.join("pedant-core/tests/fixtures/dataflow_workspace/src/lib.rs");
 
-    let output = common::run_pedant(
-        &[lib_path.to_str().unwrap(), "--semantic", "--capabilities"],
+    let output = common::run_subcommand(
+        "capabilities",
+        &[lib_path.to_str().unwrap(), "--semantic"],
         None,
     );
 
@@ -303,7 +289,7 @@ fn test_cli_capabilities_shows_reachable() {
     // Parse the capabilities profile from stdout. The fixture has style violations
     // that produce text output before the JSON block; extract the JSON portion.
     let profile: pedant_types::CapabilityProfile =
-        serde_json::from_str(extract_json_object(&stdout)).expect("should parse capabilities JSON");
+        serde_json::from_str(&stdout).expect("should parse capabilities JSON");
     let has_reachable = profile.findings.iter().any(|f| f.reachable.is_some());
     assert!(
         has_reachable,
@@ -327,7 +313,7 @@ fn test_cli_gate_shows_flow_verdicts() {
         .to_path_buf();
     let lib_path = workspace_root.join("pedant-core/tests/fixtures/dataflow_workspace/src/lib.rs");
 
-    let output = common::run_pedant(&[lib_path.to_str().unwrap(), "--semantic", "--gate"], None);
+    let output = common::run_subcommand("gate", &[lib_path.to_str().unwrap(), "--semantic"], None);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -350,7 +336,7 @@ fn test_cli_gate_shows_quality_verdicts() {
         .to_path_buf();
     let lib_path = workspace_root.join("pedant-core/tests/fixtures/dataflow_workspace/src/lib.rs");
 
-    let output = common::run_pedant(&[lib_path.to_str().unwrap(), "--semantic", "--gate"], None);
+    let output = common::run_subcommand("gate", &[lib_path.to_str().unwrap(), "--semantic"], None);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -387,8 +373,7 @@ fn test_self_analysis_clean() {
 
     let mut args: Vec<&str> = files.iter().map(String::as_str).collect();
     args.push("--semantic");
-    args.push("--gate");
-    let output = common::run_pedant(&args, None);
+    let output = common::run_subcommand("gate", &args, None);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -429,8 +414,7 @@ fn test_self_analysis_dataflow() {
     // Run with --semantic --gate: verify no deny-level flow verdicts.
     let mut gate_args: Vec<&str> = files.iter().map(String::as_str).collect();
     gate_args.push("--semantic");
-    gate_args.push("--gate");
-    let gate_output = common::run_pedant(&gate_args, None);
+    let gate_output = common::run_subcommand("gate", &gate_args, None);
 
     let gate_stdout = String::from_utf8_lossy(&gate_output.stdout);
     let gate_stderr = String::from_utf8_lossy(&gate_output.stderr);
@@ -443,8 +427,7 @@ fn test_self_analysis_dataflow() {
     // Run with --semantic --capabilities: verify reachability annotations are present.
     let mut cap_args: Vec<&str> = files.iter().map(String::as_str).collect();
     cap_args.push("--semantic");
-    cap_args.push("--capabilities");
-    let cap_output = common::run_pedant(&cap_args, None);
+    let cap_output = common::run_subcommand("capabilities", &cap_args, None);
 
     let cap_stdout = String::from_utf8_lossy(&cap_output.stdout);
     let cap_stderr = String::from_utf8_lossy(&cap_output.stderr);
@@ -454,8 +437,7 @@ fn test_self_analysis_dataflow() {
     );
 
     let profile: pedant_types::CapabilityProfile =
-        serde_json::from_str(extract_json_object(&cap_stdout))
-            .expect("should parse capabilities JSON");
+        serde_json::from_str(&cap_stdout).expect("should parse capabilities JSON");
     let has_reachable = profile.findings.iter().any(|f| f.reachable.is_some());
     assert!(
         has_reachable,
@@ -472,7 +454,8 @@ fn test_semantic_cli_no_workspace_warns() {
     fs::write(root.join("test.rs"), "fn main() {}\n").unwrap();
 
     let file_path = root.join("test.rs");
-    let output = common::run_pedant(&[file_path.to_str().unwrap(), "--semantic"], None);
+    let output =
+        common::run_subcommand("check", &[file_path.to_str().unwrap(), "--semantic"], None);
 
     assert!(
         output.status.success(),
@@ -493,7 +476,7 @@ fn test_semantic_cli_no_workspace_warns() {
 #[test]
 fn test_cli_python_capabilities() {
     let fixture = fixtures_dir().join("network_subprocess.py");
-    let output = common::run_pedant(&[fixture.to_str().unwrap(), "--capabilities"], None);
+    let output = common::run_subcommand("capabilities", &[fixture.to_str().unwrap()], None);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -531,7 +514,7 @@ fn test_cli_python_capabilities() {
 #[test]
 fn test_cli_unknown_extension_skipped() {
     let fixture = fixtures_dir().join("clean.xyz");
-    let output = common::run_pedant(&[fixture.to_str().unwrap(), "--capabilities"], None);
+    let output = common::run_subcommand("capabilities", &[fixture.to_str().unwrap()], None);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -554,7 +537,7 @@ fn test_cli_unknown_extension_skipped() {
 #[test]
 fn test_cli_package_json_install_hook() {
     let fixture = fixtures_dir().join("npm_project/package.json");
-    let output = common::run_pedant(&[fixture.to_str().unwrap(), "--capabilities"], None);
+    let output = common::run_subcommand("capabilities", &[fixture.to_str().unwrap()], None);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -582,7 +565,7 @@ fn test_cli_package_json_install_hook() {
 #[test]
 fn test_cli_makefile_hook_entrypoint() {
     let fixture = fixtures_dir().join("makefile_project/Makefile");
-    let output = common::run_pedant(&[fixture.to_str().unwrap(), "--capabilities"], None);
+    let output = common::run_subcommand("capabilities", &[fixture.to_str().unwrap()], None);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -616,7 +599,7 @@ fn test_cli_go_file_runs_source_and_manifest_analysis() {
     )
     .unwrap();
 
-    let output = common::run_pedant(&[fixture.to_str().unwrap(), "--capabilities"], None);
+    let output = common::run_subcommand("capabilities", &[fixture.to_str().unwrap()], None);
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 

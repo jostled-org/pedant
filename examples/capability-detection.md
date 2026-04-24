@@ -6,16 +6,13 @@ Pedant detects what code *can do* — network access, filesystem operations, uns
 
 ```bash
 # Scan Rust files for capabilities
-pedant --capabilities src/**/*.rs
+pedant capabilities src/**/*.rs
 
 # Scan any supported language
-pedant --capabilities src/**/*.rs scripts/*.py *.sh
+pedant capabilities src/**/*.rs scripts/*.py *.sh
 
 # Pipe source and get JSON output
-echo 'use std::net::TcpStream;' | pedant --stdin --capabilities
-
-# Combine with linting (Rust only)
-pedant --capabilities -f json src/lib.rs
+echo 'use std::net::TcpStream;' | pedant capabilities --stdin
 ```
 
 ## Capabilities
@@ -68,13 +65,13 @@ Beyond Rust, pedant detects capabilities in Python, JavaScript/TypeScript, Go, a
 
 ```bash
 # Scan a mixed project
-pedant --capabilities src/**/*.rs scripts/*.py *.sh
+pedant capabilities src/**/*.rs scripts/*.py *.sh
 
 # Gate rules evaluate per language group by default
-pedant --gate src/**/*.rs scripts/*.py
+pedant gate src/**/*.rs scripts/*.py
 
 # Merge all languages for combined gate evaluation
-pedant --gate --cross-language src/**/*.rs scripts/*.py
+pedant gate --cross-language src/**/*.rs scripts/*.py
 ```
 
 | Language | Extensions | Detection method |
@@ -116,10 +113,10 @@ Evidence for key material longer than 40 characters is truncated (first 16 chars
 
 ## Gate Rules
 
-Gate rules evaluate capability profiles for suspicious combinations. Run with `--gate`:
+Gate rules evaluate capability profiles for suspicious combinations. Run with `pedant gate`:
 
 ```bash
-pedant --gate src/**/*.rs
+pedant gate src/**/*.rs
 ```
 
 24 built-in rules across five categories:
@@ -199,10 +196,10 @@ Exit codes: `0` clean or warn-only, `1` deny-level verdict, `2` error.
 Attestation wraps a capability profile with crate identity and a SHA-256 source hash for reproducibility:
 
 ```bash
-pedant --attestation --crate-name my-crate --crate-version 0.1.0 src/**/*.rs
+pedant attestation --crate-name my-crate --crate-version 0.1.0 src/**/*.rs
 
 # From stdin
-echo 'use std::net::TcpStream;' | pedant --stdin --attestation --crate-name test --crate-version 0.1.0
+echo 'use std::net::TcpStream;' | pedant attestation --stdin --crate-name test --crate-version 0.1.0
 ```
 
 Output:
@@ -235,13 +232,13 @@ Compare two capability profiles or attestations to see what changed:
 
 ```bash
 # Diff two bare profiles
-pedant --diff old_profile.json new_profile.json
+pedant diff old_profile.json new_profile.json
 
 # Diff two attestations (profiles are extracted automatically)
-pedant --diff old_attestation.json new_attestation.json
+pedant diff old_attestation.json new_attestation.json
 
 # Mix formats — one attestation, one bare profile
-pedant --diff attestation.json profile.json
+pedant diff attestation.json profile.json
 ```
 
 Output:
@@ -280,7 +277,7 @@ With the `semantic` feature enabled (`cargo install pedant --features semantic`)
 - `use reqwest as http` — capability detection resolves the alias to its canonical path
 
 ```bash
-pedant --semantic --capabilities src/**/*.rs
+pedant capabilities --semantic src/**/*.rs
 ```
 
 Requires a Cargo workspace. Falls back to syntactic analysis if the workspace can't be loaded.

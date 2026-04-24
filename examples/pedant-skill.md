@@ -21,19 +21,19 @@ If no `.rs` files found, print "no Rust files to scan" and stop.
 
 ### 2. Run capability scan
 
-pedant --capabilities <files>
+pedant capabilities <files>
 
 Print a summary: which capabilities were detected, with evidence.
 
 ### 3. Run gate rules
 
-pedant --gate <files>
+pedant gate <files>
 
 Print verdicts. Flag any deny-level results prominently.
 
 ### 4. Run style check
 
-pedant <files>
+pedant check <files>
 
 Print violation count. If violations found, list them.
 

@@ -17,7 +17,7 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy -- -D warnings
       - run: cargo clippy --workspace --features semantic -- -D warnings
-      - run: cargo install --path pedant && pedant pedant/src/*.rs pedant-core/src/*.rs pedant-core/src/**/*.rs
+      - run: cargo install --path pedant && pedant check pedant/src/*.rs pedant-core/src/*.rs pedant-core/src/**/*.rs
       - run: cargo test
       - run: cargo test --workspace --features semantic
       - run: RUSTDOCFLAGS="-D missing_docs" cargo doc --no-deps
@@ -34,4 +34,3 @@ jobs:
         with:
           baseline-path: .pedant/baselines
           fail-on: hash-mismatch
-          update-baselines: ${{ github.ref == 'refs/heads/main' && 'true' || 'false' }}

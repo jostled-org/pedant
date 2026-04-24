@@ -12,7 +12,6 @@ use pedant_lang::FileClassification;
 use pedant_types::Language;
 
 use crate::ProcessError;
-use crate::config::Cli;
 
 type AnalyzeFn = fn(
     &str,
@@ -34,6 +33,12 @@ pub(crate) struct AnalysisAccumulator {
     pub(crate) findings: Vec<pedant_types::CapabilityFinding>,
     pub(crate) data_flows: Vec<pedant_core::ir::DataFlowFact>,
     pub(crate) had_error: bool,
+}
+
+pub(crate) struct AnalysisRequest<'a> {
+    pub(crate) files: &'a [String],
+    pub(crate) stdin: bool,
+    pub(crate) collect_source_hash: bool,
 }
 
 impl AnalysisAccumulator {
@@ -70,20 +75,20 @@ impl AnalysisAccumulator {
 /// Select the input source (stdin vs files) and run analysis, returning a source
 /// hash when attestation mode requires one.
 pub(crate) fn run_analysis(
-    cli: &Cli,
+    request: &AnalysisRequest<'_>,
     ctx: &AnalysisContext<'_>,
     acc: &mut AnalysisAccumulator,
     stderr: &mut impl Write,
 ) -> Option<Box<str>> {
-    match (cli.attestation, cli.stdin) {
+    match (request.collect_source_hash, request.stdin) {
         (true, true) => attest_stdin(ctx.base_config, acc, stderr),
-        (true, false) => Some(attest_files(cli, ctx, acc, stderr)),
+        (true, false) => Some(attest_files(request.files, ctx, acc, stderr)),
         (false, true) => {
             acc.handle(process_stdin(ctx.base_config), "error", stderr);
             None
         }
         (false, false) => {
-            analyze_file_list(cli, ctx, None, acc, stderr);
+            analyze_file_list(request.files, ctx, None, acc, stderr);
             None
         }
     }
@@ -94,16 +99,17 @@ pub(crate) fn run_analysis(
 /// Returns `None` (with a stderr warning) if loading fails or the flag is absent.
 #[cfg(feature = "semantic")]
 pub(crate) fn load_semantic_if_requested(
-    cli: &Cli,
+    enabled: bool,
+    files: &[String],
     stderr: &mut impl Write,
 ) -> Option<SemanticContext> {
     use std::time::Instant;
 
-    if !cli.semantic {
+    if !enabled {
         return None;
     }
 
-    let root = match discover_semantic_workspace_root(&cli.files) {
+    let root = match discover_semantic_workspace_root(files) {
         Ok(Some(root)) => root,
         Ok(None) => {
             crate::report_error(
@@ -178,7 +184,8 @@ fn discover_semantic_workspace_root(
 /// Stub when the `semantic` feature is disabled — always returns `None`.
 #[cfg(not(feature = "semantic"))]
 pub(crate) fn load_semantic_if_requested(
-    _cli: &Cli,
+    _enabled: bool,
+    _files: &[String],
     _stderr: &mut impl Write,
 ) -> Option<SemanticContext> {
     None
@@ -208,25 +215,25 @@ fn attest_stdin(
 }
 
 fn attest_files(
-    cli: &Cli,
+    files: &[String],
     ctx: &AnalysisContext<'_>,
     acc: &mut AnalysisAccumulator,
     stderr: &mut impl Write,
 ) -> Box<str> {
     let mut sources = BTreeMap::new();
-    analyze_file_list(cli, ctx, Some(&mut sources), acc, stderr);
+    analyze_file_list(files, ctx, Some(&mut sources), acc, stderr);
     compute_source_hash(&sources)
 }
 
 fn analyze_file_list(
-    cli: &Cli,
+    files: &[String],
     ctx: &AnalysisContext<'_>,
     mut sources: Option<&mut BTreeMap<Box<str>, String>>,
     acc: &mut AnalysisAccumulator,
     stderr: &mut impl Write,
 ) {
     let mut seen_build_roots: BTreeSet<Box<Path>> = BTreeSet::new();
-    for file_path in &cli.files {
+    for file_path in files {
         let path = Path::new(file_path.as_str());
         match pedant_lang::classify_path(path) {
             FileClassification::SourceAndManifest(lang) => {
@@ -243,7 +250,7 @@ fn analyze_file_list(
             FileClassification::Rust => {
                 analyze_rust_file(
                     file_path,
-                    cli,
+                    files,
                     ctx,
                     sources.as_deref_mut(),
                     &mut seen_build_roots,
@@ -257,7 +264,7 @@ fn analyze_file_list(
 
 fn analyze_rust_file(
     file_path: &str,
-    cli: &Cli,
+    cli_files: &[String],
     ctx: &AnalysisContext<'_>,
     mut sources: Option<&mut BTreeMap<Box<str>, String>>,
     seen_build_roots: &mut BTreeSet<Box<Path>>,
@@ -286,7 +293,7 @@ fn analyze_rust_file(
     );
     if let Err(error) = discover_and_analyze_build_script(
         file_path,
-        &cli.files,
+        cli_files,
         &cfg,
         sources,
         seen_build_roots,

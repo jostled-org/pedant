@@ -11,32 +11,20 @@ use pedant_types::{
 use serde::Serialize;
 
 use crate::ProcessError;
+use crate::config::OutputFormat;
 
 const SPEC_VERSION: &str = "0.1.0";
 
 type AttestationInputs = (Box<str>, Box<str>, Box<str>);
 
 #[derive(Serialize)]
-struct JsonAnalysisOutput<'a> {
+struct JsonOutput<'a> {
     analysis_tier: AnalysisTier,
     had_error: bool,
-    violations: Vec<JsonViolation<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    capabilities: Option<CapabilityProfile>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    attestation: Option<AttestationContent>,
+    violations: Option<Vec<JsonViolation<'a>>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     gate_verdicts: Option<&'a [pedant_core::gate::GateVerdict]>,
-}
-
-pub(crate) struct JsonOutputContext<'a> {
-    pub(crate) cli: &'a crate::config::Cli,
-    pub(crate) source_hash: Option<Box<str>>,
-    pub(crate) violations: &'a [Violation],
-    pub(crate) findings: Vec<CapabilityFinding>,
-    pub(crate) analysis_tier: AnalysisTier,
-    pub(crate) gate_verdicts: &'a [pedant_core::gate::GateVerdict],
-    pub(crate) had_error: bool,
 }
 
 /// Returns seconds since Unix epoch.
@@ -68,7 +56,8 @@ fn write_json(
 }
 
 fn require_attestation_inputs(
-    cli: &crate::config::Cli,
+    crate_name: Option<&str>,
+    crate_version: Option<&str>,
     source_hash: Option<Box<str>>,
     stderr: &mut impl Write,
 ) -> Result<AttestationInputs, std::process::ExitCode> {
@@ -79,14 +68,14 @@ fn require_attestation_inputs(
         );
         return Err(std::process::ExitCode::from(2));
     };
-    let Some(crate_name) = cli.crate_name.as_deref() else {
+    let Some(crate_name) = crate_name else {
         crate::report_error(
             stderr,
             format_args!("error: --crate-name required for attestation"),
         );
         return Err(std::process::ExitCode::from(2));
     };
-    let Some(crate_version) = cli.crate_version.as_deref() else {
+    let Some(crate_version) = crate_version else {
         crate::report_error(
             stderr,
             format_args!("error: --crate-version required for attestation"),
@@ -156,77 +145,81 @@ pub(crate) fn write_capabilities(
     write_json(stdout, stderr, &profile, "capabilities")
 }
 
-/// Dispatch output based on mode: attestation JSON, capabilities JSON, or nothing.
-pub(crate) fn dispatch_output(
-    cli: &crate::config::Cli,
+pub(crate) fn write_check_output(
+    format: OutputFormat,
+    quiet: bool,
+    analysis_tier: AnalysisTier,
+    had_error: bool,
+    violations: &[Violation],
+    stdout: &mut impl Write,
+    stderr: &mut impl Write,
+) -> Result<(), std::process::ExitCode> {
+    match format {
+        OutputFormat::Text => crate::reporter::Reporter::new(quiet)
+            .report(violations, stdout)
+            .map_err(|error| {
+                crate::report_error(stderr, format_args!("error writing output: {error}"));
+                std::process::ExitCode::from(2)
+            }),
+        OutputFormat::Json => {
+            let output = JsonOutput {
+                analysis_tier,
+                had_error,
+                violations: Some(violations.iter().map(JsonViolation::from).collect()),
+                gate_verdicts: None,
+            };
+            write_json(stdout, stderr, &output, "analysis output")
+        }
+    }
+}
+
+pub(crate) fn write_gate_output(
+    format: OutputFormat,
+    analysis_tier: AnalysisTier,
+    had_error: bool,
+    gate_verdicts: &[pedant_core::gate::GateVerdict],
+    stdout: &mut impl Write,
+    stderr: &mut impl Write,
+) -> Result<(), std::process::ExitCode> {
+    match format {
+        OutputFormat::Text => crate::reporter::Reporter::new(true)
+            .report_gate(gate_verdicts, stdout)
+            .map_err(|error| {
+                crate::report_error(stderr, format_args!("error writing gate output: {error}"));
+                std::process::ExitCode::from(2)
+            }),
+        OutputFormat::Json => {
+            let output = JsonOutput {
+                analysis_tier,
+                had_error,
+                violations: None,
+                gate_verdicts: Some(gate_verdicts),
+            };
+            write_json(stdout, stderr, &output, "gate output")
+        }
+    }
+}
+
+pub(crate) fn write_attestation_output(
     source_hash: Option<Box<str>>,
     findings: Vec<CapabilityFinding>,
+    crate_name: &str,
+    crate_version: &str,
     analysis_tier: AnalysisTier,
     stdout: &mut impl Write,
     stderr: &mut impl Write,
 ) -> Result<(), std::process::ExitCode> {
-    match (cli.attestation, cli.capabilities) {
-        (true, _) => {
-            let (hash, crate_name, crate_version) =
-                require_attestation_inputs(cli, source_hash, stderr)?;
-            write_attestation(
-                stdout,
-                stderr,
-                findings,
-                hash,
-                crate_name,
-                crate_version,
-                analysis_tier,
-            )
-        }
-        (false, true) => write_capabilities(stdout, stderr, findings),
-        (false, false) => Ok(()),
-    }
-}
-
-pub(crate) fn write_json_analysis_output(
-    context: JsonOutputContext<'_>,
-    stdout: &mut impl Write,
-    stderr: &mut impl Write,
-) -> Result<(), std::process::ExitCode> {
-    let JsonOutputContext {
-        cli,
-        source_hash,
-        violations,
+    let (hash, crate_name, crate_version) =
+        require_attestation_inputs(Some(crate_name), Some(crate_version), source_hash, stderr)?;
+    write_attestation(
+        stdout,
+        stderr,
         findings,
+        hash,
+        crate_name,
+        crate_version,
         analysis_tier,
-        gate_verdicts,
-        had_error,
-    } = context;
-    let profile = capability_profile(findings);
-    let capabilities = match (cli.attestation, cli.capabilities) {
-        (false, true) => Some(profile.clone()),
-        (false, false) | (true, _) => None,
-    };
-    let attestation = match cli.attestation {
-        true => {
-            let (hash, crate_name, crate_version) =
-                require_attestation_inputs(cli, source_hash, stderr)?;
-            Some(build_attestation(
-                stderr,
-                profile,
-                hash,
-                crate_name,
-                crate_version,
-                analysis_tier,
-            )?)
-        }
-        false => None,
-    };
-    let output = JsonAnalysisOutput {
-        analysis_tier,
-        had_error,
-        violations: violations.iter().map(JsonViolation::from).collect(),
-        capabilities,
-        attestation,
-        gate_verdicts: (!gate_verdicts.is_empty() || cli.gate).then_some(gate_verdicts),
-    };
-    write_json(stdout, stderr, &output, "analysis output")
+    )
 }
 
 /// Compute the process exit code from error state, violations, and gate verdicts.

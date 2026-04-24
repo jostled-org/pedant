@@ -8,12 +8,18 @@ Pedant's supply chain check hashes every dependency's source on every build and 
 
 ## How it works
 
-1. Dependencies are vendored (`cargo vendor`, `npm ci`, `go mod vendor`, etc.)
-2. Each dependency is scanned with `pedant --attestation`, producing a SHA-256 source hash and capability profile
+1. Cargo dependencies are vendored with `cargo vendor`
+2. Each dependency's Rust source files are scanned with `pedant supply-chain`, producing a SHA-256 source hash and capability profile
 3. The attestation is compared against a stored baseline in `.pedant/baselines/`
 4. Hash mismatches, new capabilities, and missing baselines are reported
 
-Pedant is built from the same pinned commit as the action — no registry fetch. One commit hash pins the action script, the scan logic, and the pedant binary. No second trust boundary.
+Only Rust source files are hashed (`.rs`) — not metadata, not Cargo.toml rewrites, not checksum files. This makes hashes platform-independent: the same `.rs` files come from the same crate tarball regardless of OS or toolchain version.
+
+## Trust model
+
+The initial baseline trusts your current dependency tree. If a dependency is already compromised when you generate baselines, the compromised version becomes the baseline. The action detects *changes* from that point forward — not pre-existing compromises.
+
+To audit from scratch, run `pedant capabilities` on each vendored dependency and review the capability profiles before committing baselines.
 
 ## Setup
 
@@ -33,37 +39,33 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: dtolnay/rust-toolchain@a54c7afe936fefeb4456b2dd8068152669aa8211 # stable
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
       - uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
       - uses: jostled-org/pedant/.github/actions/supply-chain-check@<commit-hash>
         with:
           baseline-path: .pedant/baselines
           fail-on: hash-mismatch
-          update-baselines: ${{ github.ref == 'refs/heads/main' && 'true' || 'false' }}
 ```
 
 Replace `<commit-hash>` with a specific pedant commit. All action refs are pinned to commit hashes — no mutable tags.
 
-### 2. Initialize baselines
-
-The first run flags every dependency as `new-dependency`. To initialize:
+### 2. Generate and commit baselines
 
 ```bash
-# Run locally to generate baselines
-cargo install --path /path/to/pedant/pedant --locked  # or cargo install pedant
-BASELINE_PATH=".pedant/baselines" UPDATE_BASELINES=true ECOSYSTEMS=cargo \
-  bash /path/to/pedant/.github/actions/supply-chain-check/scan.sh
+# Install pedant
+cargo install pedant
 
-# Commit the baselines
+# Generate baselines
+pedant supply-chain init --baseline-path .pedant/baselines
+
+# Commit
 git add .pedant/baselines/
 git commit -m "chore: initialize supply chain baselines"
 ```
 
-Or let the first CI run on `main` generate them (with `update-baselines` set to true on main pushes).
+This is the trust anchor — you're accepting your current dependency tree as the known-good state.
 
-### 3. Commit `.pedant/baselines/`
-
-Baselines are committed to the repo. They're versioned alongside the lock file — when you approve a dependency change, the baseline updates on merge to main.
+### 3. Baselines in the repo
 
 ```
 .pedant/baselines/
@@ -71,37 +73,39 @@ Baselines are committed to the repo. They're versioned alongside the lock file �
     serde/1.0.228.json
     tokio/1.44.2.json
     reqwest/0.12.18.json
-  npm/
-    axios/1.7.2.json
-    express/4.21.0.json
 ```
 
-Each file is a pedant attestation: `source_hash`, `crate_name`, `crate_version`, and capability `profile`.
+Each file is a pedant attestation: source hash, package name, version, and capability profile.
 
 ## Workflow
 
 ### Normal build (no dep changes)
 
-Pedant hashes each vendored dependency and compares against the baseline. Hashes match. Build passes. Fast — no capability scan needed for matching deps.
+Pedant hashes each vendored dependency and compares against the baseline. Hashes match. Build passes.
 
-### Dependency update PR
+### Dependency update
 
+Update the dep, regenerate baselines for the changed packages, commit both the lock file and the updated baselines in the same PR:
+
+```bash
+cargo update -p serde
+pedant supply-chain update --baseline-path .pedant/baselines
+git add Cargo.lock .pedant/baselines/
+git commit -m "chore: update serde and baselines"
 ```
-=== Supply Chain Check: 2 finding(s) ===
-::warning::[cargo] serde@1.0.229 — new capabilities: file_write
-::notice::[cargo] new-dep@0.1.0 — capabilities: network, process_exec
-```
 
-The reviewer sees exactly what changed. They approve the PR if the new capabilities are expected, and baselines update on merge.
+`update` keeps the current dependency tree authoritative: stale version files and baseline directories for removed crates are pruned automatically.
+
+CI verifies the baselines match the vendored source. The reviewer sees both the dep change and the capability diff.
 
 ### Tag-swap attack
 
 ```
 === Supply Chain Check: 1 finding(s) ===
-::error::[cargo] chrono@0.4.44 — content changed (baseline: 95efb4cfcd282828... current: deadbeefcd282828...)
+::error::[cargo] chrono@0.4.44 — content changed (baseline: 95efb4cf... current: deadbeef...)
 ```
 
-Same version, different content. Build fails. No manual review needed — this is always wrong.
+Same version, different content. Build fails. No baseline update fixes this — the content genuinely changed.
 
 ## Configuration
 
@@ -111,8 +115,7 @@ Same version, different content. Build fails. No manual review needed — this i
 |-------|---------|-------------|
 | `baseline-path` | `.pedant/baselines` | Where baselines are stored |
 | `fail-on` | `hash-mismatch` | Fail threshold: `hash-mismatch`, `new-capability`, `new-dependency`, or `none` |
-| `ecosystems` | auto-detected | Comma-separated: `cargo`, `npm`, `yarn`, `pnpm`, `go`, `pip` |
-| `update-baselines` | `false` | Write new baselines after scan (use on main merges) |
+| `debug-package` | unset | Print the exact hashed Rust inputs for one vendored crate during `pedant supply-chain verify` |
 
 ### Fail-on levels
 
@@ -125,16 +128,11 @@ Same version, different content. Build fails. No manual review needed — this i
 
 ### Supported ecosystems
 
-| Ecosystem | Lock file | Vendor method | Detection |
-|-----------|-----------|--------------|-----------|
-| Rust | `Cargo.lock` | `cargo vendor` | `.rs` files |
-| npm | `package-lock.json` | `npm ci` | `.js`, `.mjs`, `.cjs`, `.ts` files |
-| Yarn | `yarn.lock` | `yarn install --frozen-lockfile` | Same as npm |
-| pnpm | `pnpm-lock.yaml` | `pnpm install --frozen-lockfile` | Same as npm |
-| Go | `go.sum` | `go mod vendor` | `.go` files |
-| Python | `poetry.lock` / `requirements.txt` | `pip download` + extract | `.py` files |
+Current implementation: Cargo only.
 
-Ecosystems are auto-detected from lock files. Override with `ecosystems: "cargo,npm"`.
+| Ecosystem | Lock file | Vendor method | Scanned files |
+|-----------|-----------|--------------|---------------|
+| Rust | `Cargo.lock` | `cargo vendor` | `.rs` |
 
 ## Updating pedant
 
@@ -150,9 +148,7 @@ Review the commits between the two hashes before merging. Dependabot and Renovat
 
 ## Requirements
 
-- `bash`, `jq` (pre-installed on GitHub Actions runners)
-- `cargo` (for Rust ecosystem and building pedant)
-- Ecosystem-specific tools as needed (`npm`, `go`, `pip`, etc.)
+- `cargo` (for vendoring Rust dependencies and building pedant)
 
 ## Outputs
 
@@ -168,3 +164,13 @@ Use outputs in subsequent steps:
   id: supply-chain
 - run: echo "Status: ${{ steps.supply-chain.outputs.status }}"
 ```
+
+## Debugging mismatches
+
+When a crate fails verification and you need to compare local and CI inputs, run:
+
+```bash
+pedant supply-chain verify --baseline-path .pedant/baselines --debug-package cc
+```
+
+This prints the crate version, aggregate `source_hash`, and one line per hashed Rust file with its relative path, byte length, and per-file SHA-256 digest.

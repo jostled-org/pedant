@@ -63,16 +63,16 @@ fn test_source_hash_empty() {
 
 #[test]
 fn test_attestation_cli_missing_args() {
-    let output = common::run_pedant(&["--stdin", "--attestation"], None);
+    let output = common::run_subcommand("attestation", &["--stdin"], None);
     assert!(!output.status.success());
 }
 
 #[test]
 fn test_attestation_cli_output_structure() {
-    let output = common::run_pedant(
+    let output = common::run_subcommand(
+        "attestation",
         &[
             "--stdin",
-            "--attestation",
             "--crate-name",
             "test-crate",
             "--crate-version",
@@ -105,10 +105,10 @@ fn test_attestation_cli_output_structure() {
 
 #[test]
 fn test_attestation_has_findings() {
-    let output = common::run_pedant(
+    let output = common::run_subcommand(
+        "attestation",
         &[
             "--stdin",
-            "--attestation",
             "--crate-name",
             "net-crate",
             "--crate-version",
@@ -136,8 +136,9 @@ fn test_attestation_has_findings() {
 
 #[test]
 fn test_capabilities_flag_unchanged() {
-    let output = common::run_pedant(
-        &["--stdin", "--capabilities"],
+    let output = common::run_subcommand(
+        "capabilities",
+        &["--stdin"],
         Some("use std::net::TcpStream;\n"),
     );
 
@@ -151,10 +152,10 @@ fn test_capabilities_flag_unchanged() {
 
 #[test]
 fn test_attestation_timestamp_reasonable() {
-    let output = common::run_pedant(
+    let output = common::run_subcommand(
+        "attestation",
         &[
             "--stdin",
-            "--attestation",
             "--crate-name",
             "ts-crate",
             "--crate-version",
@@ -196,10 +197,10 @@ fn test_attestation_includes_build_script() {
     .unwrap();
 
     let lib_path = root.join("src/lib.rs");
-    let output = common::run_pedant(
+    let output = common::run_subcommand(
+        "attestation",
         &[
             lib_path.to_str().unwrap(),
-            "--attestation",
             "--crate-name",
             "test",
             "--crate-version",
@@ -251,10 +252,10 @@ fn test_attestation_custom_build_path() {
     .unwrap();
 
     let lib_path = root.join("src/lib.rs");
-    let output = common::run_pedant(
+    let output = common::run_subcommand(
+        "attestation",
         &[
             lib_path.to_str().unwrap(),
-            "--attestation",
             "--crate-name",
             "test",
             "--crate-version",
@@ -297,10 +298,10 @@ fn test_attestation_no_build_script() {
     // No build.rs
 
     let lib_path = root.join("src/lib.rs");
-    let output = common::run_pedant(
+    let output = common::run_subcommand(
+        "attestation",
         &[
             lib_path.to_str().unwrap(),
-            "--attestation",
             "--crate-name",
             "test",
             "--crate-version",
@@ -347,7 +348,7 @@ fn test_single_file_mode_unchanged() {
 
     let lib_path = root.join("src/lib.rs");
     // Non-attestation mode: just run pedant on the file with --capabilities
-    let output = common::run_pedant(&[lib_path.to_str().unwrap(), "--capabilities"], None);
+    let output = common::run_subcommand("capabilities", &[lib_path.to_str().unwrap()], None);
 
     assert!(output.status.success());
 
@@ -385,7 +386,7 @@ fn test_explicit_build_script_path_is_analyzed_as_build_hook() {
     .unwrap();
 
     let build_path = root.join("build.rs");
-    let output = common::run_pedant(&[build_path.to_str().unwrap(), "--capabilities"], None);
+    let output = common::run_subcommand("capabilities", &[build_path.to_str().unwrap()], None);
 
     assert!(
         output.status.success(),
@@ -418,11 +419,11 @@ fn test_semantic_attestation_tier() {
     fs::write(root.join("src/lib.rs"), "pub fn f() {}\n").unwrap();
 
     let lib_path = root.join("src/lib.rs");
-    let output = common::run_pedant(
+    let output = common::run_subcommand(
+        "attestation",
         &[
             lib_path.to_str().unwrap(),
             "--semantic",
-            "--attestation",
             "--crate-name",
             "tier-test",
             "--crate-version",
@@ -449,10 +450,10 @@ fn test_semantic_attestation_tier() {
 
 #[test]
 fn test_nonsemantic_attestation_tier_unchanged() {
-    let output = common::run_pedant(
+    let output = common::run_subcommand(
+        "attestation",
         &[
             "--stdin",
-            "--attestation",
             "--crate-name",
             "syn-test",
             "--crate-version",

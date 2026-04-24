@@ -27,7 +27,11 @@ pedant-types = { version = "0.10.1", path = "../pedant-types" }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+semver = "1"
+sha2 = "0.10"
+tempfile = "3"
 thiserror = "2"
+toml = "0.8"
 
 [features]
 default = []
@@ -35,7 +39,6 @@ semantic = ["pedant-core/semantic"]
 
 [dev-dependencies]
 serde_json = "1"
-tempfile = "3"
 
 [package.metadata.docs.rs]
 # pedant is a CLI binary — the library API lives in pedant-core.

@@ -71,12 +71,9 @@ fn identical_profiles_exit_0() {
     let old = write_json_file(&profile);
     let new = write_json_file(&profile);
 
-    let output = common::run_pedant(
-        &[
-            "--diff",
-            old.path().to_str().unwrap(),
-            new.path().to_str().unwrap(),
-        ],
+    let output = common::run_subcommand(
+        "diff",
+        &[old.path().to_str().unwrap(), new.path().to_str().unwrap()],
         None,
     );
 
@@ -94,12 +91,9 @@ fn different_profiles_exit_1() {
     let old = write_json_file(&make_profile(vec![net_finding()]));
     let new = write_json_file(&make_profile(vec![fs_finding()]));
 
-    let output = common::run_pedant(
-        &[
-            "--diff",
-            old.path().to_str().unwrap(),
-            new.path().to_str().unwrap(),
-        ],
+    let output = common::run_subcommand(
+        "diff",
+        &[old.path().to_str().unwrap(), new.path().to_str().unwrap()],
         None,
     );
 
@@ -119,12 +113,9 @@ fn attestation_format_input() {
     let old = write_json_file(&old_att);
     let new = write_json_file(&new_att);
 
-    let output = common::run_pedant(
-        &[
-            "--diff",
-            old.path().to_str().unwrap(),
-            new.path().to_str().unwrap(),
-        ],
+    let output = common::run_subcommand(
+        "diff",
+        &[old.path().to_str().unwrap(), new.path().to_str().unwrap()],
         None,
     );
 
@@ -141,12 +132,9 @@ fn mixed_attestation_and_bare_profile() {
     let old = write_json_file(&old_att);
     let new = write_json_file(&new_profile);
 
-    let output = common::run_pedant(
-        &[
-            "--diff",
-            old.path().to_str().unwrap(),
-            new.path().to_str().unwrap(),
-        ],
+    let output = common::run_subcommand(
+        "diff",
+        &[old.path().to_str().unwrap(), new.path().to_str().unwrap()],
         None,
     );
 
@@ -162,8 +150,9 @@ fn missing_file_exit_2() {
     let existing = write_json_file(&make_profile(vec![]));
     let missing_path = "/nonexistent/file.json";
 
-    let output = common::run_pedant(
-        &["--diff", existing.path().to_str().unwrap(), missing_path],
+    let output = common::run_subcommand(
+        "diff",
+        &[existing.path().to_str().unwrap(), missing_path],
         None,
     );
 
@@ -180,7 +169,7 @@ fn invalid_json_exit_2() {
     let good = write_json_file(&make_profile(vec![]));
     let bad_path = bad.path().to_str().unwrap().to_owned();
 
-    let output = common::run_pedant(&["--diff", good.path().to_str().unwrap(), &bad_path], None);
+    let output = common::run_subcommand("diff", &[good.path().to_str().unwrap(), &bad_path], None);
 
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -205,7 +194,7 @@ fn malformed_attestation_reports_attestation_parse_error() {
     let good = write_json_file(&make_profile(vec![]));
     let bad_path = bad.path().to_str().unwrap().to_owned();
 
-    let output = common::run_pedant(&["--diff", good.path().to_str().unwrap(), &bad_path], None);
+    let output = common::run_subcommand("diff", &[good.path().to_str().unwrap(), &bad_path], None);
 
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -215,6 +204,6 @@ fn malformed_attestation_reports_attestation_parse_error() {
 
 #[test]
 fn no_args_after_diff_flag() {
-    let output = common::run_pedant(&["--diff"], None);
+    let output = common::run_pedant(&["diff"], None);
     assert!(!output.status.success());
 }

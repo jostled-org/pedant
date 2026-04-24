@@ -30,18 +30,7 @@ fn test_gate_cli_build_script_denied() {
     .unwrap();
 
     let lib_path = root.join("src/lib.rs");
-    let output = common::run_pedant(
-        &[
-            lib_path.to_str().unwrap(),
-            "--gate",
-            "--attestation",
-            "--crate-name",
-            "test",
-            "--crate-version",
-            "0.1.0",
-        ],
-        None,
-    );
+    let output = common::run_subcommand("gate", &[lib_path.to_str().unwrap()], None);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -51,19 +40,13 @@ fn test_gate_cli_build_script_denied() {
         Some(1),
         "expected exit code 1 for deny verdict, stdout:\n{stdout}\nstderr:\n{stderr}"
     );
-    // With --attestation, gate text goes to stderr; stdout is clean JSON.
     assert!(
-        stderr.contains("build-script-download-exec"),
-        "expected 'build-script-download-exec' on stderr, got:\n{stderr}"
+        stdout.contains("build-script-download-exec"),
+        "expected 'build-script-download-exec' in output, got:\n{stdout}"
     );
     assert!(
-        stderr.contains("deny"),
-        "expected 'deny' on stderr, got:\n{stderr}"
-    );
-    // Stdout should be valid attestation JSON.
-    assert!(
-        stdout.contains("spec_version"),
-        "expected attestation JSON on stdout, got:\n{stdout}"
+        stdout.contains("deny"),
+        "expected 'deny' in output, got:\n{stdout}"
     );
 }
 
@@ -81,7 +64,7 @@ fn test_gate_cli_clean_crate() {
     fs::write(root.join("src/lib.rs"), "fn lib_fn() {}\n").unwrap();
 
     let lib_path = root.join("src/lib.rs");
-    let output = common::run_pedant(&[lib_path.to_str().unwrap(), "--gate"], None);
+    let output = common::run_subcommand("gate", &[lib_path.to_str().unwrap()], None);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -115,18 +98,9 @@ fn test_gate_cli_json_format() {
     .unwrap();
 
     let lib_path = root.join("src/lib.rs");
-    let output = common::run_pedant(
-        &[
-            lib_path.to_str().unwrap(),
-            "--gate",
-            "--format",
-            "json",
-            "--attestation",
-            "--crate-name",
-            "test",
-            "--crate-version",
-            "0.1.0",
-        ],
+    let output = common::run_subcommand(
+        "gate",
+        &[lib_path.to_str().unwrap(), "--format", "json"],
         None,
     );
 
@@ -184,7 +158,7 @@ fn test_gate_cli_warn_only_exit_zero() {
     .unwrap();
 
     let lib_path = root.join("src/lib.rs");
-    let output = common::run_pedant(&[lib_path.to_str().unwrap(), "--gate"], None);
+    let output = common::run_subcommand("gate", &[lib_path.to_str().unwrap()], None);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -225,10 +199,10 @@ fn test_gate_cli_with_config_override() {
     .unwrap();
 
     let lib_path = root.join("src/lib.rs");
-    let output = common::run_pedant(
+    let output = common::run_subcommand(
+        "gate",
         &[
             lib_path.to_str().unwrap(),
-            "--gate",
             "--config",
             root.join(".pedant.toml").to_str().unwrap(),
         ],
@@ -275,12 +249,9 @@ fn test_cli_mixed_rust_python_default_separate() {
 
     let lib_path = root.join("src/lib.rs");
     let py_path = root.join("net.py");
-    let output = common::run_pedant(
-        &[
-            lib_path.to_str().unwrap(),
-            py_path.to_str().unwrap(),
-            "--gate",
-        ],
+    let output = common::run_subcommand(
+        "gate",
+        &[lib_path.to_str().unwrap(), py_path.to_str().unwrap()],
         None,
     );
 
@@ -304,11 +275,11 @@ fn test_cli_runtime_and_install_hook_same_language_separate() {
     let js_fixture = fixtures_dir().join("runtime.js");
     let pkg_fixture = fixtures_dir().join("npm_project/package.json");
 
-    let output = common::run_pedant(
+    let output = common::run_subcommand(
+        "gate",
         &[
             js_fixture.to_str().unwrap(),
             pkg_fixture.to_str().unwrap(),
-            "--gate",
             "--format",
             "json",
         ],
@@ -367,11 +338,11 @@ fn test_cli_cross_language_flag() {
 
     let lib_path = root.join("src/lib.rs");
     let py_path = root.join("net.py");
-    let output = common::run_pedant(
+    let output = common::run_subcommand(
+        "gate",
         &[
             lib_path.to_str().unwrap(),
             py_path.to_str().unwrap(),
-            "--gate",
             "--cross-language",
         ],
         None,

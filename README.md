@@ -10,7 +10,7 @@
 A dependency update adds environment variable exfiltration to a library that previously only did HTTP:
 
 ```
-$ pedant --diff baseline.json current.json
+$ pedant diff baseline.json current.json
 {
   "added": [
     {"capability": "env_access", "evidence": "std::env::var"},
@@ -23,7 +23,7 @@ $ pedant --diff baseline.json current.json
 A build script phones home during compilation:
 
 ```
-$ pedant --gate build.rs
+$ pedant gate build.rs
 ::error:: build-script-network: build script has network access (deny)
 ::error:: build-script-download-exec: build script downloads and executes (deny)
 ```
@@ -31,7 +31,7 @@ $ pedant --gate build.rs
 Nesting three levels deep in a match arm:
 
 ```
-$ pedant -d 2 src/lib.rs
+$ pedant check -d 2 src/lib.rs
 src/lib.rs:5:17: if-in-match: if inside match arm, consider match guard
 src/lib.rs:5:17: max-depth: nesting depth 3 exceeds limit of 2
 ```
@@ -43,13 +43,15 @@ src/lib.rs:5:17: max-depth: nesting depth 3 exceeds limit of 2
 cargo install pedant
 
 # Scan a project for capabilities
-pedant --capabilities src/**/*.rs scripts/*.py
+pedant capabilities src/**/*.rs scripts/*.py
 
 # Check for suspicious patterns
-pedant --gate src/**/*.rs
+pedant gate src/**/*.rs
 
 # Set up CI supply chain monitoring (see examples/supply-chain-check.md)
 ```
+
+Migrating from the old flat flag CLI? See [docs/migrating-from-flat-cli.md](docs/migrating-from-flat-cli.md).
 
 ## CI Supply Chain Check
 
@@ -79,13 +81,13 @@ Pedant is built from the same pinned commit as the action — no registry fetch,
 
 ```bash
 # Rust, Python, JS/TS, Go, Bash — language detected automatically
-pedant --capabilities src/**/*.rs scripts/*.py deploy/*.sh
+pedant capabilities src/**/*.rs scripts/*.py deploy/*.sh
 
 # Attestation: capability profile + SHA-256 source hash + crate identity
-pedant --attestation --crate-name my-crate --crate-version 0.1.0 src/**/*.rs
+pedant attestation --crate-name my-crate --crate-version 0.1.0 src/**/*.rs
 
 # Diff two profiles or attestations
-pedant --diff old.json new.json
+pedant diff old.json new.json
 ```
 
 | Capability | What triggers it |
@@ -110,10 +112,10 @@ See [examples/capability-detection.md](examples/capability-detection.md) for the
 23 checks across five categories. Nesting checks run by default; everything else requires a `.pedant.toml` config.
 
 ```bash
-pedant src/**/*.rs           # check files
-pedant -d 2 src/lib.rs       # custom depth limit
-pedant --list-checks         # see all checks
-pedant --explain max-depth   # detailed rationale
+pedant check src/**/*.rs            # check files
+pedant check -d 2 src/lib.rs        # custom depth limit
+pedant list-checks                  # see all checks
+pedant explain max-depth            # detailed rationale
 ```
 
 | Category | Checks |
@@ -145,7 +147,7 @@ With the `semantic` feature, pedant resolves types through aliases using rust-an
 
 ```bash
 cargo install pedant --features semantic
-pedant --semantic --gate src/**/*.rs
+pedant gate --semantic src/**/*.rs
 ```
 
 ## MCP Server

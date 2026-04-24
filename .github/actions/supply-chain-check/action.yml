@@ -8,12 +8,6 @@ inputs:
   fail-on:
     description: 'Fail on: hash-mismatch, new-capability, new-dependency, or none'
     default: 'hash-mismatch'
-  ecosystems:
-    description: 'Comma-separated ecosystems to scan (auto-detected if empty)'
-    default: ''
-  update-baselines:
-    description: 'Update baselines after scan (use on main branch merges)'
-    default: 'false'
 
 outputs:
   status:
@@ -32,18 +26,11 @@ runs:
         if command -v pedant &>/dev/null; then
           echo "pedant already installed"
         else
-          # Build from the same commit as the action checkout.
-          # No registry fetch — the action ref pins both the script and the binary.
           PEDANT_ROOT="$(cd "${{ github.action_path }}/../../.." && pwd)"
           cargo install --path "$PEDANT_ROOT/pedant" --locked
         fi
 
-    - name: Scan dependencies
+    - name: Verify supply chain baselines
       id: scan
       shell: bash
-      env:
-        BASELINE_PATH: ${{ inputs.baseline-path }}
-        FAIL_ON: ${{ inputs.fail-on }}
-        ECOSYSTEMS: ${{ inputs.ecosystems }}
-        UPDATE_BASELINES: ${{ inputs.update-baselines }}
-      run: bash ${{ github.action_path }}/scan.sh
+      run: pedant supply-chain verify --baseline-path "${{ inputs.baseline-path }}" --fail-on "${{ inputs.fail-on }}"

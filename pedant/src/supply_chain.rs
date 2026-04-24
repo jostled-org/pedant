@@ -55,6 +55,8 @@ enum SupplyChainError {
         #[source]
         source: std::io::Error,
     },
+    #[error("manifest {path} is missing a [package] section")]
+    MissingPackageSection { path: Box<str> },
     #[error("failed to parse manifest {path}: {source}")]
     ManifestParse {
         path: Box<str>,
@@ -85,15 +87,32 @@ enum SupplyChainError {
     },
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 struct CargoManifest {
-    package: CargoPackage,
+    package: Option<CargoPackage>,
+    workspace: Option<WorkspaceSection>,
+    lib: Option<TargetSection>,
+    #[serde(default, rename = "bin")]
+    bins: Vec<TargetSection>,
 }
 
 #[derive(Deserialize)]
 struct CargoPackage {
     name: String,
     version: String,
+    #[serde(default = "default_true")]
+    autobins: bool,
+}
+
+#[derive(Deserialize, Default)]
+struct WorkspaceSection {
+    #[serde(default)]
+    members: Box<[Box<str>]>,
+}
+
+#[derive(Deserialize, Default)]
+struct TargetSection {
+    path: Option<String>,
 }
 
 struct VendorContext {
@@ -105,6 +124,8 @@ struct VendoredCrate {
     dir: PathBuf,
     name: Box<str>,
     version: Box<str>,
+    source_roots: Box<[PathBuf]>,
+    build_script: Option<PathBuf>,
 }
 
 struct CrateAttestation {
@@ -278,6 +299,10 @@ fn current_workspace_root() -> Result<PathBuf, SupplyChainError> {
     }
 }
 
+fn default_true() -> bool {
+    true
+}
+
 fn vendor_cargo_deps(workspace_root: &Path) -> Result<VendorContext, SupplyChainError> {
     let tempdir = tempdir().map_err(SupplyChainError::TempDir)?;
     let vendor_root = tempdir.path().join("cargo");
@@ -324,14 +349,70 @@ fn enumerate_vendored_crates(vendor_root: &Path) -> Result<Vec<VendoredCrate>, S
         if !manifest_path.is_file() {
             continue;
         }
-        let manifest = read_manifest(&manifest_path)?;
-        crates.push(VendoredCrate {
-            dir,
-            name: manifest.package.name.into_boxed_str(),
-            version: manifest.package.version.into_boxed_str(),
-        });
+        crates.extend(resolve_vendored_crates(
+            &dir,
+            &read_manifest(&manifest_path)?,
+        )?);
     }
     Ok(crates)
+}
+
+fn resolve_vendored_crates(
+    root: &Path,
+    manifest: &CargoManifest,
+) -> Result<Vec<VendoredCrate>, SupplyChainError> {
+    let mut crates = Vec::new();
+    match manifest.package.is_some() {
+        true => crates.push(build_vendored_crate(root, manifest)?),
+        false => {}
+    }
+    match &manifest.workspace {
+        Some(workspace) => crates.extend(collect_workspace_member_crates(root, &workspace.members)?),
+        None => {}
+    }
+    Ok(crates)
+}
+
+fn collect_workspace_member_crates(
+    workspace_root: &Path,
+    members: &[Box<str>],
+) -> Result<Vec<VendoredCrate>, SupplyChainError> {
+    let mut crates = Vec::new();
+    for member_dir in resolve_workspace_members(workspace_root, members)? {
+        let manifest_path = member_dir.join("Cargo.toml");
+        if !manifest_path.is_file() {
+            continue;
+        }
+        let member_manifest = read_manifest(&manifest_path)?;
+        if member_manifest.package.is_none() {
+            continue;
+        }
+        crates.push(build_vendored_crate(&member_dir, &member_manifest)?);
+    }
+    Ok(crates)
+}
+
+fn build_vendored_crate(
+    crate_dir: &Path,
+    manifest: &CargoManifest,
+) -> Result<VendoredCrate, SupplyChainError> {
+    let package = match &manifest.package {
+        Some(package) => package,
+        None => return Err(missing_package_section(crate_dir)),
+    };
+    let source_roots = collect_target_roots(crate_dir, manifest)?;
+    let build_script =
+        discover_build_script(crate_dir).map_err(|source| SupplyChainError::ReadFile {
+            path: crate_dir.display().to_string().into_boxed_str(),
+            source: std::io::Error::other(source.to_string()),
+        })?;
+    Ok(VendoredCrate {
+        dir: crate_dir.to_path_buf(),
+        name: package.name.clone().into_boxed_str(),
+        version: package.version.clone().into_boxed_str(),
+        source_roots,
+        build_script,
+    })
 }
 
 fn read_manifest(path: &Path) -> Result<CargoManifest, SupplyChainError> {
@@ -345,18 +426,229 @@ fn read_manifest(path: &Path) -> Result<CargoManifest, SupplyChainError> {
     })
 }
 
+fn collect_target_roots(
+    crate_dir: &Path,
+    manifest: &CargoManifest,
+) -> Result<Box<[PathBuf]>, SupplyChainError> {
+    let package = match &manifest.package {
+        Some(package) => package,
+        None => return Err(missing_package_section(crate_dir)),
+    };
+    let mut roots = Vec::new();
+
+    let default_lib = Path::new("src/lib.rs");
+    match (
+        manifest.lib.as_ref().and_then(|lib| lib.path.as_deref()),
+        crate_dir.join(default_lib).is_file(),
+    ) {
+        (Some(path), _) => push_target_root(crate_dir, Path::new(path), &mut roots),
+        (None, true) => push_target_root(crate_dir, default_lib, &mut roots),
+        (None, false) => {}
+    }
+
+    for bin in &manifest.bins {
+        match bin.path.as_deref() {
+            Some(path) => push_target_root(crate_dir, Path::new(path), &mut roots),
+            None => continue,
+        }
+    }
+
+    let default_bin = Path::new("src/main.rs");
+    let src_bin = crate_dir.join("src/bin");
+    match (package.autobins, crate_dir.join(default_bin).is_file(), src_bin.is_dir()) {
+        (true, true, true) => {
+            push_target_root(crate_dir, default_bin, &mut roots);
+            roots.push(src_bin);
+        }
+        (true, true, false) => push_target_root(crate_dir, default_bin, &mut roots),
+        (true, false, true) => roots.push(src_bin),
+        (true, false, false) | (false, _, _) => {}
+    }
+
+    roots.sort();
+    roots.dedup();
+    Ok(roots.into_boxed_slice())
+}
+
+fn push_target_root(crate_dir: &Path, target_path: &Path, roots: &mut Vec<PathBuf>) {
+    let absolute = crate_dir.join(target_path);
+    if !absolute.is_file() {
+        return;
+    }
+    let parent = match target_path.parent() {
+        Some(parent) if parent != Path::new("") => parent,
+        _ => target_path,
+    };
+    roots.push(crate_dir.join(parent));
+}
+
+fn missing_package_section(crate_dir: &Path) -> SupplyChainError {
+    SupplyChainError::MissingPackageSection {
+        path: crate_dir.join("Cargo.toml").display().to_string().into_boxed_str(),
+    }
+}
+
+fn resolve_workspace_members(
+    workspace_root: &Path,
+    members: &[Box<str>],
+) -> Result<Vec<PathBuf>, SupplyChainError> {
+    let mut dirs: Vec<PathBuf> = members
+        .iter()
+        .map(|member| expand_member(workspace_root, member))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .flatten()
+        .filter(|path| path.join("Cargo.toml").is_file())
+        .collect();
+    dirs.sort();
+    dirs.dedup();
+    Ok(dirs)
+}
+
+fn expand_member(workspace_root: &Path, member: &str) -> Result<Vec<PathBuf>, SupplyChainError> {
+    match member.contains('*') {
+        true => expand_glob_member(workspace_root, member),
+        false => Ok(vec![workspace_root.join(member)]),
+    }
+}
+
+fn expand_glob_member(
+    workspace_root: &Path,
+    member: &str,
+) -> Result<Vec<PathBuf>, SupplyChainError> {
+    let max_depth = member_path_segments(member).len();
+    let mut matches = Vec::new();
+    collect_matching_dirs(
+        workspace_root,
+        workspace_root,
+        member,
+        max_depth,
+        &mut matches,
+    )?;
+    Ok(matches)
+}
+
+fn collect_matching_dirs(
+    workspace_root: &Path,
+    current_dir: &Path,
+    member: &str,
+    max_depth: usize,
+    matches: &mut Vec<PathBuf>,
+) -> Result<(), SupplyChainError> {
+    for entry in read_dir_sorted(current_dir)? {
+        let path = entry.path();
+        match (
+            path.is_dir(),
+            relative_depth(workspace_root, &path) < max_depth,
+        ) {
+            (true, true) => {
+                add_matching_dir(workspace_root, &path, member, matches);
+                collect_matching_dirs(workspace_root, &path, member, max_depth, matches)?;
+            }
+            (true, false) => add_matching_dir(workspace_root, &path, member, matches),
+            (false, _) => continue,
+        }
+    }
+    Ok(())
+}
+
+fn add_matching_dir(workspace_root: &Path, path: &Path, member: &str, matches: &mut Vec<PathBuf>) {
+    if matches_member_pattern(workspace_root, path, member) {
+        matches.push(path.to_path_buf());
+    }
+}
+
+fn relative_depth(workspace_root: &Path, path: &Path) -> usize {
+    path.strip_prefix(workspace_root)
+        .ok()
+        .map(path_component_count)
+        .unwrap_or(0)
+}
+
+fn matches_member_pattern(workspace_root: &Path, path: &Path, member: &str) -> bool {
+    let relative = match path.strip_prefix(workspace_root) {
+        Ok(relative) => relative,
+        Err(_) => return false,
+    };
+    let path_segments = path_segments(relative);
+    let member_segments = member_path_segments(member);
+    match path_segments.len() == member_segments.len() {
+        true => path_segments
+            .iter()
+            .zip(member_segments.iter())
+            .all(|(path_segment, member_segment)| segment_matches(path_segment, member_segment)),
+        false => false,
+    }
+}
+
+fn path_component_count(path: &Path) -> usize {
+    path.components().count()
+}
+
+fn path_segments(path: &Path) -> Vec<Box<str>> {
+    path.iter()
+        .map(|segment| segment.to_string_lossy().into_owned().into_boxed_str())
+        .collect()
+}
+
+fn member_path_segments(member: &str) -> Vec<&str> {
+    member
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect()
+}
+
+fn segment_matches(path_segment: &str, pattern_segment: &str) -> bool {
+    let parts = pattern_segment.split('*').collect::<Vec<_>>();
+    match parts.len() {
+        1 => path_segment == pattern_segment,
+        _ => wildcard_segment_matches(path_segment, &parts, pattern_segment.starts_with('*')),
+    }
+}
+
+fn wildcard_segment_matches(
+    path_segment: &str,
+    parts: &[&str],
+    starts_with_wildcard: bool,
+) -> bool {
+    let mut remaining = path_segment;
+    for (index, part) in parts.iter().enumerate() {
+        if part.is_empty() {
+            continue;
+        }
+        let found = match (index == 0, starts_with_wildcard) {
+            (true, false) => remaining.strip_prefix(part),
+            _ => remaining
+                .find(part)
+                .map(|offset| &remaining[offset + part.len()..]),
+        };
+        match found {
+            Some(next) => remaining = next,
+            None => return false,
+        }
+    }
+    pattern_segment_ends_with_wildcard(parts, remaining)
+}
+
+fn pattern_segment_ends_with_wildcard(parts: &[&str], remaining: &str) -> bool {
+    match parts.last() {
+        Some(&"") => true,
+        Some(_) => remaining.is_empty(),
+        None => false,
+    }
+}
+
 fn build_attestation_for_crate(
     crate_info: &VendoredCrate,
 ) -> Result<CrateAttestation, SupplyChainError> {
-    let files = collect_rust_sources(&crate_info.dir)?;
+    let files = collect_rust_sources(
+        &crate_info.dir,
+        &crate_info.source_roots,
+        crate_info.build_script.as_deref(),
+    )?;
     let mut sources = BTreeMap::new();
     let mut findings = Vec::new();
     let mut source_files = Vec::new();
-    let build_script =
-        discover_build_script(&crate_info.dir).map_err(|source| SupplyChainError::ReadFile {
-            path: crate_info.dir.display().to_string().into_boxed_str(),
-            source: std::io::Error::other(source.to_string()),
-        })?;
 
     for relative_path in &files {
         let disk_path = crate_info.dir.join(relative_path.trim_start_matches("./"));
@@ -365,7 +657,7 @@ fn build_attestation_for_crate(
                 path: disk_path.display().to_string().into_boxed_str(),
                 source,
             })?;
-        let result = match is_build_script_path(&disk_path, build_script.as_deref()) {
+        let result = match is_build_script_path(&disk_path, crate_info.build_script.as_deref()) {
             true => analyze_build_script(relative_path, &source, &CheckConfig::default(), None),
             false => analyze(relative_path, &source, &CheckConfig::default(), None),
         }
@@ -409,10 +701,26 @@ fn build_attestation_for_crate(
     })
 }
 
-fn collect_rust_sources(crate_root: &Path) -> Result<Vec<String>, SupplyChainError> {
+fn collect_rust_sources(
+    crate_root: &Path,
+    source_roots: &[PathBuf],
+    build_script: Option<&Path>,
+) -> Result<Vec<String>, SupplyChainError> {
     let mut files = Vec::new();
-    collect_rust_sources_recursive(crate_root, crate_root, &mut files)?;
+    for source_root in source_roots {
+        if source_root.is_dir() {
+            collect_rust_sources_recursive(crate_root, source_root, &mut files)?;
+            continue;
+        }
+        if source_root.is_file() && source_root.extension() == Some(OsStr::new("rs")) {
+            push_relative_rust_file(crate_root, source_root, &mut files);
+        }
+    }
+    if let Some(build_script) = build_script {
+        push_relative_rust_file(crate_root, build_script, &mut files);
+    }
     files.sort();
+    files.dedup();
     Ok(files)
 }
 
@@ -436,13 +744,17 @@ fn collect_rust_sources_recursive(
         if path.extension() != Some(OsStr::new("rs")) {
             continue;
         }
-        let relative = path
-            .strip_prefix(crate_root)
-            .unwrap_or(path.as_path())
-            .to_string_lossy();
-        files.push(format!("./{relative}"));
+        push_relative_rust_file(crate_root, &path, files);
     }
     Ok(())
+}
+
+fn push_relative_rust_file(crate_root: &Path, path: &Path, files: &mut Vec<String>) {
+    let relative = path
+        .strip_prefix(crate_root)
+        .unwrap_or(path)
+        .to_string_lossy();
+    files.push(format!("./{relative}"));
 }
 
 fn read_dir_sorted(path: &Path) -> Result<Vec<fs::DirEntry>, SupplyChainError> {

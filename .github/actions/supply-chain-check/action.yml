@@ -23,14 +23,14 @@ runs:
     - name: Build pedant from action source
       shell: bash
       run: |
-        if command -v pedant &>/dev/null; then
-          echo "pedant already installed"
-        else
-          PEDANT_ROOT="$(cd "${{ github.action_path }}/../../.." && pwd)"
-          cargo install --path "$PEDANT_ROOT/pedant" --locked
-        fi
+        PEDANT_ROOT="$(cd "${{ github.action_path }}/../../.." && pwd)"
+        cargo build --manifest-path "$PEDANT_ROOT/pedant/Cargo.toml" --release --locked
+        echo "PEDANT_BIN=$PEDANT_ROOT/target/release/pedant" >> "$GITHUB_ENV"
 
     - name: Verify supply chain baselines
       id: scan
       shell: bash
-      run: pedant supply-chain verify --baseline-path "${{ inputs.baseline-path }}" --fail-on "${{ inputs.fail-on }}"
+      run: |
+        "$PEDANT_BIN" supply-chain verify \
+          --baseline-path "${{ inputs.baseline-path }}" \
+          --fail-on "${{ inputs.fail-on }}"

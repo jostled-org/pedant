@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0](https://github.com/jostled-org/pedant/compare/pedant-v0.18.1...pedant-v0.19.0) - 2026-04-25
+
+### Added
+
+- *(supply-chain)* follow mod declarations to hash only reachable source files
+- *(cli)* [**breaking**] migrate to subcommands and cargo supply-chain
+
+### Fixed
+
+- *(supply-chain)* [**breaking**] separate hashing from dependency analysis
+- *(supply-chain)* satisfy formatting and clippy checks
+- *(supply-chain)* derive cargo inputs from package targets
+
 ## [0.18.1](https://github.com/jostled-org/pedant/compare/pedant-v0.18.0...pedant-v0.18.1) - 2026-04-21
 
 ### Other

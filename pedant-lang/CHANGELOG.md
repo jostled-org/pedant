@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.2](https://github.com/jostled-org/pedant/compare/pedant-lang-v0.1.1...pedant-lang-v0.1.2) - 2026-04-25
+
+### Other
+
+- updated the following local packages: pedant-types
+
 ## [0.1.1](https://github.com/jostled-org/pedant/compare/pedant-lang-v0.1.0...pedant-lang-v0.1.1) - 2026-04-20
 
 ### Other

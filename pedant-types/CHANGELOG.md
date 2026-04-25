@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0](https://github.com/jostled-org/pedant/compare/pedant-types-v0.10.1...pedant-types-v0.11.0) - 2026-04-25
+
+### Fixed
+
+- *(supply-chain)* [**breaking**] separate hashing from dependency analysis
+
 ## [0.10.1](https://github.com/jostled-org/pedant/compare/pedant-types-v0.10.0...pedant-types-v0.10.1) - 2026-04-20
 
 ### Other

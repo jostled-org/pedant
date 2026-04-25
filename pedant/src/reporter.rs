@@ -16,7 +16,7 @@ impl Reporter {
 
     /// Emit all violations to `writer` in text format.
     ///
-    /// Json output is handled by [`crate::output::write_json_analysis_output`]
+    /// Json output is handled by `output::write_json`
     /// before `report` is called, so only the Text path is reachable here.
     pub fn report<W: Write>(&self, violations: &[Violation], writer: &mut W) -> io::Result<()> {
         for v in violations {

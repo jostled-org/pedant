@@ -9,11 +9,12 @@ Pedant's supply chain check hashes every dependency's source on every build and 
 ## How it works
 
 1. Cargo dependencies are vendored with `cargo vendor`
-2. Each dependency's Rust source files are scanned with `pedant supply-chain`, producing a SHA-256 source hash and capability profile
-3. The attestation is compared against a stored baseline in `.pedant/baselines/`
-4. Hash mismatches, new capabilities, and missing baselines are reported
+2. For each vendored package, pedant resolves target entrypoints (`[lib]`, `[[bin]]`, autobins, build scripts) and follows `mod` declarations to collect the reachable Rust module graph
+3. Only reachable `.rs` files are hashed with `pedant supply-chain`, producing a SHA-256 source hash and capability profile
+4. The attestation is compared against a stored baseline in `.pedant/baselines/`
+5. Hash mismatches, new capabilities, and missing baselines are reported
 
-Only Rust source files are hashed (`.rs`) — not metadata, not Cargo.toml rewrites, not checksum files. This makes hashes platform-independent: the same `.rs` files come from the same crate tarball regardless of OS or toolchain version.
+Only Rust source files reachable from Cargo target entrypoints are hashed — not every `.rs` file in the vendored directory, not metadata, not Cargo.toml rewrites, not checksum files. Files that exist under `src/` but are not part of the compiled module graph (test fixtures, unreachable sibling files) are ignored. This makes hashes platform-independent and stable on crates that ship non-compiled Rust files.
 
 ## Trust model
 
@@ -132,7 +133,7 @@ Current implementation: Cargo only.
 
 | Ecosystem | Lock file | Vendor method | Scanned files |
 |-----------|-----------|--------------|---------------|
-| Rust | `Cargo.lock` | `cargo vendor` | `.rs` |
+| Rust | `Cargo.lock` | `cargo vendor` | `.rs` (target entrypoints + reachable modules) |
 
 ## Updating pedant
 
@@ -173,4 +174,4 @@ When a crate fails verification and you need to compare local and CI inputs, run
 pedant supply-chain verify --baseline-path .pedant/baselines --debug-package cc
 ```
 
-This prints the crate version, aggregate `source_hash`, and one line per hashed Rust file with its relative path, byte length, and per-file SHA-256 digest.
+This prints the crate version, aggregate `source_hash`, and one line per hashed Rust file with its relative path, byte length, and per-file SHA-256 digest. Only files reachable from the crate's Cargo target entrypoints appear — unreachable sibling files are excluded.

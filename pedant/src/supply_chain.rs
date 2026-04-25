@@ -1,9 +1,10 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use pedant_core::check_config::CheckConfig;
@@ -27,8 +28,12 @@ const SPEC_VERSION: &str = "0.1.0";
 enum SupplyChainError {
     #[error("no Cargo.lock found in {0}; generate and commit a lockfile first")]
     MissingLockfile(Box<str>),
+    #[error("failed to determine current directory: {0}")]
+    CurrentDir(#[source] std::io::Error),
     #[error("failed to create temp directory: {0}")]
     TempDir(#[source] std::io::Error),
+    #[error("failed to run cargo vendor: {0}")]
+    CargoVendorSpawn(#[source] std::io::Error),
     #[error("cargo vendor failed: {0}")]
     CargoVendor(Box<str>),
     #[error("failed to read directory {path}: {source}")]
@@ -124,7 +129,7 @@ struct VendoredCrate {
     dir: PathBuf,
     name: Box<str>,
     version: Box<str>,
-    source_roots: Box<[PathBuf]>,
+    entry_files: Box<[PathBuf]>,
     build_script: Option<PathBuf>,
 }
 
@@ -136,7 +141,7 @@ struct CrateAttestation {
 }
 
 struct SourceFileInput {
-    path: Box<str>,
+    path: Arc<str>,
     bytes: usize,
     digest: Box<str>,
 }
@@ -289,7 +294,7 @@ fn verify_current_workspace(
 }
 
 fn current_workspace_root() -> Result<PathBuf, SupplyChainError> {
-    let cwd = std::env::current_dir().map_err(SupplyChainError::TempDir)?;
+    let cwd = std::env::current_dir().map_err(SupplyChainError::CurrentDir)?;
     let lockfile = cwd.join("Cargo.lock");
     match lockfile.is_file() {
         true => Ok(cwd),
@@ -313,7 +318,7 @@ fn vendor_cargo_deps(workspace_root: &Path) -> Result<VendorContext, SupplyChain
         .arg("--quiet")
         .current_dir(workspace_root)
         .output()
-        .map_err(SupplyChainError::TempDir)?;
+        .map_err(SupplyChainError::CargoVendorSpawn)?;
     if !output.status.success() {
         let message = String::from_utf8_lossy(&output.stderr).trim().to_owned();
         return Err(SupplyChainError::CargoVendor(message.into_boxed_str()));
@@ -398,7 +403,7 @@ fn build_vendored_crate(
         Some(package) => package,
         None => return Err(missing_package_section(crate_dir)),
     };
-    let source_roots = collect_target_roots(crate_dir, manifest)?;
+    let entry_files = collect_entry_files(crate_dir, manifest)?;
     let build_script =
         discover_build_script(crate_dir).map_err(|source| SupplyChainError::ReadFile {
             path: crate_dir.display().to_string().into_boxed_str(),
@@ -408,7 +413,7 @@ fn build_vendored_crate(
         dir: crate_dir.to_path_buf(),
         name: package.name.clone().into_boxed_str(),
         version: package.version.clone().into_boxed_str(),
-        source_roots,
+        entry_files,
         build_script,
     })
 }
@@ -424,7 +429,7 @@ fn read_manifest(path: &Path) -> Result<CargoManifest, SupplyChainError> {
     })
 }
 
-fn collect_target_roots(
+fn collect_entry_files(
     crate_dir: &Path,
     manifest: &CargoManifest,
 ) -> Result<Box<[PathBuf]>, SupplyChainError> {
@@ -432,56 +437,67 @@ fn collect_target_roots(
         Some(package) => package,
         None => return Err(missing_package_section(crate_dir)),
     };
-    let mut roots = Vec::new();
+    let mut entries = Vec::new();
 
-    let default_lib = Path::new("src/lib.rs");
-    match (
-        manifest.lib.as_ref().and_then(|lib| lib.path.as_deref()),
-        crate_dir.join(default_lib).is_file(),
-    ) {
-        (Some(path), _) => push_target_root(crate_dir, Path::new(path), &mut roots),
-        (None, true) => push_target_root(crate_dir, default_lib, &mut roots),
-        (None, false) => {}
+    let default_lib = crate_dir.join("src/lib.rs");
+    match manifest.lib.as_ref().and_then(|lib| lib.path.as_deref()) {
+        Some(path) => push_entry_file(crate_dir, Path::new(path), &mut entries),
+        None if default_lib.is_file() => entries.push(default_lib),
+        None => {}
     }
 
     for bin in &manifest.bins {
-        match bin.path.as_deref() {
-            Some(path) => push_target_root(crate_dir, Path::new(path), &mut roots),
-            None => continue,
+        if let Some(path) = bin.path.as_deref() {
+            push_entry_file(crate_dir, Path::new(path), &mut entries);
         }
     }
 
-    let default_bin = Path::new("src/main.rs");
-    let src_bin = crate_dir.join("src/bin");
-    match (
-        package.autobins,
-        crate_dir.join(default_bin).is_file(),
-        src_bin.is_dir(),
-    ) {
-        (true, true, true) => {
-            push_target_root(crate_dir, default_bin, &mut roots);
-            roots.push(src_bin);
+    let default_bin = crate_dir.join("src/main.rs");
+    match (package.autobins, default_bin.is_file()) {
+        (true, true) => {
+            entries.push(default_bin);
+            collect_autobin_entries(crate_dir, &mut entries)?;
         }
-        (true, true, false) => push_target_root(crate_dir, default_bin, &mut roots),
-        (true, false, true) => roots.push(src_bin),
-        (true, false, false) | (false, _, _) => {}
+        (true, false) => collect_autobin_entries(crate_dir, &mut entries)?,
+        (false, _) => {}
     }
 
-    roots.sort();
-    roots.dedup();
-    Ok(roots.into_boxed_slice())
+    entries.sort();
+    entries.dedup();
+    Ok(entries.into_boxed_slice())
 }
 
-fn push_target_root(crate_dir: &Path, target_path: &Path, roots: &mut Vec<PathBuf>) {
-    let absolute = crate_dir.join(target_path);
-    if !absolute.is_file() {
-        return;
+fn push_entry_file(crate_dir: &Path, relative_path: &Path, entries: &mut Vec<PathBuf>) {
+    let absolute = crate_dir.join(relative_path);
+    if absolute.is_file() {
+        entries.push(absolute);
     }
-    let parent = match target_path.parent() {
-        Some(parent) if parent != Path::new("") => parent,
-        _ => target_path,
-    };
-    roots.push(crate_dir.join(parent));
+}
+
+fn collect_autobin_entries(
+    crate_dir: &Path,
+    entries: &mut Vec<PathBuf>,
+) -> Result<(), SupplyChainError> {
+    let bin_dir = crate_dir.join("src/bin");
+    if !bin_dir.is_dir() {
+        return Ok(());
+    }
+    for entry in read_dir_sorted(&bin_dir)? {
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .map_err(|source| SupplyChainError::ReadDir {
+                path: bin_dir.display().to_string().into_boxed_str(),
+                source,
+            })?;
+        let main_rs = path.join("main.rs");
+        match (file_type.is_file(), file_type.is_dir()) {
+            (true, _) if path.extension() == Some(OsStr::new("rs")) => entries.push(path),
+            (_, true) if main_rs.is_file() => entries.push(main_rs),
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 fn missing_package_section(crate_dir: &Path) -> SupplyChainError {
@@ -647,9 +663,9 @@ fn pattern_segment_ends_with_wildcard(parts: &[&str], remaining: &str) -> bool {
 fn build_attestation_for_crate(
     crate_info: &VendoredCrate,
 ) -> Result<CrateAttestation, SupplyChainError> {
-    let files = collect_rust_sources(
+    let files = collect_reachable_sources(
         &crate_info.dir,
-        &crate_info.source_roots,
+        &crate_info.entry_files,
         crate_info.build_script.as_deref(),
     )?;
     let mut sources = BTreeMap::new();
@@ -668,16 +684,16 @@ fn build_attestation_for_crate(
             false => analyze(relative_path, &source, &CheckConfig::default(), None),
         }
         .map_err(|source| SupplyChainError::Analyze {
-            path: Box::from(relative_path.as_str()),
+            path: Box::from(&**relative_path),
             source,
         })?;
 
         let digest = sha256_hex(source.as_bytes());
         let bytes = source.len();
-        sources.insert(Box::from(relative_path.as_str()), source);
+        sources.insert(Arc::clone(relative_path), source);
         findings.extend(result.capabilities.findings.into_vec());
         source_files.push(SourceFileInput {
-            path: Box::from(relative_path.as_str()),
+            path: Arc::clone(relative_path),
             bytes,
             digest,
         });
@@ -707,60 +723,100 @@ fn build_attestation_for_crate(
     })
 }
 
-fn collect_rust_sources(
+fn collect_reachable_sources(
     crate_root: &Path,
-    source_roots: &[PathBuf],
+    entry_files: &[PathBuf],
     build_script: Option<&Path>,
-) -> Result<Vec<String>, SupplyChainError> {
-    let mut files = Vec::new();
-    for source_root in source_roots {
-        if source_root.is_dir() {
-            collect_rust_sources_recursive(crate_root, source_root, &mut files)?;
+) -> Result<Box<[Arc<str>]>, SupplyChainError> {
+    let mut visited: BTreeSet<Arc<str>> = BTreeSet::new();
+    let mut stack: Vec<PathBuf> = entry_files
+        .iter()
+        .filter(|f| f.is_file())
+        .cloned()
+        .collect();
+
+    if let Some(bs) = build_script.filter(|p| p.is_file()) {
+        stack.push(bs.to_path_buf());
+    }
+
+    while let Some(file) = stack.pop() {
+        let relative = relative_path_str(crate_root, &file);
+        if !visited.insert(relative) {
             continue;
         }
-        if source_root.is_file() && source_root.extension() == Some(OsStr::new("rs")) {
-            push_relative_rust_file(crate_root, source_root, &mut files);
+        let source = fs::read_to_string(&file).map_err(|source| SupplyChainError::ReadFile {
+            path: file.display().to_string().into_boxed_str(),
+            source,
+        })?;
+        let mod_dir = module_directory(&file);
+        for mod_name in extract_mod_declarations(&source) {
+            let candidate_file = mod_dir.join(format!("{mod_name}.rs"));
+            if candidate_file.is_file() {
+                stack.push(candidate_file);
+                continue;
+            }
+            let candidate_mod = mod_dir.join(&*mod_name).join("mod.rs");
+            if candidate_mod.is_file() {
+                stack.push(candidate_mod);
+            }
         }
     }
-    if let Some(build_script) = build_script {
-        push_relative_rust_file(crate_root, build_script, &mut files);
-    }
-    files.sort();
-    files.dedup();
-    Ok(files)
+
+    Ok(visited.into_iter().collect::<Vec<_>>().into_boxed_slice())
 }
 
-fn collect_rust_sources_recursive(
-    crate_root: &Path,
-    current: &Path,
-    files: &mut Vec<String>,
-) -> Result<(), SupplyChainError> {
-    for entry in read_dir_sorted(current)? {
-        let path = entry.path();
-        let file_type = entry
-            .file_type()
-            .map_err(|source| SupplyChainError::ReadDir {
-                path: current.display().to_string().into_boxed_str(),
-                source,
-            })?;
-        if file_type.is_dir() {
-            collect_rust_sources_recursive(crate_root, &path, files)?;
-            continue;
-        }
-        if path.extension() != Some(OsStr::new("rs")) {
-            continue;
-        }
-        push_relative_rust_file(crate_root, &path, files);
-    }
-    Ok(())
-}
-
-fn push_relative_rust_file(crate_root: &Path, path: &Path, files: &mut Vec<String>) {
+fn relative_path_str(crate_root: &Path, path: &Path) -> Arc<str> {
     let relative = path
         .strip_prefix(crate_root)
         .unwrap_or(path)
         .to_string_lossy();
-    files.push(format!("./{relative}"));
+    Arc::from(format!("./{relative}"))
+}
+
+fn module_directory(file_path: &Path) -> PathBuf {
+    let stem = file_path.file_stem().and_then(OsStr::to_str).unwrap_or("");
+    let parent = file_path.parent().unwrap_or(file_path);
+    match stem {
+        "lib" | "main" | "mod" => parent.to_path_buf(),
+        _ => parent.join(stem),
+    }
+}
+
+fn extract_mod_declarations(source: &str) -> Box<[Box<str>]> {
+    source
+        .lines()
+        .filter_map(|line| {
+            let code = line.split("//").next().unwrap_or("").trim();
+            find_mod_declaration(code)
+        })
+        .collect::<Vec<_>>()
+        .into_boxed_slice()
+}
+
+fn find_mod_declaration(code: &str) -> Option<Box<str>> {
+    if !code.ends_with(';') {
+        return None;
+    }
+    let after_mod = match code.starts_with("mod ") {
+        true => &code[4..],
+        false => {
+            let idx = code.find(" mod ")?;
+            &code[idx + 5..]
+        }
+    };
+    let name = after_mod.trim_end_matches(';').trim();
+    match is_rust_identifier(name) {
+        true => Some(Box::from(name)),
+        false => None,
+    }
+}
+
+fn is_rust_identifier(s: &str) -> bool {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) if c == '_' || c.is_alphabetic() => chars.all(|c| c.is_alphanumeric() || c == '_'),
+        _ => false,
+    }
 }
 
 fn read_dir_sorted(path: &Path) -> Result<Vec<fs::DirEntry>, SupplyChainError> {

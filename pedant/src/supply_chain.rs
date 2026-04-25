@@ -362,13 +362,11 @@ fn resolve_vendored_crates(
     manifest: &CargoManifest,
 ) -> Result<Vec<VendoredCrate>, SupplyChainError> {
     let mut crates = Vec::new();
-    match manifest.package.is_some() {
-        true => crates.push(build_vendored_crate(root, manifest)?),
-        false => {}
+    if manifest.package.is_some() {
+        crates.push(build_vendored_crate(root, manifest)?);
     }
-    match &manifest.workspace {
-        Some(workspace) => crates.extend(collect_workspace_member_crates(root, &workspace.members)?),
-        None => {}
+    if let Some(workspace) = &manifest.workspace {
+        crates.extend(collect_workspace_member_crates(root, &workspace.members)?);
     }
     Ok(crates)
 }
@@ -455,7 +453,11 @@ fn collect_target_roots(
 
     let default_bin = Path::new("src/main.rs");
     let src_bin = crate_dir.join("src/bin");
-    match (package.autobins, crate_dir.join(default_bin).is_file(), src_bin.is_dir()) {
+    match (
+        package.autobins,
+        crate_dir.join(default_bin).is_file(),
+        src_bin.is_dir(),
+    ) {
         (true, true, true) => {
             push_target_root(crate_dir, default_bin, &mut roots);
             roots.push(src_bin);
@@ -484,7 +486,11 @@ fn push_target_root(crate_dir: &Path, target_path: &Path, roots: &mut Vec<PathBu
 
 fn missing_package_section(crate_dir: &Path) -> SupplyChainError {
     SupplyChainError::MissingPackageSection {
-        path: crate_dir.join("Cargo.toml").display().to_string().into_boxed_str(),
+        path: crate_dir
+            .join("Cargo.toml")
+            .display()
+            .to_string()
+            .into_boxed_str(),
     }
 }
 

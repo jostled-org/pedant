@@ -112,6 +112,7 @@ fn build_attestation(
         crate_version,
         analysis_tier,
         timestamp,
+        analysis_completeness: None,
         profile,
     })
 }

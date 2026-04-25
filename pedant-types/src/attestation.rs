@@ -14,6 +14,25 @@ pub enum AnalysisTier {
     DataFlow,
 }
 
+/// How complete capability extraction was for a hashed source set.
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
+pub struct AnalysisCompleteness {
+    /// Number of reachable files whose capabilities were analyzed successfully.
+    pub analyzed_files: usize,
+    /// Number of reachable files that were hashed but skipped for capability analysis.
+    pub skipped_files: usize,
+    /// Relative paths of hashed files that could not be analyzed.
+    #[serde(default, skip_serializing_if = "<[Box<str>]>::is_empty")]
+    pub skipped_paths: Box<[Box<str>]>,
+}
+
+impl AnalysisCompleteness {
+    /// Returns true when capability extraction succeeded for all hashed files.
+    pub fn is_complete(&self) -> bool {
+        self.skipped_files == 0
+    }
+}
+
 /// Signed attestation binding a source hash to its capability profile.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct AttestationContent {
@@ -29,6 +48,9 @@ pub struct AttestationContent {
     pub analysis_tier: AnalysisTier,
     /// UTC seconds since Unix epoch.
     pub timestamp: u64,
+    /// Whether capability analysis covered all hashed files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub analysis_completeness: Option<AnalysisCompleteness>,
     /// Capability findings from the analysis.
     pub profile: CapabilityProfile,
 }

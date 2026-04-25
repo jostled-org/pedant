@@ -11,7 +11,8 @@ use pedant_core::check_config::CheckConfig;
 use pedant_core::hash::compute_source_hash;
 use pedant_core::lint::{analyze, analyze_build_script, discover_build_script};
 use pedant_types::{
-    AnalysisTier, AttestationContent, Capability, CapabilityDiff, CapabilityProfile,
+    AnalysisCompleteness, AnalysisTier, AttestationContent, Capability, CapabilityDiff,
+    CapabilityProfile,
 };
 use semver::Version;
 use serde::Deserialize;
@@ -73,12 +74,6 @@ enum SupplyChainError {
         path: Box<str>,
         #[source]
         source: serde_json::Error,
-    },
-    #[error("failed to analyze {path}: {source}")]
-    Analyze {
-        path: Box<str>,
-        #[source]
-        source: pedant_core::ParseError,
     },
     #[error("failed to compute attestation timestamp: {0}")]
     Timestamp(#[source] std::time::SystemTimeError),
@@ -146,12 +141,21 @@ struct SourceFileInput {
     digest: Box<str>,
 }
 
+struct CollectedSourceInput {
+    path: Arc<str>,
+    source: String,
+    bytes: usize,
+    digest: Box<str>,
+    is_build_script: bool,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize)]
 #[serde(rename_all = "kebab-case")]
 enum FindingLevel {
     HashMismatch,
     NewCapability,
     NewDependency,
+    AnalysisIncomplete,
 }
 
 impl FindingLevel {
@@ -160,6 +164,7 @@ impl FindingLevel {
             Self::HashMismatch => "hash-mismatch",
             Self::NewCapability => "new-capability",
             Self::NewDependency => "new-dependency",
+            Self::AnalysisIncomplete => "analysis-incomplete",
         }
     }
 
@@ -168,6 +173,7 @@ impl FindingLevel {
             Self::HashMismatch => "::error::",
             Self::NewCapability => "::warning::",
             Self::NewDependency => "::notice::",
+            Self::AnalysisIncomplete => "::notice::",
         }
     }
 }
@@ -277,6 +283,7 @@ fn verify_current_workspace(
                 &attestation.version,
                 &attestation.source_files,
                 &attestation.content.source_hash,
+                attestation.content.analysis_completeness.as_ref(),
             );
             emitted_debug = true;
         }
@@ -668,36 +675,10 @@ fn build_attestation_for_crate(
         &crate_info.entry_files,
         crate_info.build_script.as_deref(),
     )?;
-    let mut sources = BTreeMap::new();
-    let mut findings = Vec::new();
-    let mut source_files = Vec::new();
-
-    for relative_path in &files {
-        let disk_path = crate_info.dir.join(relative_path.trim_start_matches("./"));
-        let source =
-            fs::read_to_string(&disk_path).map_err(|source| SupplyChainError::ReadFile {
-                path: disk_path.display().to_string().into_boxed_str(),
-                source,
-            })?;
-        let result = match is_build_script_path(&disk_path, crate_info.build_script.as_deref()) {
-            true => analyze_build_script(relative_path, &source, &CheckConfig::default(), None),
-            false => analyze(relative_path, &source, &CheckConfig::default(), None),
-        }
-        .map_err(|source| SupplyChainError::Analyze {
-            path: Box::from(&**relative_path),
-            source,
-        })?;
-
-        let digest = sha256_hex(source.as_bytes());
-        let bytes = source.len();
-        sources.insert(Arc::clone(relative_path), source);
-        findings.extend(result.capabilities.findings.into_vec());
-        source_files.push(SourceFileInput {
-            path: Arc::clone(relative_path),
-            bytes,
-            digest,
-        });
-    }
+    let collected_sources = collect_source_inputs(crate_info, &files)?;
+    let source_hash = compute_hashed_source(&collected_sources);
+    let source_files = source_file_inputs(&collected_sources);
+    let (profile, analysis_completeness) = analyze_source_inputs(&collected_sources);
 
     let timestamp = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -705,22 +686,93 @@ fn build_attestation_for_crate(
         .map_err(SupplyChainError::Timestamp)?;
     let content = AttestationContent {
         spec_version: Box::from(SPEC_VERSION),
-        source_hash: compute_source_hash(&sources),
+        source_hash,
         crate_name: crate_info.name.clone(),
         crate_version: crate_info.version.clone(),
         analysis_tier: AnalysisTier::Syntactic,
         timestamp,
-        profile: CapabilityProfile {
-            findings: findings.into_boxed_slice(),
-        },
+        analysis_completeness: Some(analysis_completeness),
+        profile,
     };
 
     Ok(CrateAttestation {
         name: crate_info.name.clone(),
         version: crate_info.version.clone(),
         content,
-        source_files: source_files.into_boxed_slice(),
+        source_files,
     })
+}
+
+fn collect_source_inputs(
+    crate_info: &VendoredCrate,
+    files: &[Arc<str>],
+) -> Result<Vec<CollectedSourceInput>, SupplyChainError> {
+    let mut collected = Vec::new();
+    for relative_path in files {
+        let disk_path = crate_info.dir.join(relative_path.trim_start_matches("./"));
+        let source =
+            fs::read_to_string(&disk_path).map_err(|source| SupplyChainError::ReadFile {
+                path: disk_path.display().to_string().into_boxed_str(),
+                source,
+            })?;
+        collected.push(CollectedSourceInput {
+            path: Arc::clone(relative_path),
+            bytes: source.len(),
+            digest: sha256_hex(source.as_bytes()),
+            is_build_script: is_build_script_path(&disk_path, crate_info.build_script.as_deref()),
+            source,
+        });
+    }
+    Ok(collected)
+}
+
+fn compute_hashed_source(collected_sources: &[CollectedSourceInput]) -> Box<str> {
+    let sources = collected_sources
+        .iter()
+        .map(|source| (Arc::clone(&source.path), source.source.as_str()))
+        .collect::<BTreeMap<_, _>>();
+    compute_source_hash(&sources)
+}
+
+fn source_file_inputs(collected_sources: &[CollectedSourceInput]) -> Box<[SourceFileInput]> {
+    collected_sources
+        .iter()
+        .map(|source| SourceFileInput {
+            path: Arc::clone(&source.path),
+            bytes: source.bytes,
+            digest: source.digest.clone(),
+        })
+        .collect::<Vec<_>>()
+        .into_boxed_slice()
+}
+
+fn analyze_source_inputs(
+    collected_sources: &[CollectedSourceInput],
+) -> (CapabilityProfile, AnalysisCompleteness) {
+    let mut findings = Vec::new();
+    let mut analyzed_files = 0;
+    let mut skipped_paths = Vec::new();
+
+    for source in collected_sources {
+        match analyze_supply_chain_source(&source.path, &source.source, source.is_build_script) {
+            Some(capabilities) => {
+                analyzed_files += 1;
+                findings.extend(capabilities.findings.into_vec());
+            }
+            None => skipped_paths.push(Box::from(source.path.as_ref())),
+        }
+    }
+
+    (
+        CapabilityProfile {
+            findings: findings.into_boxed_slice(),
+        },
+        AnalysisCompleteness {
+            analyzed_files,
+            skipped_files: skipped_paths.len(),
+            skipped_paths: skipped_paths.into_boxed_slice(),
+        },
+    )
 }
 
 fn collect_reachable_sources(
@@ -763,6 +815,21 @@ fn collect_reachable_sources(
     }
 
     Ok(visited.into_iter().collect::<Vec<_>>().into_boxed_slice())
+}
+
+fn analyze_supply_chain_source(
+    relative_path: &str,
+    source: &str,
+    is_build_script: bool,
+) -> Option<CapabilityProfile> {
+    let result = match is_build_script {
+        true => analyze_build_script(relative_path, source, &CheckConfig::default(), None),
+        false => analyze(relative_path, source, &CheckConfig::default(), None),
+    };
+    match result {
+        Ok(result) => Some(result.capabilities),
+        Err(_) => None,
+    }
 }
 
 fn relative_path_str(crate_root: &Path, path: &Path) -> Arc<str> {
@@ -941,9 +1008,20 @@ fn emit_debug_package(
     version: &str,
     source_files: &[SourceFileInput],
     source_hash: &str,
+    analysis_completeness: Option<&AnalysisCompleteness>,
 ) {
     std::mem::drop(writeln!(stderr, "debug-package: {name}@{version}"));
     std::mem::drop(writeln!(stderr, "source_hash: {source_hash}"));
+    if let Some(completeness) = analysis_completeness {
+        std::mem::drop(writeln!(
+            stderr,
+            "analysis: analyzed_files={} skipped_files={}",
+            completeness.analyzed_files, completeness.skipped_files
+        ));
+        for skipped_path in &completeness.skipped_paths {
+            std::mem::drop(writeln!(stderr, "skipped: {skipped_path}"));
+        }
+    }
     for source_file in source_files {
         std::mem::drop(writeln!(
             stderr,
@@ -993,7 +1071,7 @@ fn compare_new_or_upgraded_dependency(
 ) -> Result<Vec<ReportFinding>, SupplyChainError> {
     let baseline_dir = baseline_root.join(ECOSYSTEM).join(current.name.as_ref());
     let Some(prior_baseline_path) = best_prior_baseline(&baseline_dir, &current.version)? else {
-        return Ok(vec![ReportFinding {
+        let mut findings = vec![ReportFinding {
             level: FindingLevel::NewDependency,
             ecosystem: ECOSYSTEM,
             name: current.name.clone(),
@@ -1003,10 +1081,36 @@ fn compare_new_or_upgraded_dependency(
                 capability_list(&current.content.profile)
             )
             .into_boxed_str(),
-        }]);
+        }];
+        if !attestation_is_complete(&current.content) {
+            findings.push(ReportFinding {
+                level: FindingLevel::AnalysisIncomplete,
+                ecosystem: ECOSYSTEM,
+                name: current.name.clone(),
+                version: current.version.clone(),
+                detail: format!(
+                    "new dependency analyzed partially ({})",
+                    attestation_completeness_summary(&current.content)
+                )
+                .into_boxed_str(),
+            });
+        }
+        return Ok(findings);
     };
 
     let prior = load_baseline(&prior_baseline_path)?;
+    if let Some(finding) = incomplete_analysis_finding(
+        &prior,
+        &current.content,
+        &current.name,
+        &current.version,
+        prior_baseline_path
+            .file_stem()
+            .and_then(OsStr::to_str)
+            .unwrap_or("unknown"),
+    ) {
+        return Ok(vec![finding]);
+    }
     let diff = CapabilityDiff::compute(&prior.profile, &current.content.profile);
     if diff.new_capabilities.is_empty() {
         return Ok(Vec::new());
@@ -1086,6 +1190,65 @@ fn best_prior_baseline(
 
 fn capability_list(profile: &CapabilityProfile) -> String {
     capability_names(&profile.capabilities())
+}
+
+fn incomplete_analysis_finding(
+    prior: &AttestationContent,
+    current: &AttestationContent,
+    name: &str,
+    version: &str,
+    prior_version: &str,
+) -> Option<ReportFinding> {
+    let prior_complete = attestation_is_complete(prior);
+    let current_complete = attestation_is_complete(current);
+    if prior_complete && current_complete {
+        return None;
+    }
+    Some(ReportFinding {
+        level: FindingLevel::AnalysisIncomplete,
+        ecosystem: ECOSYSTEM,
+        name: Box::from(name),
+        version: Box::from(version),
+        detail: format!(
+            "upgraded from {prior_version} — capability comparison skipped ({})",
+            completeness_summary(prior, current)
+        )
+        .into_boxed_str(),
+    })
+}
+
+fn attestation_is_complete(attestation: &AttestationContent) -> bool {
+    attestation
+        .analysis_completeness
+        .as_ref()
+        .is_some_and(AnalysisCompleteness::is_complete)
+}
+
+fn completeness_summary(prior: &AttestationContent, current: &AttestationContent) -> String {
+    format!(
+        "prior {} ; current {}",
+        attestation_completeness_summary(prior),
+        attestation_completeness_summary(current)
+    )
+}
+
+fn attestation_completeness_summary(attestation: &AttestationContent) -> String {
+    match attestation.analysis_completeness.as_ref() {
+        Some(completeness) => format!(
+            "analyzed={} skipped={}{}",
+            completeness.analyzed_files,
+            completeness.skipped_files,
+            skipped_path_suffix(completeness)
+        ),
+        None => String::from("analysis completeness unavailable"),
+    }
+}
+
+fn skipped_path_suffix(completeness: &AnalysisCompleteness) -> String {
+    if completeness.skipped_paths.is_empty() {
+        return String::new();
+    }
+    format!(" skipped_paths={}", completeness.skipped_paths.join(", "))
 }
 
 fn capability_names(capabilities: &[Capability]) -> String {
@@ -1195,11 +1358,14 @@ fn persist_report(report: &Report) -> Result<PathBuf, SupplyChainError> {
 }
 
 fn overall_status(findings: &[ReportFinding]) -> &'static str {
+    if findings.is_empty() {
+        return "clean";
+    }
     findings
         .iter()
         .map(|finding| finding.level)
-        .max()
-        .map(FindingLevel::as_str)
+        .max_by_key(|level| status_rank(level.as_str()))
+        .map(|level| level.as_str())
         .unwrap_or("clean")
 }
 
@@ -1215,6 +1381,17 @@ fn severity_rank(level: &str) -> usize {
         "hash-mismatch" => 3,
         "new-capability" => 2,
         "new-dependency" => 1,
+        "analysis-incomplete" => 0,
+        _ => 0,
+    }
+}
+
+fn status_rank(level: &str) -> usize {
+    match level {
+        "hash-mismatch" => 4,
+        "new-capability" => 3,
+        "new-dependency" => 2,
+        "analysis-incomplete" => 1,
         _ => 0,
     }
 }

@@ -51,6 +51,20 @@ fn write_workspace_dependency(root: &std::path::Path) {
     .unwrap();
 }
 
+fn write_parse_failing_dependency(root: &std::path::Path) {
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"parse-failing-dep\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/lib.rs"),
+        "#[allow(unknown_lints, bare_trait_objects)]\ntype Action = Fn(&u8) + Send + Sync;\n\npub fn touch(_: &Action) {}\n",
+    )
+    .unwrap();
+}
+
 fn which_cargo() -> String {
     Command::new("which")
         .arg("cargo")
@@ -314,6 +328,156 @@ fn supply_chain_ignores_invalid_fixture_rust_outside_workspace_targets() {
         "init failed: stdout={} stderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn supply_chain_init_and_verify_ignore_parse_failures_in_vendored_targets() {
+    let dir = tempfile::tempdir().unwrap();
+    let vendor_root = dir.path().join("vendor");
+    fs::create_dir_all(&vendor_root).unwrap();
+    write_parse_failing_dependency(&vendor_root.join("parse-failing-dep"));
+
+    let workspace = dir.path().join("consumer");
+    write_minimal_consumer(&workspace);
+
+    let baselines = workspace.join(".pedant/baselines");
+    let init = run_with_fake_vendor(
+        dir.path(),
+        &workspace,
+        &vendor_root,
+        &[
+            "supply-chain",
+            "init",
+            "--baseline-path",
+            baselines.to_str().unwrap(),
+        ],
+    );
+    assert!(
+        init.status.success(),
+        "init failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&init.stdout),
+        String::from_utf8_lossy(&init.stderr)
+    );
+
+    let verify = run_with_fake_vendor(
+        dir.path(),
+        &workspace,
+        &vendor_root,
+        &[
+            "supply-chain",
+            "verify",
+            "--baseline-path",
+            baselines.to_str().unwrap(),
+        ],
+    );
+    assert!(
+        verify.status.success(),
+        "verify failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&verify.stdout),
+        String::from_utf8_lossy(&verify.stderr)
+    );
+
+    let debug = run_with_fake_vendor(
+        dir.path(),
+        &workspace,
+        &vendor_root,
+        &[
+            "supply-chain",
+            "verify",
+            "--baseline-path",
+            baselines.to_str().unwrap(),
+            "--debug-package",
+            "parse-failing-dep",
+        ],
+    );
+    let stderr = String::from_utf8_lossy(&debug.stderr);
+    assert!(
+        stderr.contains("analysis: analyzed_files=0 skipped_files=1"),
+        "expected partial analysis summary, stderr={stderr}"
+    );
+    assert!(
+        stderr.contains("skipped: ./src/lib.rs"),
+        "expected skipped file path, stderr={stderr}"
+    );
+}
+
+#[test]
+fn supply_chain_upgrade_with_partial_analysis_reports_analysis_incomplete() {
+    let dir = tempfile::tempdir().unwrap();
+    let vendor_root = dir.path().join("vendor");
+    let crate_dir = vendor_root.join("partial-upgrade");
+    fs::create_dir_all(crate_dir.join("src")).unwrap();
+    fs::write(
+        crate_dir.join("Cargo.toml"),
+        "[package]\nname = \"partial-upgrade\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    fs::write(
+        crate_dir.join("src/lib.rs"),
+        "#[allow(unknown_lints, bare_trait_objects)]\ntype Action = Fn(&u8) + Send + Sync;\n",
+    )
+    .unwrap();
+
+    let consumer = dir.path().join("consumer");
+    write_minimal_consumer(&consumer);
+    let baselines = consumer.join(".pedant/baselines");
+
+    let init = run_with_fake_vendor(
+        dir.path(),
+        &consumer,
+        &vendor_root,
+        &[
+            "supply-chain",
+            "init",
+            "--baseline-path",
+            baselines.to_str().unwrap(),
+        ],
+    );
+    assert!(
+        init.status.success(),
+        "init failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&init.stdout),
+        String::from_utf8_lossy(&init.stderr)
+    );
+
+    fs::write(
+        crate_dir.join("Cargo.toml"),
+        "[package]\nname = \"partial-upgrade\"\nversion = \"0.2.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    fs::write(
+        crate_dir.join("src/lib.rs"),
+        "#[allow(unknown_lints, bare_trait_objects)]\ntype Action = Fn(&u8) + Send + Sync;\npub fn added() {}\n",
+    )
+    .unwrap();
+
+    let verify = run_with_fake_vendor(
+        dir.path(),
+        &consumer,
+        &vendor_root,
+        &[
+            "supply-chain",
+            "verify",
+            "--baseline-path",
+            baselines.to_str().unwrap(),
+            "--fail-on",
+            "new-capability",
+        ],
+    );
+    let stdout = String::from_utf8_lossy(&verify.stdout);
+    assert!(
+        verify.status.success(),
+        "verify failed: stdout={stdout} stderr={}",
+        String::from_utf8_lossy(&verify.stderr)
+    );
+    assert!(
+        stdout.contains("capability comparison skipped"),
+        "expected incomplete-analysis message, stdout={stdout}"
+    );
+    assert!(
+        !stdout.contains("new-capability"),
+        "should not overclaim capability drift, stdout={stdout}"
     );
 }
 

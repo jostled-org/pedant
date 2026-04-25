@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use pedant_types::{
-    AnalysisTier, AttestationContent, Capability, CapabilityDiff, CapabilityFinding,
-    CapabilityProfile, ExecutionContext, FindingOrigin, Language, SourceLocation,
+    AnalysisCompleteness, AnalysisTier, AttestationContent, Capability, CapabilityDiff,
+    CapabilityFinding, CapabilityProfile, ExecutionContext, FindingOrigin, Language,
+    SourceLocation,
 };
 
 fn sample_finding(capability: Capability, file: &str, line: usize) -> CapabilityFinding {
@@ -130,6 +131,11 @@ fn attestation_round_trip() {
         crate_version: Box::from("0.1.0"),
         analysis_tier: AnalysisTier::Syntactic,
         timestamp: 1_700_000_000,
+        analysis_completeness: Some(AnalysisCompleteness {
+            analyzed_files: 1,
+            skipped_files: 0,
+            skipped_paths: Box::default(),
+        }),
         profile: CapabilityProfile {
             findings: vec![sample_finding(Capability::Ffi, "src/lib.rs", 5)].into_boxed_slice(),
         },
@@ -137,6 +143,19 @@ fn attestation_round_trip() {
     let json = serde_json::to_string(&attestation).unwrap();
     let back: AttestationContent = serde_json::from_str(&json).unwrap();
     assert_eq!(attestation, back);
+}
+
+#[test]
+fn analysis_completeness_round_trip() {
+    let completeness = AnalysisCompleteness {
+        analyzed_files: 2,
+        skipped_files: 1,
+        skipped_paths: vec![Box::from("./src/lib.rs")].into_boxed_slice(),
+    };
+    let json = serde_json::to_string(&completeness).unwrap();
+    let back: AnalysisCompleteness = serde_json::from_str(&json).unwrap();
+    assert_eq!(completeness, back);
+    assert!(!back.is_complete());
 }
 
 #[test]

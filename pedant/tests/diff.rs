@@ -29,6 +29,7 @@ fn make_attestation(profile: CapabilityProfile) -> AttestationContent {
         crate_version: Box::from("0.0.1"),
         analysis_tier: AnalysisTier::Syntactic,
         timestamp: 0,
+        analysis_completeness: None,
         profile,
     }
 }

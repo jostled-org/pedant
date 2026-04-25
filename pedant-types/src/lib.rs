@@ -10,7 +10,7 @@ mod finding_origin;
 mod language;
 mod profile;
 
-pub use attestation::{AnalysisTier, AttestationContent};
+pub use attestation::{AnalysisCompleteness, AnalysisTier, AttestationContent};
 pub use capability::Capability;
 pub use diff::CapabilityDiff;
 pub use error::ParseCapabilityError;

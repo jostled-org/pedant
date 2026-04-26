@@ -30,6 +30,7 @@ fn make_attestation(profile: CapabilityProfile) -> AttestationContent {
         analysis_tier: AnalysisTier::Syntactic,
         timestamp: 0,
         analysis_completeness: None,
+        rust_version: None,
         profile,
     }
 }

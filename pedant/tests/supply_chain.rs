@@ -1,6 +1,8 @@
 use std::fs;
 use std::process::Command;
 
+use pedant_types::AttestationContent;
+
 mod common;
 
 fn write_test_crate(root: &std::path::Path) {
@@ -809,6 +811,292 @@ fn init_and_verify_round_trip_uses_only_reachable_files() {
     assert!(
         !stderr.contains("orphan"),
         "unreachable orphan.rs should not appear, stderr={stderr}"
+    );
+}
+
+#[test]
+fn supply_chain_init_persists_rust_version_in_baseline() {
+    let dir = tempfile::tempdir().unwrap();
+    let vendor_root = dir.path().join("vendor");
+    let crate_dir = vendor_root.join("with-msrv");
+    fs::create_dir_all(crate_dir.join("src")).unwrap();
+    fs::write(
+        crate_dir.join("Cargo.toml"),
+        "[package]\nname = \"with-msrv\"\nversion = \"0.1.0\"\nedition = \"2024\"\nrust-version = \"1.70\"\n",
+    )
+    .unwrap();
+    fs::write(crate_dir.join("src/lib.rs"), "pub fn api() {}\n").unwrap();
+
+    let consumer = dir.path().join("consumer");
+    write_minimal_consumer(&consumer);
+    let baselines = consumer.join(".pedant/baselines");
+
+    let init = run_with_fake_vendor(
+        dir.path(),
+        &consumer,
+        &vendor_root,
+        &[
+            "supply-chain",
+            "init",
+            "--baseline-path",
+            baselines.to_str().unwrap(),
+        ],
+    );
+    assert!(
+        init.status.success(),
+        "init failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&init.stdout),
+        String::from_utf8_lossy(&init.stderr)
+    );
+
+    let baseline_path = baselines.join("cargo/with-msrv/0.1.0.json");
+    assert!(
+        baseline_path.is_file(),
+        "expected baseline file at {baseline_path:?}"
+    );
+    let raw = fs::read_to_string(&baseline_path).unwrap();
+    let baseline: AttestationContent =
+        serde_json::from_str(&raw).expect("baseline should parse as AttestationContent");
+    assert_eq!(
+        baseline.rust_version.as_deref(),
+        Some("1.70"),
+        "expected rust_version=1.70 in baseline, got: {raw}"
+    );
+    assert!(
+        !baseline.source_hash.is_empty(),
+        "source_hash must remain populated"
+    );
+    assert!(
+        baseline.analysis_completeness.is_some(),
+        "analysis_completeness must remain populated"
+    );
+}
+
+#[test]
+fn supply_chain_init_omits_rust_version_when_absent_from_manifest() {
+    let dir = tempfile::tempdir().unwrap();
+    let vendor_root = dir.path().join("vendor");
+    let crate_dir = vendor_root.join("no-msrv");
+    fs::create_dir_all(crate_dir.join("src")).unwrap();
+    fs::write(
+        crate_dir.join("Cargo.toml"),
+        "[package]\nname = \"no-msrv\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    fs::write(crate_dir.join("src/lib.rs"), "pub fn api() {}\n").unwrap();
+
+    let consumer = dir.path().join("consumer");
+    write_minimal_consumer(&consumer);
+    let baselines = consumer.join(".pedant/baselines");
+
+    let init = run_with_fake_vendor(
+        dir.path(),
+        &consumer,
+        &vendor_root,
+        &[
+            "supply-chain",
+            "init",
+            "--baseline-path",
+            baselines.to_str().unwrap(),
+        ],
+    );
+    assert!(
+        init.status.success(),
+        "init failed: stderr={}",
+        String::from_utf8_lossy(&init.stderr)
+    );
+
+    let baseline_path = baselines.join("cargo/no-msrv/0.1.0.json");
+    let raw = fs::read_to_string(&baseline_path).unwrap();
+    let baseline: AttestationContent = serde_json::from_str(&raw).unwrap();
+    assert!(baseline.rust_version.is_none());
+    assert!(
+        !raw.contains("rust_version"),
+        "baseline JSON should omit rust_version when manifest has none, got: {raw}"
+    );
+}
+
+#[test]
+fn supply_chain_verify_debug_package_reports_rust_version() {
+    let dir = tempfile::tempdir().unwrap();
+    let vendor_root = dir.path().join("vendor");
+    let crate_dir = vendor_root.join("partial-msrv");
+    fs::create_dir_all(crate_dir.join("src")).unwrap();
+    fs::write(
+        crate_dir.join("Cargo.toml"),
+        "[package]\nname = \"partial-msrv\"\nversion = \"0.1.0\"\nedition = \"2024\"\nrust-version = \"1.70\"\n",
+    )
+    .unwrap();
+    fs::write(
+        crate_dir.join("src/lib.rs"),
+        "#[allow(unknown_lints, bare_trait_objects)]\ntype Action = Fn(&u8) + Send + Sync;\n",
+    )
+    .unwrap();
+
+    let consumer = dir.path().join("consumer");
+    write_minimal_consumer(&consumer);
+    let baselines = consumer.join(".pedant/baselines");
+
+    let debug = run_with_fake_vendor(
+        dir.path(),
+        &consumer,
+        &vendor_root,
+        &[
+            "supply-chain",
+            "verify",
+            "--baseline-path",
+            baselines.to_str().unwrap(),
+            "--debug-package",
+            "partial-msrv",
+        ],
+    );
+
+    let stderr = String::from_utf8_lossy(&debug.stderr);
+    assert!(
+        stderr.contains("debug-package: partial-msrv@"),
+        "expected debug output, stderr was: {stderr}"
+    );
+    assert!(
+        stderr.contains("rust-version: 1.70"),
+        "expected rust-version line in debug output, stderr={stderr}"
+    );
+    assert!(
+        stderr.contains("analysis: analyzed_files=0 skipped_files=1"),
+        "expected partial analysis summary, stderr={stderr}"
+    );
+    assert!(
+        stderr.contains("skipped: ./src/lib.rs"),
+        "expected skipped file path, stderr={stderr}"
+    );
+}
+
+#[test]
+fn supply_chain_upgrade_with_partial_analysis_reports_msrv_context() {
+    let dir = tempfile::tempdir().unwrap();
+    let vendor_root = dir.path().join("vendor");
+    let crate_dir = vendor_root.join("msrv-partial");
+    fs::create_dir_all(crate_dir.join("src")).unwrap();
+    fs::write(
+        crate_dir.join("Cargo.toml"),
+        "[package]\nname = \"msrv-partial\"\nversion = \"0.1.0\"\nedition = \"2024\"\nrust-version = \"1.65\"\n",
+    )
+    .unwrap();
+    fs::write(
+        crate_dir.join("src/lib.rs"),
+        "#[allow(unknown_lints, bare_trait_objects)]\ntype Action = Fn(&u8) + Send + Sync;\n",
+    )
+    .unwrap();
+
+    let consumer = dir.path().join("consumer");
+    write_minimal_consumer(&consumer);
+    let baselines = consumer.join(".pedant/baselines");
+
+    let init = run_with_fake_vendor(
+        dir.path(),
+        &consumer,
+        &vendor_root,
+        &[
+            "supply-chain",
+            "init",
+            "--baseline-path",
+            baselines.to_str().unwrap(),
+        ],
+    );
+    assert!(
+        init.status.success(),
+        "init failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&init.stdout),
+        String::from_utf8_lossy(&init.stderr)
+    );
+
+    fs::write(
+        crate_dir.join("Cargo.toml"),
+        "[package]\nname = \"msrv-partial\"\nversion = \"0.2.0\"\nedition = \"2024\"\nrust-version = \"1.70\"\n",
+    )
+    .unwrap();
+    fs::write(
+        crate_dir.join("src/lib.rs"),
+        "#[allow(unknown_lints, bare_trait_objects)]\ntype Action = Fn(&u8) + Send + Sync;\npub fn added() {}\n",
+    )
+    .unwrap();
+
+    let verify = run_with_fake_vendor(
+        dir.path(),
+        &consumer,
+        &vendor_root,
+        &[
+            "supply-chain",
+            "verify",
+            "--baseline-path",
+            baselines.to_str().unwrap(),
+            "--fail-on",
+            "new-capability",
+        ],
+    );
+    let stdout = String::from_utf8_lossy(&verify.stdout);
+    assert!(
+        verify.status.success(),
+        "verify failed: stdout={stdout} stderr={}",
+        String::from_utf8_lossy(&verify.stderr)
+    );
+    assert!(
+        stdout.contains("capability comparison skipped"),
+        "expected incomplete-analysis message, stdout={stdout}"
+    );
+    assert!(
+        stdout.contains("rust-version=1.65"),
+        "expected prior rust-version context, stdout={stdout}"
+    );
+    assert!(
+        stdout.contains("rust-version=1.70"),
+        "expected current rust-version context, stdout={stdout}"
+    );
+    assert!(
+        !stdout.contains("new-capability"),
+        "should not overclaim capability drift, stdout={stdout}"
+    );
+}
+
+#[test]
+fn supply_chain_verify_without_rust_version_keeps_generic_incomplete_message() {
+    let dir = tempfile::tempdir().unwrap();
+    let vendor_root = dir.path().join("vendor");
+    let crate_dir = vendor_root.join("no-msrv-partial");
+    fs::create_dir_all(crate_dir.join("src")).unwrap();
+    fs::write(
+        crate_dir.join("Cargo.toml"),
+        "[package]\nname = \"no-msrv-partial\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    fs::write(
+        crate_dir.join("src/lib.rs"),
+        "#[allow(unknown_lints, bare_trait_objects)]\ntype Action = Fn(&u8) + Send + Sync;\n",
+    )
+    .unwrap();
+
+    let consumer = dir.path().join("consumer");
+    write_minimal_consumer(&consumer);
+    let baselines = consumer.join(".pedant/baselines");
+
+    let verify = run_with_fake_vendor(
+        dir.path(),
+        &consumer,
+        &vendor_root,
+        &[
+            "supply-chain",
+            "verify",
+            "--baseline-path",
+            baselines.to_str().unwrap(),
+        ],
+    );
+    let stdout = String::from_utf8_lossy(&verify.stdout);
+    assert!(
+        stdout.contains("analyzed=0 skipped=1"),
+        "expected generic incomplete summary, stdout={stdout}"
+    );
+    assert!(
+        !stdout.contains("rust-version"),
+        "should not contain rust-version when absent, stdout={stdout}"
     );
 }
 

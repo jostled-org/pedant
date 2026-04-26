@@ -102,6 +102,8 @@ struct CargoPackage {
     version: String,
     #[serde(default = "default_true")]
     autobins: bool,
+    #[serde(default, rename = "rust-version")]
+    rust_version: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
@@ -124,6 +126,7 @@ struct VendoredCrate {
     dir: PathBuf,
     name: Box<str>,
     version: Box<str>,
+    rust_version: Option<Box<str>>,
     entry_files: Box<[PathBuf]>,
     build_script: Option<PathBuf>,
 }
@@ -283,6 +286,7 @@ fn verify_current_workspace(
                 &attestation.version,
                 &attestation.source_files,
                 &attestation.content.source_hash,
+                attestation.content.rust_version.as_deref(),
                 attestation.content.analysis_completeness.as_ref(),
             );
             emitted_debug = true;
@@ -420,6 +424,7 @@ fn build_vendored_crate(
         dir: crate_dir.to_path_buf(),
         name: package.name.clone().into_boxed_str(),
         version: package.version.clone().into_boxed_str(),
+        rust_version: package.rust_version.as_deref().map(Box::<str>::from),
         entry_files,
         build_script,
     })
@@ -692,6 +697,7 @@ fn build_attestation_for_crate(
         analysis_tier: AnalysisTier::Syntactic,
         timestamp,
         analysis_completeness: Some(analysis_completeness),
+        rust_version: crate_info.rust_version.clone(),
         profile,
     };
 
@@ -1008,10 +1014,14 @@ fn emit_debug_package(
     version: &str,
     source_files: &[SourceFileInput],
     source_hash: &str,
+    rust_version: Option<&str>,
     analysis_completeness: Option<&AnalysisCompleteness>,
 ) {
     std::mem::drop(writeln!(stderr, "debug-package: {name}@{version}"));
     std::mem::drop(writeln!(stderr, "source_hash: {source_hash}"));
+    if let Some(version) = rust_version {
+        std::mem::drop(writeln!(stderr, "rust-version: {version}"));
+    }
     if let Some(completeness) = analysis_completeness {
         std::mem::drop(writeln!(
             stderr,
@@ -1233,14 +1243,18 @@ fn completeness_summary(prior: &AttestationContent, current: &AttestationContent
 }
 
 fn attestation_completeness_summary(attestation: &AttestationContent) -> String {
+    let prefix = match attestation.rust_version.as_deref() {
+        Some(version) => format!("rust-version={version} "),
+        None => String::new(),
+    };
     match attestation.analysis_completeness.as_ref() {
         Some(completeness) => format!(
-            "analyzed={} skipped={}{}",
+            "{prefix}analyzed={} skipped={}{}",
             completeness.analyzed_files,
             completeness.skipped_files,
             skipped_path_suffix(completeness)
         ),
-        None => String::from("analysis completeness unavailable"),
+        None => format!("{prefix}analysis completeness unavailable"),
     }
 }
 

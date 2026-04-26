@@ -51,6 +51,10 @@ pub struct AttestationContent {
     /// Whether capability analysis covered all hashed files.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub analysis_completeness: Option<AnalysisCompleteness>,
+    /// Declared `package.rust-version` from the dependency's `Cargo.toml`,
+    /// when available. Populated for Cargo supply-chain attestations only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rust_version: Option<Box<str>>,
     /// Capability findings from the analysis.
     pub profile: CapabilityProfile,
 }

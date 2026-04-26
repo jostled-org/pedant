@@ -113,6 +113,7 @@ fn build_attestation(
         analysis_tier,
         timestamp,
         analysis_completeness: None,
+        rust_version: None,
         profile,
     })
 }

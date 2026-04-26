@@ -449,6 +449,40 @@ fn test_semantic_attestation_tier() {
 }
 
 #[test]
+fn attestation_cli_omits_rust_version_for_regular_cli_attestations() {
+    let output = common::run_subcommand(
+        "attestation",
+        &[
+            "--stdin",
+            "--crate-name",
+            "msrv-omitted",
+            "--crate-version",
+            "0.1.0",
+        ],
+        Some("fn main() {}\n"),
+    );
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let raw = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
+    let attestation: AttestationContent =
+        serde_json::from_str(&raw).expect("should parse as AttestationContent");
+
+    assert!(
+        attestation.rust_version.is_none(),
+        "regular attestation CLI must not populate rust_version"
+    );
+    assert!(
+        !raw.contains("rust_version"),
+        "regular attestation JSON must omit rust_version, got: {raw}"
+    );
+}
+
+#[test]
 fn test_nonsemantic_attestation_tier_unchanged() {
     let output = common::run_subcommand(
         "attestation",

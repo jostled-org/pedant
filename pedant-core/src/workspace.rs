@@ -1,16 +1,25 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Failure encountered while expanding workspace member patterns.
 #[derive(Debug, thiserror::Error)]
 pub enum WorkspaceMemberError {
+    /// A directory listed in (or scanned for) a member pattern could not be read.
     #[error("failed to read directory {path}: {source}")]
     ReadDir {
+        /// The directory that could not be read.
         path: Box<str>,
+        /// The underlying I/O failure.
         #[source]
         source: std::io::Error,
     },
 }
 
+/// Expand workspace `members` patterns into sorted, deduplicated member directories.
+///
+/// Literal entries resolve directly against `workspace_root`; entries containing
+/// `*` are expanded by scanning the filesystem. Only directories containing a
+/// `Cargo.toml` are returned.
 pub fn resolve_workspace_members(
     workspace_root: &Path,
     members: &[Box<str>],

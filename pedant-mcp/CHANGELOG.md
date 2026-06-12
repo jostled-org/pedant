@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0](https://github.com/jostled-org/pedant/compare/pedant-mcp-v0.7.0...pedant-mcp-v0.8.0) - 2026-06-12
+
+### Added
+
+- [**breaking**] record skipped-file analysis errors in attestations
+
 ## [0.7.0](https://github.com/jostled-org/pedant/compare/pedant-mcp-v0.6.1...pedant-mcp-v0.7.0) - 2026-04-25
 
 ### Added

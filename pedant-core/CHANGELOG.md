@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0](https://github.com/jostled-org/pedant/compare/pedant-core-v0.12.0...pedant-core-v0.13.0) - 2026-06-12
+
+### Added
+
+- [**breaking**] record skipped-file analysis errors in attestations
+
+### Other
+
+- *(core)* document workspace member resolution API
+
 ## [0.12.0](https://github.com/jostled-org/pedant/compare/pedant-core-v0.11.1...pedant-core-v0.12.0) - 2026-04-25
 
 ### Added

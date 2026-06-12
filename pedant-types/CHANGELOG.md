@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0](https://github.com/jostled-org/pedant/compare/pedant-types-v0.11.0...pedant-types-v0.12.0) - 2026-06-12
+
+### Added
+
+- [**breaking**] record skipped-file analysis errors in attestations
+- *(supply-chain)* [**breaking**] surface rust-version in cargo attestations
+
 ## [0.11.0](https://github.com/jostled-org/pedant/compare/pedant-types-v0.10.1...pedant-types-v0.11.0) - 2026-04-25
 
 ### Fixed

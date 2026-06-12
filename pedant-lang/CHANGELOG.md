@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0](https://github.com/jostled-org/pedant/compare/pedant-lang-v0.1.2...pedant-lang-v0.2.0) - 2026-06-12
+
+### Added
+
+- [**breaking**] record skipped-file analysis errors in attestations
+
 ## [0.1.2](https://github.com/jostled-org/pedant/compare/pedant-lang-v0.1.1...pedant-lang-v0.1.2) - 2026-04-25
 
 ### Other

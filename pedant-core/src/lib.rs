@@ -40,6 +40,8 @@ pub mod pattern;
 pub mod style;
 /// The `Violation` type, display formatting, and check rationale.
 pub mod violation;
+/// Cargo workspace member expansion helpers shared by CLI consumers.
+pub mod workspace;
 
 pub use analysis_result::AnalysisResult;
 pub use check_config::{
@@ -55,6 +57,7 @@ pub use lint::{
     discover_build_script, discover_workspace_root, lint_file, lint_str,
 };
 pub use violation::{CheckRationale, Violation, ViolationType, lookup_rationale};
+pub use workspace::{WorkspaceMemberError, resolve_workspace_members};
 
 /// Alias for `syn::Error`, used by consumers that call [`analyze`] directly.
 pub use syn::Error as ParseError;

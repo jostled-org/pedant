@@ -3,7 +3,7 @@ use std::path::Path;
 
 use pedant_core::Config;
 use pedant_mcp::index::{WorkspaceIndex, discover_workspace_root};
-use pedant_types::Capability;
+use pedant_types::{AnalysisTier, Capability};
 
 fn fixture_path(name: &str) -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -117,6 +117,36 @@ fn make_glob_workspace() -> tempfile::TempDir {
     tmp
 }
 
+fn make_nested_glob_workspace() -> tempfile::TempDir {
+    let tmp = tempfile::tempdir().unwrap();
+    write_file(
+        &tmp.path().join("Cargo.toml"),
+        "[workspace]\nmembers = [\"crates/*/member\"]\n",
+    );
+    for crate_dir in [
+        tmp.path().join("crates/alpha/member"),
+        tmp.path().join("crates/beta/member"),
+        tmp.path().join("crates/beta/other"),
+    ] {
+        fs::create_dir_all(crate_dir.join("src")).unwrap();
+    }
+    for (crate_dir, crate_name) in [
+        (tmp.path().join("crates/alpha/member"), "alpha-member"),
+        (tmp.path().join("crates/beta/member"), "beta-member"),
+        (tmp.path().join("crates/beta/other"), "beta-other"),
+    ] {
+        write_file(
+            &crate_dir.join("Cargo.toml"),
+            &format!(
+                "[package]\nname = \"{crate_name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n"
+            ),
+        );
+        write_file(&crate_dir.join("src/lib.rs"), "pub fn marker() {}\n");
+    }
+    fs::create_dir_all(tmp.path().join("unrelated/deep/tree/that/should/not/match")).unwrap();
+    tmp
+}
+
 #[test]
 fn test_index_discovers_workspace_crates() {
     let root = fixture_path("multi_crate");
@@ -211,6 +241,25 @@ fn test_index_builds_glob_workspace_member_patterns() {
 
     let names: Box<[&str]> = index.crate_names().collect::<Vec<_>>().into_boxed_slice();
     assert_eq!(&*names, &["fs-util", "http-util"]);
+}
+
+#[test]
+fn test_index_builds_nested_glob_workspace_member_patterns() {
+    let root = make_nested_glob_workspace();
+    let config = Config::default();
+    let index = WorkspaceIndex::build(root.path(), &config, None).unwrap();
+
+    let names: Box<[&str]> = index.crate_names().collect::<Vec<_>>().into_boxed_slice();
+    assert_eq!(&*names, &["alpha-member", "beta-member"]);
+}
+
+#[test]
+fn test_index_reports_typed_syntactic_tier() {
+    let root = fixture_path("multi_crate");
+    let config = Config::default();
+    let index = WorkspaceIndex::build(&root, &config, None).unwrap();
+
+    assert_eq!(index.crate_tier("lib-a"), AnalysisTier::Syntactic);
 }
 
 #[test]

@@ -46,11 +46,6 @@ impl FileClassification {
             Self::Rust | Self::Unsupported | Self::Manifest => None,
         }
     }
-
-    /// Whether this classification includes manifest analysis.
-    pub fn analyzes_manifest(self) -> bool {
-        matches!(self, Self::Manifest | Self::SourceAndManifest(_))
-    }
 }
 
 /// Classify a path for non-Rust source and manifest analysis.

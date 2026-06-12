@@ -7,7 +7,7 @@ use std::path::Path;
 
 use pedant_core::gate::GateVerdict;
 use pedant_core::{AnalysisResult, Config, GateConfig, SemanticContext};
-use pedant_types::CapabilityProfile;
+use pedant_types::{AnalysisTier, CapabilityProfile};
 use thiserror::Error;
 
 use crate_index::{
@@ -146,16 +146,12 @@ impl WorkspaceIndex {
     }
 
     /// Analysis tier based on whether semantic context was loaded and data flows detected.
-    pub fn crate_tier(&self, name: &str) -> &'static str {
+    pub fn crate_tier(&self, name: &str) -> AnalysisTier {
         let has_flows = self
             .crates
             .get(name)
             .is_some_and(|c| c.files.values().any(|r| !r.data_flows.is_empty()));
-        match (has_flows, self.semantic_available) {
-            (true, _) => "data_flow",
-            (false, true) => "semantic",
-            (false, false) => "syntactic",
-        }
+        workspace::crate_tier(has_flows, self.semantic_available)
     }
 
     /// Yield every crate with its gate verdicts.

@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use pedant_core::AnalysisResult;
 use pedant_core::SemanticContext;
@@ -20,7 +20,12 @@ type AnalyzeFn = fn(
     Option<&SemanticContext>,
 ) -> Result<AnalysisResult, pedant_core::ParseError>;
 
-type FileAnalysis<'a> = (AnalyzeFn, Option<&'a SemanticContext>);
+struct RustAnalysisPlan<'a> {
+    analyze_fn: AnalyzeFn,
+    semantic: Option<&'a SemanticContext>,
+    crate_root: Option<Box<Path>>,
+    build_script: Option<PathBuf>,
+}
 
 pub(crate) struct AnalysisContext<'a> {
     pub(crate) base_config: &'a CheckConfig,
@@ -237,14 +242,23 @@ fn analyze_file_list(
         let path = Path::new(file_path.as_str());
         match pedant_lang::classify_path(path) {
             FileClassification::SourceAndManifest(lang) => {
-                analyze_non_rust_file(file_path, path, lang, acc, stderr);
-                analyze_manifest_file(file_path, path, acc, stderr);
+                let Some(source) = read_source(file_path, acc, stderr) else {
+                    continue;
+                };
+                analyze_non_rust_source(path, &source, lang, acc);
+                analyze_manifest_source(path, &source, acc);
             }
             FileClassification::Source(lang) => {
-                analyze_non_rust_file(file_path, path, lang, acc, stderr);
+                let Some(source) = read_source(file_path, acc, stderr) else {
+                    continue;
+                };
+                analyze_non_rust_source(path, &source, lang, acc);
             }
             FileClassification::Manifest => {
-                analyze_manifest_file(file_path, path, acc, stderr);
+                let Some(source) = read_source(file_path, acc, stderr) else {
+                    continue;
+                };
+                analyze_manifest_source(path, &source, acc);
             }
             FileClassification::Unsupported => {}
             FileClassification::Rust => {
@@ -274,7 +288,7 @@ fn analyze_rust_file(
     let Some(cfg) = ctx.base_config.resolve_for_path(file_path, ctx.file_config) else {
         return;
     };
-    let (analyze_fn, semantic) = match classify_rust_analysis(file_path, ctx.semantic) {
+    let plan = match classify_rust_analysis(file_path, ctx.semantic) {
         Ok(classification) => classification,
         Err(error) => {
             crate::report_error(stderr, format_args!("build script discovery: {error}"));
@@ -284,17 +298,17 @@ fn analyze_rust_file(
     };
     analyze_single_file(
         file_path,
-        analyze_fn,
+        plan.analyze_fn,
         &cfg,
-        semantic,
+        plan.semantic,
         reborrow_sources(&mut sources),
         acc,
         stderr,
     );
     if let Err(error) = discover_and_analyze_build_script(
-        file_path,
         cli_files,
         &cfg,
+        &plan,
         sources,
         seen_build_roots,
         acc,
@@ -305,30 +319,18 @@ fn analyze_rust_file(
     }
 }
 
-fn analyze_non_rust_file(
-    file_path: &str,
+fn analyze_non_rust_source(
     path: &Path,
+    source: &str,
     language: Language,
     acc: &mut AnalysisAccumulator,
-    stderr: &mut impl Write,
 ) {
-    let Some(source) = read_source(file_path, acc, stderr) else {
-        return;
-    };
-    let profile = pedant_lang::analyze_file(path, &source, language);
+    let profile = pedant_lang::analyze_file(path, source, language);
     acc.findings.extend(profile.findings.into_vec());
 }
 
-fn analyze_manifest_file(
-    file_path: &str,
-    path: &Path,
-    acc: &mut AnalysisAccumulator,
-    stderr: &mut impl Write,
-) {
-    let Some(source) = read_source(file_path, acc, stderr) else {
-        return;
-    };
-    let profile = pedant_lang::analyze_manifest(path, &source);
+fn analyze_manifest_source(path: &Path, source: &str, acc: &mut AnalysisAccumulator) {
+    let profile = pedant_lang::analyze_manifest(path, source);
     acc.findings.extend(profile.findings.into_vec());
 }
 
@@ -351,10 +353,39 @@ fn read_source(
 fn classify_rust_analysis<'a>(
     file_path: &str,
     semantic: Option<&'a SemanticContext>,
-) -> Result<FileAnalysis<'a>, ProcessError> {
-    match is_explicit_build_script(file_path)? {
-        true => Ok((analyze_build_script, None)),
-        false => Ok((analyze, semantic)),
+) -> Result<RustAnalysisPlan<'a>, ProcessError> {
+    let Some(crate_root) = find_crate_root(file_path) else {
+        return Ok(RustAnalysisPlan {
+            analyze_fn: analyze,
+            semantic,
+            crate_root: None,
+            build_script: None,
+        });
+    };
+
+    let build_script =
+        discover_build_script(crate_root).map_err(|source| ProcessError::BuildScriptDiscovery {
+            crate_root: crate_root.display().to_string().into_boxed_str(),
+            source,
+        })?;
+    let is_build_script = match build_script.as_deref() {
+        Some(build_path) => paths_match(Path::new(file_path), build_path),
+        None => false,
+    };
+
+    match is_build_script {
+        true => Ok(RustAnalysisPlan {
+            analyze_fn: analyze_build_script,
+            semantic: None,
+            crate_root: Some(Box::from(crate_root)),
+            build_script,
+        }),
+        false => Ok(RustAnalysisPlan {
+            analyze_fn: analyze,
+            semantic,
+            crate_root: Some(Box::from(crate_root)),
+            build_script,
+        }),
     }
 }
 
@@ -369,22 +400,6 @@ fn find_crate_root(file_path: &str) -> Option<&Path> {
     }
 }
 
-fn is_explicit_build_script(file_path: &str) -> Result<bool, ProcessError> {
-    let Some(crate_root) = find_crate_root(file_path) else {
-        return Ok(false);
-    };
-    let Some(build_path) =
-        discover_build_script(crate_root).map_err(|source| ProcessError::BuildScriptDiscovery {
-            crate_root: crate_root.display().to_string().into_boxed_str(),
-            source,
-        })?
-    else {
-        return Ok(false);
-    };
-
-    Ok(paths_match(Path::new(file_path), &build_path))
-}
-
 fn paths_match(left: &Path, right: &Path) -> bool {
     match (left.canonicalize(), right.canonicalize()) {
         (Ok(canonical_left), Ok(canonical_right)) => canonical_left == canonical_right,
@@ -393,36 +408,29 @@ fn paths_match(left: &Path, right: &Path) -> bool {
 }
 
 fn discover_and_analyze_build_script(
-    file_path: &str,
     cli_files: &[String],
     config: &CheckConfig,
+    plan: &RustAnalysisPlan<'_>,
     sources: Option<&mut BTreeMap<Box<str>, String>>,
     seen_roots: &mut BTreeSet<Box<Path>>,
     acc: &mut AnalysisAccumulator,
     stderr: &mut impl Write,
 ) -> Result<(), ProcessError> {
-    let Some(crate_root) = find_crate_root(file_path) else {
+    let Some(crate_root) = plan.crate_root.as_deref() else {
         return Ok(());
     };
     if seen_roots.contains(crate_root) {
         return Ok(());
     }
     seen_roots.insert(Box::from(crate_root));
-    let build_path = match discover_build_script(crate_root) {
-        Ok(Some(path)) => path,
-        Ok(None) => return Ok(()),
-        Err(source) => {
-            return Err(ProcessError::BuildScriptDiscovery {
-                crate_root: crate_root.display().to_string().into_boxed_str(),
-                source,
-            });
-        }
+    let Some(build_path) = plan.build_script.as_ref() else {
+        return Ok(());
     };
     let build_path_label = build_path.to_string_lossy().into_owned();
     // Skip if the build script is already in the CLI file list.
     if cli_files
         .iter()
-        .any(|file| paths_match(Path::new(file), &build_path))
+        .any(|file| paths_match(Path::new(file), build_path))
     {
         return Ok(());
     }

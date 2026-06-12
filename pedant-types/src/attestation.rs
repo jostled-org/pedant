@@ -24,6 +24,9 @@ pub struct AnalysisCompleteness {
     /// Relative paths of hashed files that could not be analyzed.
     #[serde(default, skip_serializing_if = "<[Box<str>]>::is_empty")]
     pub skipped_paths: Box<[Box<str>]>,
+    /// Per-file analysis failures for hashed files that were skipped.
+    #[serde(default, skip_serializing_if = "<[SkippedAnalysis]>::is_empty")]
+    pub skipped_details: Box<[SkippedAnalysis]>,
 }
 
 impl AnalysisCompleteness {
@@ -31,6 +34,15 @@ impl AnalysisCompleteness {
     pub fn is_complete(&self) -> bool {
         self.skipped_files == 0
     }
+}
+
+/// A hashed file that capability analysis skipped, with the cause.
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+pub struct SkippedAnalysis {
+    /// Relative path of the hashed file.
+    pub path: Box<str>,
+    /// Human-readable reason the file could not be analyzed.
+    pub error: Box<str>,
 }
 
 /// Signed attestation binding a source hash to its capability profile.

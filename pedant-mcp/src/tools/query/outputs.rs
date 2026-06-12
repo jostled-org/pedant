@@ -1,6 +1,6 @@
 use pedant_core::gate::GateSeverity;
 use pedant_core::ir::DataFlowFact;
-use pedant_types::{Capability, CapabilityFinding, ExecutionContext, Language};
+use pedant_types::{AnalysisTier, Capability, CapabilityFinding, ExecutionContext, Language};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -48,7 +48,7 @@ pub(super) struct DataFlowOutput<'a> {
 #[derive(Serialize)]
 pub(super) struct AuditOutput<'a> {
     pub(super) crate_name: &'a str,
-    pub(super) tier: &'a str,
+    pub(super) tier: AnalysisTier,
     pub(super) degraded_files: Box<[DegradedFileOutput<'a>]>,
     pub(super) capabilities: Box<[FindingOutput<'a>]>,
     pub(super) gate_verdicts: Box<[VerdictOutput<'a>]>,

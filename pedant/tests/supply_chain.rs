@@ -205,6 +205,38 @@ fn supply_chain_verify_reports_missing_baseline() {
 }
 
 #[test]
+fn supply_chain_verify_fail_on_none_does_not_fail() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_test_crate(root);
+    generate_lockfile(root);
+
+    let baselines = root.join(".pedant/baselines");
+    let verify = common::run_pedant_in(
+        root,
+        &[
+            "supply-chain",
+            "verify",
+            "--baseline-path",
+            baselines.to_str().unwrap(),
+            "--fail-on",
+            "none",
+        ],
+        None,
+    );
+
+    assert!(
+        verify.status.success(),
+        "verify failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&verify.stdout),
+        String::from_utf8_lossy(&verify.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&verify.stdout);
+    assert!(stdout.contains("new-dependency") || stdout.contains("capabilities:"));
+}
+
+#[test]
 fn supply_chain_verify_debug_package_emits_hashed_inputs() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
@@ -362,6 +394,23 @@ fn supply_chain_init_and_verify_ignore_parse_failures_in_vendored_targets() {
         String::from_utf8_lossy(&init.stderr)
     );
 
+    let baseline_path = baselines.join("cargo/parse-failing-dep/0.1.0.json");
+    let baseline: AttestationContent =
+        serde_json::from_str(&fs::read_to_string(&baseline_path).unwrap()).unwrap();
+    let completeness = baseline.analysis_completeness.as_ref().unwrap();
+    assert_eq!(completeness.skipped_details.len(), 1);
+    assert_eq!(
+        completeness.skipped_details[0].path.as_ref(),
+        "./src/lib.rs"
+    );
+    assert!(
+        completeness.skipped_details[0]
+            .error
+            .contains("expected `;`"),
+        "expected persisted parse failure reason, got {:?}",
+        completeness.skipped_details[0].error
+    );
+
     let verify = run_with_fake_vendor(
         dir.path(),
         &workspace,
@@ -401,6 +450,10 @@ fn supply_chain_init_and_verify_ignore_parse_failures_in_vendored_targets() {
     assert!(
         stderr.contains("skipped: ./src/lib.rs"),
         "expected skipped file path, stderr={stderr}"
+    );
+    assert!(
+        stderr.contains("error: expected `;`"),
+        "expected skipped file reason, stderr={stderr}"
     );
 }
 
@@ -870,6 +923,11 @@ fn supply_chain_init_persists_rust_version_in_baseline() {
         baseline.analysis_completeness.is_some(),
         "analysis_completeness must remain populated"
     );
+    let completeness = baseline.analysis_completeness.as_ref().unwrap();
+    assert!(
+        completeness.skipped_details.is_empty(),
+        "complete baseline should not record skipped_details"
+    );
 }
 
 #[test]
@@ -967,6 +1025,10 @@ fn supply_chain_verify_debug_package_reports_rust_version() {
     assert!(
         stderr.contains("skipped: ./src/lib.rs"),
         "expected skipped file path, stderr={stderr}"
+    );
+    assert!(
+        stderr.contains("error: expected `;`"),
+        "expected skipped file reason, stderr={stderr}"
     );
 }
 

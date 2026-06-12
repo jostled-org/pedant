@@ -25,17 +25,6 @@ pub enum FailOn {
     None,
 }
 
-impl FailOn {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::HashMismatch => "hash-mismatch",
-            Self::NewCapability => "new-capability",
-            Self::NewDependency => "new-dependency",
-            Self::None => "none",
-        }
-    }
-}
-
 /// Top-level CLI.
 #[derive(Parser, Debug)]
 #[command(name = "pedant")]

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use pedant_types::{
     AnalysisCompleteness, AnalysisTier, AttestationContent, Capability, CapabilityDiff,
     CapabilityFinding, CapabilityProfile, ExecutionContext, FindingOrigin, Language,
-    SourceLocation,
+    SkippedAnalysis, SourceLocation,
 };
 
 fn sample_finding(capability: Capability, file: &str, line: usize) -> CapabilityFinding {
@@ -135,6 +135,7 @@ fn attestation_round_trip() {
             analyzed_files: 1,
             skipped_files: 0,
             skipped_paths: Box::default(),
+            skipped_details: Box::default(),
         }),
         rust_version: None,
         profile: CapabilityProfile {
@@ -192,6 +193,11 @@ fn analysis_completeness_round_trip() {
         analyzed_files: 2,
         skipped_files: 1,
         skipped_paths: vec![Box::from("./src/lib.rs")].into_boxed_slice(),
+        skipped_details: vec![SkippedAnalysis {
+            path: Box::from("./src/lib.rs"),
+            error: Box::from("expected ';'"),
+        }]
+        .into_boxed_slice(),
     };
     let json = serde_json::to_string(&completeness).unwrap();
     let back: AnalysisCompleteness = serde_json::from_str(&json).unwrap();

@@ -1330,6 +1330,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "syn",
+ "tempfile",
  "thiserror",
  "toml 1.1.0+spec-1.1.0",
 ]

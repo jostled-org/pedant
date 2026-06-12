@@ -288,6 +288,7 @@ fn test_audit_crate() {
         audit.get("tier").is_some(),
         "expected tier in audit: {text}"
     );
+    assert_eq!(audit["tier"], "syntactic");
 }
 
 // ---------------------------------------------------------------------------
@@ -411,7 +412,7 @@ fn test_tools_list_contains_all_security_tools() {
 // Duplicate detection helpers
 // ---------------------------------------------------------------------------
 
-fn group_fn_names<'a>(group: &'a serde_json::Value) -> Box<[&'a str]> {
+fn group_fn_names(group: &serde_json::Value) -> Box<[&str]> {
     group["functions"]
         .as_array()
         .map(|fns| {
@@ -445,7 +446,7 @@ fn test_find_structural_duplicates_exact_match() {
     // Should find a group containing process_items and process_widgets
     let has_exact_pair = groups.iter().any(|g| {
         let names = group_fn_names(g);
-        names.iter().any(|n| *n == "process_items") && names.iter().any(|n| *n == "process_widgets")
+        names.contains(&"process_items") && names.contains(&"process_widgets")
     });
     assert!(
         has_exact_pair,
@@ -475,9 +476,9 @@ fn test_find_structural_duplicates_parametric_match() {
     // Should find a skeleton group containing all three: process_items, process_widgets, handle_items
     let has_skeleton_group = groups.iter().any(|g| {
         let names = group_fn_names(g);
-        names.iter().any(|n| *n == "process_items")
-            && names.iter().any(|n| *n == "process_widgets")
-            && names.iter().any(|n| *n == "handle_items")
+        names.contains(&"process_items")
+            && names.contains(&"process_widgets")
+            && names.contains(&"handle_items")
     });
     assert!(
         has_skeleton_group,
@@ -487,7 +488,7 @@ fn test_find_structural_duplicates_parametric_match() {
     // handle_items should have a different exact_hash than process_items
     let skeleton_group = groups
         .iter()
-        .find(|g| group_fn_names(g).iter().any(|n| *n == "handle_items"))
+        .find(|g| group_fn_names(g).contains(&"handle_items"))
         .expect("expected group containing handle_items");
 
     let exact_subgroups = skeleton_group["exact_subgroups"]
@@ -521,7 +522,7 @@ fn test_find_structural_duplicates_filters_trivial() {
     // get_name is a trivial getter — should not appear in any group
     let has_trivial = groups
         .iter()
-        .any(|g| group_fn_names(g).iter().any(|n| *n == "get_name"));
+        .any(|g| group_fn_names(g).contains(&"get_name"));
     assert!(
         !has_trivial,
         "trivial getter get_name should be filtered out: {text}"

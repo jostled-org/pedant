@@ -17,8 +17,9 @@ use ra_ap_syntax::{AstNode, SyntaxKind, ast};
 
 use super::super::facts::DataFlowFact;
 use super::common::{FnContext, ParsedFile, display_target_for_file, format_type};
+use super::context::FnEntry;
 use super::function_summary::{FlowRange, FunctionAnalysisSummary, FunctionSummaryData};
-use super::{FnEntry, concurrency, perf, quality, reachability};
+use super::{concurrency, perf, quality, reachability};
 
 /// Cached file-level semantic analysis.
 ///

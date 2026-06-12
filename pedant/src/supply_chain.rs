@@ -10,9 +10,10 @@ use std::time::SystemTime;
 use pedant_core::check_config::CheckConfig;
 use pedant_core::hash::compute_source_hash;
 use pedant_core::lint::{analyze, analyze_build_script, discover_build_script};
+use pedant_core::{WorkspaceMemberError, resolve_workspace_members as expand_workspace_members};
 use pedant_types::{
     AnalysisCompleteness, AnalysisTier, AttestationContent, Capability, CapabilityDiff,
-    CapabilityProfile,
+    CapabilityProfile, SkippedAnalysis,
 };
 use semver::Version;
 use serde::Deserialize;
@@ -146,7 +147,7 @@ struct SourceFileInput {
 
 struct CollectedSourceInput {
     path: Arc<str>,
-    source: String,
+    source: Box<str>,
     bytes: usize,
     digest: Box<str>,
     is_build_script: bool,
@@ -178,6 +179,19 @@ impl FindingLevel {
             Self::NewDependency => "::notice::",
             Self::AnalysisIncomplete => "::notice::",
         }
+    }
+
+    fn severity_rank(self) -> usize {
+        match self {
+            Self::HashMismatch => 3,
+            Self::NewCapability => 2,
+            Self::NewDependency => 1,
+            Self::AnalysisIncomplete => 0,
+        }
+    }
+
+    fn status_rank(self) -> usize {
+        self.severity_rank() + 1
     }
 }
 
@@ -392,7 +406,9 @@ fn collect_workspace_member_crates(
     members: &[Box<str>],
 ) -> Result<Vec<VendoredCrate>, SupplyChainError> {
     let mut crates = Vec::new();
-    for member_dir in resolve_workspace_members(workspace_root, members)? {
+    for member_dir in
+        expand_workspace_members(workspace_root, members).map_err(map_workspace_member_error)?
+    {
         let manifest_path = member_dir.join("Cargo.toml");
         if !manifest_path.is_file() {
             continue;
@@ -522,153 +538,11 @@ fn missing_package_section(crate_dir: &Path) -> SupplyChainError {
     }
 }
 
-fn resolve_workspace_members(
-    workspace_root: &Path,
-    members: &[Box<str>],
-) -> Result<Vec<PathBuf>, SupplyChainError> {
-    let mut dirs: Vec<PathBuf> = members
-        .iter()
-        .map(|member| expand_member(workspace_root, member))
-        .collect::<Result<Vec<_>, _>>()?
-        .into_iter()
-        .flatten()
-        .filter(|path| path.join("Cargo.toml").is_file())
-        .collect();
-    dirs.sort();
-    dirs.dedup();
-    Ok(dirs)
-}
-
-fn expand_member(workspace_root: &Path, member: &str) -> Result<Vec<PathBuf>, SupplyChainError> {
-    match member.contains('*') {
-        true => expand_glob_member(workspace_root, member),
-        false => Ok(vec![workspace_root.join(member)]),
-    }
-}
-
-fn expand_glob_member(
-    workspace_root: &Path,
-    member: &str,
-) -> Result<Vec<PathBuf>, SupplyChainError> {
-    let max_depth = member_path_segments(member).len();
-    let mut matches = Vec::new();
-    collect_matching_dirs(
-        workspace_root,
-        workspace_root,
-        member,
-        max_depth,
-        &mut matches,
-    )?;
-    Ok(matches)
-}
-
-fn collect_matching_dirs(
-    workspace_root: &Path,
-    current_dir: &Path,
-    member: &str,
-    max_depth: usize,
-    matches: &mut Vec<PathBuf>,
-) -> Result<(), SupplyChainError> {
-    for entry in read_dir_sorted(current_dir)? {
-        let path = entry.path();
-        match (
-            path.is_dir(),
-            relative_depth(workspace_root, &path) < max_depth,
-        ) {
-            (true, true) => {
-                add_matching_dir(workspace_root, &path, member, matches);
-                collect_matching_dirs(workspace_root, &path, member, max_depth, matches)?;
-            }
-            (true, false) => add_matching_dir(workspace_root, &path, member, matches),
-            (false, _) => continue,
+fn map_workspace_member_error(error: WorkspaceMemberError) -> SupplyChainError {
+    match error {
+        WorkspaceMemberError::ReadDir { path, source } => {
+            SupplyChainError::ReadDir { path, source }
         }
-    }
-    Ok(())
-}
-
-fn add_matching_dir(workspace_root: &Path, path: &Path, member: &str, matches: &mut Vec<PathBuf>) {
-    if matches_member_pattern(workspace_root, path, member) {
-        matches.push(path.to_path_buf());
-    }
-}
-
-fn relative_depth(workspace_root: &Path, path: &Path) -> usize {
-    path.strip_prefix(workspace_root)
-        .ok()
-        .map(path_component_count)
-        .unwrap_or(0)
-}
-
-fn matches_member_pattern(workspace_root: &Path, path: &Path, member: &str) -> bool {
-    let relative = match path.strip_prefix(workspace_root) {
-        Ok(relative) => relative,
-        Err(_) => return false,
-    };
-    let path_segments = path_segments(relative);
-    let member_segments = member_path_segments(member);
-    match path_segments.len() == member_segments.len() {
-        true => path_segments
-            .iter()
-            .zip(member_segments.iter())
-            .all(|(path_segment, member_segment)| segment_matches(path_segment, member_segment)),
-        false => false,
-    }
-}
-
-fn path_component_count(path: &Path) -> usize {
-    path.components().count()
-}
-
-fn path_segments(path: &Path) -> Vec<Box<str>> {
-    path.iter()
-        .map(|segment| segment.to_string_lossy().into_owned().into_boxed_str())
-        .collect()
-}
-
-fn member_path_segments(member: &str) -> Vec<&str> {
-    member
-        .split('/')
-        .filter(|segment| !segment.is_empty())
-        .collect()
-}
-
-fn segment_matches(path_segment: &str, pattern_segment: &str) -> bool {
-    let parts = pattern_segment.split('*').collect::<Vec<_>>();
-    match parts.len() {
-        1 => path_segment == pattern_segment,
-        _ => wildcard_segment_matches(path_segment, &parts, pattern_segment.starts_with('*')),
-    }
-}
-
-fn wildcard_segment_matches(
-    path_segment: &str,
-    parts: &[&str],
-    starts_with_wildcard: bool,
-) -> bool {
-    let mut remaining = path_segment;
-    for (index, part) in parts.iter().enumerate() {
-        if part.is_empty() {
-            continue;
-        }
-        let found = match (index == 0, starts_with_wildcard) {
-            (true, false) => remaining.strip_prefix(part),
-            _ => remaining
-                .find(part)
-                .map(|offset| &remaining[offset + part.len()..]),
-        };
-        match found {
-            Some(next) => remaining = next,
-            None => return false,
-        }
-    }
-    pattern_segment_ends_with_wildcard(parts, remaining)
-}
-
-fn pattern_segment_ends_with_wildcard(parts: &[&str], remaining: &str) -> bool {
-    match parts.last() {
-        Some(&"") => true,
-        Some(_) => remaining.is_empty(),
-        None => false,
     }
 }
 
@@ -721,12 +595,14 @@ fn collect_source_inputs(
                 path: disk_path.display().to_string().into_boxed_str(),
                 source,
             })?;
+        let bytes = source.len();
+        let digest = sha256_hex(source.as_bytes());
         collected.push(CollectedSourceInput {
             path: Arc::clone(relative_path),
-            bytes: source.len(),
-            digest: sha256_hex(source.as_bytes()),
+            bytes,
+            digest,
             is_build_script: is_build_script_path(&disk_path, crate_info.build_script.as_deref()),
-            source,
+            source: source.into_boxed_str(),
         });
     }
     Ok(collected)
@@ -735,7 +611,7 @@ fn collect_source_inputs(
 fn compute_hashed_source(collected_sources: &[CollectedSourceInput]) -> Box<str> {
     let sources = collected_sources
         .iter()
-        .map(|source| (Arc::clone(&source.path), source.source.as_str()))
+        .map(|source| (Arc::clone(&source.path), source.source.as_ref()))
         .collect::<BTreeMap<_, _>>();
     compute_source_hash(&sources)
 }
@@ -757,17 +633,27 @@ fn analyze_source_inputs(
 ) -> (CapabilityProfile, AnalysisCompleteness) {
     let mut findings = Vec::new();
     let mut analyzed_files = 0;
-    let mut skipped_paths = Vec::new();
+    let mut skipped_details = Vec::new();
 
     for source in collected_sources {
         match analyze_supply_chain_source(&source.path, &source.source, source.is_build_script) {
-            Some(capabilities) => {
+            Ok(capabilities) => {
                 analyzed_files += 1;
                 findings.extend(capabilities.findings.into_vec());
             }
-            None => skipped_paths.push(Box::from(source.path.as_ref())),
+            Err(error) => {
+                skipped_details.push(SkippedAnalysis {
+                    path: Box::from(source.path.as_ref()),
+                    error,
+                });
+            }
         }
     }
+
+    let skipped_paths = skipped_details
+        .iter()
+        .map(|detail| detail.path.clone())
+        .collect::<Vec<_>>();
 
     (
         CapabilityProfile {
@@ -777,6 +663,7 @@ fn analyze_source_inputs(
             analyzed_files,
             skipped_files: skipped_paths.len(),
             skipped_paths: skipped_paths.into_boxed_slice(),
+            skipped_details: skipped_details.into_boxed_slice(),
         },
     )
 }
@@ -827,14 +714,14 @@ fn analyze_supply_chain_source(
     relative_path: &str,
     source: &str,
     is_build_script: bool,
-) -> Option<CapabilityProfile> {
+) -> Result<CapabilityProfile, Box<str>> {
     let result = match is_build_script {
         true => analyze_build_script(relative_path, source, &CheckConfig::default(), None),
         false => analyze(relative_path, source, &CheckConfig::default(), None),
     };
     match result {
-        Ok(result) => Some(result.capabilities),
-        Err(_) => None,
+        Ok(result) => Ok(result.capabilities),
+        Err(error) => Err(error.to_string().into_boxed_str()),
     }
 }
 
@@ -1023,12 +910,28 @@ fn emit_debug_package(
         std::mem::drop(writeln!(stderr, "rust-version: {version}"));
     }
     if let Some(completeness) = analysis_completeness {
+        let detailed_paths = completeness
+            .skipped_details
+            .iter()
+            .map(|detail| detail.path.as_ref())
+            .collect::<BTreeSet<_>>();
         std::mem::drop(writeln!(
             stderr,
             "analysis: analyzed_files={} skipped_files={}",
             completeness.analyzed_files, completeness.skipped_files
         ));
-        for skipped_path in &completeness.skipped_paths {
+        for skipped in &completeness.skipped_details {
+            std::mem::drop(writeln!(
+                stderr,
+                "skipped: {} error: {}",
+                skipped.path, skipped.error
+            ));
+        }
+        for skipped_path in completeness
+            .skipped_paths
+            .iter()
+            .filter(|path| !detailed_paths.contains(path.as_ref()))
+        {
             std::mem::drop(writeln!(stderr, "skipped: {skipped_path}"));
         }
     }
@@ -1259,10 +1162,24 @@ fn attestation_completeness_summary(attestation: &AttestationContent) -> String 
 }
 
 fn skipped_path_suffix(completeness: &AnalysisCompleteness) -> String {
-    if completeness.skipped_paths.is_empty() {
-        return String::new();
+    let mut suffix = String::new();
+    if !completeness.skipped_paths.is_empty() {
+        suffix.push_str(&format!(
+            " skipped_paths={}",
+            completeness.skipped_paths.join(", ")
+        ));
     }
-    format!(" skipped_paths={}", completeness.skipped_paths.join(", "))
+    if completeness.skipped_details.is_empty() {
+        return suffix;
+    }
+    let details = completeness
+        .skipped_details
+        .iter()
+        .map(|detail| format!("{}:{}", detail.path, detail.error))
+        .collect::<Vec<_>>()
+        .join(", ");
+    suffix.push_str(&format!(" skipped_errors={details}"));
+    suffix
 }
 
 fn capability_names(capabilities: &[Capability]) -> String {
@@ -1378,34 +1295,22 @@ fn overall_status(findings: &[ReportFinding]) -> &'static str {
     findings
         .iter()
         .map(|finding| finding.level)
-        .max_by_key(|level| status_rank(level.as_str()))
+        .max_by_key(|level| level.status_rank())
         .map(|level| level.as_str())
         .unwrap_or("clean")
 }
 
 fn should_fail(findings: &[ReportFinding], fail_on: FailOn) -> bool {
-    let threshold = severity_rank(fail_on.as_str());
-    findings
-        .iter()
-        .any(|finding| severity_rank(finding.level.as_str()) >= threshold && threshold > 0)
-}
-
-fn severity_rank(level: &str) -> usize {
-    match level {
-        "hash-mismatch" => 3,
-        "new-capability" => 2,
-        "new-dependency" => 1,
-        "analysis-incomplete" => 0,
-        _ => 0,
-    }
-}
-
-fn status_rank(level: &str) -> usize {
-    match level {
-        "hash-mismatch" => 4,
-        "new-capability" => 3,
-        "new-dependency" => 2,
-        "analysis-incomplete" => 1,
-        _ => 0,
+    let threshold = match fail_on {
+        FailOn::HashMismatch => 3,
+        FailOn::NewCapability => 2,
+        FailOn::NewDependency => 1,
+        FailOn::None => 0,
+    };
+    match threshold {
+        0 => false,
+        _ => findings
+            .iter()
+            .any(|finding| finding.level.severity_rank() >= threshold),
     }
 }

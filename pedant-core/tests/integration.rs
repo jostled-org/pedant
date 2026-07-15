@@ -1093,6 +1093,61 @@ fn test_large_source_file_disabled_by_default() {
     assert!(large_source_findings(&source, &permissive_config()).is_empty());
 }
 
+fn high_method_findings(config: &CheckConfig) -> Vec<pedant_core::violation::Violation> {
+    let source = include_str!("fixtures/high_method_count.rs");
+    analyze("engine.rs", source, config, None)
+        .unwrap()
+        .violations
+        .into_iter()
+        .filter(|v| matches!(v.violation_type, ViolationType::HighMethodCount))
+        .collect()
+}
+
+#[test]
+fn test_high_method_count_flags_god_object_excluding_forwarders() {
+    let config = CheckConfig {
+        check_high_method_count: true,
+        max_methods: 5,
+        ..permissive_config()
+    };
+    let hits = high_method_findings(&config);
+    // Engine: 6 substantive methods across two inherent impls (a,b,c,d,e,f).
+    // Its 2 forwarders and 1 trait-impl method are excluded; Facade stays clean.
+    assert_eq!(hits.len(), 1);
+    assert!(hits[0].message.contains("Engine"));
+    assert!(hits[0].message.contains("6 inherent methods"));
+}
+
+#[test]
+fn test_high_method_count_counts_forwarders_when_configured() {
+    let config = CheckConfig {
+        check_high_method_count: true,
+        count_forwarders: true,
+        max_methods: 5,
+        ..permissive_config()
+    };
+    let hits = high_method_findings(&config);
+    // Now Engine (8) and Facade (9) both exceed the ceiling.
+    assert_eq!(hits.len(), 2);
+    assert!(hits.iter().any(|v| v.message.contains("`Engine`")));
+    assert!(hits.iter().any(|v| v.message.contains("`Facade`")));
+}
+
+#[test]
+fn test_high_method_count_below_threshold_is_clean() {
+    let config = CheckConfig {
+        check_high_method_count: true,
+        max_methods: 10,
+        ..permissive_config()
+    };
+    assert!(high_method_findings(&config).is_empty());
+}
+
+#[test]
+fn test_high_method_count_disabled_by_default() {
+    assert!(high_method_findings(&permissive_config()).is_empty());
+}
+
 /// Most specific (longest) matching override wins, regardless of insertion order.
 #[test]
 fn test_path_override_precedence_matches_documented_behavior() {

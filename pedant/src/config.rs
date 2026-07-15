@@ -122,6 +122,18 @@ pub struct ConfigArgs {
     /// Disable large-source-file check
     #[arg(long)]
     pub no_large_source_file: bool,
+
+    /// Inherent-method ceiling for high-method-count (enables the check)
+    #[arg(long, value_name = "N")]
+    pub max_methods: Option<usize>,
+
+    /// Count pure forwarders toward high-method-count
+    #[arg(long)]
+    pub count_forwarders: bool,
+
+    /// Disable high-method-count check
+    #[arg(long)]
+    pub no_high_method_count: bool,
 }
 
 impl ConfigArgs {
@@ -155,6 +167,12 @@ impl ConfigArgs {
             base.check_large_source_file = true;
         }
         base.check_large_source_file = base.check_large_source_file && !self.no_large_source_file;
+        if let Some(max_methods) = self.max_methods {
+            base.max_methods = max_methods;
+            base.check_high_method_count = true;
+        }
+        base.count_forwarders = base.count_forwarders || self.count_forwarders;
+        base.check_high_method_count = base.check_high_method_count && !self.no_high_method_count;
         base
     }
 }

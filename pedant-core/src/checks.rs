@@ -342,6 +342,15 @@ define_checks! {
         exception: "None. A module root is for declarations and re-exports; definitions belong in leaf modules.",
         llm_specific: false,
     },
+    HighMethodCount => {
+        code: "high-method-count",
+        description: "Type has too many inherent methods (god-object)",
+        category: "structure",
+        problem: "A type whose inherent methods span many unrelated concerns is a god-object: maximally connected, so `mixed-concerns` stays silent, yet carrying far more than one responsibility. It is the dominant single-responsibility failure mode in large AI-generated Rust.",
+        fix: "Extract cohesive groups of methods onto collaborator types the god-object delegates to. Pure forwarders that preserve the public API are not counted.",
+        exception: "A facade that has genuinely shed its logic into collaborators and keeps only thin forwarders — those are excluded by default.",
+        llm_specific: false,
+    },
     LargeSourceFile => {
         code: "large-source-file",
         description: "Source file exceeds the configured line ceiling",

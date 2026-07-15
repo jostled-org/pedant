@@ -162,6 +162,14 @@ pub struct FnFact {
     /// `true` for methods and associated functions (inside an `impl` or trait);
     /// `false` for free `fn` items.
     pub is_associated: bool,
+    /// `Some(self_type)` when this function is defined in an inherent `impl`
+    /// block (`impl Type`); `None` for free functions, trait methods, and
+    /// trait-impl methods (`impl Trait for Type`).
+    pub inherent_method_of: Option<Rc<str>>,
+    /// `true` when the body is exactly a single delegating call of the form
+    /// `self.<field>.<method>(<args>)`, allowing a trailing `?` and/or `.await`.
+    /// Such pure forwarders carry no responsibility of their own.
+    pub is_pure_forwarder: bool,
 }
 
 /// Extracted metadata for a function parameter.

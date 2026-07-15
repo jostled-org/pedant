@@ -197,6 +197,9 @@ fn run_gate(args: GateArgs, stderr: &mut impl Write) -> ExitCode {
         max_source_file_lines: None,
         warn_source_file_lines: None,
         no_large_source_file: false,
+        max_methods: None,
+        count_forwarders: false,
+        no_high_method_count: false,
     }
     .to_check_config(file_config.as_ref());
     let mut acc = AnalysisAccumulator::with_capacity(args.input.files.len());

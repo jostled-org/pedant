@@ -182,6 +182,9 @@ pub struct ConfigFile {
     /// Line count at which `large-source-file` emits a `Deny` (default: 1000).
     #[serde(default = "default_source_file_deny_lines")]
     pub source_file_deny_lines: usize,
+    /// Inherent-method count before `high-method-count` fires (default: 40).
+    #[serde(default = "default_max_methods")]
+    pub max_methods: usize,
     /// Banned attribute patterns (e.g., `allow(dead_code)`).
     #[serde(default)]
     pub forbid_attributes: PatternCheck,
@@ -257,6 +260,12 @@ pub struct ConfigFile {
     /// Flag source files that exceed the line ceiling.
     #[serde(default)]
     pub check_large_source_file: bool,
+    /// Flag god-object types by inherent-method count.
+    #[serde(default)]
+    pub check_high_method_count: bool,
+    /// Count pure forwarders toward `high-method-count`.
+    #[serde(default)]
+    pub count_forwarders: bool,
     /// Per-path configuration overrides keyed by glob pattern.
     #[serde(default)]
     pub overrides: BTreeMap<Box<str>, PathOverride>,
@@ -279,6 +288,8 @@ pub struct PathOverride {
     pub source_file_warn_lines: Option<usize>,
     /// Replace the `large-source-file` denial line ceiling.
     pub source_file_deny_lines: Option<usize>,
+    /// Replace the `high-method-count` method ceiling.
+    pub max_methods: Option<usize>,
     /// Replace forbidden attribute patterns.
     pub forbid_attributes: Option<PatternOverride>,
     /// Replace forbidden type patterns.
@@ -329,6 +340,10 @@ pub struct PathOverride {
     pub check_module_root_definitions: Option<bool>,
     /// Replace large-source-file check state.
     pub check_large_source_file: Option<bool>,
+    /// Replace high-method-count check state.
+    pub check_high_method_count: Option<bool>,
+    /// Replace the forwarder-counting policy.
+    pub count_forwarders: Option<bool>,
 }
 
 fn default_max_depth() -> usize {
@@ -360,6 +375,10 @@ fn default_source_file_warn_lines() -> usize {
 
 fn default_source_file_deny_lines() -> usize {
     1000
+}
+
+fn default_max_methods() -> usize {
+    40
 }
 
 fn default_true() -> bool {
@@ -420,6 +439,8 @@ macro_rules! for_each_bool_check {
             "Flag function bodies that exceed the line ceiling.", check_long_function_body, false;
             "Flag item definitions in module-root files.", check_module_root_definitions, false;
             "Flag source files that exceed the line ceiling.", check_large_source_file, false;
+            "Flag god-object types by inherent-method count.", check_high_method_count, false;
+            "Count pure forwarders toward `high-method-count`.", count_forwarders, false;
         }
     };
 }
@@ -445,6 +466,8 @@ macro_rules! impl_check_config {
             pub source_file_warn_lines: usize,
             /// Line count at which `large-source-file` emits a `Deny`.
             pub source_file_deny_lines: usize,
+            /// Inherent-method count before `high-method-count` fires.
+            pub max_methods: usize,
             /// Banned attribute patterns.
             pub forbid_attributes: PatternCheck,
             /// Banned type patterns.
@@ -471,6 +494,7 @@ macro_rules! impl_check_config {
                     module_root_files: default_module_root_files(),
                     source_file_warn_lines: default_source_file_warn_lines(),
                     source_file_deny_lines: default_source_file_deny_lines(),
+                    max_methods: default_max_methods(),
                     forbid_attributes: PatternCheck::default(),
                     forbid_types: PatternCheck::default(),
                     forbid_calls: PatternCheck::default(),
@@ -492,6 +516,7 @@ macro_rules! impl_check_config {
                     module_root_files: fc.module_root_files.clone(),
                     source_file_warn_lines: fc.source_file_warn_lines,
                     source_file_deny_lines: fc.source_file_deny_lines,
+                    max_methods: fc.max_methods,
                     forbid_attributes: fc.forbid_attributes.clone(),
                     forbid_types: fc.forbid_types.clone(),
                     forbid_calls: fc.forbid_calls.clone(),
@@ -570,6 +595,9 @@ impl CheckConfig {
         }
         if let Some(deny) = override_cfg.source_file_deny_lines {
             config.source_file_deny_lines = deny;
+        }
+        if let Some(max_methods) = override_cfg.max_methods {
+            config.max_methods = max_methods;
         }
 
         config.merge_bool_overrides(override_cfg);

@@ -95,6 +95,10 @@ struct IrExtractor {
     branch_context: Option<BranchContext>,
     item_depth: usize,
 
+    // Enclosing impl context: (self type, is_trait_impl). Set while visiting an
+    // `impl` block so methods can be tagged with their type and inherent-ness.
+    current_impl: Option<(Rc<str>, bool)>,
+
     // Suppresses Body-context emission inside signature/field type visits
     in_non_body_type: bool,
 
@@ -137,6 +141,7 @@ impl IrExtractor {
             loop_depth: 0,
             branch_context: None,
             item_depth: 0,
+            current_impl: None,
             in_non_body_type: false,
             current_fn: None,
             refcounted_bindings: BTreeSet::new(),
@@ -251,6 +256,8 @@ impl IrExtractor {
             body_type_edges: Box::default(),
             body_line_count: 0,
             is_associated,
+            inherent_method_of: None,
+            is_pure_forwarder: false,
         });
         index
     }
@@ -470,7 +477,7 @@ impl IrExtractor {
         is_associated: bool,
         increment_depth: bool,
         visit: impl FnOnce(&mut Self),
-    ) {
+    ) -> usize {
         let fn_index = self.push_fn(sig, is_associated);
         self.functions[fn_index].body_line_count = block_line_count(body);
 
@@ -510,6 +517,7 @@ impl IrExtractor {
         }
 
         self.restore_fn_state(saved);
+        fn_index
     }
 
     fn record_fn_param_bindings(&mut self, sig: &Signature) {
@@ -655,6 +663,33 @@ fn block_line_count(block: &syn::Block) -> usize {
     span.end().line.saturating_sub(span.start().line) + 1
 }
 
+/// `true` when a function body is exactly one delegating call of the form
+/// `self.<field>.<method>(<args>)`, allowing a trailing `?` and/or `.await`.
+///
+/// A pure forwarder carries no responsibility of its own, so it should not
+/// count toward a type's method surface in `high-method-count`.
+fn is_pure_forwarder(block: &syn::Block) -> bool {
+    let [syn::Stmt::Expr(expr, _)] = &block.stmts[..] else {
+        return false;
+    };
+    // Peel any trailing `?` and `.await` before inspecting the call.
+    let mut inner = expr;
+    loop {
+        match inner {
+            Expr::Try(try_expr) => inner = &try_expr.expr,
+            Expr::Await(await_expr) => inner = &await_expr.base,
+            _ => break,
+        }
+    }
+    let Expr::MethodCall(call) = inner else {
+        return false;
+    };
+    let Expr::Field(field) = call.receiver.as_ref() else {
+        return false;
+    };
+    matches!(field.base.as_ref(), Expr::Path(path) if path.path.is_ident("self"))
+}
+
 fn push_segment(buf: &mut String, ident: &impl std::fmt::Display) {
     match buf.is_empty() {
         true => {
@@ -727,9 +762,15 @@ impl<'ast> Visit<'ast> for IrExtractor {
 
     fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
         self.record_unsafe_fn(&node.sig);
-        self.visit_fn_body(&node.sig, &node.block, true, false, |this| {
+        let fn_index = self.visit_fn_body(&node.sig, &node.block, true, false, |this| {
             syn::visit::visit_impl_item_fn(this, node);
         });
+        // Only inherent impls (is_trait_impl == false) contribute to a type's
+        // own method surface.
+        if let Some((self_type, false)) = &self.current_impl {
+            self.functions[fn_index].inherent_method_of = Some(Rc::clone(self_type));
+        }
+        self.functions[fn_index].is_pure_forwarder = is_pure_forwarder(&node.block);
     }
 
     fn visit_trait_item_fn(&mut self, node: &'ast syn::TraitItemFn) {
@@ -901,6 +942,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
             extend_edges_from_names(&self_name, &sig_names, &mut edges);
         }
 
+        let is_trait_impl = trait_name.is_some();
         self.impl_blocks.push(ImplFact {
             self_type: Rc::clone(&self_name),
             trait_name,
@@ -908,9 +950,11 @@ impl<'ast> Visit<'ast> for IrExtractor {
             edges: edges.into_boxed_slice(),
         });
 
+        let saved_impl = self.current_impl.replace((self_name, is_trait_impl));
         self.item_depth += 1;
         syn::visit::visit_item_impl(self, node);
         self.item_depth -= 1;
+        self.current_impl = saved_impl;
     }
 
     fn visit_item_struct(&mut self, node: &'ast syn::ItemStruct) {

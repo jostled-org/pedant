@@ -97,6 +97,45 @@ fn test_ir_extracts_union_and_associated_flag() {
     assert!(associated("provided"));
 }
 
+// 1.T1d: inherent-method linkage and pure-forwarder classification
+#[test]
+fn test_ir_classifies_inherent_methods_and_forwarders() {
+    let source = r#"
+        struct S { inner: H }
+        impl S {
+            fn plain(&self) -> u32 { 1 }
+            fn fwd(&self) -> u32 { self.inner.value() }
+            fn fwd_try(&self) -> Option<u32> { self.inner.value()? }
+            fn fwd_await(&self) -> u32 { self.inner.value().await }
+            fn on_self(&self) -> u32 { self.plain() }
+            fn mapped(&self) -> u32 { self.inner.value() + 1 }
+            fn deep(&self) -> u32 { self.inner.mid.value() }
+        }
+        impl T for S {
+            fn traited(&self) -> u32 { self.inner.value() }
+        }
+        fn free() -> u32 { 0 }
+    "#;
+    let ir = parse_and_extract(source);
+    let f = |name: &str| ir.functions.iter().find(|f| &*f.name == name).unwrap();
+
+    // Inherent methods are tagged with their type; trait-impl methods and free fns are not.
+    assert_eq!(f("plain").inherent_method_of.as_deref(), Some("S"));
+    assert_eq!(f("traited").inherent_method_of, None);
+    assert_eq!(f("free").inherent_method_of, None);
+
+    // Pure forwarders: exactly `self.<field>.<method>(..)` with optional `?`/`.await`.
+    assert!(f("fwd").is_pure_forwarder);
+    assert!(f("fwd_try").is_pure_forwarder);
+    assert!(f("fwd_await").is_pure_forwarder);
+
+    // Substantive: delegates to self (not a field), maps the result, or chains deeper.
+    assert!(!f("plain").is_pure_forwarder);
+    assert!(!f("on_self").is_pure_forwarder);
+    assert!(!f("mapped").is_pure_forwarder);
+    assert!(!f("deep").is_pure_forwarder);
+}
+
 // 1.T2: Control flow facts
 #[test]
 fn test_ir_extracts_control_flow() {

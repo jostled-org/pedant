@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::check_config::CheckConfig;
@@ -73,4 +74,60 @@ pub(super) fn check_large_source_file(
         ),
         severity,
     );
+}
+
+/// Flag god-object types by their aggregate inherent-method count.
+///
+/// Methods are summed across every inherent `impl Type` block in the file;
+/// trait impls are excluded. Pure single-expression forwarders are excluded
+/// unless `count_forwarders` is set. The type is reported once, at its first
+/// inherent impl in the file.
+pub(super) fn check_high_method_count(
+    ir: &FileIr,
+    config: &CheckConfig,
+    fp: &Arc<str>,
+    violations: &mut Vec<Violation>,
+) {
+    if !config.check_high_method_count {
+        return;
+    }
+
+    // First inherent impl span per type, for the reporting location.
+    let mut report_span: BTreeMap<&str, IrSpan> = BTreeMap::new();
+    for imp in &ir.impl_blocks {
+        if imp.trait_name.is_none() {
+            report_span.entry(&imp.self_type).or_insert(imp.span);
+        }
+    }
+
+    let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
+    for func in &ir.functions {
+        let Some(ty) = &func.inherent_method_of else {
+            continue;
+        };
+        if func.is_pure_forwarder && !config.count_forwarders {
+            continue;
+        }
+        *counts.entry(ty).or_insert(0) += 1;
+    }
+
+    for (ty, count) in counts {
+        if count <= config.max_methods {
+            continue;
+        }
+        let span = report_span
+            .get(ty)
+            .copied()
+            .unwrap_or(IrSpan { line: 1, column: 0 });
+        emit_violation(
+            violations,
+            fp,
+            span,
+            ViolationType::HighMethodCount,
+            format!(
+                "`{ty}` has {count} inherent methods (limit: {}), split its responsibilities into focused types",
+                config.max_methods
+            ),
+        );
+    }
 }

@@ -113,7 +113,8 @@ fn run_check(args: CheckArgs, stderr: &mut impl Write) -> ExitCode {
     ) {
         return exit;
     }
-    crate::output::compute_exit_code(acc.had_error, acc.violations.is_empty(), &[])
+    let has_deny_violation = acc.violations.iter().any(|v| v.severity.is_deny());
+    crate::output::compute_exit_code(acc.had_error, has_deny_violation, &[])
 }
 
 fn run_capabilities(args: CapabilitiesArgs, stderr: &mut impl Write) -> ExitCode {
@@ -193,6 +194,9 @@ fn run_gate(args: GateArgs, stderr: &mut impl Write) -> ExitCode {
         max_function_body: None,
         no_long_function_body: false,
         no_module_root_definitions: false,
+        max_source_file_lines: None,
+        warn_source_file_lines: None,
+        no_large_source_file: false,
     }
     .to_check_config(file_config.as_ref());
     let mut acc = AnalysisAccumulator::with_capacity(args.input.files.len());
@@ -232,7 +236,7 @@ fn run_gate(args: GateArgs, stderr: &mut impl Write) -> ExitCode {
     ) {
         return exit;
     }
-    crate::output::compute_exit_code(acc.had_error, true, &verdicts)
+    crate::output::compute_exit_code(acc.had_error, false, &verdicts)
 }
 
 fn load_file_config(

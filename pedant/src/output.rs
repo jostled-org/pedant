@@ -224,20 +224,21 @@ pub(crate) fn write_attestation_output(
     )
 }
 
-/// Compute the process exit code from error state, violations, and gate verdicts.
+/// Compute the process exit code from error state, blocking violations, and
+/// gate verdicts. `Warn`-severity violations are advisory and do not fail.
 pub(crate) fn compute_exit_code(
     had_error: bool,
-    violations_empty: bool,
+    has_deny_violation: bool,
     gate_verdicts: &[pedant_core::gate::GateVerdict],
 ) -> std::process::ExitCode {
-    let has_deny = gate_verdicts
+    let has_deny_gate = gate_verdicts
         .iter()
         .any(|v| v.severity == GateSeverity::Deny);
 
-    match (had_error, violations_empty, has_deny) {
-        (true, _, _) => std::process::ExitCode::from(2),
-        (_, false, _) | (_, _, true) => std::process::ExitCode::from(1),
-        (false, true, false) => std::process::ExitCode::from(0),
+    match (had_error, has_deny_violation || has_deny_gate) {
+        (true, _) => std::process::ExitCode::from(2),
+        (_, true) => std::process::ExitCode::from(1),
+        (false, false) => std::process::ExitCode::from(0),
     }
 }
 

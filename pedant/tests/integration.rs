@@ -117,6 +117,63 @@ fn test_build_script_discovery_failure_returns_error() {
     );
 }
 
+#[test]
+fn test_large_source_file_warn_tier_does_not_fail_the_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("big.rs");
+    let source: String = (0..15)
+        .map(|i| format!("const N{i}: usize = {i};\n"))
+        .collect();
+    std::fs::write(&path, source).unwrap();
+
+    // 15 lines: above the warn ceiling (10), below the denial ceiling (100).
+    let output = common::run_subcommand(
+        "check",
+        &[
+            "--warn-source-file-lines",
+            "10",
+            "--max-source-file-lines",
+            "100",
+            path.to_str().unwrap(),
+        ],
+        None,
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(
+        output.status.success(),
+        "warn-tier finding must not fail the run; exit={:?}",
+        output.status.code()
+    );
+    assert!(
+        stdout.contains("large-source-file"),
+        "expected the warning to be reported, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn test_large_source_file_deny_tier_fails_the_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("big.rs");
+    let source: String = (0..15)
+        .map(|i| format!("const N{i}: usize = {i};\n"))
+        .collect();
+    std::fs::write(&path, source).unwrap();
+
+    // 15 lines exceeds the denial ceiling of 10.
+    let output = common::run_subcommand(
+        "check",
+        &["--max-source-file-lines", "10", path.to_str().unwrap()],
+        None,
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "denial-tier finding must fail the run"
+    );
+}
+
 // --- Semantic CLI tests (feature-gated) ---
 
 #[cfg(feature = "semantic")]

@@ -176,6 +176,12 @@ pub struct ConfigFile {
         deserialize_with = "deserialize_arc_str_slice"
     )]
     pub module_root_files: Arc<[Arc<str>]>,
+    /// Line count at which `large-source-file` emits a `Warn` (default: 500).
+    #[serde(default = "default_source_file_warn_lines")]
+    pub source_file_warn_lines: usize,
+    /// Line count at which `large-source-file` emits a `Deny` (default: 1000).
+    #[serde(default = "default_source_file_deny_lines")]
+    pub source_file_deny_lines: usize,
     /// Banned attribute patterns (e.g., `allow(dead_code)`).
     #[serde(default)]
     pub forbid_attributes: PatternCheck,
@@ -248,6 +254,9 @@ pub struct ConfigFile {
     /// Flag item definitions in module-root files.
     #[serde(default)]
     pub check_module_root_definitions: bool,
+    /// Flag source files that exceed the line ceiling.
+    #[serde(default)]
+    pub check_large_source_file: bool,
     /// Per-path configuration overrides keyed by glob pattern.
     #[serde(default)]
     pub overrides: BTreeMap<Box<str>, PathOverride>,
@@ -265,6 +274,11 @@ pub struct PathOverride {
     pub max_params: Option<usize>,
     /// Replace function body line ceiling.
     pub max_function_body_lines: Option<usize>,
+    /// Replace the `large-source-file` warning line ceiling. Pair with a
+    /// TOML comment recording why this path is allowed to be large.
+    pub source_file_warn_lines: Option<usize>,
+    /// Replace the `large-source-file` denial line ceiling.
+    pub source_file_deny_lines: Option<usize>,
     /// Replace forbidden attribute patterns.
     pub forbid_attributes: Option<PatternOverride>,
     /// Replace forbidden type patterns.
@@ -313,6 +327,8 @@ pub struct PathOverride {
     pub check_long_function_body: Option<bool>,
     /// Replace module-root-definitions check state.
     pub check_module_root_definitions: Option<bool>,
+    /// Replace large-source-file check state.
+    pub check_large_source_file: Option<bool>,
 }
 
 fn default_max_depth() -> usize {
@@ -336,6 +352,14 @@ static MODULE_ROOT_FILES_ARC: LazyLock<Arc<[Arc<str>]>> =
 
 fn default_module_root_files() -> Arc<[Arc<str>]> {
     Arc::clone(&MODULE_ROOT_FILES_ARC)
+}
+
+fn default_source_file_warn_lines() -> usize {
+    500
+}
+
+fn default_source_file_deny_lines() -> usize {
+    1000
 }
 
 fn default_true() -> bool {
@@ -395,6 +419,7 @@ macro_rules! for_each_bool_check {
             "Flag functions with too many parameters.", check_high_param_count, false;
             "Flag function bodies that exceed the line ceiling.", check_long_function_body, false;
             "Flag item definitions in module-root files.", check_module_root_definitions, false;
+            "Flag source files that exceed the line ceiling.", check_large_source_file, false;
         }
     };
 }
@@ -416,6 +441,10 @@ macro_rules! impl_check_config {
             pub max_function_body_lines: usize,
             /// File names treated as module roots by `module-root-definitions`.
             pub module_root_files: Arc<[Arc<str>]>,
+            /// Line count at which `large-source-file` emits a `Warn`.
+            pub source_file_warn_lines: usize,
+            /// Line count at which `large-source-file` emits a `Deny`.
+            pub source_file_deny_lines: usize,
             /// Banned attribute patterns.
             pub forbid_attributes: PatternCheck,
             /// Banned type patterns.
@@ -440,6 +469,8 @@ macro_rules! impl_check_config {
                     max_params: default_max_params(),
                     max_function_body_lines: default_max_function_body_lines(),
                     module_root_files: default_module_root_files(),
+                    source_file_warn_lines: default_source_file_warn_lines(),
+                    source_file_deny_lines: default_source_file_deny_lines(),
                     forbid_attributes: PatternCheck::default(),
                     forbid_types: PatternCheck::default(),
                     forbid_calls: PatternCheck::default(),
@@ -459,6 +490,8 @@ macro_rules! impl_check_config {
                     max_params: fc.max_params,
                     max_function_body_lines: fc.max_function_body_lines,
                     module_root_files: fc.module_root_files.clone(),
+                    source_file_warn_lines: fc.source_file_warn_lines,
+                    source_file_deny_lines: fc.source_file_deny_lines,
                     forbid_attributes: fc.forbid_attributes.clone(),
                     forbid_types: fc.forbid_types.clone(),
                     forbid_calls: fc.forbid_calls.clone(),
@@ -531,6 +564,12 @@ impl CheckConfig {
         }
         if let Some(max_body) = override_cfg.max_function_body_lines {
             config.max_function_body_lines = max_body;
+        }
+        if let Some(warn) = override_cfg.source_file_warn_lines {
+            config.source_file_warn_lines = warn;
+        }
+        if let Some(deny) = override_cfg.source_file_deny_lines {
+            config.source_file_deny_lines = deny;
         }
 
         config.merge_bool_overrides(override_cfg);

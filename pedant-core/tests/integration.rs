@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use pedant_core::check_config::{CheckConfig, ConfigFile, NamingCheck, PathOverride, PatternCheck};
 use pedant_core::lint::analyze;
-use pedant_core::violation::ViolationType;
+use pedant_core::violation::{Severity, ViolationType};
 use pedant_core::{Config, lint_file, lint_str};
 
 fn default_config() -> CheckConfig {
@@ -1013,6 +1013,84 @@ fn test_module_root_definitions_honors_custom_root_list() {
         .filter(|v| matches!(v.violation_type, ViolationType::ModuleRootDefinitions))
         .count();
     assert_eq!(hits, 6);
+}
+
+/// Build a source string of exactly `n` lines that parses as valid Rust.
+fn source_with_lines(n: usize) -> String {
+    (0..n)
+        .map(|i| format!("const N{i}: usize = {i};\n"))
+        .collect()
+}
+
+fn large_file_config(warn: usize, deny: usize) -> CheckConfig {
+    CheckConfig {
+        check_large_source_file: true,
+        source_file_warn_lines: warn,
+        source_file_deny_lines: deny,
+        ..permissive_config()
+    }
+}
+
+fn large_source_findings(
+    source: &str,
+    config: &CheckConfig,
+) -> Vec<pedant_core::violation::Violation> {
+    analyze("big.rs", source, config, None)
+        .unwrap()
+        .violations
+        .into_iter()
+        .filter(|v| matches!(v.violation_type, ViolationType::LargeSourceFile))
+        .collect()
+}
+
+#[test]
+fn test_large_source_file_deny_tier() {
+    let source = source_with_lines(30);
+    let hits = large_source_findings(&source, &large_file_config(10, 20));
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].severity, Severity::Deny);
+    assert_eq!(hits[0].line, 1);
+    assert!(hits[0].message.contains("30 lines"));
+    assert!(hits[0].message.contains("denial"));
+}
+
+#[test]
+fn test_large_source_file_warn_tier() {
+    let source = source_with_lines(15);
+    let hits = large_source_findings(&source, &large_file_config(10, 20));
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].severity, Severity::Warn);
+    assert!(hits[0].message.contains("warning"));
+}
+
+#[test]
+fn test_large_source_file_below_warn_is_clean() {
+    let source = source_with_lines(5);
+    assert!(large_source_findings(&source, &large_file_config(10, 20)).is_empty());
+}
+
+#[test]
+fn test_large_source_file_deny_takes_precedence_over_warn() {
+    // 30 lines is above both, but denial wins even when warn > deny is misconfigured.
+    let source = source_with_lines(30);
+    let hits = large_source_findings(&source, &large_file_config(25, 10));
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].severity, Severity::Deny);
+}
+
+#[test]
+fn test_large_source_file_zero_threshold_disables_tier() {
+    // deny=0 disables the denial tier; only the warn tier can fire.
+    let source = source_with_lines(30);
+    let hits = large_source_findings(&source, &large_file_config(10, 0));
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].severity, Severity::Warn);
+}
+
+#[test]
+fn test_large_source_file_disabled_by_default() {
+    let source = source_with_lines(30);
+    assert!(large_source_findings(&source, &permissive_config()).is_empty());
 }
 
 /// Most specific (longest) matching override wins, regardless of insertion order.

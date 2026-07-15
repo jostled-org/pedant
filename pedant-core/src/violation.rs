@@ -44,6 +44,42 @@ impl fmt::Display for ViolationType {
     }
 }
 
+/// Whether a violation blocks the run or is advisory.
+///
+/// Style violations default to [`Severity::Deny`]. Only checks with an explicit
+/// warning tier (e.g. `large-source-file`) emit [`Severity::Warn`], which is
+/// reported but does not affect the process exit code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Severity {
+    /// Advisory: shown in output but does not fail the run.
+    Warn,
+    /// Blocking: fails the run with a non-zero exit code.
+    #[default]
+    Deny,
+}
+
+impl Severity {
+    /// `true` when this severity fails the run.
+    pub fn is_deny(self) -> bool {
+        matches!(self, Self::Deny)
+    }
+
+    /// Lowercase label for text output.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Warn => "warn",
+            Self::Deny => "deny",
+        }
+    }
+}
+
+impl fmt::Display for Severity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// A located style violation with diagnostic message.
 #[derive(Debug, Clone)]
 pub struct Violation {
@@ -57,6 +93,8 @@ pub struct Violation {
     pub column: usize,
     /// Diagnostic message describing the specific issue.
     pub message: Box<str>,
+    /// Whether this violation blocks the run (`Deny`) or is advisory (`Warn`).
+    pub severity: Severity,
 }
 
 impl Violation {
@@ -74,7 +112,14 @@ impl Violation {
             line,
             column,
             message: message.into(),
+            severity: Severity::Deny,
         }
+    }
+
+    /// Set the severity, overriding the [`Severity::Deny`] default.
+    pub fn with_severity(mut self, severity: Severity) -> Self {
+        self.severity = severity;
+        self
     }
 
     /// Delegates to the violation type's check rationale.

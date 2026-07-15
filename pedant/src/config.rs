@@ -110,6 +110,18 @@ pub struct ConfigArgs {
     /// Disable module-root-definitions check
     #[arg(long)]
     pub no_module_root_definitions: bool,
+
+    /// Denial line ceiling for large-source-file (enables the check)
+    #[arg(long, value_name = "N")]
+    pub max_source_file_lines: Option<usize>,
+
+    /// Warning line ceiling for large-source-file (enables the check)
+    #[arg(long, value_name = "N")]
+    pub warn_source_file_lines: Option<usize>,
+
+    /// Disable large-source-file check
+    #[arg(long)]
+    pub no_large_source_file: bool,
 }
 
 impl ConfigArgs {
@@ -133,6 +145,16 @@ impl ConfigArgs {
             base.check_long_function_body && !self.no_long_function_body;
         base.check_module_root_definitions =
             base.check_module_root_definitions && !self.no_module_root_definitions;
+        // Either threshold flag signals intent to run large-source-file.
+        if let Some(deny) = self.max_source_file_lines {
+            base.source_file_deny_lines = deny;
+            base.check_large_source_file = true;
+        }
+        if let Some(warn) = self.warn_source_file_lines {
+            base.source_file_warn_lines = warn;
+            base.check_large_source_file = true;
+        }
+        base.check_large_source_file = base.check_large_source_file && !self.no_large_source_file;
         base
     }
 }

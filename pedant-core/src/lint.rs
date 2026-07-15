@@ -65,7 +65,8 @@ fn analyze_inner(
     execution_context: Option<ExecutionContext>,
 ) -> Result<AnalysisResult, syn::Error> {
     let syntax = syn::parse_file(source)?;
-    let ir = ir::extract(file_path, &syntax, semantic);
+    let mut ir = ir::extract(file_path, &syntax, semantic);
+    ir.source_line_count = source.lines().count();
     let violations = check_style(&ir, config).into_boxed_slice();
     let capabilities = detect_capabilities(&ir, execution_context);
 

@@ -38,6 +38,7 @@ fn json_output_has_expected_fields() {
     assert_eq!(first["type"], "max-depth");
     assert_eq!(first["check"], "max-depth");
     assert_eq!(first["category"], "nesting");
+    assert_eq!(first["severity"], "deny");
     assert_eq!(first["file"], "foo.rs");
     assert_eq!(first["line"], 5);
     assert_eq!(first["column"], 1);

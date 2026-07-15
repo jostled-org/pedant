@@ -152,6 +152,7 @@ impl IrExtractor {
     fn finalize(self) -> FileIr {
         FileIr {
             file_path: self.file_path,
+            source_line_count: 0,
             functions: self.functions.into_boxed_slice(),
             type_defs: self.type_defs.into_boxed_slice(),
             impl_blocks: self.impl_blocks.into_boxed_slice(),

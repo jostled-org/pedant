@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::violation::Violation;
+use crate::violation::{Severity, Violation};
 
 /// Flat JSON representation of a violation for `--format json` output.
 #[derive(Serialize)]
@@ -8,6 +8,7 @@ pub struct JsonViolation<'a> {
     r#type: &'a str,
     check: &'static str,
     category: &'static str,
+    severity: Severity,
     file: &'a str,
     line: usize,
     column: usize,
@@ -23,6 +24,7 @@ impl<'a> From<&'a Violation> for JsonViolation<'a> {
             r#type: v.violation_type.code(),
             check: v.violation_type.code(),
             category: v.violation_type.category(),
+            severity: v.severity,
             file: &*v.file_path,
             line: v.line,
             column: v.column,

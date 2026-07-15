@@ -342,4 +342,13 @@ define_checks! {
         exception: "None. A module root is for declarations and re-exports; definitions belong in leaf modules.",
         llm_specific: false,
     },
+    LargeSourceFile => {
+        code: "large-source-file",
+        description: "Source file exceeds the configured line ceiling",
+        category: "structure",
+        problem: "A file that accumulates many unrelated items becomes a dumping ground: hard to navigate, review, and reason about, and a sign that distinct concerns were never split into modules. Per-function and per-type size checks miss it because each item can be small while the file as a whole is enormous.",
+        fix: "Split the file into focused modules grouped by concern, and re-export from the module root.",
+        exception: "Generated files, or a documented aggregation point with a per-path threshold override recording the rationale.",
+        llm_specific: false,
+    },
 }

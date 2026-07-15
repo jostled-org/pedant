@@ -97,6 +97,9 @@ pub struct DataFlowFact {
 pub struct FileIr {
     /// Absolute path used for violation reporting.
     pub file_path: Arc<str>,
+    /// Physical line count of the source file, for `large-source-file`.
+    /// `0` when the IR is built directly from a syntax tree without source.
+    pub source_line_count: usize,
     /// Function and method definitions with body metadata.
     pub functions: Box<[FnFact]>,
     /// Struct, enum, and trait definitions with type-relationship edges.

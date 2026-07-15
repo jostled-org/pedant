@@ -851,6 +851,67 @@ fn test_high_param_count_disabled_by_default() {
     );
 }
 
+#[test]
+fn test_long_function_body_detected() {
+    let source = include_str!("fixtures/long_function_body.rs");
+    let config = CheckConfig {
+        check_long_function_body: true,
+        max_function_body_lines: 10,
+        ..permissive_config()
+    };
+    let violations = analyze("long_function_body.rs", source, &config, None)
+        .unwrap()
+        .violations;
+
+    let lfb: Vec<_> = violations
+        .iter()
+        .filter(|v| matches!(v.violation_type, ViolationType::LongFunctionBody))
+        .collect();
+    // long_body spans 14 lines (braces inclusive); short_body spans 4.
+    assert_eq!(lfb.len(), 1);
+    assert_eq!(lfb[0].line, 3);
+    assert!(lfb[0].message.contains("long_body"));
+    assert!(lfb[0].message.contains("14 lines"));
+}
+
+#[test]
+fn test_long_function_body_at_threshold_is_clean() {
+    let source = include_str!("fixtures/long_function_body.rs");
+    // 14 == ceiling, and the check fires only when strictly greater.
+    let config = CheckConfig {
+        check_long_function_body: true,
+        max_function_body_lines: 14,
+        ..permissive_config()
+    };
+    let violations = analyze("long_function_body.rs", source, &config, None)
+        .unwrap()
+        .violations;
+
+    assert!(
+        violations
+            .iter()
+            .all(|v| !matches!(v.violation_type, ViolationType::LongFunctionBody))
+    );
+}
+
+#[test]
+fn test_long_function_body_disabled_by_default() {
+    let source = include_str!("fixtures/long_function_body.rs");
+    let config = CheckConfig {
+        max_function_body_lines: 1,
+        ..permissive_config()
+    };
+    let violations = analyze("long_function_body.rs", source, &config, None)
+        .unwrap()
+        .violations;
+
+    assert!(
+        violations
+            .iter()
+            .all(|v| !matches!(v.violation_type, ViolationType::LongFunctionBody))
+    );
+}
+
 /// Most specific (longest) matching override wins, regardless of insertion order.
 #[test]
 fn test_path_override_precedence_matches_documented_behavior() {

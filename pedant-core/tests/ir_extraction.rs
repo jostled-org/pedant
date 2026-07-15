@@ -50,6 +50,22 @@ fn test_ir_extracts_function_facts() {
     assert_eq!(&*safe.params[1].name, "b");
 }
 
+// 1.T1b: Function body line-count fact
+#[test]
+fn test_ir_extracts_body_line_count() {
+    // Single-line body: open and close brace share a line.
+    let single = parse_and_extract("fn one() { let _ = 1; }");
+    assert_eq!(single.functions[0].body_line_count, 1);
+
+    // Multi-line body spanning braces inclusively: `{` on line 1, `}` on line 4.
+    let multi = parse_and_extract("fn many() {\n    let a = 1;\n    let _ = a;\n}");
+    assert_eq!(multi.functions[0].body_line_count, 4);
+
+    // A trait method declaration without a default has no body.
+    let decl = parse_and_extract("trait T { fn f(&self); }");
+    assert_eq!(decl.functions[0].body_line_count, 0);
+}
+
 // 1.T2: Control flow facts
 #[test]
 fn test_ir_extracts_control_flow() {

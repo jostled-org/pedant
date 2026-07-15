@@ -98,6 +98,14 @@ pub struct ConfigArgs {
     /// Disable else-chain check
     #[arg(long)]
     pub no_else_chain: bool,
+
+    /// Override the long-function-body line ceiling
+    #[arg(long, value_name = "N")]
+    pub max_function_body: Option<usize>,
+
+    /// Disable long-function-body check
+    #[arg(long)]
+    pub no_long_function_body: bool,
 }
 
 impl ConfigArgs {
@@ -111,6 +119,14 @@ impl ConfigArgs {
         base.check_nested_match = base.check_nested_match && !self.no_nested_match;
         base.check_match_in_if = base.check_match_in_if && !self.no_match_in_if;
         base.check_else_chain = base.check_else_chain && !self.no_else_chain;
+        // Supplying a threshold on the CLI signals intent to run the check, so
+        // it enables long-function-body even when the file config leaves it off.
+        if let Some(max_body) = self.max_function_body {
+            base.max_function_body_lines = max_body;
+            base.check_long_function_body = true;
+        }
+        base.check_long_function_body =
+            base.check_long_function_body && !self.no_long_function_body;
         base
     }
 }

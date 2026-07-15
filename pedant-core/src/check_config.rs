@@ -166,6 +166,9 @@ pub struct ConfigFile {
     /// Maximum parameter count before `high-param-count` fires (default: 5).
     #[serde(default = "default_max_params")]
     pub max_params: usize,
+    /// Body line count before `long-function-body` fires (default: 120).
+    #[serde(default = "default_max_function_body_lines")]
+    pub max_function_body_lines: usize,
     /// Banned attribute patterns (e.g., `allow(dead_code)`).
     #[serde(default)]
     pub forbid_attributes: PatternCheck,
@@ -232,6 +235,9 @@ pub struct ConfigFile {
     /// Flag functions with too many parameters.
     #[serde(default)]
     pub check_high_param_count: bool,
+    /// Flag function bodies that exceed the line ceiling.
+    #[serde(default)]
+    pub check_long_function_body: bool,
     /// Per-path configuration overrides keyed by glob pattern.
     #[serde(default)]
     pub overrides: BTreeMap<Box<str>, PathOverride>,
@@ -247,6 +253,8 @@ pub struct PathOverride {
     pub max_depth: Option<usize>,
     /// Replace maximum parameter count.
     pub max_params: Option<usize>,
+    /// Replace function body line ceiling.
+    pub max_function_body_lines: Option<usize>,
     /// Replace forbidden attribute patterns.
     pub forbid_attributes: Option<PatternOverride>,
     /// Replace forbidden type patterns.
@@ -291,6 +299,8 @@ pub struct PathOverride {
     pub check_let_underscore_result: Option<bool>,
     /// Replace high-param-count check state.
     pub check_high_param_count: Option<bool>,
+    /// Replace long-function-body check state.
+    pub check_long_function_body: Option<bool>,
 }
 
 fn default_max_depth() -> usize {
@@ -303,6 +313,10 @@ fn default_else_chain_threshold() -> usize {
 
 fn default_max_params() -> usize {
     5
+}
+
+fn default_max_function_body_lines() -> usize {
+    120
 }
 
 fn default_true() -> bool {
@@ -360,6 +374,7 @@ macro_rules! for_each_bool_check {
             "Flag `#[cfg(test)] mod` blocks in source files.", check_inline_tests, false;
             "Flag `let _ = expr` that discards a Result.", check_let_underscore_result, false;
             "Flag functions with too many parameters.", check_high_param_count, false;
+            "Flag function bodies that exceed the line ceiling.", check_long_function_body, false;
         }
     };
 }
@@ -377,6 +392,8 @@ macro_rules! impl_check_config {
             pub else_chain_threshold: usize,
             /// Maximum parameter count before `high-param-count` fires.
             pub max_params: usize,
+            /// Body line count before `long-function-body` fires.
+            pub max_function_body_lines: usize,
             /// Banned attribute patterns.
             pub forbid_attributes: PatternCheck,
             /// Banned type patterns.
@@ -399,6 +416,7 @@ macro_rules! impl_check_config {
                     max_depth: default_max_depth(),
                     else_chain_threshold: default_else_chain_threshold(),
                     max_params: default_max_params(),
+                    max_function_body_lines: default_max_function_body_lines(),
                     forbid_attributes: PatternCheck::default(),
                     forbid_types: PatternCheck::default(),
                     forbid_calls: PatternCheck::default(),
@@ -416,6 +434,7 @@ macro_rules! impl_check_config {
                     max_depth: fc.max_depth,
                     else_chain_threshold: fc.else_chain_threshold,
                     max_params: fc.max_params,
+                    max_function_body_lines: fc.max_function_body_lines,
                     forbid_attributes: fc.forbid_attributes.clone(),
                     forbid_types: fc.forbid_types.clone(),
                     forbid_calls: fc.forbid_calls.clone(),
@@ -485,6 +504,9 @@ impl CheckConfig {
         }
         if let Some(max_params) = override_cfg.max_params {
             config.max_params = max_params;
+        }
+        if let Some(max_body) = override_cfg.max_function_body_lines {
+            config.max_function_body_lines = max_body;
         }
 
         config.merge_bool_overrides(override_cfg);

@@ -248,6 +248,7 @@ impl IrExtractor {
             item_depth,
             has_arithmetic: false,
             body_type_edges: Box::default(),
+            body_line_count: 0,
         });
         index
     }
@@ -463,10 +464,12 @@ impl IrExtractor {
     fn visit_fn_body(
         &mut self,
         sig: &Signature,
+        body: &syn::Block,
         increment_depth: bool,
         visit: impl FnOnce(&mut Self),
     ) {
         let fn_index = self.push_fn(sig);
+        self.functions[fn_index].body_line_count = block_line_count(body);
 
         // Emit type refs for signature
         self.emit_signature_type_refs(sig, fn_index);
@@ -641,6 +644,14 @@ use super::PATH_SEPARATOR;
 
 const MAX_USE_TREE_DEPTH: usize = 32;
 
+/// Physical source lines spanned by a function body block, inclusive of both
+/// braces. syn's `span-locations` feature gives exact line positions, so this
+/// is immune to the brace-in-string / comment ambiguity a lexer would hit.
+fn block_line_count(block: &syn::Block) -> usize {
+    let span = block.brace_token.span.join();
+    span.end().line.saturating_sub(span.start().line) + 1
+}
+
 fn push_segment(buf: &mut String, ident: &impl std::fmt::Display) {
     match buf.is_empty() {
         true => {
@@ -706,23 +717,23 @@ impl<'ast> Visit<'ast> for IrExtractor {
 
     fn visit_item_fn(&mut self, node: &'ast syn::ItemFn) {
         self.record_unsafe_fn(&node.sig);
-        self.visit_fn_body(&node.sig, true, |this| {
+        self.visit_fn_body(&node.sig, &node.block, true, |this| {
             syn::visit::visit_item_fn(this, node);
         });
     }
 
     fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
         self.record_unsafe_fn(&node.sig);
-        self.visit_fn_body(&node.sig, false, |this| {
+        self.visit_fn_body(&node.sig, &node.block, false, |this| {
             syn::visit::visit_impl_item_fn(this, node);
         });
     }
 
     fn visit_trait_item_fn(&mut self, node: &'ast syn::TraitItemFn) {
-        match node.default {
-            Some(_) => {
+        match &node.default {
+            Some(body) => {
                 self.record_unsafe_fn(&node.sig);
-                self.visit_fn_body(&node.sig, false, |this| {
+                self.visit_fn_body(&node.sig, body, false, |this| {
                     syn::visit::visit_trait_item_fn(this, node);
                 });
             }

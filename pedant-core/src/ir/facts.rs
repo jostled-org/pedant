@@ -152,6 +152,10 @@ pub struct FnFact {
     pub has_arithmetic: bool,
     /// Pairwise edges from body-referenced types (for mixed-concerns analysis).
     pub body_type_edges: Box<[(Rc<str>, Rc<str>)]>,
+    /// Physical source lines spanned by the body block `{ … }`, inclusive of
+    /// both braces. `0` when the function has no body (e.g. a trait method
+    /// declaration without a default).
+    pub body_line_count: usize,
 }
 
 /// Extracted metadata for a function parameter.

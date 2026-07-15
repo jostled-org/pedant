@@ -324,4 +324,13 @@ define_checks! {
         exception: "FFI bindings that must match an external C signature.",
         llm_specific: true,
     },
+    LongFunctionBody => {
+        code: "long-function-body",
+        description: "Function body exceeds the configured line ceiling",
+        category: "structure",
+        problem: "A single oversized function body concentrates many responsibilities in one scope. It resists testing, hides bugs in the middle, and is the dominant single-responsibility failure mode in AI-generated Rust. Nesting and parameter checks measure body shape, not body extent.",
+        fix: "Extract cohesive sections into named helper functions. Each function should do one job describable without the word `and`.",
+        exception: "Generated code or exhaustive `match` dispatchers where every arm is a trivial one-liner.",
+        llm_specific: false,
+    },
 }

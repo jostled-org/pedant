@@ -21,7 +21,7 @@ use super::facts::{
     AttributeFact, BindingFact, BranchContext, ControlFlowFact, ControlFlowKind, ElseInfo,
     ExternBlockFact, FileIr, FnFact, FnFingerprint, ImplFact, IrSpan, MacroFact, MethodCallFact,
     ModuleFact, ParamFact, StringLitFact, TypeDefFact, TypeDefKind, TypeInfo, TypeRefContext,
-    TypeRefFact, UnsafeFact, UnsafeKind, UsePathFact,
+    TypeRefFact, UnsafeFact, UnsafeKind, UsePathFact, Visibility,
 };
 
 /// Single-pass AST visitor that populates a [`FileIr`] from a parsed source file.
@@ -258,6 +258,7 @@ impl IrExtractor {
             is_associated,
             inherent_method_of: None,
             is_pure_forwarder: false,
+            visibility: Visibility::Private,
         });
         index
     }
@@ -595,12 +596,14 @@ impl IrExtractor {
         name: Rc<str>,
         kind: TypeDefKind,
         span: IrSpan,
+        visibility: Visibility,
         edges: Box<[(Rc<str>, Rc<str>)]>,
     ) {
         self.type_defs.push(TypeDefFact {
             name,
             span,
             kind,
+            visibility,
             edges,
         });
     }
@@ -612,13 +615,14 @@ impl IrExtractor {
         &mut self,
         ident: &syn::Ident,
         kind: TypeDefKind,
+        vis: &syn::Visibility,
         compute_edges: impl FnOnce(&Rc<str>) -> Box<[(Rc<str>, Rc<str>)]>,
         visit: impl FnOnce(&mut Self),
     ) {
         let name: Rc<str> = Rc::from(ident.to_string());
         let span = Self::span_from(ident.span().start());
         let edges = compute_edges(&name);
-        self.register_type_with_edges(name, kind, span, edges);
+        self.register_type_with_edges(name, kind, span, normalize_visibility(vis), edges);
         self.item_depth += 1;
         visit(self);
         self.item_depth -= 1;
@@ -690,6 +694,32 @@ fn is_pure_forwarder(block: &syn::Block) -> bool {
     matches!(field.base.as_ref(), Expr::Path(path) if path.path.is_ident("self"))
 }
 
+/// Normalize a `syn::Visibility` into the [`Visibility`] vocabulary.
+fn normalize_visibility(vis: &syn::Visibility) -> Visibility {
+    match vis {
+        syn::Visibility::Inherited => Visibility::Private,
+        syn::Visibility::Public(_) => Visibility::Public,
+        syn::Visibility::Restricted(restricted) => normalize_restricted(restricted),
+    }
+}
+
+fn normalize_restricted(restricted: &syn::VisRestricted) -> Visibility {
+    let path = restricted_path_string(&restricted.path);
+    match (restricted.in_token.is_some(), path.as_str()) {
+        (false, "crate") => Visibility::Crate,
+        (false, "super") => Visibility::Super,
+        _ => Visibility::Restricted(path.into_boxed_str()),
+    }
+}
+
+fn restricted_path_string(path: &syn::Path) -> String {
+    path.segments
+        .iter()
+        .map(|seg| seg.ident.to_string())
+        .collect::<Vec<_>>()
+        .join("::")
+}
+
 fn push_segment(buf: &mut String, ident: &impl std::fmt::Display) {
     match buf.is_empty() {
         true => {
@@ -755,9 +785,10 @@ impl<'ast> Visit<'ast> for IrExtractor {
 
     fn visit_item_fn(&mut self, node: &'ast syn::ItemFn) {
         self.record_unsafe_fn(&node.sig);
-        self.visit_fn_body(&node.sig, &node.block, false, true, |this| {
+        let fn_index = self.visit_fn_body(&node.sig, &node.block, false, true, |this| {
             syn::visit::visit_item_fn(this, node);
         });
+        self.functions[fn_index].visibility = normalize_visibility(&node.vis);
     }
 
     fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
@@ -765,6 +796,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
         let fn_index = self.visit_fn_body(&node.sig, &node.block, true, false, |this| {
             syn::visit::visit_impl_item_fn(this, node);
         });
+        self.functions[fn_index].visibility = normalize_visibility(&node.vis);
         // Only inherent impls (is_trait_impl == false) contribute to a type's
         // own method surface.
         if let Some((self_type, false)) = &self.current_impl {
@@ -961,6 +993,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
         self.visit_type_def(
             &node.ident,
             TypeDefKind::Struct,
+            &node.vis,
             |name| {
                 let mut edges = Vec::new();
                 let mut type_names = Vec::new();
@@ -979,6 +1012,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
         self.visit_type_def(
             &node.ident,
             TypeDefKind::Enum,
+            &node.vis,
             |name| {
                 let mut edges = Vec::new();
                 let mut type_names = Vec::new();
@@ -999,6 +1033,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
         self.visit_type_def(
             &node.ident,
             TypeDefKind::Trait,
+            &node.vis,
             |name| {
                 let mut edges = Vec::new();
                 let mut sig_names = Vec::new();
@@ -1020,6 +1055,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
         self.visit_type_def(
             &node.ident,
             TypeDefKind::Union,
+            &node.vis,
             |name| {
                 let mut edges = Vec::new();
                 let mut type_names = Vec::new();

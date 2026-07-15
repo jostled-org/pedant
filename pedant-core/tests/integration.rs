@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use pedant_core::check_config::{CheckConfig, ConfigFile, NamingCheck, PathOverride, PatternCheck};
+use pedant_core::check_config::{
+    CheckConfig, ConfigFile, ItemVisibilityRule, NamingCheck, PathOverride, PatternCheck,
+};
 use pedant_core::lint::analyze;
 use pedant_core::violation::{Severity, ViolationType};
 use pedant_core::{Config, lint_file, lint_str};
@@ -1146,6 +1148,131 @@ fn test_high_method_count_below_threshold_is_clean() {
 #[test]
 fn test_high_method_count_disabled_by_default() {
     assert!(high_method_findings(&permissive_config()).is_empty());
+}
+
+const VISIBILITY_PATH: &str = "d9x-daemon/src/server/state.rs";
+
+fn vis_rule(kind: &str, name: &str, visibility: &str) -> ItemVisibilityRule {
+    ItemVisibilityRule {
+        path: VISIBILITY_PATH.into(),
+        kind: kind.into(),
+        name: name.into(),
+        visibility: visibility.into(),
+    }
+}
+
+fn vis_config(rules: Vec<ItemVisibilityRule>) -> CheckConfig {
+    CheckConfig {
+        check_item_visibility_policy: true,
+        item_visibility_policy: rules.into(),
+        ..permissive_config()
+    }
+}
+
+fn vis_findings(
+    path: &str,
+    source: &str,
+    config: &CheckConfig,
+) -> Vec<pedant_core::violation::Violation> {
+    analyze(path, source, config, None)
+        .unwrap()
+        .violations
+        .into_iter()
+        .filter(|v| matches!(v.violation_type, ViolationType::ItemVisibilityPolicy { .. }))
+        .collect()
+}
+
+#[test]
+fn test_item_visibility_all_labels_clean() {
+    let source = include_str!("fixtures/item_visibility.rs");
+    let config = vis_config(vec![
+        vis_rule("struct", "DaemonState", "pub(super)"),
+        vis_rule("struct", "Widget", "pub"),
+        vis_rule("enum", "Mode", "pub(crate)"),
+        vis_rule("struct", "Scoped", "pub(in crate::server)"),
+        vis_rule("fn", "helper", "private"),
+    ]);
+    assert!(vis_findings(VISIBILITY_PATH, source, &config).is_empty());
+}
+
+#[test]
+fn test_item_visibility_wrong_visibility() {
+    let source = include_str!("fixtures/item_visibility.rs");
+    let config = vis_config(vec![vis_rule("struct", "DaemonState", "pub")]);
+    let hits = vis_findings(VISIBILITY_PATH, source, &config);
+    assert_eq!(hits.len(), 1);
+    let detail = hits[0].violation_type.visibility_detail().unwrap();
+    assert_eq!(&*detail.subject, "DaemonState");
+    assert_eq!(&*detail.expected, "pub");
+    assert_eq!(&*detail.observed, "pub(super)");
+}
+
+#[test]
+fn test_item_visibility_missing() {
+    let source = include_str!("fixtures/item_visibility.rs");
+    let config = vis_config(vec![vis_rule("struct", "Absent", "pub")]);
+    let hits = vis_findings(VISIBILITY_PATH, source, &config);
+    assert_eq!(hits.len(), 1);
+    assert_eq!(
+        &*hits[0].violation_type.visibility_detail().unwrap().observed,
+        "missing"
+    );
+}
+
+#[test]
+fn test_item_visibility_wrong_kind() {
+    let source = include_str!("fixtures/item_visibility.rs");
+    // Mode is an enum, not a struct.
+    let config = vis_config(vec![vis_rule("struct", "Mode", "pub(crate)")]);
+    let hits = vis_findings(VISIBILITY_PATH, source, &config);
+    assert_eq!(hits.len(), 1);
+    assert_eq!(
+        &*hits[0].violation_type.visibility_detail().unwrap().observed,
+        "wrong-kind"
+    );
+}
+
+#[test]
+fn test_item_visibility_duplicate() {
+    let config = vis_config(vec![vis_rule("struct", "Dup", "pub")]);
+    let hits = vis_findings(VISIBILITY_PATH, "pub struct Dup; pub struct Dup;", &config);
+    assert_eq!(hits.len(), 1);
+    assert_eq!(
+        &*hits[0].violation_type.visibility_detail().unwrap().observed,
+        "duplicate"
+    );
+}
+
+#[test]
+fn test_item_visibility_ignores_non_matching_path() {
+    let source = include_str!("fixtures/item_visibility.rs");
+    let config = vis_config(vec![vis_rule("struct", "DaemonState", "pub")]);
+    // Rule targets VISIBILITY_PATH; analyzing a different file must not fire it.
+    assert!(vis_findings("other/module.rs", source, &config).is_empty());
+}
+
+#[test]
+fn test_item_visibility_disabled() {
+    let source = include_str!("fixtures/item_visibility.rs");
+    let config = CheckConfig {
+        check_item_visibility_policy: false,
+        item_visibility_policy: vec![vis_rule("struct", "DaemonState", "pub")].into(),
+        ..permissive_config()
+    };
+    assert!(vis_findings(VISIBILITY_PATH, source, &config).is_empty());
+}
+
+#[test]
+fn test_item_visibility_json_exposes_expected_and_observed() {
+    use pedant_core::json_format::JsonViolation;
+    let source = include_str!("fixtures/item_visibility.rs");
+    let config = vis_config(vec![vis_rule("struct", "DaemonState", "pub")]);
+    let hits = vis_findings(VISIBILITY_PATH, source, &config);
+    let json = serde_json::to_value(JsonViolation::from(&hits[0])).unwrap();
+    assert_eq!(json["check"], "item-visibility-policy");
+    assert_eq!(json["subject"], "DaemonState");
+    assert_eq!(json["expected"], "pub");
+    assert_eq!(json["observed"], "pub(super)");
 }
 
 /// Most specific (longest) matching override wins, regardless of insertion order.

@@ -16,10 +16,17 @@ pub struct JsonViolation<'a> {
     fix: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pattern: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    subject: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expected: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    observed: Option<&'a str>,
 }
 
 impl<'a> From<&'a Violation> for JsonViolation<'a> {
     fn from(v: &'a Violation) -> Self {
+        let detail = v.violation_type.visibility_detail();
         Self {
             r#type: v.violation_type.code(),
             check: v.violation_type.code(),
@@ -31,6 +38,9 @@ impl<'a> From<&'a Violation> for JsonViolation<'a> {
             message: &*v.message,
             fix: v.violation_type.rationale().fix,
             pattern: v.violation_type.pattern(),
+            subject: detail.map(|d| &*d.subject),
+            expected: detail.map(|d| &*d.expected),
+            observed: detail.map(|d| &*d.observed),
         }
     }
 }

@@ -1,7 +1,7 @@
 use std::fmt;
 use std::sync::Arc;
 
-pub use crate::checks::{ViolationType, lookup_rationale};
+pub use crate::checks::{ViolationType, VisibilityDetail, lookup_rationale};
 
 /// Structured explanation of why a check exists, shown by `--explain`.
 #[derive(Debug, Clone, Copy, serde::Serialize)]
@@ -33,6 +33,14 @@ impl ViolationType {
             | Self::ForbiddenType { pattern }
             | Self::ForbiddenCall { pattern }
             | Self::ForbiddenMacro { pattern } => Some(pattern),
+            _ => None,
+        }
+    }
+
+    /// Structured detail for an `item-visibility-policy` finding, if this is one.
+    pub fn visibility_detail(&self) -> Option<&VisibilityDetail> {
+        match self {
+            Self::ItemVisibilityPolicy { detail } => Some(detail),
             _ => None,
         }
     }

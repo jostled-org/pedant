@@ -134,6 +134,10 @@ pub struct ConfigArgs {
     /// Disable high-method-count check
     #[arg(long)]
     pub no_high_method_count: bool,
+
+    /// Disable item-visibility-policy check
+    #[arg(long)]
+    pub no_item_visibility_policy: bool,
 }
 
 impl ConfigArgs {
@@ -173,6 +177,8 @@ impl ConfigArgs {
         }
         base.count_forwarders = base.count_forwarders || self.count_forwarders;
         base.check_high_method_count = base.check_high_method_count && !self.no_high_method_count;
+        base.check_item_visibility_policy =
+            base.check_item_visibility_policy && !self.no_item_visibility_policy;
         base
     }
 }

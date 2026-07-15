@@ -4,6 +4,37 @@ use std::sync::Arc;
 
 use pedant_types::Capability;
 
+/// Normalized item visibility, for `item-visibility-policy`.
+///
+/// [`fmt::Display`] renders the canonical Rust spelling (`private`, `pub`,
+/// `pub(crate)`, `pub(super)`, `pub(in <path>)`), which is how policies are
+/// written in configuration and compared.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Visibility {
+    /// No modifier: private to the enclosing module.
+    Private,
+    /// `pub`.
+    Public,
+    /// `pub(crate)`.
+    Crate,
+    /// `pub(super)`.
+    Super,
+    /// `pub(in <path>)` (or `pub(self)`), carrying the restriction path.
+    Restricted(Box<str>),
+}
+
+impl fmt::Display for Visibility {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Private => f.write_str("private"),
+            Self::Public => f.write_str("pub"),
+            Self::Crate => f.write_str("pub(crate)"),
+            Self::Super => f.write_str("pub(super)"),
+            Self::Restricted(path) => write!(f, "pub(in {path})"),
+        }
+    }
+}
+
 /// Source position extracted from `syn` spans.
 ///
 /// Line is 1-based. Column is 0-based from syn, adjusted to 1-based at report time.
@@ -170,6 +201,8 @@ pub struct FnFact {
     /// `self.<field>.<method>(<args>)`, allowing a trailing `?` and/or `.await`.
     /// Such pure forwarders carry no responsibility of their own.
     pub is_pure_forwarder: bool,
+    /// Declared visibility of the item (`private` for trait methods).
+    pub visibility: Visibility,
 }
 
 /// Extracted metadata for a function parameter.
@@ -310,6 +343,8 @@ pub struct TypeDefFact {
     pub span: IrSpan,
     /// Struct, enum, or trait.
     pub kind: TypeDefKind,
+    /// Declared visibility of the type.
+    pub visibility: Visibility,
     /// Pairwise type-relationship edges for mixed-concerns graph analysis.
     pub edges: Box<[(Rc<str>, Rc<str>)]>,
 }

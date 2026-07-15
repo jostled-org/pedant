@@ -136,6 +136,39 @@ fn test_ir_classifies_inherent_methods_and_forwarders() {
     assert!(!f("deep").is_pure_forwarder);
 }
 
+// 1.T1e: visibility normalization
+#[test]
+fn test_ir_extracts_visibility() {
+    use pedant_core::ir::Visibility;
+    let source = r#"
+        struct Priv;
+        pub struct Pub;
+        pub(crate) struct Crate;
+        pub(super) struct Super;
+        pub(in crate::a) struct Scoped;
+        pub fn free() {}
+    "#;
+    let ir = parse_and_extract(source);
+    let vis = |name: &str| {
+        ir.type_defs
+            .iter()
+            .find(|t| &*t.name == name)
+            .map(|t| t.visibility.clone())
+    };
+    assert_eq!(vis("Priv"), Some(Visibility::Private));
+    assert_eq!(vis("Pub"), Some(Visibility::Public));
+    assert_eq!(vis("Crate"), Some(Visibility::Crate));
+    assert_eq!(vis("Super"), Some(Visibility::Super));
+    assert_eq!(
+        vis("Scoped"),
+        Some(Visibility::Restricted("crate::a".into()))
+    );
+    assert_eq!(vis("Scoped").unwrap().to_string(), "pub(in crate::a)");
+
+    let free = ir.functions.iter().find(|f| &*f.name == "free").unwrap();
+    assert_eq!(free.visibility, Visibility::Public);
+}
+
 // 1.T2: Control flow facts
 #[test]
 fn test_ir_extracts_control_flow() {

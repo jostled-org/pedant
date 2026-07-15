@@ -6,6 +6,7 @@ mod mixed_concerns;
 mod module_root;
 mod naming;
 mod size;
+mod visibility;
 
 use crate::check_config::CheckConfig;
 use crate::ir::FileIr;
@@ -27,6 +28,7 @@ pub fn check_style(ir: &FileIr, config: &CheckConfig) -> Vec<Violation> {
     size::check_large_source_file(ir, config, fp, &mut violations);
     size::check_high_method_count(ir, config, fp, &mut violations);
     module_root::check_module_root_definitions(ir, config, fp, &mut violations);
+    visibility::check_item_visibility_policy(ir, config, fp, &mut violations);
     mixed_concerns::check_mixed_concerns(ir, config, fp, &mut violations);
 
     violations

@@ -151,6 +151,22 @@ pub struct PatternOverride {
 }
 
 /// Deserialized `.pedant.toml` file with all check settings.
+/// One `item-visibility-policy` rule: a named item at a path must have an
+/// exact visibility.
+#[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct ItemVisibilityRule {
+    /// Repository-relative source path the item must live in.
+    pub path: Box<str>,
+    /// Item kind: `struct`, `enum`, `union`, `trait`, or `fn`.
+    pub kind: Box<str>,
+    /// Exact item name.
+    pub name: Box<str>,
+    /// Required visibility: `private`, `pub`, `pub(crate)`, `pub(super)`,
+    /// or `pub(in <path>)`.
+    pub visibility: Box<str>,
+}
+
 #[derive(Debug, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct ConfigFile {
@@ -266,6 +282,12 @@ pub struct ConfigFile {
     /// Count pure forwarders toward `high-method-count`.
     #[serde(default)]
     pub count_forwarders: bool,
+    /// Enforce configured item-visibility policies.
+    #[serde(default = "default_true")]
+    pub check_item_visibility_policy: bool,
+    /// Item-visibility policy rules.
+    #[serde(default)]
+    pub item_visibility_policy: Vec<ItemVisibilityRule>,
     /// Per-path configuration overrides keyed by glob pattern.
     #[serde(default)]
     pub overrides: BTreeMap<Box<str>, PathOverride>,
@@ -344,6 +366,8 @@ pub struct PathOverride {
     pub check_high_method_count: Option<bool>,
     /// Replace the forwarder-counting policy.
     pub count_forwarders: Option<bool>,
+    /// Replace item-visibility-policy check state.
+    pub check_item_visibility_policy: Option<bool>,
 }
 
 fn default_max_depth() -> usize {
@@ -441,6 +465,7 @@ macro_rules! for_each_bool_check {
             "Flag source files that exceed the line ceiling.", check_large_source_file, false;
             "Flag god-object types by inherent-method count.", check_high_method_count, false;
             "Count pure forwarders toward `high-method-count`.", count_forwarders, false;
+            "Enforce configured item-visibility policies.", check_item_visibility_policy, true;
         }
     };
 }
@@ -468,6 +493,8 @@ macro_rules! impl_check_config {
             pub source_file_deny_lines: usize,
             /// Inherent-method count before `high-method-count` fires.
             pub max_methods: usize,
+            /// Item-visibility policy rules.
+            pub item_visibility_policy: Arc<[ItemVisibilityRule]>,
             /// Banned attribute patterns.
             pub forbid_attributes: PatternCheck,
             /// Banned type patterns.
@@ -495,6 +522,7 @@ macro_rules! impl_check_config {
                     source_file_warn_lines: default_source_file_warn_lines(),
                     source_file_deny_lines: default_source_file_deny_lines(),
                     max_methods: default_max_methods(),
+                    item_visibility_policy: Arc::from([]),
                     forbid_attributes: PatternCheck::default(),
                     forbid_types: PatternCheck::default(),
                     forbid_calls: PatternCheck::default(),
@@ -517,6 +545,7 @@ macro_rules! impl_check_config {
                     source_file_warn_lines: fc.source_file_warn_lines,
                     source_file_deny_lines: fc.source_file_deny_lines,
                     max_methods: fc.max_methods,
+                    item_visibility_policy: fc.item_visibility_policy.iter().cloned().collect(),
                     forbid_attributes: fc.forbid_attributes.clone(),
                     forbid_types: fc.forbid_types.clone(),
                     forbid_calls: fc.forbid_calls.clone(),

@@ -6,6 +6,18 @@ const NESTED_CONDITIONAL_PROBLEM: &str = "Conditional-in-conditional creates com
 const NESTED_CONDITIONAL_FIX: &str = "Use tuple patterns `match (a, b) { ... }`, match guards `Some(x) if x > 0 => ...`, or extract to functions.";
 const NESTED_CONDITIONAL_EXCEPTION: &str = "None. Refactoring is always possible.";
 
+/// Structured detail carried by an `item-visibility-policy` finding, surfaced
+/// as `subject`/`expected`/`observed` in JSON output.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VisibilityDetail {
+    /// The configured item name.
+    pub subject: Arc<str>,
+    /// The visibility the policy requires.
+    pub expected: Arc<str>,
+    /// The observed visibility, or `missing`/`duplicate`/`wrong-kind`.
+    pub observed: Arc<str>,
+}
+
 /// Catalog entry for a single check, displayed by `--list-checks` and `--explain`.
 #[derive(Debug, Clone, Copy)]
 pub struct CheckInfo {
@@ -340,6 +352,15 @@ define_checks! {
         problem: "Module-root files should only wire the module tree together with declarations and re-exports. Defining types, functions, or impls in them buries real logic in the file that is supposed to be a table of contents, and creates a decomposed-facade ambiguity with sibling module files.",
         fix: "Move the definition into a dedicated module file and re-export it from the root with `pub use`.",
         exception: "None. A module root is for declarations and re-exports; definitions belong in leaf modules.",
+        llm_specific: false,
+    },
+    ItemVisibilityPolicy { detail: VisibilityDetail } => {
+        code: "item-visibility-policy",
+        description: "Configured item does not match its required visibility",
+        category: "structure",
+        problem: "Some items must keep an exact visibility to preserve an architectural boundary — a type sealed to its module, an API kept crate-internal. A drift to `pub`, a rename, a duplicate, or a wrong item kind silently widens or breaks that boundary.",
+        fix: "Restore the item to the configured visibility, or update the policy in `.pedant.toml` if the boundary intentionally changed.",
+        exception: "None. The policy is an explicit, per-item contract; change the contract rather than ignore it.",
         llm_specific: false,
     },
     HighMethodCount => {

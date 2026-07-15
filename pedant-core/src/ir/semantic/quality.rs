@@ -16,7 +16,7 @@ use super::common::{
 };
 
 /// Detect all quality issues within a function body.
-pub(super) fn detect(ctx: &FnContext<'_>) -> Box<[DataFlowFact]> {
+pub(super) fn detect(ctx: &FnContext<'_, '_>) -> Box<[DataFlowFact]> {
     let mut facts = Vec::new();
     detect_dead_stores(ctx, &mut facts);
     detect_discarded_results(ctx, &mut facts);
@@ -32,7 +32,7 @@ pub(super) fn detect(ctx: &FnContext<'_>) -> Box<[DataFlowFact]> {
 type BindingState = (bool, IrSpan);
 
 /// Detect dead stores: a mutable binding reassigned without the previous value being read.
-fn detect_dead_stores(ctx: &FnContext<'_>, out: &mut Vec<DataFlowFact>) {
+fn detect_dead_stores(ctx: &FnContext<'_, '_>, out: &mut Vec<DataFlowFact>) {
     let mut bindings: BTreeMap<Box<str>, BindingState> = BTreeMap::new();
 
     for stmt in ctx.stmts.iter() {
@@ -46,7 +46,7 @@ fn detect_dead_stores(ctx: &FnContext<'_>, out: &mut Vec<DataFlowFact>) {
 /// Process a single statement for dead store tracking.
 fn process_stmt_for_dead_stores(
     stmt: &ast::Stmt,
-    ctx: &FnContext<'_>,
+    ctx: &FnContext<'_, '_>,
     bindings: &mut BTreeMap<Box<str>, BindingState>,
     out: &mut Vec<DataFlowFact>,
 ) {
@@ -65,7 +65,7 @@ fn process_stmt_for_dead_stores(
 fn process_let_for_dead_stores(
     let_stmt: &ast::LetStmt,
     stmt: &ast::Stmt,
-    ctx: &FnContext<'_>,
+    ctx: &FnContext<'_, '_>,
     bindings: &mut BTreeMap<Box<str>, BindingState>,
 ) {
     let Some(pat) = let_stmt.pat() else { return };
@@ -89,7 +89,7 @@ fn process_let_for_dead_stores(
 fn process_expr_stmt_for_dead_stores(
     expr_stmt: &ast::ExprStmt,
     stmt: &ast::Stmt,
-    ctx: &FnContext<'_>,
+    ctx: &FnContext<'_, '_>,
     bindings: &mut BTreeMap<Box<str>, BindingState>,
     out: &mut Vec<DataFlowFact>,
 ) {
@@ -193,7 +193,7 @@ fn mark_format_captures(text: &str, bindings: &mut BTreeMap<Box<str>, BindingSta
 // --- Discarded result detection ---
 
 /// Detect discarded results: call expressions as statements where the callee returns Result.
-fn detect_discarded_results(ctx: &FnContext<'_>, out: &mut Vec<DataFlowFact>) {
+fn detect_discarded_results(ctx: &FnContext<'_, '_>, out: &mut Vec<DataFlowFact>) {
     for stmt in ctx.stmts.iter() {
         let ast::Stmt::ExprStmt(expr_stmt) = &stmt else {
             continue;
@@ -260,7 +260,7 @@ fn callee_returns_result(
 ///
 /// Uses precomputed `ctx.match_exprs` instead of rescanning the statement
 /// list per Result binding.
-fn detect_partial_error_handling(ctx: &FnContext<'_>, out: &mut Vec<DataFlowFact>) {
+fn detect_partial_error_handling(ctx: &FnContext<'_, '_>, out: &mut Vec<DataFlowFact>) {
     let result_bindings = collect_result_bindings(ctx);
 
     for (name, def_span) in &*result_bindings {
@@ -269,7 +269,7 @@ fn detect_partial_error_handling(ctx: &FnContext<'_>, out: &mut Vec<DataFlowFact
 }
 
 /// Collect all Result-typed let bindings from a statement list.
-fn collect_result_bindings(ctx: &FnContext<'_>) -> Box<[(Box<str>, IrSpan)]> {
+fn collect_result_bindings(ctx: &FnContext<'_, '_>) -> Box<[(Box<str>, IrSpan)]> {
     ctx.stmts
         .iter()
         .filter_map(|stmt| {
@@ -380,7 +380,7 @@ fn matches_result_handling(node: &SyntaxNode, binding_name: &str) -> bool {
 ///
 /// Two forms: statement position (`expr.ok();`) and wildcard binding (`let _ = expr.ok();`).
 /// Exempt `write!`/`writeln!` macro receivers per audit ledger convention.
-fn detect_swallowed_ok(ctx: &FnContext<'_>, out: &mut Vec<DataFlowFact>) {
+fn detect_swallowed_ok(ctx: &FnContext<'_, '_>, out: &mut Vec<DataFlowFact>) {
     for stmt in ctx.stmts.iter() {
         match &stmt {
             ast::Stmt::ExprStmt(expr_stmt) => {
@@ -396,7 +396,7 @@ fn detect_swallowed_ok(ctx: &FnContext<'_>, out: &mut Vec<DataFlowFact>) {
 
 /// Check an expression statement for swallowed `.ok()` on Result.
 fn check_expr_stmt_swallowed_ok(
-    ctx: &FnContext<'_>,
+    ctx: &FnContext<'_, '_>,
     expr_stmt: &ast::ExprStmt,
     stmt: &ast::Stmt,
     out: &mut Vec<DataFlowFact>,
@@ -418,7 +418,7 @@ fn check_expr_stmt_swallowed_ok(
 
 /// Check a let statement with wildcard pattern for swallowed `.ok()` on Result.
 fn check_let_stmt_swallowed_ok(
-    ctx: &FnContext<'_>,
+    ctx: &FnContext<'_, '_>,
     let_stmt: &ast::LetStmt,
     stmt: &ast::Stmt,
     out: &mut Vec<DataFlowFact>,
@@ -444,7 +444,7 @@ fn check_let_stmt_swallowed_ok(
 
 /// Validate the `.ok()` receiver is a non-write-macro Result and emit the finding.
 fn emit_swallowed_ok_if_result(
-    ctx: &FnContext<'_>,
+    ctx: &FnContext<'_, '_>,
     mc: &ast::MethodCallExpr,
     stmt: &ast::Stmt,
     message: &str,
@@ -501,7 +501,7 @@ fn is_write_macro_expr(expr: &ast::Expr) -> bool {
 ///
 /// Uses precomputed mutation, return, and `&mut` pass flags from `FnContext`
 /// instead of rescanning the statement list per binding.
-fn detect_immutable_growable(ctx: &FnContext<'_>, out: &mut Vec<DataFlowFact>) {
+fn detect_immutable_growable(ctx: &FnContext<'_, '_>, out: &mut Vec<DataFlowFact>) {
     for stmt in ctx.stmts.iter() {
         let ast::Stmt::LetStmt(let_stmt) = &stmt else {
             continue;

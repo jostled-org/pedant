@@ -93,7 +93,7 @@ pub(crate) fn truncate_evidence(value: &str) -> Cow<'_, str> {
 /// Check whether a string is a hex-encoded key at a known private key size.
 fn check_string_for_hex_key(value: &str) -> bool {
     let len = value.len();
-    if len < 64 || len % 2 != 0 {
+    if len < 64 || !len.is_multiple_of(2) {
         return false;
     }
     if !value.bytes().all(|b| b.is_ascii_hexdigit()) {

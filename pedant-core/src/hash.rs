@@ -27,7 +27,8 @@ fn update_hash_entry(hasher: &mut Sha256, path: &str, content: &str) {
     hasher.update(content_bytes);
 }
 
-fn encode_hex_digest(digest: &[u8]) -> Box<str> {
+/// Lowercase hex encoding of a digest's bytes.
+pub fn encode_hex_digest(digest: &[u8]) -> Box<str> {
     let mut hex: String = String::with_capacity(64);
     for byte in digest {
         // write! to String is infallible; the Result is always Ok

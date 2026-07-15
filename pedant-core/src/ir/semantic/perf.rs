@@ -11,7 +11,7 @@ use super::common::{FnContext, quality_fact};
 /// Detect all performance issues within a function body.
 ///
 /// Uses precomputed call sites and allocation-in-loop spans from `FnContext`.
-pub(super) fn detect(ctx: &FnContext<'_>) -> Box<[DataFlowFact]> {
+pub(super) fn detect(ctx: &FnContext<'_, '_>) -> Box<[DataFlowFact]> {
     let mut facts = Vec::new();
     detect_repeated_calls(ctx, &mut facts);
     detect_unnecessary_clones(ctx, &mut facts);
@@ -23,7 +23,7 @@ pub(super) fn detect(ctx: &FnContext<'_>) -> Box<[DataFlowFact]> {
 // --- Repeated call detection ---
 
 /// Detect repeated calls from precomputed call sites.
-fn detect_repeated_calls(ctx: &FnContext<'_>, out: &mut Vec<DataFlowFact>) {
+fn detect_repeated_calls(ctx: &FnContext<'_, '_>, out: &mut Vec<DataFlowFact>) {
     use std::collections::BTreeMap;
 
     let mut seen: BTreeMap<(&str, u64), IrSpan> = BTreeMap::new();
@@ -52,7 +52,7 @@ fn detect_repeated_calls(ctx: &FnContext<'_>, out: &mut Vec<DataFlowFact>) {
 ///
 /// Uses `FnContext` precomputed binding reference index for forward-use checks
 /// instead of re-walking the statement list per clone site.
-fn detect_unnecessary_clones(ctx: &FnContext<'_>, out: &mut Vec<DataFlowFact>) {
+fn detect_unnecessary_clones(ctx: &FnContext<'_, '_>, out: &mut Vec<DataFlowFact>) {
     for (idx, stmt) in ctx.stmts.iter().enumerate() {
         let ast::Stmt::LetStmt(let_stmt) = stmt else {
             continue;
@@ -105,7 +105,7 @@ fn extract_clone_receiver(expr: &ast::Expr) -> Option<Box<str>> {
 // --- Allocation in loop detection ---
 
 /// Emit findings for precomputed allocation-in-loop spans from `FnContext`.
-fn detect_allocation_in_loops(ctx: &FnContext<'_>, out: &mut Vec<DataFlowFact>) {
+fn detect_allocation_in_loops(ctx: &FnContext<'_, '_>, out: &mut Vec<DataFlowFact>) {
     for &span in ctx.alloc_in_loop_spans.iter() {
         out.push(quality_fact(
             DataFlowKind::AllocationInLoop,
@@ -122,7 +122,7 @@ fn detect_allocation_in_loops(ctx: &FnContext<'_>, out: &mut Vec<DataFlowFact>) 
 ///
 /// Uses precomputed `binding_method_calls` index from `FnContext` to check
 /// whether the binding's next method call is an iterator re-entry.
-fn detect_redundant_collects(ctx: &FnContext<'_>, out: &mut Vec<DataFlowFact>) {
+fn detect_redundant_collects(ctx: &FnContext<'_, '_>, out: &mut Vec<DataFlowFact>) {
     for (idx, stmt) in ctx.stmts.iter().enumerate() {
         let ast::Stmt::LetStmt(let_stmt) = stmt else {
             continue;

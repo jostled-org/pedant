@@ -264,7 +264,7 @@ pub(super) struct LockAcquisition {
 /// detectors and the call-graph builder consume. One traversal of the
 /// function body populates binding indices, call sites, loop ranges,
 /// lock acquisitions, and function entry metadata.
-pub(super) struct FnContext<'a> {
+pub(super) struct FnContext<'a, 'db> {
     /// Collected statements (shared across all detectors).
     pub(super) stmts: Box<[ast::Stmt]>,
     /// Tail expression, if any.
@@ -272,11 +272,11 @@ pub(super) struct FnContext<'a> {
     /// Whether the function is async.
     pub(super) is_async: bool,
     /// Semantics handle for type resolution.
-    pub(super) sema: &'a Semantics<'a, RootDatabase>,
+    pub(super) sema: &'a Semantics<'db, RootDatabase>,
     /// Root database for name resolution.
-    pub(super) db: &'a RootDatabase,
+    pub(super) db: &'db RootDatabase,
     /// Line index for span computation.
-    pub(super) line_index: &'a LineIndex,
+    pub(super) line_index: &'db LineIndex,
 
     // --- Binding indices ---
     /// Per-binding sorted statement indices where the name appears as a reference.
@@ -331,11 +331,11 @@ pub(super) struct FnContext<'a> {
     pub(super) is_entry_point: bool,
 }
 
-impl<'a> FnContext<'a> {
+impl<'a, 'db> FnContext<'a, 'db> {
     /// Build a precomputed context from a parsed file and function node.
     ///
     /// Returns `None` when the function has no body, statement list, or name.
-    pub(super) fn build(pf: &'a ParsedFile<'a>, fn_node: &ast::Fn) -> Option<Self> {
+    pub(super) fn build(pf: &'a ParsedFile<'db>, fn_node: &ast::Fn) -> Option<Self> {
         let name_node = fn_node.name()?;
         let body = fn_node.body()?;
         let stmt_list = body.stmt_list()?;

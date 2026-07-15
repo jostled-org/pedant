@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use pedant_core::check_config::CheckConfig;
-use pedant_core::hash::compute_source_hash;
+use pedant_core::hash::{compute_source_hash, encode_hex_digest};
 use pedant_core::lint::{analyze, analyze_build_script, discover_build_script};
 use pedant_core::{WorkspaceMemberError, resolve_workspace_members as expand_workspace_members};
 use pedant_types::{
@@ -948,7 +948,7 @@ fn sha256_hex(bytes: &[u8]) -> Box<str> {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     let digest = hasher.finalize();
-    Box::from(format!("{digest:x}"))
+    encode_hex_digest(&digest)
 }
 
 fn compare_attestation(

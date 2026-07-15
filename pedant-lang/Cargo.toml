@@ -2,7 +2,7 @@
 name = "pedant-lang"
 version = "0.2.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.96"
 description = "Multi-language capability detection for pedant"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/jostled-org/pedant"

@@ -1,9 +1,4 @@
 [advisories]
-ignore = [
-    # instant is unmaintained but pulled transitively via notify-types -> notify v7.
-    # No safe upgrade available; notify has not migrated off it yet.
-    "RUSTSEC-2024-0384",
-]
 
 [licenses]
 allow = [

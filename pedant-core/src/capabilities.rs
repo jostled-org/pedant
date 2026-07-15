@@ -212,7 +212,7 @@ pub fn truncate_evidence(value: &str) -> Cow<'_, str> {
 /// Returns true for even-length pure hex strings of 64, 96, or ≥ 128 chars.
 fn check_string_for_hex_key(value: &str) -> bool {
     let len = value.len();
-    if len < 64 || len % 2 != 0 {
+    if len < 64 || !len.is_multiple_of(2) {
         return false;
     }
     if !value.bytes().all(|b| b.is_ascii_hexdigit()) {

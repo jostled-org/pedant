@@ -31,7 +31,7 @@ const SOURCE_PATTERNS: &[(&str, &[&str], Capability)] = &[
 ];
 
 /// Detect taint propagation within a function body.
-pub(super) fn detect(ctx: &FnContext<'_>) -> Box<[DataFlowFact]> {
+pub(super) fn detect(ctx: &FnContext<'_, '_>) -> Box<[DataFlowFact]> {
     let tainted: Box<[Taint]> = collect_tainted_bindings(ctx);
     if tainted.is_empty() {
         return Box::default();
@@ -40,7 +40,7 @@ pub(super) fn detect(ctx: &FnContext<'_>) -> Box<[DataFlowFact]> {
 }
 
 /// Scan let-bindings in the precomputed statement list for capability source initializers.
-fn collect_tainted_bindings(ctx: &FnContext<'_>) -> Box<[Taint]> {
+fn collect_tainted_bindings(ctx: &FnContext<'_, '_>) -> Box<[Taint]> {
     ctx.stmts
         .iter()
         .filter_map(|stmt| match stmt {
@@ -63,7 +63,7 @@ fn collect_tainted_bindings(ctx: &FnContext<'_>) -> Box<[Taint]> {
 /// Iterates `ctx.capability_sinks` (built during `FnContext::build`).
 /// Each sink carries precomputed NAME_REF names, so this is a pure
 /// set intersection — no AST walk at detection time.
-fn collect_taint_flows(ctx: &FnContext<'_>, tainted: &[Taint]) -> Box<[DataFlowFact]> {
+fn collect_taint_flows(ctx: &FnContext<'_, '_>, tainted: &[Taint]) -> Box<[DataFlowFact]> {
     let mut facts = Vec::new();
 
     for sink in ctx.capability_sinks.iter() {

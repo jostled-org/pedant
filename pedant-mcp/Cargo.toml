@@ -2,7 +2,7 @@
 name = "pedant-mcp"
 version = "0.8.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.96"
 description = "MCP server exposing pedant security and capability analysis"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/jostled-org/pedant"
@@ -21,9 +21,9 @@ serde_json = "1"
 toml = "1"
 walkdir = "2"
 thiserror = "2"
-rmcp = { version = "1.2.0", features = ["server", "transport-io"] }
+rmcp = { version = "2", features = ["server", "transport-io"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-notify = "7"
+notify = "8"
 
 [dev-dependencies]
 tempfile = "3"

@@ -26,7 +26,7 @@ pub(super) fn detect_lock_ordering(
 }
 
 /// Detect per-function concurrency issues using precomputed context.
-pub(super) fn detect(ctx: &FnContext<'_>) -> Box<[DataFlowFact]> {
+pub(super) fn detect(ctx: &FnContext<'_, '_>) -> Box<[DataFlowFact]> {
     let mut facts = Vec::new();
 
     if ctx.is_async {
@@ -41,7 +41,7 @@ pub(super) fn detect(ctx: &FnContext<'_>) -> Box<[DataFlowFact]> {
 
 /// Detect lock guards held across await points using precomputed lock
 /// acquisitions and shared statement list from `FnContext`.
-fn detect_lock_across_await(ctx: &FnContext<'_>, out: &mut Vec<DataFlowFact>) {
+fn detect_lock_across_await(ctx: &FnContext<'_, '_>, out: &mut Vec<DataFlowFact>) {
     // Seed the guard map from precomputed lock acquisitions.
     let mut guards: BTreeMap<Box<str>, IrSpan> = ctx
         .lock_acquisitions
@@ -81,7 +81,7 @@ fn contains_await(node: &ra_ap_syntax::SyntaxNode) -> bool {
 fn check_await_with_live_guards(
     node: &ra_ap_syntax::SyntaxNode,
     guards: &BTreeMap<Box<str>, IrSpan>,
-    ctx: &FnContext<'_>,
+    ctx: &FnContext<'_, '_>,
     out: &mut Vec<DataFlowFact>,
 ) {
     if guards.is_empty() || !contains_await(node) {
@@ -134,7 +134,7 @@ fn try_remove_drop_target(
 const SPAWN_MODULE_MARKERS: &[&str] = &["thread", "tokio"];
 
 /// Detect unobserved spawn calls within the precomputed statement list.
-fn detect_unobserved_spawn(ctx: &FnContext<'_>, out: &mut Vec<DataFlowFact>) {
+fn detect_unobserved_spawn(ctx: &FnContext<'_, '_>, out: &mut Vec<DataFlowFact>) {
     for stmt in ctx.stmts.iter() {
         match &stmt {
             ast::Stmt::ExprStmt(expr_stmt) => {
@@ -150,7 +150,7 @@ fn detect_unobserved_spawn(ctx: &FnContext<'_>, out: &mut Vec<DataFlowFact>) {
 
 /// Check an expression statement for an unobserved spawn call.
 fn check_expr_stmt_unobserved_spawn(
-    ctx: &FnContext<'_>,
+    ctx: &FnContext<'_, '_>,
     expr_stmt: &ast::ExprStmt,
     stmt: &ast::Stmt,
     out: &mut Vec<DataFlowFact>,
@@ -172,7 +172,7 @@ fn check_expr_stmt_unobserved_spawn(
 
 /// Check a let statement with wildcard pattern for an unobserved spawn call.
 fn check_let_stmt_unobserved_spawn(
-    ctx: &FnContext<'_>,
+    ctx: &FnContext<'_, '_>,
     let_stmt: &ast::LetStmt,
     stmt: &ast::Stmt,
     out: &mut Vec<DataFlowFact>,
@@ -192,7 +192,7 @@ fn check_let_stmt_unobserved_spawn(
 
 /// Validate the call targets a known spawn function and emit the finding.
 fn emit_unobserved_spawn_if_known(
-    ctx: &FnContext<'_>,
+    ctx: &FnContext<'_, '_>,
     call: &ast::CallExpr,
     stmt: &ast::Stmt,
     message: &str,
@@ -211,7 +211,7 @@ fn emit_unobserved_spawn_if_known(
 }
 
 /// Resolve a call expression and check if it targets a known spawn function.
-fn is_known_spawn_call(ctx: &FnContext<'_>, call: &ast::CallExpr) -> bool {
+fn is_known_spawn_call(ctx: &FnContext<'_, '_>, call: &ast::CallExpr) -> bool {
     let Some(func) = resolve_call_to_function(ctx.sema, call) else {
         return false;
     };

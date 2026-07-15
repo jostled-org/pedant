@@ -172,6 +172,8 @@ fn cargo_config_minimal() -> CargoConfig {
         target_dir_config: Default::default(),
         set_test: false,
         no_deps: false,
+        metadata_extra_args: Vec::new(),
+        config_path: None,
     }
 }
 

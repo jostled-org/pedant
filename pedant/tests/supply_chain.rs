@@ -123,6 +123,8 @@ fn run_with_fake_vendor(
 
     Command::new(env!("CARGO_BIN_EXE_pedant"))
         .current_dir(consumer_root)
+        // See common::run_pedant_in: keep the child off the CI GITHUB_OUTPUT file.
+        .env_remove("GITHUB_OUTPUT")
         .env(
             "PATH",
             format!(

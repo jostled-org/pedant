@@ -14,7 +14,13 @@ pub fn run_pedant_in(
     stdin_data: Option<&str>,
 ) -> std::process::Output {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_pedant"));
-    cmd.env_remove("RUST_LOG").current_dir(cwd).args(args);
+    // Strip GITHUB_OUTPUT so a spawned `supply-chain verify` never appends to
+    // the CI runner's real output file. Parallel test subprocesses interleave
+    // those writes, producing malformed lines that fail the workflow step.
+    cmd.env_remove("RUST_LOG")
+        .env_remove("GITHUB_OUTPUT")
+        .current_dir(cwd)
+        .args(args);
 
     match stdin_data {
         Some(data) => {

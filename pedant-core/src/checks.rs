@@ -363,6 +363,15 @@ define_checks! {
         exception: "None. The policy is an explicit, per-item contract; change the contract rather than ignore it.",
         llm_specific: false,
     },
+    UngatedTestApi => {
+        code: "ungated-test-api",
+        description: "Test-only API under src/ not gated behind a feature",
+        category: "structure",
+        problem: "A test-only helper (e.g. `*_for_tests`) compiled into production `src/` without a feature gate ships test scaffolding to every consumer, widening the API surface and inviting misuse in non-test code.",
+        fix: "Move the item behind `#[cfg(feature = \"test-support\")]` (on the item or an enclosing module), or relocate it into a test module.",
+        exception: "None. Test-only APIs belong behind the configured feature; adjust the naming pattern or feature in config if the convention differs.",
+        llm_specific: false,
+    },
     HighMethodCount => {
         code: "high-method-count",
         description: "Type has too many inherent methods (god-object)",

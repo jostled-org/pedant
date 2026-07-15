@@ -1275,6 +1275,75 @@ fn test_item_visibility_json_exposes_expected_and_observed() {
     assert_eq!(json["observed"], "pub(super)");
 }
 
+const TEST_API_SRC_PATH: &str = "mycrate/src/helpers.rs";
+
+fn ungated_findings(path: &str, config: &CheckConfig) -> Vec<pedant_core::violation::Violation> {
+    let source = include_str!("fixtures/ungated_test_api.rs");
+    analyze(path, source, config, None)
+        .unwrap()
+        .violations
+        .into_iter()
+        .filter(|v| matches!(v.violation_type, ViolationType::UngatedTestApi))
+        .collect()
+}
+
+#[test]
+fn test_ungated_test_api_flags_ungated_items_only() {
+    let config = CheckConfig {
+        check_ungated_test_api: true,
+        ..permissive_config()
+    };
+    let hits = ungated_findings(TEST_API_SRC_PATH, &config);
+    let names: Vec<&str> = hits.iter().map(|v| v.message.as_ref()).collect();
+    // build_for_tests, cleanup_for_tests (mod not gated), and the scratch type.
+    assert_eq!(hits.len(), 3, "got: {names:?}");
+    assert!(names.iter().any(|m| m.contains("build_for_tests")));
+    assert!(names.iter().any(|m| m.contains("cleanup_for_tests")));
+    assert!(names.iter().any(|m| m.contains("scratch_for_tests")));
+    // Gated on the item, and gated by the enclosing module: both clean.
+    assert!(names.iter().all(|m| !m.contains("make_fixture_for_tests")));
+    assert!(names.iter().all(|m| !m.contains("seed_for_tests")));
+}
+
+#[test]
+fn test_ungated_test_api_honors_configured_feature() {
+    // With a different required feature, the `test-support`-gated items no
+    // longer count as gated, so all five test-only items are flagged.
+    let config = CheckConfig {
+        check_ungated_test_api: true,
+        test_support_feature: Arc::from("internal-only"),
+        ..permissive_config()
+    };
+    assert_eq!(ungated_findings(TEST_API_SRC_PATH, &config).len(), 5);
+}
+
+#[test]
+fn test_ungated_test_api_honors_custom_patterns() {
+    let config = CheckConfig {
+        check_ungated_test_api: true,
+        test_api_patterns: [Arc::from("build_*")].into(),
+        ..permissive_config()
+    };
+    let hits = ungated_findings(TEST_API_SRC_PATH, &config);
+    assert_eq!(hits.len(), 1);
+    assert!(hits[0].message.contains("build_for_tests"));
+}
+
+#[test]
+fn test_ungated_test_api_only_under_src() {
+    let config = CheckConfig {
+        check_ungated_test_api: true,
+        ..permissive_config()
+    };
+    // Same source outside a `src/` path is not subject to the check.
+    assert!(ungated_findings("mycrate/tests/helpers.rs", &config).is_empty());
+}
+
+#[test]
+fn test_ungated_test_api_disabled_by_default() {
+    assert!(ungated_findings(TEST_API_SRC_PATH, &permissive_config()).is_empty());
+}
+
 /// Most specific (longest) matching override wins, regardless of insertion order.
 #[test]
 fn test_path_override_precedence_matches_documented_behavior() {

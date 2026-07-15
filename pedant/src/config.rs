@@ -138,6 +138,10 @@ pub struct ConfigArgs {
     /// Disable item-visibility-policy check
     #[arg(long)]
     pub no_item_visibility_policy: bool,
+
+    /// Disable ungated-test-api check
+    #[arg(long)]
+    pub no_ungated_test_api: bool,
 }
 
 impl ConfigArgs {
@@ -179,6 +183,7 @@ impl ConfigArgs {
         base.check_high_method_count = base.check_high_method_count && !self.no_high_method_count;
         base.check_item_visibility_policy =
             base.check_item_visibility_policy && !self.no_item_visibility_policy;
+        base.check_ungated_test_api = base.check_ungated_test_api && !self.no_ungated_test_api;
         base
     }
 }

@@ -99,6 +99,10 @@ struct IrExtractor {
     // `impl` block so methods can be tagged with their type and inherent-ness.
     current_impl: Option<(Rc<str>, bool)>,
 
+    // Feature names of the `#[cfg(feature = "…")]` gates currently in scope,
+    // pushed on entry to a gated item/module and popped on exit.
+    cfg_feature_stack: Vec<Rc<str>>,
+
     // Suppresses Body-context emission inside signature/field type visits
     in_non_body_type: bool,
 
@@ -142,6 +146,7 @@ impl IrExtractor {
             branch_context: None,
             item_depth: 0,
             current_impl: None,
+            cfg_feature_stack: Vec::new(),
             in_non_body_type: false,
             current_fn: None,
             refcounted_bindings: BTreeSet::new(),
@@ -259,6 +264,7 @@ impl IrExtractor {
             inherent_method_of: None,
             is_pure_forwarder: false,
             visibility: Visibility::Private,
+            cfg_feature_gates: self.cfg_feature_stack.iter().cloned().collect(),
         });
         index
     }
@@ -591,6 +597,21 @@ impl IrExtractor {
         }
     }
 
+    /// Push any `#[cfg(feature = "…")]` gates from `attrs`, run `body`, then pop.
+    /// Items recorded inside `body` snapshot the active gate stack.
+    fn with_cfg_gates<R>(
+        &mut self,
+        attrs: &[syn::Attribute],
+        body: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let start = self.cfg_feature_stack.len();
+        self.cfg_feature_stack
+            .extend(attrs.iter().filter_map(cfg_feature_name));
+        let result = body(self);
+        self.cfg_feature_stack.truncate(start);
+        result
+    }
+
     fn register_type_with_edges(
         &mut self,
         name: Rc<str>,
@@ -604,6 +625,7 @@ impl IrExtractor {
             span,
             kind,
             visibility,
+            cfg_feature_gates: self.cfg_feature_stack.iter().cloned().collect(),
             edges,
         });
     }
@@ -616,16 +638,20 @@ impl IrExtractor {
         ident: &syn::Ident,
         kind: TypeDefKind,
         vis: &syn::Visibility,
+        attrs: &[syn::Attribute],
         compute_edges: impl FnOnce(&Rc<str>) -> Box<[(Rc<str>, Rc<str>)]>,
         visit: impl FnOnce(&mut Self),
     ) {
         let name: Rc<str> = Rc::from(ident.to_string());
         let span = Self::span_from(ident.span().start());
         let edges = compute_edges(&name);
-        self.register_type_with_edges(name, kind, span, normalize_visibility(vis), edges);
-        self.item_depth += 1;
-        visit(self);
-        self.item_depth -= 1;
+        let visibility = normalize_visibility(vis);
+        self.with_cfg_gates(attrs, |this| {
+            this.register_type_with_edges(name, kind, span, visibility, edges);
+            this.item_depth += 1;
+            visit(this);
+            this.item_depth -= 1;
+        });
     }
 
     /// Shared scaffolding for loop visitors: increment depth + loop_depth,
@@ -720,6 +746,25 @@ fn restricted_path_string(path: &syn::Path) -> String {
         .join("::")
 }
 
+/// Return the feature name if `attr` is `#[cfg(feature = "…")]` (the direct
+/// form; nested `all(...)`/`any(...)` combinators are not decomposed).
+fn cfg_feature_name(attr: &syn::Attribute) -> Option<Rc<str>> {
+    if !attr.path().is_ident("cfg") {
+        return None;
+    }
+    let name_value = attr.parse_args::<syn::MetaNameValue>().ok()?;
+    match (name_value.path.is_ident("feature"), &name_value.value) {
+        (
+            true,
+            syn::Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Str(feature),
+                ..
+            }),
+        ) => Some(Rc::from(feature.value())),
+        _ => None,
+    }
+}
+
 fn push_segment(buf: &mut String, ident: &impl std::fmt::Display) {
     match buf.is_empty() {
         true => {
@@ -785,24 +830,28 @@ impl<'ast> Visit<'ast> for IrExtractor {
 
     fn visit_item_fn(&mut self, node: &'ast syn::ItemFn) {
         self.record_unsafe_fn(&node.sig);
-        let fn_index = self.visit_fn_body(&node.sig, &node.block, false, true, |this| {
-            syn::visit::visit_item_fn(this, node);
+        self.with_cfg_gates(&node.attrs, |this| {
+            let fn_index = this.visit_fn_body(&node.sig, &node.block, false, true, |inner| {
+                syn::visit::visit_item_fn(inner, node);
+            });
+            this.functions[fn_index].visibility = normalize_visibility(&node.vis);
         });
-        self.functions[fn_index].visibility = normalize_visibility(&node.vis);
     }
 
     fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
         self.record_unsafe_fn(&node.sig);
-        let fn_index = self.visit_fn_body(&node.sig, &node.block, true, false, |this| {
-            syn::visit::visit_impl_item_fn(this, node);
+        self.with_cfg_gates(&node.attrs, |this| {
+            let fn_index = this.visit_fn_body(&node.sig, &node.block, true, false, |inner| {
+                syn::visit::visit_impl_item_fn(inner, node);
+            });
+            this.functions[fn_index].visibility = normalize_visibility(&node.vis);
+            // Only inherent impls (is_trait_impl == false) contribute to a type's
+            // own method surface.
+            if let Some((self_type, false)) = &this.current_impl {
+                this.functions[fn_index].inherent_method_of = Some(Rc::clone(self_type));
+            }
+            this.functions[fn_index].is_pure_forwarder = is_pure_forwarder(&node.block);
         });
-        self.functions[fn_index].visibility = normalize_visibility(&node.vis);
-        // Only inherent impls (is_trait_impl == false) contribute to a type's
-        // own method surface.
-        if let Some((self_type, false)) = &self.current_impl {
-            self.functions[fn_index].inherent_method_of = Some(Rc::clone(self_type));
-        }
-        self.functions[fn_index].is_pure_forwarder = is_pure_forwarder(&node.block);
     }
 
     fn visit_trait_item_fn(&mut self, node: &'ast syn::TraitItemFn) {
@@ -947,7 +996,9 @@ impl<'ast> Visit<'ast> for IrExtractor {
 
         let Some(self_name) = first_type_name(&node.self_ty) else {
             self.item_depth += 1;
-            syn::visit::visit_item_impl(self, node);
+            self.with_cfg_gates(&node.attrs, |this| {
+                syn::visit::visit_item_impl(this, node);
+            });
             self.item_depth -= 1;
             return;
         };
@@ -984,7 +1035,9 @@ impl<'ast> Visit<'ast> for IrExtractor {
 
         let saved_impl = self.current_impl.replace((self_name, is_trait_impl));
         self.item_depth += 1;
-        syn::visit::visit_item_impl(self, node);
+        self.with_cfg_gates(&node.attrs, |this| {
+            syn::visit::visit_item_impl(this, node);
+        });
         self.item_depth -= 1;
         self.current_impl = saved_impl;
     }
@@ -994,6 +1047,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
             &node.ident,
             TypeDefKind::Struct,
             &node.vis,
+            &node.attrs,
             |name| {
                 let mut edges = Vec::new();
                 let mut type_names = Vec::new();
@@ -1013,6 +1067,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
             &node.ident,
             TypeDefKind::Enum,
             &node.vis,
+            &node.attrs,
             |name| {
                 let mut edges = Vec::new();
                 let mut type_names = Vec::new();
@@ -1034,6 +1089,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
             &node.ident,
             TypeDefKind::Trait,
             &node.vis,
+            &node.attrs,
             |name| {
                 let mut edges = Vec::new();
                 let mut sig_names = Vec::new();
@@ -1056,6 +1112,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
             &node.ident,
             TypeDefKind::Union,
             &node.vis,
+            &node.attrs,
             |name| {
                 let mut edges = Vec::new();
                 let mut type_names = Vec::new();
@@ -1234,7 +1291,9 @@ impl<'ast> Visit<'ast> for IrExtractor {
             span,
             is_cfg_test: has_cfg_test,
         });
-        syn::visit::visit_item_mod(self, node);
+        self.with_cfg_gates(&node.attrs, |this| {
+            syn::visit::visit_item_mod(this, node);
+        });
     }
 }
 

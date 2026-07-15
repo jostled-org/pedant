@@ -203,6 +203,9 @@ pub struct FnFact {
     pub is_pure_forwarder: bool,
     /// Declared visibility of the item (`private` for trait methods).
     pub visibility: Visibility,
+    /// Feature names of the `#[cfg(feature = "…")]` gates enclosing this item
+    /// (its own and every ancestor module/impl), for `ungated-test-api`.
+    pub cfg_feature_gates: Box<[Rc<str>]>,
 }
 
 /// Extracted metadata for a function parameter.
@@ -345,6 +348,8 @@ pub struct TypeDefFact {
     pub kind: TypeDefKind,
     /// Declared visibility of the type.
     pub visibility: Visibility,
+    /// Feature names of the `#[cfg(feature = "…")]` gates enclosing this type.
+    pub cfg_feature_gates: Box<[Rc<str>]>,
     /// Pairwise type-relationship edges for mixed-concerns graph analysis.
     pub edges: Box<[(Rc<str>, Rc<str>)]>,
 }

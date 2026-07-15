@@ -288,6 +288,18 @@ pub struct ConfigFile {
     /// Item-visibility policy rules.
     #[serde(default)]
     pub item_visibility_policy: Vec<ItemVisibilityRule>,
+    /// Flag ungated test-only APIs under `src/`.
+    #[serde(default)]
+    pub check_ungated_test_api: bool,
+    /// Name globs that mark test-only APIs (default: `*_for_tests`).
+    #[serde(
+        default = "default_test_api_patterns",
+        deserialize_with = "deserialize_arc_str_slice"
+    )]
+    pub test_api_patterns: Arc<[Arc<str>]>,
+    /// Feature that must gate a test-only API (default: `test-support`).
+    #[serde(default = "default_test_support_feature")]
+    pub test_support_feature: Box<str>,
     /// Per-path configuration overrides keyed by glob pattern.
     #[serde(default)]
     pub overrides: BTreeMap<Box<str>, PathOverride>,
@@ -368,6 +380,8 @@ pub struct PathOverride {
     pub count_forwarders: Option<bool>,
     /// Replace item-visibility-policy check state.
     pub check_item_visibility_policy: Option<bool>,
+    /// Replace ungated-test-api check state.
+    pub check_ungated_test_api: Option<bool>,
 }
 
 fn default_max_depth() -> usize {
@@ -403,6 +417,17 @@ fn default_source_file_deny_lines() -> usize {
 
 fn default_max_methods() -> usize {
     40
+}
+
+static TEST_API_PATTERNS_ARC: LazyLock<Arc<[Arc<str>]>> =
+    LazyLock::new(|| [Arc::from("*_for_tests")].into());
+
+fn default_test_api_patterns() -> Arc<[Arc<str>]> {
+    Arc::clone(&TEST_API_PATTERNS_ARC)
+}
+
+fn default_test_support_feature() -> Box<str> {
+    "test-support".into()
 }
 
 fn default_true() -> bool {
@@ -466,6 +491,7 @@ macro_rules! for_each_bool_check {
             "Flag god-object types by inherent-method count.", check_high_method_count, false;
             "Count pure forwarders toward `high-method-count`.", count_forwarders, false;
             "Enforce configured item-visibility policies.", check_item_visibility_policy, true;
+            "Flag ungated test-only APIs under `src/`.", check_ungated_test_api, false;
         }
     };
 }
@@ -495,6 +521,10 @@ macro_rules! impl_check_config {
             pub max_methods: usize,
             /// Item-visibility policy rules.
             pub item_visibility_policy: Arc<[ItemVisibilityRule]>,
+            /// Name globs marking test-only APIs for `ungated-test-api`.
+            pub test_api_patterns: Arc<[Arc<str>]>,
+            /// Feature that must gate a test-only API.
+            pub test_support_feature: Arc<str>,
             /// Banned attribute patterns.
             pub forbid_attributes: PatternCheck,
             /// Banned type patterns.
@@ -523,6 +553,8 @@ macro_rules! impl_check_config {
                     source_file_deny_lines: default_source_file_deny_lines(),
                     max_methods: default_max_methods(),
                     item_visibility_policy: Arc::from([]),
+                    test_api_patterns: default_test_api_patterns(),
+                    test_support_feature: Arc::from(default_test_support_feature()),
                     forbid_attributes: PatternCheck::default(),
                     forbid_types: PatternCheck::default(),
                     forbid_calls: PatternCheck::default(),
@@ -546,6 +578,8 @@ macro_rules! impl_check_config {
                     source_file_deny_lines: fc.source_file_deny_lines,
                     max_methods: fc.max_methods,
                     item_visibility_policy: fc.item_visibility_policy.iter().cloned().collect(),
+                    test_api_patterns: fc.test_api_patterns.clone(),
+                    test_support_feature: Arc::from(&*fc.test_support_feature),
                     forbid_attributes: fc.forbid_attributes.clone(),
                     forbid_types: fc.forbid_types.clone(),
                     forbid_calls: fc.forbid_calls.clone(),

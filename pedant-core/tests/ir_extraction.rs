@@ -169,6 +169,38 @@ fn test_ir_extracts_visibility() {
     assert_eq!(free.visibility, Visibility::Public);
 }
 
+// 1.T1f: cfg(feature) gate tracking
+#[test]
+fn test_ir_tracks_cfg_feature_gates() {
+    let source = r#"
+        fn ungated() {}
+        #[cfg(feature = "test-support")]
+        fn item_gated() {}
+        #[cfg(feature = "test-support")]
+        mod gated_mod {
+            fn inherits() {}
+        }
+        #[cfg(test)]
+        fn cfg_test_only() {}
+    "#;
+    let ir = parse_and_extract(source);
+    let gates = |name: &str| {
+        ir.functions
+            .iter()
+            .find(|f| &*f.name == name)
+            .unwrap()
+            .cfg_feature_gates
+            .iter()
+            .map(|g| g.to_string())
+            .collect::<Vec<_>>()
+    };
+    assert!(gates("ungated").is_empty());
+    assert_eq!(gates("item_gated"), vec!["test-support"]);
+    assert_eq!(gates("inherits"), vec!["test-support"]);
+    // `#[cfg(test)]` is not a feature gate.
+    assert!(gates("cfg_test_only").is_empty());
+}
+
 // 1.T2: Control flow facts
 #[test]
 fn test_ir_extracts_control_flow() {

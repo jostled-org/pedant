@@ -3,6 +3,7 @@ mod control_flow;
 mod dyn_dispatch;
 mod forbidden;
 mod mixed_concerns;
+mod module_root;
 mod naming;
 mod size;
 
@@ -23,6 +24,7 @@ pub fn check_style(ir: &FileIr, config: &CheckConfig) -> Vec<Violation> {
     naming::check_naming(ir, config, fp, &mut violations);
     naming::check_high_param_count(ir, config, fp, &mut violations);
     size::check_long_function_body(ir, config, fp, &mut violations);
+    module_root::check_module_root_definitions(ir, config, fp, &mut violations);
     mixed_concerns::check_mixed_concerns(ir, config, fp, &mut violations);
 
     violations

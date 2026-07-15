@@ -169,6 +169,13 @@ pub struct ConfigFile {
     /// Body line count before `long-function-body` fires (default: 120).
     #[serde(default = "default_max_function_body_lines")]
     pub max_function_body_lines: usize,
+    /// File names treated as module roots by `module-root-definitions`
+    /// (default: `mod.rs`, `lib.rs`).
+    #[serde(
+        default = "default_module_root_files",
+        deserialize_with = "deserialize_arc_str_slice"
+    )]
+    pub module_root_files: Arc<[Arc<str>]>,
     /// Banned attribute patterns (e.g., `allow(dead_code)`).
     #[serde(default)]
     pub forbid_attributes: PatternCheck,
@@ -238,6 +245,9 @@ pub struct ConfigFile {
     /// Flag function bodies that exceed the line ceiling.
     #[serde(default)]
     pub check_long_function_body: bool,
+    /// Flag item definitions in module-root files.
+    #[serde(default)]
+    pub check_module_root_definitions: bool,
     /// Per-path configuration overrides keyed by glob pattern.
     #[serde(default)]
     pub overrides: BTreeMap<Box<str>, PathOverride>,
@@ -301,6 +311,8 @@ pub struct PathOverride {
     pub check_high_param_count: Option<bool>,
     /// Replace long-function-body check state.
     pub check_long_function_body: Option<bool>,
+    /// Replace module-root-definitions check state.
+    pub check_module_root_definitions: Option<bool>,
 }
 
 fn default_max_depth() -> usize {
@@ -317,6 +329,13 @@ fn default_max_params() -> usize {
 
 fn default_max_function_body_lines() -> usize {
     120
+}
+
+static MODULE_ROOT_FILES_ARC: LazyLock<Arc<[Arc<str>]>> =
+    LazyLock::new(|| [Arc::from("mod.rs"), Arc::from("lib.rs")].into());
+
+fn default_module_root_files() -> Arc<[Arc<str>]> {
+    Arc::clone(&MODULE_ROOT_FILES_ARC)
 }
 
 fn default_true() -> bool {
@@ -375,6 +394,7 @@ macro_rules! for_each_bool_check {
             "Flag `let _ = expr` that discards a Result.", check_let_underscore_result, false;
             "Flag functions with too many parameters.", check_high_param_count, false;
             "Flag function bodies that exceed the line ceiling.", check_long_function_body, false;
+            "Flag item definitions in module-root files.", check_module_root_definitions, false;
         }
     };
 }
@@ -394,6 +414,8 @@ macro_rules! impl_check_config {
             pub max_params: usize,
             /// Body line count before `long-function-body` fires.
             pub max_function_body_lines: usize,
+            /// File names treated as module roots by `module-root-definitions`.
+            pub module_root_files: Arc<[Arc<str>]>,
             /// Banned attribute patterns.
             pub forbid_attributes: PatternCheck,
             /// Banned type patterns.
@@ -417,6 +439,7 @@ macro_rules! impl_check_config {
                     else_chain_threshold: default_else_chain_threshold(),
                     max_params: default_max_params(),
                     max_function_body_lines: default_max_function_body_lines(),
+                    module_root_files: default_module_root_files(),
                     forbid_attributes: PatternCheck::default(),
                     forbid_types: PatternCheck::default(),
                     forbid_calls: PatternCheck::default(),
@@ -435,6 +458,7 @@ macro_rules! impl_check_config {
                     else_chain_threshold: fc.else_chain_threshold,
                     max_params: fc.max_params,
                     max_function_body_lines: fc.max_function_body_lines,
+                    module_root_files: fc.module_root_files.clone(),
                     forbid_attributes: fc.forbid_attributes.clone(),
                     forbid_types: fc.forbid_types.clone(),
                     forbid_calls: fc.forbid_calls.clone(),

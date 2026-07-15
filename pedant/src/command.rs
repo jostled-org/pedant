@@ -192,6 +192,7 @@ fn run_gate(args: GateArgs, stderr: &mut impl Write) -> ExitCode {
         no_else_chain: false,
         max_function_body: None,
         no_long_function_body: false,
+        no_module_root_definitions: false,
     }
     .to_check_config(file_config.as_ref());
     let mut acc = AnalysisAccumulator::with_capacity(args.input.files.len());

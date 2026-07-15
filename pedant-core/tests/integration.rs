@@ -912,6 +912,109 @@ fn test_long_function_body_disabled_by_default() {
     );
 }
 
+fn module_root_config() -> CheckConfig {
+    CheckConfig {
+        check_module_root_definitions: true,
+        ..permissive_config()
+    }
+}
+
+#[test]
+fn test_module_root_definitions_detected() {
+    let source = include_str!("fixtures/module_root_definitions.rs");
+    let violations = analyze("src/lib.rs", source, &module_root_config(), None)
+        .unwrap()
+        .violations;
+
+    let mrd: Vec<_> = violations
+        .iter()
+        .filter(|v| matches!(v.violation_type, ViolationType::ModuleRootDefinitions))
+        .collect();
+    // struct, enum, union, trait, impl, and one free fn — associated methods excluded.
+    assert_eq!(mrd.len(), 6);
+    assert!(mrd.iter().all(|v| !v.message.contains("do_it")));
+    for needle in [
+        "struct Local",
+        "enum Kind",
+        "union Bytes",
+        "trait Doer",
+        "impl Local",
+        "fn helper",
+    ] {
+        assert!(
+            mrd.iter().any(|v| v.message.contains(needle)),
+            "missing finding for {needle}"
+        );
+    }
+}
+
+#[test]
+fn test_module_root_definitions_clean_root() {
+    let source = include_str!("fixtures/module_root_clean.rs");
+    let violations = analyze("src/lib.rs", source, &module_root_config(), None)
+        .unwrap()
+        .violations;
+
+    assert!(
+        violations
+            .iter()
+            .all(|v| !matches!(v.violation_type, ViolationType::ModuleRootDefinitions))
+    );
+}
+
+#[test]
+fn test_module_root_definitions_ignores_non_root_files() {
+    let source = include_str!("fixtures/module_root_definitions.rs");
+    let violations = analyze("src/widgets.rs", source, &module_root_config(), None)
+        .unwrap()
+        .violations;
+
+    assert!(
+        violations
+            .iter()
+            .all(|v| !matches!(v.violation_type, ViolationType::ModuleRootDefinitions))
+    );
+}
+
+#[test]
+fn test_module_root_definitions_disabled_by_default() {
+    let source = include_str!("fixtures/module_root_definitions.rs");
+    let violations = analyze("src/lib.rs", source, &permissive_config(), None)
+        .unwrap()
+        .violations;
+
+    assert!(
+        violations
+            .iter()
+            .all(|v| !matches!(v.violation_type, ViolationType::ModuleRootDefinitions))
+    );
+}
+
+#[test]
+fn test_module_root_definitions_honors_custom_root_list() {
+    let source = include_str!("fixtures/module_root_definitions.rs");
+    let config = CheckConfig {
+        check_module_root_definitions: true,
+        module_root_files: [Arc::from("prelude.rs")].into(),
+        ..permissive_config()
+    };
+    // Default roots no longer match, but the configured `prelude.rs` does.
+    assert!(
+        analyze("src/lib.rs", source, &config, None)
+            .unwrap()
+            .violations
+            .iter()
+            .all(|v| !matches!(v.violation_type, ViolationType::ModuleRootDefinitions))
+    );
+    let hits = analyze("src/prelude.rs", source, &config, None)
+        .unwrap()
+        .violations
+        .into_iter()
+        .filter(|v| matches!(v.violation_type, ViolationType::ModuleRootDefinitions))
+        .count();
+    assert_eq!(hits, 6);
+}
+
 /// Most specific (longest) matching override wins, regardless of insertion order.
 #[test]
 fn test_path_override_precedence_matches_documented_behavior() {

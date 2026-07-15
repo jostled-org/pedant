@@ -156,6 +156,9 @@ pub struct FnFact {
     /// both braces. `0` when the function has no body (e.g. a trait method
     /// declaration without a default).
     pub body_line_count: usize,
+    /// `true` for methods and associated functions (inside an `impl` or trait);
+    /// `false` for free `fn` items.
+    pub is_associated: bool,
 }
 
 /// Extracted metadata for a function parameter.
@@ -309,6 +312,8 @@ pub enum TypeDefKind {
     Enum,
     /// `trait` definition.
     Trait,
+    /// `union` definition.
+    Union,
 }
 
 /// An inherent or trait impl block with type-relationship edges.

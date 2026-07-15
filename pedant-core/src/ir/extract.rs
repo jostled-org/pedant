@@ -203,7 +203,7 @@ impl IrExtractor {
         self.current_fn = Some(fn_index);
     }
 
-    fn push_fn(&mut self, sig: &Signature) -> usize {
+    fn push_fn(&mut self, sig: &Signature, is_associated: bool) -> usize {
         let name: Box<str> = sig.ident.to_string().into_boxed_str();
         let span = Self::span_from(sig.ident.span().start());
         let is_unsafe = sig.unsafety.is_some();
@@ -249,6 +249,7 @@ impl IrExtractor {
             has_arithmetic: false,
             body_type_edges: Box::default(),
             body_line_count: 0,
+            is_associated,
         });
         index
     }
@@ -465,10 +466,11 @@ impl IrExtractor {
         &mut self,
         sig: &Signature,
         body: &syn::Block,
+        is_associated: bool,
         increment_depth: bool,
         visit: impl FnOnce(&mut Self),
     ) {
-        let fn_index = self.push_fn(sig);
+        let fn_index = self.push_fn(sig, is_associated);
         self.functions[fn_index].body_line_count = block_line_count(body);
 
         // Emit type refs for signature
@@ -717,14 +719,14 @@ impl<'ast> Visit<'ast> for IrExtractor {
 
     fn visit_item_fn(&mut self, node: &'ast syn::ItemFn) {
         self.record_unsafe_fn(&node.sig);
-        self.visit_fn_body(&node.sig, &node.block, true, |this| {
+        self.visit_fn_body(&node.sig, &node.block, false, true, |this| {
             syn::visit::visit_item_fn(this, node);
         });
     }
 
     fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
         self.record_unsafe_fn(&node.sig);
-        self.visit_fn_body(&node.sig, &node.block, false, |this| {
+        self.visit_fn_body(&node.sig, &node.block, true, false, |this| {
             syn::visit::visit_impl_item_fn(this, node);
         });
     }
@@ -733,12 +735,12 @@ impl<'ast> Visit<'ast> for IrExtractor {
         match &node.default {
             Some(body) => {
                 self.record_unsafe_fn(&node.sig);
-                self.visit_fn_body(&node.sig, body, false, |this| {
+                self.visit_fn_body(&node.sig, body, true, false, |this| {
                     syn::visit::visit_trait_item_fn(this, node);
                 });
             }
             None => {
-                let fn_index = self.push_fn(&node.sig);
+                let fn_index = self.push_fn(&node.sig, true);
                 self.emit_signature_type_refs(&node.sig, fn_index);
                 syn::visit::visit_trait_item_fn(self, node);
             }
@@ -966,6 +968,24 @@ impl<'ast> Visit<'ast> for IrExtractor {
                 edges.into_boxed_slice()
             },
             |s| syn::visit::visit_item_trait(s, node),
+        );
+    }
+
+    fn visit_item_union(&mut self, node: &'ast syn::ItemUnion) {
+        self.visit_type_def(
+            &node.ident,
+            TypeDefKind::Union,
+            |name| {
+                let mut edges = Vec::new();
+                let mut type_names = Vec::new();
+                for field in &node.fields.named {
+                    type_names.clear();
+                    collect_type_names_into(&field.ty, &mut type_names);
+                    extend_edges_from_names(name, &type_names, &mut edges);
+                }
+                edges.into_boxed_slice()
+            },
+            |s| syn::visit::visit_item_union(s, node),
         );
     }
 

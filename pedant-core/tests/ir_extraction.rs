@@ -66,6 +66,37 @@ fn test_ir_extracts_body_line_count() {
     assert_eq!(decl.functions[0].body_line_count, 0);
 }
 
+// 1.T1c: union extraction and free-vs-associated function distinction
+#[test]
+fn test_ir_extracts_union_and_associated_flag() {
+    let source = r#"
+        pub union Bytes { a: u32, b: f32 }
+        fn free() {}
+        struct S;
+        impl S { fn method(&self) {} }
+        trait T { fn required(&self); fn provided(&self) {} }
+    "#;
+    let ir = parse_and_extract(source);
+
+    assert!(
+        ir.type_defs
+            .iter()
+            .any(|t| &*t.name == "Bytes" && t.kind == TypeDefKind::Union)
+    );
+
+    let associated = |name: &str| {
+        ir.functions
+            .iter()
+            .find(|f| &*f.name == name)
+            .unwrap()
+            .is_associated
+    };
+    assert!(!associated("free"));
+    assert!(associated("method"));
+    assert!(associated("required"));
+    assert!(associated("provided"));
+}
+
 // 1.T2: Control flow facts
 #[test]
 fn test_ir_extracts_control_flow() {

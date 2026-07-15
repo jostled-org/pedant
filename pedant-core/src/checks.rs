@@ -333,4 +333,13 @@ define_checks! {
         exception: "Generated code or exhaustive `match` dispatchers where every arm is a trivial one-liner.",
         llm_specific: false,
     },
+    ModuleRootDefinitions => {
+        code: "module-root-definitions",
+        description: "Item defined in a module-root file (mod.rs/lib.rs)",
+        category: "structure",
+        problem: "Module-root files should only wire the module tree together with declarations and re-exports. Defining types, functions, or impls in them buries real logic in the file that is supposed to be a table of contents, and creates a decomposed-facade ambiguity with sibling module files.",
+        fix: "Move the definition into a dedicated module file and re-export it from the root with `pub use`.",
+        exception: "None. A module root is for declarations and re-exports; definitions belong in leaf modules.",
+        llm_specific: false,
+    },
 }

@@ -106,6 +106,10 @@ pub struct ConfigArgs {
     /// Disable long-function-body check
     #[arg(long)]
     pub no_long_function_body: bool,
+
+    /// Disable module-root-definitions check
+    #[arg(long)]
+    pub no_module_root_definitions: bool,
 }
 
 impl ConfigArgs {
@@ -127,6 +131,8 @@ impl ConfigArgs {
         }
         base.check_long_function_body =
             base.check_long_function_body && !self.no_long_function_body;
+        base.check_module_root_definitions =
+            base.check_module_root_definitions && !self.no_module_root_definitions;
         base
     }
 }

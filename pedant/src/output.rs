@@ -55,6 +55,18 @@ fn write_json(
     Ok(())
 }
 
+/// Map a writer failure to the process error exit code, reporting it on stderr.
+fn map_io_error(
+    result: std::io::Result<()>,
+    context: &str,
+    stderr: &mut impl Write,
+) -> Result<(), std::process::ExitCode> {
+    result.map_err(|error| {
+        crate::report_error(stderr, format_args!("error writing {context}: {error}"));
+        std::process::ExitCode::from(2)
+    })
+}
+
 fn require_attestation_inputs(
     crate_name: Option<&str>,
     crate_version: Option<&str>,
@@ -157,12 +169,16 @@ pub(crate) fn write_check_output(
     stderr: &mut impl Write,
 ) -> Result<(), std::process::ExitCode> {
     match format {
-        OutputFormat::Text => crate::reporter::Reporter::new(quiet)
-            .report(violations, stdout)
-            .map_err(|error| {
-                crate::report_error(stderr, format_args!("error writing output: {error}"));
-                std::process::ExitCode::from(2)
-            }),
+        OutputFormat::Text => map_io_error(
+            crate::reporter::Reporter::new(quiet).report(violations, stdout),
+            "output",
+            stderr,
+        ),
+        OutputFormat::Github => map_io_error(
+            crate::github::write_violations(violations, stdout),
+            "output",
+            stderr,
+        ),
         OutputFormat::Json => {
             let output = JsonOutput {
                 analysis_tier,
@@ -184,12 +200,16 @@ pub(crate) fn write_gate_output(
     stderr: &mut impl Write,
 ) -> Result<(), std::process::ExitCode> {
     match format {
-        OutputFormat::Text => crate::reporter::Reporter::new(true)
-            .report_gate(gate_verdicts, stdout)
-            .map_err(|error| {
-                crate::report_error(stderr, format_args!("error writing gate output: {error}"));
-                std::process::ExitCode::from(2)
-            }),
+        OutputFormat::Text => map_io_error(
+            crate::reporter::Reporter::new(true).report_gate(gate_verdicts, stdout),
+            "gate output",
+            stderr,
+        ),
+        OutputFormat::Github => map_io_error(
+            crate::github::write_gate_verdicts(gate_verdicts, stdout),
+            "gate output",
+            stderr,
+        ),
         OutputFormat::Json => {
             let output = JsonOutput {
                 analysis_tier,

@@ -9,6 +9,8 @@ pub enum OutputFormat {
     Text,
     /// Machine-readable JSON.
     Json,
+    /// GitHub Actions workflow commands, rendered as inline PR annotations.
+    Github,
 }
 
 /// Threshold for failing supply-chain verification.

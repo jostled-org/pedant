@@ -4,6 +4,7 @@ mod analysis;
 mod command;
 mod config;
 mod explain;
+mod github;
 mod output;
 mod reporter;
 mod supply_chain;

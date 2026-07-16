@@ -22,6 +22,7 @@ use sha2::{Digest, Sha256};
 use tempfile::{NamedTempFile, TempDir, tempdir};
 
 use crate::config::FailOn;
+use crate::github::AnnotationLevel;
 
 const ECOSYSTEM: &str = "cargo";
 const SPEC_VERSION: &str = "0.1.0";
@@ -172,12 +173,12 @@ impl FindingLevel {
         }
     }
 
-    fn annotation_prefix(self) -> &'static str {
+    fn annotation_level(self) -> AnnotationLevel {
         match self {
-            Self::HashMismatch => "::error::",
-            Self::NewCapability => "::warning::",
-            Self::NewDependency => "::notice::",
-            Self::AnalysisIncomplete => "::notice::",
+            Self::HashMismatch => AnnotationLevel::Error,
+            Self::NewCapability => AnnotationLevel::Warning,
+            Self::NewDependency => AnnotationLevel::Notice,
+            Self::AnalysisIncomplete => AnnotationLevel::Notice,
         }
     }
 
@@ -1221,8 +1222,8 @@ fn finalize_verify(report: Report, fail_on: FailOn, stderr: &mut impl Write) -> 
     for finding in &report.findings {
         std::mem::drop(writeln!(
             stdout,
-            "{}[{}] {}@{} — {}",
-            finding.level.annotation_prefix(),
+            "::{}::[{}] {}@{} — {}",
+            finding.level.annotation_level().command(),
             finding.ecosystem,
             finding.name,
             finding.version,

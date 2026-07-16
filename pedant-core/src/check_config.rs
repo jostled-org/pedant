@@ -150,7 +150,6 @@ pub struct PatternOverride {
     pub patterns: Arc<[Arc<str>]>,
 }
 
-/// Deserialized `.pedant.toml` file with all check settings.
 /// One `item-visibility-policy` rule: a named item at a path must have an
 /// exact visibility.
 #[derive(Debug, Deserialize, Clone)]
@@ -193,6 +192,7 @@ pub struct FlatModuleFamily {
     pub prefix: Box<str>,
 }
 
+/// Deserialized `.pedant.toml` file with all check settings.
 #[derive(Debug, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct ConfigFile {

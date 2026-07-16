@@ -5,6 +5,7 @@ mod command;
 mod config;
 mod explain;
 mod github;
+mod input;
 mod output;
 mod reporter;
 mod supply_chain;

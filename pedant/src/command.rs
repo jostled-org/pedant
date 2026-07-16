@@ -60,6 +60,22 @@ fn semantic_enabled(args: &impl SemanticArgs) -> bool {
     args.semantic_enabled()
 }
 
+/// Expand the caller's path arguments into the concrete file list to analyze.
+///
+/// Yields an empty list in stdin mode, where there are no paths to resolve.
+fn resolve_input_files(
+    input: &crate::config::FileInputArgs,
+    stderr: &mut impl Write,
+) -> Result<Vec<String>, ExitCode> {
+    match input.stdin {
+        true => Ok(Vec::new()),
+        false => crate::input::resolve(&input.files).map_err(|error| {
+            crate::report_error(stderr, format_args!("error: {error}"));
+            ExitCode::from(2)
+        }),
+    }
+}
+
 fn run_supply_chain(command: SupplyChainCommand, stderr: &mut impl Write) -> ExitCode {
     match command {
         SupplyChainCommand::Init(write) => {
@@ -83,25 +99,26 @@ fn run_check(args: CheckArgs, stderr: &mut impl Write) -> ExitCode {
         Err(exit) => return exit,
     };
     let base_config = args.config.to_check_config(file_config.as_ref());
-    let mut acc = AnalysisAccumulator::with_capacity(args.input.files.len());
-    let semantic = crate::analysis::load_semantic_if_requested(
-        semantic_enabled(&args),
-        &args.input.files,
-        stderr,
-    );
+    let files = match resolve_input_files(&args.input, stderr) {
+        Ok(files) => files,
+        Err(exit) => return exit,
+    };
+    let mut acc = AnalysisAccumulator::with_capacity(files.len());
+    let semantic =
+        crate::analysis::load_semantic_if_requested(semantic_enabled(&args), &files, stderr);
     let ctx = AnalysisContext {
         base_config: &base_config,
         file_config: file_config.as_ref(),
         semantic: semantic.as_ref(),
     };
     let request = AnalysisRequest {
-        files: &args.input.files,
+        files: &files,
         stdin: args.input.stdin,
         collect_source_hash: false,
     };
     std::mem::drop(run_analysis(&request, &ctx, &mut acc, stderr));
     if !args.input.stdin {
-        crate::analysis::run_project_checks(&args.input.files, &base_config, &mut acc, stderr);
+        crate::analysis::run_project_checks(&files, &base_config, &mut acc, stderr);
     }
     let analysis_tier = pedant_core::determine_analysis_tier(semantic.as_ref(), &acc.data_flows);
     let mut stdout = io::stdout().lock();
@@ -122,19 +139,20 @@ fn run_check(args: CheckArgs, stderr: &mut impl Write) -> ExitCode {
 
 fn run_capabilities(args: CapabilitiesArgs, stderr: &mut impl Write) -> ExitCode {
     let base_config = CheckConfig::default();
-    let mut acc = AnalysisAccumulator::with_capacity(args.input.files.len());
-    let semantic = crate::analysis::load_semantic_if_requested(
-        semantic_enabled(&args),
-        &args.input.files,
-        stderr,
-    );
+    let files = match resolve_input_files(&args.input, stderr) {
+        Ok(files) => files,
+        Err(exit) => return exit,
+    };
+    let mut acc = AnalysisAccumulator::with_capacity(files.len());
+    let semantic =
+        crate::analysis::load_semantic_if_requested(semantic_enabled(&args), &files, stderr);
     let ctx = AnalysisContext {
         base_config: &base_config,
         file_config: None,
         semantic: semantic.as_ref(),
     };
     let request = AnalysisRequest {
-        files: &args.input.files,
+        files: &files,
         stdin: args.input.stdin,
         collect_source_hash: false,
     };
@@ -148,19 +166,20 @@ fn run_capabilities(args: CapabilitiesArgs, stderr: &mut impl Write) -> ExitCode
 
 fn run_attestation(args: AttestationArgs, stderr: &mut impl Write) -> ExitCode {
     let base_config = CheckConfig::default();
-    let mut acc = AnalysisAccumulator::with_capacity(args.input.files.len());
-    let semantic = crate::analysis::load_semantic_if_requested(
-        semantic_enabled(&args),
-        &args.input.files,
-        stderr,
-    );
+    let files = match resolve_input_files(&args.input, stderr) {
+        Ok(files) => files,
+        Err(exit) => return exit,
+    };
+    let mut acc = AnalysisAccumulator::with_capacity(files.len());
+    let semantic =
+        crate::analysis::load_semantic_if_requested(semantic_enabled(&args), &files, stderr);
     let ctx = AnalysisContext {
         base_config: &base_config,
         file_config: None,
         semantic: semantic.as_ref(),
     };
     let request = AnalysisRequest {
-        files: &args.input.files,
+        files: &files,
         stdin: args.input.stdin,
         collect_source_hash: true,
     };
@@ -210,19 +229,20 @@ fn run_gate(args: GateArgs, stderr: &mut impl Write) -> ExitCode {
         no_feature_boundary: false,
     }
     .to_check_config(file_config.as_ref());
-    let mut acc = AnalysisAccumulator::with_capacity(args.input.files.len());
-    let semantic = crate::analysis::load_semantic_if_requested(
-        semantic_enabled(&args),
-        &args.input.files,
-        stderr,
-    );
+    let files = match resolve_input_files(&args.input, stderr) {
+        Ok(files) => files,
+        Err(exit) => return exit,
+    };
+    let mut acc = AnalysisAccumulator::with_capacity(files.len());
+    let semantic =
+        crate::analysis::load_semantic_if_requested(semantic_enabled(&args), &files, stderr);
     let ctx = AnalysisContext {
         base_config: &base_config,
         file_config: file_config.as_ref(),
         semantic: semantic.as_ref(),
     };
     let request = AnalysisRequest {
-        files: &args.input.files,
+        files: &files,
         stdin: args.input.stdin,
         collect_source_hash: false,
     };

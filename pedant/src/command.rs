@@ -206,6 +206,7 @@ fn run_gate(args: GateArgs, stderr: &mut impl Write) -> ExitCode {
         no_item_visibility_policy: false,
         no_ungated_test_api: false,
         no_conflicting_module_root: false,
+        no_flat_module_family: false,
     }
     .to_check_config(file_config.as_ref());
     let mut acc = AnalysisAccumulator::with_capacity(args.input.files.len());

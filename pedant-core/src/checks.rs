@@ -363,6 +363,15 @@ define_checks! {
         exception: "None. The policy is an explicit, per-item contract; change the contract rather than ignore it.",
         llm_specific: false,
     },
+    FlatModuleFamily => {
+        code: "flat-module-family",
+        description: "Prefixed module family member outside its package directory",
+        category: "structure",
+        problem: "A configured module family must live below a single directory module. A `prefix.rs`, `prefix_*.rs`, or `prefix_*/` sitting flat beside its package directory scatters the family across the parent, obscuring that the members form one cohesive unit.",
+        fix: "Move the member below the configured package directory (e.g. `parent/package_root/`).",
+        exception: "None. Keep a prefixed family under its one package directory.",
+        llm_specific: false,
+    },
     ConflictingModuleRoot => {
         code: "conflicting-module-root",
         description: "Sibling `<stem>.rs` and `<stem>/` module roots",

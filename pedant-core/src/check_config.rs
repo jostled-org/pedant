@@ -167,6 +167,19 @@ pub struct ItemVisibilityRule {
     pub visibility: Box<str>,
 }
 
+/// One `flat-module-family` rule: a prefixed module family under `parent` must
+/// live below `parent/package_root/`.
+#[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct FlatModuleFamily {
+    /// Directory (repo-relative) whose direct children are checked.
+    pub parent: Box<str>,
+    /// Sub-directory of `parent` where the family must live.
+    pub package_root: Box<str>,
+    /// Module-name prefix identifying family members.
+    pub prefix: Box<str>,
+}
+
 #[derive(Debug, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct ConfigFile {
@@ -303,6 +316,12 @@ pub struct ConfigFile {
     /// Feature that must gate a test-only API (default: `test-support`).
     #[serde(default = "default_test_support_feature")]
     pub test_support_feature: Box<str>,
+    /// Enforce configured flat-module-family layout rules.
+    #[serde(default = "default_true")]
+    pub check_flat_module_family: bool,
+    /// Flat-module-family layout rules.
+    #[serde(default)]
+    pub flat_module_families: Vec<FlatModuleFamily>,
     /// Per-path configuration overrides keyed by glob pattern.
     #[serde(default)]
     pub overrides: BTreeMap<Box<str>, PathOverride>,
@@ -387,6 +406,8 @@ pub struct PathOverride {
     pub check_ungated_test_api: Option<bool>,
     /// Replace conflicting-module-root check state.
     pub check_conflicting_module_root: Option<bool>,
+    /// Replace flat-module-family check state.
+    pub check_flat_module_family: Option<bool>,
 }
 
 fn default_max_depth() -> usize {
@@ -498,6 +519,7 @@ macro_rules! for_each_bool_check {
             "Enforce configured item-visibility policies.", check_item_visibility_policy, true;
             "Flag ungated test-only APIs under `src/`.", check_ungated_test_api, false;
             "Flag sibling `<stem>.rs` and `<stem>/` module roots.", check_conflicting_module_root, false;
+            "Enforce configured flat-module-family layout rules.", check_flat_module_family, true;
         }
     };
 }
@@ -527,6 +549,8 @@ macro_rules! impl_check_config {
             pub max_methods: usize,
             /// Item-visibility policy rules.
             pub item_visibility_policy: Arc<[ItemVisibilityRule]>,
+            /// Flat-module-family layout rules.
+            pub flat_module_families: Arc<[FlatModuleFamily]>,
             /// Name globs marking test-only APIs for `ungated-test-api`.
             pub test_api_patterns: Arc<[Arc<str>]>,
             /// Feature that must gate a test-only API.
@@ -559,6 +583,7 @@ macro_rules! impl_check_config {
                     source_file_deny_lines: default_source_file_deny_lines(),
                     max_methods: default_max_methods(),
                     item_visibility_policy: Arc::from([]),
+                    flat_module_families: Arc::from([]),
                     test_api_patterns: default_test_api_patterns(),
                     test_support_feature: Arc::from(default_test_support_feature()),
                     forbid_attributes: PatternCheck::default(),
@@ -584,6 +609,7 @@ macro_rules! impl_check_config {
                     source_file_deny_lines: fc.source_file_deny_lines,
                     max_methods: fc.max_methods,
                     item_visibility_policy: fc.item_visibility_policy.iter().cloned().collect(),
+                    flat_module_families: fc.flat_module_families.iter().cloned().collect(),
                     test_api_patterns: fc.test_api_patterns.clone(),
                     test_support_feature: Arc::from(&*fc.test_support_feature),
                     forbid_attributes: fc.forbid_attributes.clone(),

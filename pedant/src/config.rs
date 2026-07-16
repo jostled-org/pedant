@@ -146,6 +146,10 @@ pub struct ConfigArgs {
     /// Disable conflicting-module-root check
     #[arg(long)]
     pub no_conflicting_module_root: bool,
+
+    /// Disable flat-module-family check
+    #[arg(long)]
+    pub no_flat_module_family: bool,
 }
 
 impl ConfigArgs {
@@ -190,6 +194,8 @@ impl ConfigArgs {
         base.check_ungated_test_api = base.check_ungated_test_api && !self.no_ungated_test_api;
         base.check_conflicting_module_root =
             base.check_conflicting_module_root && !self.no_conflicting_module_root;
+        base.check_flat_module_family =
+            base.check_flat_module_family && !self.no_flat_module_family;
         base
     }
 }

@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use pedant_core::check_config::CheckConfig;
+use pedant_core::check_config::{CheckConfig, FlatModuleFamily};
 use pedant_core::project::{ProjectContext, check_project};
 use pedant_core::violation::ViolationType;
 
@@ -67,4 +67,77 @@ fn test_conflicting_module_root_disabled_by_default() {
 
     let files = paths(root, &["src/foo.rs"]);
     assert!(conflicts(&files, root, &CheckConfig::default()).is_empty());
+}
+
+fn flat_family_hits(root: &Path, config: &CheckConfig) -> Vec<String> {
+    let ctx = ProjectContext {
+        rust_files: &[],
+        workspace_root: root,
+    };
+    check_project(&ctx, config)
+        .into_iter()
+        .filter(|v| matches!(v.violation_type, ViolationType::FlatModuleFamily))
+        .map(|v| v.file_path.to_string())
+        .collect()
+}
+
+fn engine_family() -> Vec<FlatModuleFamily> {
+    vec![FlatModuleFamily {
+        parent: "src".into(),
+        package_root: "engine".into(),
+        prefix: "engine".into(),
+    }]
+}
+
+fn make_engine_tree(root: &Path) {
+    std::fs::create_dir_all(root.join("src/engine")).unwrap();
+    std::fs::write(root.join("src/engine/mod.rs"), "").unwrap();
+    std::fs::write(root.join("src/engine.rs"), "").unwrap(); // prefix.rs
+    std::fs::write(root.join("src/engine_util.rs"), "").unwrap(); // prefix_*.rs
+    std::fs::create_dir_all(root.join("src/engine_helpers")).unwrap(); // prefix_*/
+    std::fs::write(root.join("src/other.rs"), "").unwrap(); // unrelated
+    std::fs::write(root.join("src/enginex.rs"), "").unwrap(); // not prefix_ and not exact
+}
+
+#[test]
+fn test_flat_module_family_flags_flat_members() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    make_engine_tree(root);
+
+    let config = CheckConfig {
+        flat_module_families: engine_family().into(),
+        ..CheckConfig::default()
+    };
+    let hits = flat_family_hits(root, &config);
+    // engine.rs, engine_util.rs, engine_helpers/ — home dir and unrelated files clean.
+    assert_eq!(hits.len(), 3, "got: {hits:?}");
+    assert!(hits.iter().any(|f| f.ends_with("src/engine.rs")));
+    assert!(hits.iter().any(|f| f.ends_with("src/engine_util.rs")));
+    assert!(hits.iter().any(|f| f.ends_with("src/engine_helpers")));
+    assert!(hits.iter().all(|f| !f.contains("other")));
+    assert!(hits.iter().all(|f| !f.contains("enginex")));
+}
+
+#[test]
+fn test_flat_module_family_disabled() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    make_engine_tree(root);
+
+    let config = CheckConfig {
+        check_flat_module_family: false,
+        flat_module_families: engine_family().into(),
+        ..CheckConfig::default()
+    };
+    assert!(flat_family_hits(root, &config).is_empty());
+}
+
+#[test]
+fn test_flat_module_family_inert_without_rules() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    make_engine_tree(root);
+    // Enabled by default, but no families configured -> nothing flagged.
+    assert!(flat_family_hits(root, &CheckConfig::default()).is_empty());
 }

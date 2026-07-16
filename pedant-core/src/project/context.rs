@@ -18,5 +18,6 @@ pub struct ProjectContext<'a> {
 pub fn check_project(ctx: &ProjectContext<'_>, config: &CheckConfig) -> Vec<Violation> {
     let mut violations = Vec::new();
     module_layout::check_conflicting_module_root(ctx, config, &mut violations);
+    module_layout::check_flat_module_family(ctx, config, &mut violations);
     violations
 }

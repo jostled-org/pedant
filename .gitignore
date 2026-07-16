@@ -7,7 +7,6 @@ project_docs/
 logs/
 docs/.codebase-snapshot.md
 .manifest.toml
-.pedant.toml
 docs/specs/
 docs/plans/
 docs/scripts/

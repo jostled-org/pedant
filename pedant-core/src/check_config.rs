@@ -291,6 +291,9 @@ pub struct ConfigFile {
     /// Flag ungated test-only APIs under `src/`.
     #[serde(default)]
     pub check_ungated_test_api: bool,
+    /// Flag sibling `<stem>.rs` and `<stem>/` module roots.
+    #[serde(default)]
+    pub check_conflicting_module_root: bool,
     /// Name globs that mark test-only APIs (default: `*_for_tests`).
     #[serde(
         default = "default_test_api_patterns",
@@ -382,6 +385,8 @@ pub struct PathOverride {
     pub check_item_visibility_policy: Option<bool>,
     /// Replace ungated-test-api check state.
     pub check_ungated_test_api: Option<bool>,
+    /// Replace conflicting-module-root check state.
+    pub check_conflicting_module_root: Option<bool>,
 }
 
 fn default_max_depth() -> usize {
@@ -492,6 +497,7 @@ macro_rules! for_each_bool_check {
             "Count pure forwarders toward `high-method-count`.", count_forwarders, false;
             "Enforce configured item-visibility policies.", check_item_visibility_policy, true;
             "Flag ungated test-only APIs under `src/`.", check_ungated_test_api, false;
+            "Flag sibling `<stem>.rs` and `<stem>/` module roots.", check_conflicting_module_root, false;
         }
     };
 }

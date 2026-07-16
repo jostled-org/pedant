@@ -174,6 +174,38 @@ fn test_large_source_file_deny_tier_fails_the_run() {
     );
 }
 
+#[test]
+fn test_conflicting_module_root_project_check_end_to_end() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::create_dir_all(root.join("src/widgets")).unwrap();
+    std::fs::write(root.join("src/widgets.rs"), "pub fn a() {}\n").unwrap();
+    std::fs::write(root.join("src/widgets/mod.rs"), "pub fn b() {}\n").unwrap();
+
+    let sibling = root.join("src/widgets.rs");
+    let output = common::run_subcommand(
+        "check",
+        &["--no-conflicting-module-root", sibling.to_str().unwrap()],
+        None,
+    );
+    assert!(
+        output.status.success(),
+        "disabled: no conflict finding expected"
+    );
+
+    // Enabling the project check via config surfaces the conflict.
+    let cfg = root.join(".pedant.toml");
+    std::fs::write(&cfg, "check_conflicting_module_root = true\n").unwrap();
+    let output = common::run_subcommand(
+        "check",
+        &["-c", cfg.to_str().unwrap(), sibling.to_str().unwrap()],
+        None,
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stdout.contains("conflicting-module-root"), "got:\n{stdout}");
+}
+
 // --- Semantic CLI tests (feature-gated) ---
 
 #[cfg(feature = "semantic")]

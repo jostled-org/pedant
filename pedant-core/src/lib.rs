@@ -36,6 +36,8 @@ pub mod json_format;
 pub mod lint;
 /// Glob and wildcard matching for AST node text and file paths.
 pub mod pattern;
+/// Whole-workspace structural checks over the file tree and Cargo metadata.
+pub mod project;
 /// Style checks that consume IR facts and produce violations.
 pub mod style;
 /// The `Violation` type, display formatting, and check rationale.

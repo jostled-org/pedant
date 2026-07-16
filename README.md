@@ -123,7 +123,7 @@ pedant explain max-depth            # detailed rationale
 | Nesting | `max-depth`, `nested-if`, `if-in-match`, `nested-match`, `match-in-if`, `else-chain` |
 | Forbidden patterns | `forbidden-attribute`, `forbidden-type`, `forbidden-call`, `forbidden-macro`, `forbidden-else`, `forbidden-unsafe` |
 | Performance & dispatch | `dyn-return`, `dyn-param`, `vec-box-dyn`, `dyn-field`, `clone-in-loop`, `default-hasher` |
-| Structure | `mixed-concerns`, `inline-tests`, `let-underscore-result`, `high-param-count`, `long-function-body`, `module-root-definitions`, `large-source-file`, `high-method-count`, `item-visibility-policy`, `ungated-test-api` |
+| Structure | `mixed-concerns`, `inline-tests`, `let-underscore-result`, `high-param-count`, `long-function-body`, `module-root-definitions`, `large-source-file`, `high-method-count`, `item-visibility-policy`, `ungated-test-api`, `conflicting-module-root` |
 | Naming | `generic-naming` |
 
 To run pedant as a [Claude Code hook](examples/pedant-claude-code-hook.md) that blocks AI-generated code on every edit:

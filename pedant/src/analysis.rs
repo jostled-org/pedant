@@ -7,7 +7,10 @@ use pedant_core::AnalysisResult;
 use pedant_core::SemanticContext;
 use pedant_core::check_config::CheckConfig;
 use pedant_core::hash::compute_source_hash;
-use pedant_core::lint::{analyze, analyze_build_script, discover_build_script};
+use pedant_core::lint::{
+    analyze, analyze_build_script, discover_build_script, discover_workspace_root,
+};
+use pedant_core::project::{ProjectContext, check_project};
 use pedant_lang::FileClassification;
 use pedant_types::Language;
 
@@ -97,6 +100,29 @@ pub(crate) fn run_analysis(
             None
         }
     }
+}
+
+/// Run whole-workspace structural checks and merge their violations into `acc`.
+/// The workspace root is discovered from the analyzed files, falling back to the
+/// current directory.
+pub(crate) fn run_project_checks(
+    files: &[String],
+    config: &CheckConfig,
+    acc: &mut AnalysisAccumulator,
+) {
+    let workspace_root = files
+        .iter()
+        .find_map(|file| {
+            discover_workspace_root(Path::new(file.as_str()))
+                .ok()
+                .flatten()
+        })
+        .unwrap_or_else(|| PathBuf::from("."));
+    let ctx = ProjectContext {
+        rust_files: files,
+        workspace_root: &workspace_root,
+    };
+    acc.violations.extend(check_project(&ctx, config));
 }
 
 /// Load `SemanticContext` when `--semantic` is requested.

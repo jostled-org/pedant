@@ -363,6 +363,15 @@ define_checks! {
         exception: "None. The policy is an explicit, per-item contract; change the contract rather than ignore it.",
         llm_specific: false,
     },
+    ConflictingModuleRoot => {
+        code: "conflicting-module-root",
+        description: "Sibling `<stem>.rs` and `<stem>/` module roots",
+        category: "structure",
+        problem: "A `<stem>.rs` file beside a `<stem>/` directory gives a module two possible roots. The convention is directory modules rooted at `<stem>/mod.rs`; the stray sibling file recreates a decomposed-facade/root ambiguity that hides where the module actually lives.",
+        fix: "Fold the `<stem>.rs` contents into `<stem>/mod.rs` and delete the sibling file.",
+        exception: "None. Pick one module-root form per module.",
+        llm_specific: false,
+    },
     UngatedTestApi => {
         code: "ungated-test-api",
         description: "Test-only API under src/ not gated behind a feature",

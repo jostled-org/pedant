@@ -167,6 +167,19 @@ pub struct ItemVisibilityRule {
     pub visibility: Box<str>,
 }
 
+/// One `feature-boundary` rule: a package feature must obey the named invariant.
+#[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct FeatureBoundaryRule {
+    /// The package whose feature is constrained.
+    pub package: Box<str>,
+    /// The feature name the rule applies to.
+    pub feature: Box<str>,
+    /// `no-default` (must not be reachable from any default feature) or
+    /// `dev-only` (may be enabled only through dev-dependency edges).
+    pub rule: Box<str>,
+}
+
 /// One `flat-module-family` rule: a prefixed module family under `parent` must
 /// live below `parent/package_root/`.
 #[derive(Debug, Deserialize, Clone)]
@@ -322,6 +335,12 @@ pub struct ConfigFile {
     /// Flat-module-family layout rules.
     #[serde(default)]
     pub flat_module_families: Vec<FlatModuleFamily>,
+    /// Enforce configured Cargo feature-boundary invariants.
+    #[serde(default = "default_true")]
+    pub check_feature_boundary: bool,
+    /// Cargo feature-boundary invariants.
+    #[serde(default)]
+    pub feature_boundaries: Vec<FeatureBoundaryRule>,
     /// Per-path configuration overrides keyed by glob pattern.
     #[serde(default)]
     pub overrides: BTreeMap<Box<str>, PathOverride>,
@@ -408,6 +427,8 @@ pub struct PathOverride {
     pub check_conflicting_module_root: Option<bool>,
     /// Replace flat-module-family check state.
     pub check_flat_module_family: Option<bool>,
+    /// Replace feature-boundary check state.
+    pub check_feature_boundary: Option<bool>,
 }
 
 fn default_max_depth() -> usize {
@@ -520,6 +541,7 @@ macro_rules! for_each_bool_check {
             "Flag ungated test-only APIs under `src/`.", check_ungated_test_api, false;
             "Flag sibling `<stem>.rs` and `<stem>/` module roots.", check_conflicting_module_root, false;
             "Enforce configured flat-module-family layout rules.", check_flat_module_family, true;
+            "Enforce configured Cargo feature-boundary invariants.", check_feature_boundary, true;
         }
     };
 }
@@ -551,6 +573,8 @@ macro_rules! impl_check_config {
             pub item_visibility_policy: Arc<[ItemVisibilityRule]>,
             /// Flat-module-family layout rules.
             pub flat_module_families: Arc<[FlatModuleFamily]>,
+            /// Cargo feature-boundary invariants.
+            pub feature_boundaries: Arc<[FeatureBoundaryRule]>,
             /// Name globs marking test-only APIs for `ungated-test-api`.
             pub test_api_patterns: Arc<[Arc<str>]>,
             /// Feature that must gate a test-only API.
@@ -584,6 +608,7 @@ macro_rules! impl_check_config {
                     max_methods: default_max_methods(),
                     item_visibility_policy: Arc::from([]),
                     flat_module_families: Arc::from([]),
+                    feature_boundaries: Arc::from([]),
                     test_api_patterns: default_test_api_patterns(),
                     test_support_feature: Arc::from(default_test_support_feature()),
                     forbid_attributes: PatternCheck::default(),
@@ -610,6 +635,7 @@ macro_rules! impl_check_config {
                     max_methods: fc.max_methods,
                     item_visibility_policy: fc.item_visibility_policy.iter().cloned().collect(),
                     flat_module_families: fc.flat_module_families.iter().cloned().collect(),
+                    feature_boundaries: fc.feature_boundaries.iter().cloned().collect(),
                     test_api_patterns: fc.test_api_patterns.clone(),
                     test_support_feature: Arc::from(&*fc.test_support_feature),
                     forbid_attributes: fc.forbid_attributes.clone(),

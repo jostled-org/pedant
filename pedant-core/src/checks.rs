@@ -363,6 +363,15 @@ define_checks! {
         exception: "None. The policy is an explicit, per-item contract; change the contract rather than ignore it.",
         llm_specific: false,
     },
+    FeatureBoundary => {
+        code: "feature-boundary",
+        description: "Cargo feature crosses a configured boundary",
+        category: "structure",
+        problem: "Dev-only or test-support features must stay sealed: enabled by no default feature, and reachable only through dev-dependency edges. A normal or build edge — or a default-feature chain — that enables such a feature leaks test scaffolding into production builds.",
+        fix: "Move the feature-enabling dependency to `[dev-dependencies]`, drop it from default features, or stop requesting the feature on normal/build edges.",
+        exception: "None. Change the boundary rule if the feature is intentionally public.",
+        llm_specific: false,
+    },
     FlatModuleFamily => {
         code: "flat-module-family",
         description: "Prefixed module family member outside its package directory",

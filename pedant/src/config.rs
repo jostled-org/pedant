@@ -150,6 +150,10 @@ pub struct ConfigArgs {
     /// Disable flat-module-family check
     #[arg(long)]
     pub no_flat_module_family: bool,
+
+    /// Disable feature-boundary check
+    #[arg(long)]
+    pub no_feature_boundary: bool,
 }
 
 impl ConfigArgs {
@@ -196,6 +200,7 @@ impl ConfigArgs {
             base.check_conflicting_module_root && !self.no_conflicting_module_root;
         base.check_flat_module_family =
             base.check_flat_module_family && !self.no_flat_module_family;
+        base.check_feature_boundary = base.check_feature_boundary && !self.no_feature_boundary;
         base
     }
 }

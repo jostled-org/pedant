@@ -101,7 +101,7 @@ fn run_check(args: CheckArgs, stderr: &mut impl Write) -> ExitCode {
     };
     std::mem::drop(run_analysis(&request, &ctx, &mut acc, stderr));
     if !args.input.stdin {
-        crate::analysis::run_project_checks(&args.input.files, &base_config, &mut acc);
+        crate::analysis::run_project_checks(&args.input.files, &base_config, &mut acc, stderr);
     }
     let analysis_tier = pedant_core::determine_analysis_tier(semantic.as_ref(), &acc.data_flows);
     let mut stdout = io::stdout().lock();
@@ -207,6 +207,7 @@ fn run_gate(args: GateArgs, stderr: &mut impl Write) -> ExitCode {
         no_ungated_test_api: false,
         no_conflicting_module_root: false,
         no_flat_module_family: false,
+        no_feature_boundary: false,
     }
     .to_check_config(file_config.as_ref());
     let mut acc = AnalysisAccumulator::with_capacity(args.input.files.len());

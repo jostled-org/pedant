@@ -10,7 +10,7 @@ use pedant_core::hash::compute_source_hash;
 use pedant_core::lint::{
     analyze, analyze_build_script, discover_build_script, discover_workspace_root,
 };
-use pedant_core::project::{ProjectContext, check_project};
+use pedant_core::project::{CargoMetadata, ProjectContext, check_project};
 use pedant_lang::FileClassification;
 use pedant_types::Language;
 
@@ -109,6 +109,7 @@ pub(crate) fn run_project_checks(
     files: &[String],
     config: &CheckConfig,
     acc: &mut AnalysisAccumulator,
+    stderr: &mut impl Write,
 ) {
     let workspace_root = files
         .iter()
@@ -118,11 +119,41 @@ pub(crate) fn run_project_checks(
                 .flatten()
         })
         .unwrap_or_else(|| PathBuf::from("."));
+    let metadata = load_cargo_metadata_if_needed(config, &workspace_root, stderr);
     let ctx = ProjectContext {
         rust_files: files,
         workspace_root: &workspace_root,
+        metadata: metadata.as_ref(),
     };
     acc.violations.extend(check_project(&ctx, config));
+}
+
+/// Run `cargo metadata` for the feature-boundary check, but only when it is
+/// enabled and has rules. Failures fall back to skipping the check with a warning.
+fn load_cargo_metadata_if_needed(
+    config: &CheckConfig,
+    workspace_root: &Path,
+    stderr: &mut impl Write,
+) -> Option<CargoMetadata> {
+    if !config.check_feature_boundary || config.feature_boundaries.is_empty() {
+        return None;
+    }
+    let output = std::process::Command::new("cargo")
+        .args(["metadata", "--format-version", "1"])
+        .current_dir(workspace_root)
+        .output();
+    match output {
+        Ok(out) if out.status.success() => serde_json::from_slice(&out.stdout).ok(),
+        _ => {
+            crate::report_error(
+                stderr,
+                format_args!(
+                    "warning: feature-boundary: `cargo metadata` unavailable; skipping the check"
+                ),
+            );
+            None
+        }
+    }
 }
 
 /// Load `SemanticContext` when `--semantic` is requested.

@@ -21,6 +21,7 @@ fn conflicts(files: &[String], root: &Path, config: &CheckConfig) -> Vec<String>
     let ctx = ProjectContext {
         rust_files: files,
         workspace_root: root,
+        metadata: None,
     };
     check_project(&ctx, config)
         .into_iter()
@@ -73,6 +74,7 @@ fn flat_family_hits(root: &Path, config: &CheckConfig) -> Vec<String> {
     let ctx = ProjectContext {
         rust_files: &[],
         workspace_root: root,
+        metadata: None,
     };
     check_project(&ctx, config)
         .into_iter()
@@ -140,4 +142,162 @@ fn test_flat_module_family_inert_without_rules() {
     make_engine_tree(root);
     // Enabled by default, but no families configured -> nothing flagged.
     assert!(flat_family_hits(root, &CheckConfig::default()).is_empty());
+}
+
+// --- feature-boundary ---
+
+use pedant_core::check_config::FeatureBoundaryRule;
+use pedant_core::project::{CargoDependency, CargoMetadata, CargoPackage};
+
+fn dep(name: &str, kind: Option<&str>, features: &[&str]) -> CargoDependency {
+    CargoDependency {
+        name: name.into(),
+        kind: kind.map(String::from),
+        features: features.iter().map(|s| s.to_string()).collect(),
+        uses_default_features: true,
+        optional: false,
+        rename: None,
+    }
+}
+
+fn pkg(name: &str, features: &[(&str, &[&str])], deps: Vec<CargoDependency>) -> CargoPackage {
+    CargoPackage {
+        name: name.into(),
+        id: format!("{name}-id"),
+        features: features
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.iter().map(|s| s.to_string()).collect()))
+            .collect(),
+        dependencies: deps,
+    }
+}
+
+fn fb_rule(package: &str, feature: &str, rule: &str) -> FeatureBoundaryRule {
+    FeatureBoundaryRule {
+        package: package.into(),
+        feature: feature.into(),
+        rule: rule.into(),
+    }
+}
+
+fn fb_config(rules: Vec<FeatureBoundaryRule>) -> CheckConfig {
+    CheckConfig {
+        feature_boundaries: rules.into(),
+        ..CheckConfig::default()
+    }
+}
+
+fn fb_hits(meta: &CargoMetadata, config: &CheckConfig) -> Vec<String> {
+    let ctx = ProjectContext {
+        rust_files: &[],
+        workspace_root: Path::new("."),
+        metadata: Some(meta),
+    };
+    check_project(&ctx, config)
+        .into_iter()
+        .filter(|v| matches!(v.violation_type, ViolationType::FeatureBoundary))
+        .map(|v| v.message.to_string())
+        .collect()
+}
+
+fn meta(packages: Vec<CargoPackage>, default_member: &str) -> CargoMetadata {
+    CargoMetadata {
+        packages,
+        workspace_default_members: vec![format!("{default_member}-id")],
+        workspace_members: vec![format!("{default_member}-id")],
+    }
+}
+
+#[test]
+fn test_feature_boundary_dev_only_flags_normal_edge() {
+    let lib = pkg("lib", &[("test-support", &[])], vec![]);
+    let consumer = pkg("consumer", &[], vec![dep("lib", None, &["test-support"])]);
+    let m = meta(vec![lib, consumer], "consumer");
+    let hits = fb_hits(
+        &m,
+        &fb_config(vec![fb_rule("lib", "test-support", "dev-only")]),
+    );
+    assert_eq!(hits.len(), 1, "got: {hits:?}");
+    assert!(hits[0].contains("consumer") && hits[0].contains("test-support"));
+}
+
+#[test]
+fn test_feature_boundary_dev_only_allows_dev_edge() {
+    let lib = pkg("lib", &[("test-support", &[])], vec![]);
+    let consumer = pkg(
+        "consumer",
+        &[],
+        vec![dep("lib", Some("dev"), &["test-support"])],
+    );
+    let m = meta(vec![lib, consumer], "consumer");
+    assert!(
+        fb_hits(
+            &m,
+            &fb_config(vec![fb_rule("lib", "test-support", "dev-only")])
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn test_feature_boundary_no_default_flags_default_chain() {
+    let lib = pkg(
+        "lib",
+        &[("default", &["test-support"]), ("test-support", &[])],
+        vec![],
+    );
+    let m = meta(vec![lib], "lib");
+    let hits = fb_hits(
+        &m,
+        &fb_config(vec![fb_rule("lib", "test-support", "no-default")]),
+    );
+    assert_eq!(hits.len(), 1, "got: {hits:?}");
+    assert!(hits[0].contains("default"));
+}
+
+#[test]
+fn test_feature_boundary_no_default_flags_transitive_default() {
+    // consumer (workspace member) --normal, default-features--> lib; lib default enables the feature.
+    let lib = pkg(
+        "lib",
+        &[("default", &["test-support"]), ("test-support", &[])],
+        vec![],
+    );
+    let consumer = pkg("consumer", &[], vec![dep("lib", None, &[])]);
+    let m = meta(vec![lib, consumer], "consumer");
+    let hits = fb_hits(
+        &m,
+        &fb_config(vec![fb_rule("lib", "test-support", "no-default")]),
+    );
+    assert_eq!(hits.len(), 1, "got: {hits:?}");
+}
+
+#[test]
+fn test_feature_boundary_no_default_clean_when_unreachable() {
+    let lib = pkg(
+        "lib",
+        &[("default", &["std"]), ("std", &[]), ("test-support", &[])],
+        vec![],
+    );
+    let m = meta(vec![lib], "lib");
+    assert!(
+        fb_hits(
+            &m,
+            &fb_config(vec![fb_rule("lib", "test-support", "no-default")])
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn test_feature_boundary_disabled() {
+    let lib = pkg("lib", &[("test-support", &[])], vec![]);
+    let consumer = pkg("consumer", &[], vec![dep("lib", None, &["test-support"])]);
+    let m = meta(vec![lib, consumer], "consumer");
+    let config = CheckConfig {
+        check_feature_boundary: false,
+        feature_boundaries: vec![fb_rule("lib", "test-support", "dev-only")].into(),
+        ..CheckConfig::default()
+    };
+    assert!(fb_hits(&m, &config).is_empty());
 }

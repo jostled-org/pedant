@@ -36,6 +36,14 @@ check_mixed_concerns = false
 [overrides."pedant-core/src/checks.rs"]
 check_mixed_concerns = false
 
+[gate]
+# A scanner necessarily contains the patterns it scans for: pedant's own
+# detector embeds '-----BEGIN ' (capabilities.rs, string_analysis.rs) and
+# 'https://', so its source always reports crypto string literals alongside
+# network. The rule is permanently saturated here and can never carry signal
+# for this repo. It stays live for consumers.
+key-material-network = false
+
 [check_naming]
 enabled = true
 

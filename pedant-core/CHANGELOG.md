@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0](https://github.com/jostled-org/pedant/compare/pedant-core-v0.14.0...pedant-core-v0.15.0) - 2026-07-16
+
+### Added
+
+- *(checks)* [**breaking**] add feature-boundary check over Cargo metadata
+- *(checks)* [**breaking**] add flat-module-family check
+- *(checks)* [**breaking**] add project-level pass and conflicting-module-root check
+- *(checks)* [**breaking**] add ungated-test-api check
+- *(checks)* [**breaking**] add item-visibility-policy check
+- *(checks)* [**breaking**] add forwarder-aware high-method-count check
+- *(checks)* [**breaking**] add large-source-file check with warn/deny severity
+- *(checks)* [**breaking**] add module-root-definitions check
+- *(checks)* [**breaking**] add long-function-body check
+
+### Other
+
+- *(core)* restore ConfigFile doc comment
+
 ## [0.14.0](https://github.com/jostled-org/pedant/compare/pedant-core-v0.13.0...pedant-core-v0.14.0) - 2026-07-15
 
 ### Other

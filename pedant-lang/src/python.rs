@@ -257,6 +257,77 @@ fn emit_import_if_matches(
     }
 }
 
+/// An `alias.method(...)` call whose receiver resolved to an imported module.
+#[cfg(feature = "ts-python")]
+struct AliasedCall<'a> {
+    /// Original module the alias resolves to, e.g. `requests`.
+    module: &'a str,
+    /// Attribute invoked on the alias, e.g. `get`.
+    method: &'a str,
+    /// Alias as written at the call site, e.g. `r`.
+    object_name: &'a str,
+    line: usize,
+    column: usize,
+}
+
+/// Resolve an `alias.method(...)` call against the import alias map.
+///
+/// Yields `None` for any node that is not a call on a known alias.
+#[cfg(feature = "ts-python")]
+fn resolve_aliased_call<'a>(
+    node: tree_sitter::Node<'_>,
+    source: &'a [u8],
+    alias_map: &'a BTreeMap<Box<str>, Box<str>>,
+) -> Option<AliasedCall<'a>> {
+    use crate::tree_sitter_ext::node_text;
+
+    match node.kind() {
+        "call" => {}
+        _ => return None,
+    }
+    let func = node.child_by_field_name("function")?;
+    // Only handle `alias.method(...)` calls (attribute access on an alias).
+    match func.kind() {
+        "attribute" => {}
+        _ => return None,
+    }
+    let object_name = node_text(func.child_by_field_name("object")?, source);
+    let module = alias_map.get(object_name)?.as_ref();
+    let method = node_text(func.child_by_field_name("attribute")?, source);
+    let pos = node.start_position();
+
+    Some(AliasedCall {
+        module,
+        method,
+        object_name,
+        line: pos.row + 1,
+        column: pos.column + 1,
+    })
+}
+
+/// Build a finding located at an aliased call site.
+#[cfg(feature = "ts-python")]
+fn aliased_finding(
+    call: &AliasedCall<'_>,
+    path: &Arc<str>,
+    capability: Capability,
+    evidence: Arc<str>,
+) -> CapabilityFinding {
+    CapabilityFinding {
+        capability,
+        location: SourceLocation {
+            file: Arc::clone(path),
+            line: call.line,
+            column: call.column,
+        },
+        evidence,
+        origin: Some(FindingOrigin::CodeSite),
+        language: Some(Language::Python),
+        execution_context: None,
+        reachable: None,
+    }
+}
+
 /// Detect call sites where the receiver is an aliased import.
 ///
 /// For `import requests as r`, calling `r.get(...)` should produce a Network
@@ -269,84 +340,44 @@ fn ts_detect_aliased_calls(
     alias_map: &BTreeMap<Box<str>, Box<str>>,
     findings: &mut Vec<CapabilityFinding>,
 ) {
-    use crate::tree_sitter_ext::{node_text, walk_descendants};
+    use crate::tree_sitter_ext::walk_descendants;
 
     if alias_map.is_empty() {
         return;
     }
 
     walk_descendants(root, |node| {
-        if node.kind() != "call" {
+        let Some(call) = resolve_aliased_call(node, source, alias_map) else {
             return;
-        }
-        let func = match node.child_by_field_name("function") {
-            Some(f) => f,
-            None => return,
-        };
-        // Only handle `alias.method(...)` calls (attribute access on an alias).
-        if func.kind() != "attribute" {
-            return;
-        }
-        let object = match func.child_by_field_name("object") {
-            Some(o) => o,
-            None => return,
-        };
-        let object_name = node_text(object, source);
-
-        // Resolve alias to original module name.
-        let module = match alias_map.get(object_name) {
-            Some(module_name) => module_name.as_ref(),
-            None => return,
         };
 
-        // Build the qualified call: "module.method"
-        let method = match func.child_by_field_name("attribute") {
-            Some(a) => node_text(a, source),
-            None => return,
-        };
-
-        // Check against CALL_SITE_PATTERNS (which expect "module.method(" format).
-        let qualified = format!("{module}.{method}(");
-        for &(pattern, capability, evidence) in CALL_SITE_PATTERNS {
-            if qualified.starts_with(pattern) {
-                let pos = node.start_position();
-                findings.push(CapabilityFinding {
-                    capability,
-                    location: SourceLocation {
-                        file: Arc::clone(path),
-                        line: pos.row + 1,
-                        column: pos.column + 1,
-                    },
-                    evidence: Arc::from(evidence),
-                    origin: Some(FindingOrigin::CodeSite),
-                    language: Some(Language::Python),
-                    execution_context: None,
-                    reachable: None,
-                });
-                break;
-            }
+        // CALL_SITE_PATTERNS expect the "module.method(" form.
+        let qualified = format!("{}.{}(", call.module, call.method);
+        let call_site = CALL_SITE_PATTERNS
+            .iter()
+            .find(|(pattern, _, _)| qualified.starts_with(pattern));
+        if let Some(&(_, capability, evidence)) = call_site {
+            findings.push(aliased_finding(
+                &call,
+                path,
+                capability,
+                Arc::from(evidence),
+            ));
         }
 
-        // Also check if the module itself has a capability (e.g., `r.get()` where
-        // `r` = `requests` → Network capability from the call).
-        for &(import_pattern, capability) in IMPORT_PATTERNS {
-            if module == import_pattern || module.starts_with(import_pattern) {
-                let pos = node.start_position();
-                findings.push(CapabilityFinding {
-                    capability,
-                    location: SourceLocation {
-                        file: Arc::clone(path),
-                        line: pos.row + 1,
-                        column: pos.column + 1,
-                    },
-                    evidence: Arc::from(format!("{object_name}.{method}").as_str()),
-                    origin: Some(FindingOrigin::CodeSite),
-                    language: Some(Language::Python),
-                    execution_context: None,
-                    reachable: None,
-                });
-                break;
-            }
+        // The module itself may also carry a capability: `r.get()` where `r` is
+        // `requests` yields Network from the import, not just the call site.
+        let import = IMPORT_PATTERNS
+            .iter()
+            .find(|(pattern, _)| call.module.starts_with(pattern));
+        if let Some(&(_, capability)) = import {
+            let evidence = format!("{}.{}", call.object_name, call.method);
+            findings.push(aliased_finding(
+                &call,
+                path,
+                capability,
+                Arc::from(evidence.as_str()),
+            ));
         }
     });
 }

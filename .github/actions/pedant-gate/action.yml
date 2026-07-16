@@ -1,0 +1,76 @@
+name: 'Pedant Gate'
+description: 'Evaluate capability gate rules against source, reported as pull request annotations'
+
+inputs:
+  paths:
+    description: >-
+      Space-separated files or directories of crate sources to evaluate.
+      Directories are searched recursively by pedant itself. Do NOT point this at
+      build.rs: build scripts are discovered from the crate root automatically, and
+      a build.rs passed directly is analyzed as an ordinary file, so the
+      build-script-* rules will not fire on it. Point this at the crate's normal
+      sources and let discovery do its work.
+    default: 'src'
+  config:
+    description: 'Path to a .pedant.toml supplying [gate] rule overrides. Defaults to discovery.'
+    default: ''
+  cross-language:
+    description: >-
+      Merge findings from every language into one profile before evaluating rules.
+      Off by default, matching the CLI: rules evaluate per language group.
+    default: 'false'
+  working-directory:
+    description: 'Directory to run from. Should be the crate or workspace root.'
+    default: '.'
+  format:
+    description: 'Output format: github (annotations), text, or json.'
+    default: 'github'
+
+outputs:
+  exit-code:
+    description: 'pedant exit code: 0 clean, 1 deny-severity verdicts, 2 analysis error'
+    value: ${{ steps.gate.outputs.exit-code }}
+
+runs:
+  using: 'composite'
+  steps:
+    # Built from the pinned action source rather than fetched from the registry,
+    # so the action and the binary it runs share one trust boundary. Duplicated
+    # across pedant's actions because a composite action cannot `uses:` a sibling
+    # local action when consumed from another repository.
+    - name: Build pedant from action source
+      shell: bash
+      run: |
+        PEDANT_ROOT="$(cd "${{ github.action_path }}/../../.." && pwd)"
+        cargo build --manifest-path "$PEDANT_ROOT/pedant/Cargo.toml" --release --locked
+        echo "PEDANT_BIN=$PEDANT_ROOT/target/release/pedant" >> "$GITHUB_ENV"
+
+    - name: Run pedant gate
+      id: gate
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      # Inputs travel through the environment, never interpolated into the script
+      # body, so a crafted input cannot inject shell. Path discovery, de-duplication
+      # and missing-path errors all belong to pedant — see pedant/src/input.rs.
+      env:
+        PEDANT_PATHS: ${{ inputs.paths }}
+        PEDANT_CONFIG: ${{ inputs.config }}
+        PEDANT_FORMAT: ${{ inputs.format }}
+        PEDANT_CROSS_LANGUAGE: ${{ inputs.cross-language }}
+      run: |
+        set -uo pipefail
+
+        args=( gate --format "$PEDANT_FORMAT" )
+        if [ -n "$PEDANT_CONFIG" ]; then
+          args+=( --config "$PEDANT_CONFIG" )
+        fi
+        if [ "$PEDANT_CROSS_LANGUAGE" = "true" ]; then
+          args+=( --cross-language )
+        fi
+
+        # Unquoted on purpose: split the path list into separate arguments.
+        # shellcheck disable=SC2086
+        "$PEDANT_BIN" "${args[@]}" $PEDANT_PATHS
+        status=$?
+        echo "exit-code=$status" >> "$GITHUB_OUTPUT"
+        exit $status

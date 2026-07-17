@@ -215,7 +215,7 @@ pub struct CheckArgs {
     #[command(flatten)]
     pub config: ConfigArgs,
 
-    /// Output format: text or json
+    /// Output format: text, json, or github
     #[arg(short = 'f', long, value_enum, default_value_t = OutputFormat::Text)]
     pub format: OutputFormat,
 
@@ -268,7 +268,7 @@ pub struct GateArgs {
     #[arg(short = 'c', long)]
     pub config: Option<String>,
 
-    /// Output format: text or json
+    /// Output format: text, json, or github
     #[arg(short = 'f', long, value_enum, default_value_t = OutputFormat::Text)]
     pub format: OutputFormat,
 

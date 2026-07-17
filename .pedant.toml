@@ -1,6 +1,17 @@
 # pedant project config — CLI binary, so eprintln! is allowed
 
 max_depth = 2
+
+# Structural checks. Thresholds sit deliberately above pedant's shipped
+# defaults for bodies and methods (120 / 40) and at the default for files, so
+# this repo holds itself to a bar at least as strict as it recommends.
+check_long_function_body = true
+max_function_body_lines = 80
+check_module_root_definitions = true
+check_large_source_file = true
+check_high_method_count = true
+max_methods = 15
+check_conflicting_module_root = true
 check_nested_if = true
 check_if_in_match = true
 check_nested_match = true

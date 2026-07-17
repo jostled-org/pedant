@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0](https://github.com/jostled-org/pedant/compare/pedant-v0.22.0...pedant-v0.23.0) - 2026-07-17
+
+### Added
+
+- *(cli)* [**breaking**] resolve directory arguments and de-duplicate input files
+- *(cli)* add github output format for check and gate
+
+### Other
+
+- correct the README against what pedant actually does
+- *(cli)* split supply_chain.rs along its data pipeline
+
 ## [0.22.0](https://github.com/jostled-org/pedant/compare/pedant-v0.21.0...pedant-v0.22.0) - 2026-07-16
 
 ### Added

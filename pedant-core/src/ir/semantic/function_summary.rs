@@ -6,7 +6,7 @@
 //! ranges against the shared flow slice.
 
 use super::super::facts::DataFlowFact;
-use super::common::LockAcquisition;
+use super::common::{FnContext, LockAcquisition};
 
 /// Half-open range into the file-level `data_flows` slice.
 ///
@@ -46,6 +46,55 @@ pub(super) struct FunctionSummaryData {
     pub(super) quality: FlowRange,
     pub(super) performance: FlowRange,
     pub(super) concurrency: FlowRange,
+}
+
+/// Where each detector's flows landed within the file-level aggregate.
+pub(super) struct DetectorRanges {
+    taint: FlowRange,
+    quality: FlowRange,
+    performance: FlowRange,
+    concurrency: FlowRange,
+}
+
+impl DetectorRanges {
+    /// Pair the ranges with the function's lock acquisitions to form its summary.
+    pub(super) fn into_summary(
+        self,
+        lock_acquisitions: Box<[LockAcquisition]>,
+    ) -> FunctionSummaryData {
+        FunctionSummaryData {
+            lock_acquisitions,
+            taint: self.taint,
+            quality: self.quality,
+            performance: self.performance,
+            concurrency: self.concurrency,
+        }
+    }
+}
+
+/// Run every detector over one function, appending their flows to the file
+/// aggregate in a fixed order so each recorded range stays contiguous.
+pub(super) fn run_detectors(
+    ctx: &FnContext<'_, '_>,
+    all_flows: &mut Vec<DataFlowFact>,
+) -> DetectorRanges {
+    let taint = super::taint::detect(ctx);
+    let quality = super::quality::detect(ctx);
+    let performance = super::perf::detect(ctx);
+    let concurrency = super::concurrency::detect(ctx);
+
+    DetectorRanges {
+        taint: append_flows(all_flows, taint),
+        quality: append_flows(all_flows, quality),
+        performance: append_flows(all_flows, performance),
+        concurrency: append_flows(all_flows, concurrency),
+    }
+}
+
+fn append_flows(all: &mut Vec<DataFlowFact>, facts: Box<[DataFlowFact]>) -> FlowRange {
+    let start = all.len();
+    all.extend(facts.into_vec());
+    FlowRange::new(start, all.len())
 }
 
 /// Borrowed view into one function's precomputed analysis state.

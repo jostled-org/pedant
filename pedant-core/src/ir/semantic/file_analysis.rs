@@ -18,8 +18,8 @@ use ra_ap_syntax::{AstNode, SyntaxKind, ast};
 use super::super::facts::DataFlowFact;
 use super::common::{FnContext, ParsedFile, display_target_for_file, format_type};
 use super::context::FnEntry;
-use super::function_summary::{FlowRange, FunctionAnalysisSummary, FunctionSummaryData};
-use super::{concurrency, perf, quality, reachability};
+use super::function_summary::{FunctionAnalysisSummary, FunctionSummaryData, run_detectors};
+use super::{concurrency, reachability};
 
 /// Cached file-level semantic analysis.
 ///
@@ -67,17 +67,7 @@ impl SemanticFileAnalysis {
             // Derive call graph edges from precomputed call sites.
             ctx.extend_call_graph(&mut call_graph_edges);
 
-            // Run detectors over the shared precomputed context.
-            let taint = super::taint::detect(&ctx);
-            let quality = quality::detect(&ctx);
-            let performance = perf::detect(&ctx);
-            let concurrency = concurrency::detect(&ctx);
-
-            // Append flows to the file-level aggregate, recording ranges.
-            let taint_range = append_flows(&mut all_flows, taint);
-            let quality_range = append_flows(&mut all_flows, quality);
-            let perf_range = append_flows(&mut all_flows, performance);
-            let conc_range = append_flows(&mut all_flows, concurrency);
+            let ranges = run_detectors(&ctx, &mut all_flows);
 
             // Resolve types from this function's syntax tree.
             if let Some(dt) = display_target {
@@ -86,16 +76,7 @@ impl SemanticFileAnalysis {
 
             let (name, start, end, entry, lock_acquisitions) = ctx.into_entry_data();
             fn_entries.push((Box::from(&*name), start, end, entry));
-            fn_summaries.insert(
-                name,
-                FunctionSummaryData {
-                    lock_acquisitions,
-                    taint: taint_range,
-                    quality: quality_range,
-                    performance: perf_range,
-                    concurrency: conc_range,
-                },
-            );
+            fn_summaries.insert(name, ranges.into_summary(lock_acquisitions));
         }
 
         call_graph_edges.sort();
@@ -169,13 +150,6 @@ impl SemanticFileAnalysis {
             .collect::<Vec<_>>()
             .into_boxed_slice()
     }
-}
-
-/// Append a batch of facts to the aggregate and return the range they occupy.
-fn append_flows(all: &mut Vec<DataFlowFact>, facts: Box<[DataFlowFact]>) -> FlowRange {
-    let start = all.len();
-    all.extend(facts.into_vec());
-    FlowRange::new(start, all.len())
 }
 
 /// Resolve type-bearing positions within a syntax subtree (function or item).

@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1](https://github.com/jostled-org/pedant/compare/pedant-lang-v0.3.0...pedant-lang-v0.3.1) - 2026-07-17
+
+### Other
+
+- *(lang)* split lib.rs into classify and analyze modules
+
 ## [0.3.0](https://github.com/jostled-org/pedant/compare/pedant-lang-v0.2.0...pedant-lang-v0.3.0) - 2026-07-15
 
 ### Other

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0](https://github.com/jostled-org/pedant/compare/pedant-core-v0.15.0...pedant-core-v0.16.0) - 2026-07-17
+
+### Other
+
+- correct the README against what pedant actually does
+- *(core)* [**breaking**] split extract.rs into responsibility-scoped modules
+- *(core)* extract detector run out of SemanticFileAnalysis::build
+- move definitions out of module roots into leaf modules
+
 ## [0.15.0](https://github.com/jostled-org/pedant/compare/pedant-core-v0.14.0...pedant-core-v0.15.0) - 2026-07-16
 
 ### Added

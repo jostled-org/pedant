@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.0](https://github.com/jostled-org/pedant/compare/pedant-v0.24.0...pedant-v0.25.0) - 2026-07-18
+
+### Fixed
+
+- [**breaking**] honor .pedant.toml max_depth and stop counting closure nesting
+
 ## [0.24.0](https://github.com/jostled-org/pedant/compare/pedant-v0.23.0...pedant-v0.24.0) - 2026-07-18
 
 ### Added

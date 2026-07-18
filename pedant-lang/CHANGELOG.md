@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0](https://github.com/jostled-org/pedant/compare/pedant-lang-v0.3.2...pedant-lang-v0.4.0) - 2026-07-18
+
+### Fixed
+
+- [**breaking**] honor .pedant.toml max_depth and stop counting closure nesting
+
 ## [0.3.2](https://github.com/jostled-org/pedant/compare/pedant-lang-v0.3.1...pedant-lang-v0.3.2) - 2026-07-18
 
 ### Fixed

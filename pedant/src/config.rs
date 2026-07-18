@@ -73,9 +73,9 @@ pub struct FileInputArgs {
 /// Shared style/config flags.
 #[derive(Args, Debug, Clone)]
 pub struct ConfigArgs {
-    /// Maximum nesting depth
-    #[arg(short = 'd', long, default_value = "3")]
-    pub max_depth: usize,
+    /// Maximum nesting depth. Unset means honor the config file (default 3).
+    #[arg(short = 'd', long)]
+    pub max_depth: Option<usize>,
 
     /// Config file path
     #[arg(short = 'c', long)]
@@ -167,7 +167,9 @@ impl ConfigArgs {
     pub fn to_check_config(&self, file_config: Option<&ConfigFile>) -> CheckConfig {
         let mut base = file_config.map_or_else(CheckConfig::default, CheckConfig::from_config_file);
 
-        base.max_depth = self.max_depth;
+        if let Some(max_depth) = self.max_depth {
+            base.max_depth = max_depth;
+        }
         base.check_nested_if = base.check_nested_if && !self.no_nested_if;
         base.check_if_in_match = base.check_if_in_match && !self.no_if_in_match;
         base.check_nested_match = base.check_nested_match && !self.no_nested_match;

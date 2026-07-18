@@ -262,8 +262,12 @@ pub(crate) fn detect_call_sites(
     findings: &mut Vec<CapabilityFinding>,
 ) {
     for (line_num, line) in source.lines().enumerate() {
-        for &(pattern, capability, evidence) in patterns {
-            if let Some(col) = line.find(pattern) {
+        patterns
+            .iter()
+            .filter_map(|&(pattern, capability, evidence)| {
+                line.find(pattern).map(|col| (col, capability, evidence))
+            })
+            .for_each(|(col, capability, evidence)| {
                 findings.push(CapabilityFinding {
                     capability,
                     location: SourceLocation {
@@ -277,8 +281,7 @@ pub(crate) fn detect_call_sites(
                     execution_context: None,
                     reachable: None,
                 });
-            }
-        }
+            });
     }
 }
 

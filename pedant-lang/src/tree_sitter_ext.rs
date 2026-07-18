@@ -4,7 +4,7 @@
 //! enabled. Each language module uses these helpers together with its own
 //! grammar-specific traversal logic.
 
-use tree_sitter::{Node, Parser, Tree};
+use tree_sitter::{Node, Parser, Tree, TreeCursor};
 
 /// Parse source code with the given tree-sitter language.
 ///
@@ -40,10 +40,21 @@ pub(crate) fn walk_descendants(root: Node<'_>, mut visitor: impl FnMut(Node<'_>)
             continue;
         }
 
-        while !cursor.goto_next_sibling() {
-            if !cursor.goto_parent() {
-                return;
-            }
+        if !advance_to_next_sibling(&mut cursor) {
+            return;
         }
     }
+}
+
+/// Move the cursor to the next node in depth-first order after a leaf.
+///
+/// Ascends through parents until a next sibling is available. Returns `false`
+/// when the traversal has exhausted every node and returned to the root.
+fn advance_to_next_sibling(cursor: &mut TreeCursor<'_>) -> bool {
+    while !cursor.goto_next_sibling() {
+        if !cursor.goto_parent() {
+            return false;
+        }
+    }
+    true
 }

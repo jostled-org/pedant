@@ -206,7 +206,7 @@ fn run_gate(args: GateArgs, stderr: &mut impl Write) -> ExitCode {
         Err(exit) => return exit,
     };
     let base_config = ConfigArgs {
-        max_depth: 3,
+        max_depth: None,
         config: None,
         no_nested_if: false,
         no_if_in_match: false,

@@ -302,15 +302,7 @@ pub(crate) fn collect_type_names_into(ty: &Type, names: &mut Vec<Rc<str>>) {
                     .map(|seg| Rc::from(seg.ident.to_string())),
             );
             for seg in &tp.path.segments {
-                let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
-                    continue;
-                };
-                for arg in &args.args {
-                    let syn::GenericArgument::Type(inner) = arg else {
-                        continue;
-                    };
-                    collect_type_names_into(inner, names);
-                }
+                collect_segment_arg_type_names(seg, names);
             }
         }
         Type::Reference(r) => collect_type_names_into(&r.elem, names),
@@ -323,6 +315,17 @@ pub(crate) fn collect_type_names_into(ty: &Type, names: &mut Vec<Rc<str>>) {
         Type::Array(a) => collect_type_names_into(&a.elem, names),
         _ => {}
     }
+}
+
+/// Recurse into a path segment's angle-bracketed type arguments.
+fn collect_segment_arg_type_names(seg: &syn::PathSegment, names: &mut Vec<Rc<str>>) {
+    let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
+        return;
+    };
+    args.args
+        .iter()
+        .filter_map(as_type_arg)
+        .for_each(|inner| collect_type_names_into(inner, names));
 }
 
 pub(crate) fn collect_signature_type_names_into(sig: &Signature, names: &mut Vec<Rc<str>>) {

@@ -286,12 +286,14 @@ fn insert_lock_pairs<'a>(
     first_seen: &mut BTreeMap<(&'a str, &'a str), (usize, usize, usize)>,
 ) {
     for (i, acq_a) in locks.iter().enumerate() {
-        for (j, acq_b) in locks[i + 1..].iter().enumerate() {
-            if acq_a.receiver_name != acq_b.receiver_name {
-                first_seen
-                    .entry((&acq_a.receiver_name, &acq_b.receiver_name))
-                    .or_insert((seq_idx, i, i + 1 + j));
-            }
+        let distinct = locks[i + 1..]
+            .iter()
+            .enumerate()
+            .filter(|(_, acq_b)| acq_a.receiver_name != acq_b.receiver_name);
+        for (j, acq_b) in distinct {
+            first_seen
+                .entry((&acq_a.receiver_name, &acq_b.receiver_name))
+                .or_insert((seq_idx, i, i + 1 + j));
         }
     }
 }

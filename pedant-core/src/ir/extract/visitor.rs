@@ -145,10 +145,12 @@ impl<'ast> Visit<'ast> for IrExtractor {
     fn visit_expr_closure(&mut self, node: &'ast syn::ExprClosure) {
         let span = span_from(node.or1_token.span.start());
 
-        self.depth += 1;
+        // A closure is a value, not a control-flow nesting level: a combinator
+        // chain like `.or_else(|| …).map(|pos| …)` is flat code. Record the fact
+        // at the current depth so structural fingerprints still see the closure,
+        // but don't increment — control flow *inside* the body counts from here.
         self.push_control_flow(ControlFlowKind::Closure, span, self.depth, None);
         syn::visit::visit_expr_closure(self, node);
-        self.depth -= 1;
     }
 
     fn visit_expr_unsafe(&mut self, node: &'ast syn::ExprUnsafe) {

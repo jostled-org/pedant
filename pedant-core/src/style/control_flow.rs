@@ -13,7 +13,7 @@ pub(super) fn check_control_flow(
     violations: &mut Vec<Violation>,
 ) {
     for cf in &ir.control_flow {
-        if cf.depth > config.max_depth {
+        if cf.kind != ControlFlowKind::Closure && cf.depth > config.max_depth {
             emit_violation(
                 violations,
                 fp,

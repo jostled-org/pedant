@@ -12,10 +12,8 @@ pub(crate) fn bfs_component<'a>(
     visited.insert(start);
     while let Some(current) = queue.pop_front() {
         component.push(current);
-        for &neighbor in &adj[current] {
-            if visited.insert(neighbor) {
-                queue.push_back(neighbor);
-            }
+        for neighbor in adj[current].iter().copied().filter(|n| visited.insert(n)) {
+            queue.push_back(neighbor);
         }
     }
     component.sort_unstable();

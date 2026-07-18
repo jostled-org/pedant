@@ -68,10 +68,8 @@ fn reachable_set<'a>(
             Some(c) => c,
             None => continue,
         };
-        for callee in callees {
-            if visited.insert(callee) {
-                queue.push_back(callee);
-            }
+        for callee in callees.iter().copied().filter(|c| visited.insert(c)) {
+            queue.push_back(callee);
         }
     }
 

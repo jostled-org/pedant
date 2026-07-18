@@ -79,8 +79,11 @@ fn analyze_package_json(file: &Arc<str>, source: &str) -> Box<[CapabilityFinding
     let search_region = &source[scripts_pos..];
 
     for (line_offset, line) in search_region.lines().enumerate() {
-        for (idx, quoted_hook) in quoted_hooks.iter().enumerate() {
-            if line.contains(quoted_hook.as_ref()) {
+        quoted_hooks
+            .iter()
+            .enumerate()
+            .filter(|(_, quoted_hook)| line.contains(quoted_hook.as_ref()))
+            .for_each(|(idx, _)| {
                 findings.push(CapabilityFinding {
                     capability: Capability::ProcessExec,
                     location: SourceLocation {
@@ -94,8 +97,7 @@ fn analyze_package_json(file: &Arc<str>, source: &str) -> Box<[CapabilityFinding
                     execution_context: Some(ExecutionContext::InstallHook),
                     reachable: None,
                 });
-            }
-        }
+            });
     }
 
     findings.into_boxed_slice()

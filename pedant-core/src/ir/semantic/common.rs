@@ -481,12 +481,14 @@ impl<'a, 'db> FnContext<'a, 'db> {
 fn build_binding_stmt_refs(stmts: &[ast::Stmt]) -> BTreeMap<Box<str>, Box<[usize]>> {
     let mut refs: BTreeMap<Box<str>, Vec<usize>> = BTreeMap::new();
     for (i, stmt) in stmts.iter().enumerate() {
-        for node in stmt.syntax().descendants() {
-            if node.kind() == SyntaxKind::NAME_REF {
-                refs.entry(node.text().to_string().into_boxed_str())
-                    .or_default()
-                    .push(i);
-            }
+        let name_refs = stmt
+            .syntax()
+            .descendants()
+            .filter(|node| node.kind() == SyntaxKind::NAME_REF);
+        for node in name_refs {
+            refs.entry(node.text().to_string().into_boxed_str())
+                .or_default()
+                .push(i);
         }
     }
     refs.into_iter()
@@ -784,18 +786,17 @@ fn collect_name_refs(node: &SyntaxNode) -> Box<[Box<str>]> {
 fn build_binding_method_calls(stmts: &[ast::Stmt]) -> BindingMethodIndex {
     let mut map: BTreeMap<Box<str>, Vec<(usize, Box<str>)>> = BTreeMap::new();
     for (i, stmt) in stmts.iter().enumerate() {
-        for mc in stmt
+        let entries = stmt
             .syntax()
             .descendants()
             .filter_map(ast::MethodCallExpr::cast)
-        {
-            let entry = mc
-                .receiver()
-                .and_then(|recv| direct_path_name(&recv))
-                .zip(mc.name_ref().map(|n| Box::from(n.text().as_str())));
-            if let Some((binding, method)) = entry {
-                map.entry(binding).or_default().push((i, method));
-            }
+            .filter_map(|mc| {
+                mc.receiver()
+                    .and_then(|recv| direct_path_name(&recv))
+                    .zip(mc.name_ref().map(|n| Box::from(n.text().as_str())))
+            });
+        for (binding, method) in entries {
+            map.entry(binding).or_default().push((i, method));
         }
     }
     map.into_iter()

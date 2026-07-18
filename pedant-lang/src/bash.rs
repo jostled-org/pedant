@@ -110,28 +110,24 @@ pub(crate) fn detect_commands_with_patterns(
     findings: &mut Vec<CapabilityFinding>,
 ) {
     for &(pattern, capability) in patterns {
-        let mut search_from = 0;
-        while let Some(pos) = line[search_from..].find(pattern) {
-            let abs_pos = search_from + pos;
-
-            if is_shell_command_boundary(line, abs_pos, pattern, b"=") {
-                findings.push(CapabilityFinding {
-                    capability,
-                    location: SourceLocation {
-                        file: Arc::clone(path),
-                        line: line_num + 1,
-                        column: abs_pos + 1,
-                    },
-                    evidence: Arc::from(pattern),
-                    origin: Some(FindingOrigin::CodeSite),
-                    language: Some(Language::Bash),
-                    execution_context: context,
-                    reachable: None,
-                });
-                break;
-            }
-
-            search_from = abs_pos + pattern.len();
+        let boundary = line
+            .match_indices(pattern)
+            .find(|&(abs_pos, _)| is_shell_command_boundary(line, abs_pos, pattern, b"="))
+            .map(|(abs_pos, _)| abs_pos);
+        if let Some(abs_pos) = boundary {
+            findings.push(CapabilityFinding {
+                capability,
+                location: SourceLocation {
+                    file: Arc::clone(path),
+                    line: line_num + 1,
+                    column: abs_pos + 1,
+                },
+                evidence: Arc::from(pattern),
+                origin: Some(FindingOrigin::CodeSite),
+                language: Some(Language::Bash),
+                execution_context: context,
+                reachable: None,
+            });
         }
     }
 }

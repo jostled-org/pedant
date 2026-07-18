@@ -120,23 +120,23 @@ fn detect_imports(
             None => continue,
         };
 
-        for &(pattern, capability) in IMPORT_PATTERNS {
-            if matches_module_prefix(name, pattern) {
-                findings.push(CapabilityFinding {
-                    capability,
-                    location: SourceLocation {
-                        file: Arc::clone(path),
-                        line: line_num + 1,
-                        column: 1,
-                    },
-                    evidence: Arc::from(pattern),
-                    origin: Some(FindingOrigin::Import),
-                    language: Some(language),
-                    execution_context: None,
-                    reachable: None,
-                });
-                break;
-            }
+        if let Some(&(pattern, capability)) = IMPORT_PATTERNS
+            .iter()
+            .find(|&&(pattern, _)| matches_module_prefix(name, pattern))
+        {
+            findings.push(CapabilityFinding {
+                capability,
+                location: SourceLocation {
+                    file: Arc::clone(path),
+                    line: line_num + 1,
+                    column: 1,
+                },
+                evidence: Arc::from(pattern),
+                origin: Some(FindingOrigin::Import),
+                language: Some(language),
+                execution_context: None,
+                reachable: None,
+            });
         }
     }
 }

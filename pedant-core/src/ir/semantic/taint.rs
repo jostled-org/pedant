@@ -68,22 +68,21 @@ fn collect_taint_flows(ctx: &FnContext<'_, '_>, tainted: &[Taint]) -> Box<[DataF
 
     for sink in ctx.capability_sinks.iter() {
         // Check precomputed NAME_REFs against tainted bindings — no subtree walk.
-        for (name, cap, src_span) in tainted {
-            let flows = sink
-                .referenced_names
+        let flows = tainted.iter().filter(|(name, ..)| {
+            sink.referenced_names
                 .iter()
-                .any(|ref_name| **ref_name == **name);
-            if flows {
-                facts.push(DataFlowFact {
-                    kind: DataFlowKind::TaintFlow,
-                    source_capability: Some(*cap),
-                    source_span: *src_span,
-                    sink_capability: Some(sink.capability),
-                    sink_span: sink.span,
-                    call_chain: Box::new([]),
-                    message: format!("{cap:?} flows to {:?}", sink.capability).into_boxed_str(),
-                });
-            }
+                .any(|ref_name| **ref_name == **name)
+        });
+        for (_, cap, src_span) in flows {
+            facts.push(DataFlowFact {
+                kind: DataFlowKind::TaintFlow,
+                source_capability: Some(*cap),
+                source_span: *src_span,
+                sink_capability: Some(sink.capability),
+                sink_span: sink.span,
+                call_chain: Box::new([]),
+                message: format!("{cap:?} flows to {:?}", sink.capability).into_boxed_str(),
+            });
         }
     }
 

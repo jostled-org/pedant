@@ -104,8 +104,10 @@ fn match_import(line: &str, module: &str) -> bool {
 
 fn detect_imports(path: &Arc<str>, source: &str, findings: &mut Vec<CapabilityFinding>) {
     for (line_num, line) in source.lines().enumerate() {
-        for &(module, capability) in IMPORT_PATTERNS {
-            if match_import(line, module) {
+        IMPORT_PATTERNS
+            .iter()
+            .filter(|&&(module, _)| match_import(line, module))
+            .for_each(|&(module, capability)| {
                 findings.push(CapabilityFinding {
                     capability,
                     location: SourceLocation {
@@ -119,8 +121,7 @@ fn detect_imports(path: &Arc<str>, source: &str, findings: &mut Vec<CapabilityFi
                     execution_context: None,
                     reachable: None,
                 });
-            }
-        }
+            });
     }
 }
 

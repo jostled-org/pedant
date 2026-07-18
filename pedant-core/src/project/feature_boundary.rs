@@ -58,23 +58,37 @@ fn check_dev_only(
         return;
     };
     for pkg in &meta.packages {
-        for dep in &pkg.dependencies {
-            if dep.name.as_str() != &*rule.package || dep.kind.as_deref() == Some("dev") {
-                continue;
-            }
-            if !edge_enables(target, dep, &rule.feature) {
-                continue;
-            }
-            let kind = dep.kind.as_deref().unwrap_or("normal");
-            emit(
-                violations,
-                format!(
-                    "`{}` enables feature `{}` on `{}` through a {kind} dependency; `{}` must be enabled only via dev-dependencies",
-                    pkg.name, rule.feature, rule.package, rule.feature
-                ),
-            );
+        let offending = pkg
+            .dependencies
+            .iter()
+            .filter(|dep| is_constrained_normal_dep(dep, rule))
+            .filter(|dep| edge_enables(target, dep, &rule.feature));
+        for dep in offending {
+            emit_dev_only(violations, pkg, dep, rule);
         }
     }
+}
+
+/// A non-dev dependency edge naming the constrained package.
+fn is_constrained_normal_dep(dep: &CargoDependency, rule: &FeatureBoundaryRule) -> bool {
+    dep.name.as_str() == &*rule.package && dep.kind.as_deref() != Some("dev")
+}
+
+/// Report a normal/build edge that enables the dev-only feature.
+fn emit_dev_only(
+    violations: &mut Vec<Violation>,
+    pkg: &CargoPackage,
+    dep: &CargoDependency,
+    rule: &FeatureBoundaryRule,
+) {
+    let kind = dep.kind.as_deref().unwrap_or("normal");
+    emit(
+        violations,
+        format!(
+            "`{}` enables feature `{}` on `{}` through a {kind} dependency; `{}` must be enabled only via dev-dependencies",
+            pkg.name, rule.feature, rule.package, rule.feature
+        ),
+    );
 }
 
 /// Whether a single dependency edge requests the constrained feature.

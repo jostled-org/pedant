@@ -28,10 +28,11 @@ fn strip_port_suffix(s: &str) -> Option<&str> {
 }
 
 fn looks_like_ipv4(s: &str) -> bool {
-    let host = match (s.rfind(':'), strip_port_suffix(s)) {
-        (Some(_), Some(h)) => h,
-        (Some(_), None) => return false,
-        (None, _) => s,
+    // Require a port. A bare dotted quad is indistinguishable from an OID
+    // (`2.5.4.10`) or a version (`1.2.3.40`), so it is too weak to attribute
+    // network on its own; a `:port` suffix is the disambiguating signal.
+    let Some(host) = strip_port_suffix(s) else {
+        return false;
     };
     let mut parts = host.split('.');
     let mut count = 0;
@@ -55,6 +56,11 @@ fn extract_ipv6_body(s: &str) -> &str {
 fn looks_like_ipv6(s: &str) -> bool {
     let trimmed = extract_ipv6_body(s);
     if trimmed.len() < 3 {
+        return false;
+    }
+    // A valid IPv6 address has at most one `::` zero-compression run. A Rust
+    // path (`A::B::C::D::E::F`) has several, so more than one rules it out.
+    if trimmed.split("::").count() > 2 {
         return false;
     }
     let mut groups = trimmed.split(':');

@@ -270,6 +270,49 @@ fn foo() {
 }
 
 #[test]
+fn test_oid_string_is_not_network() {
+    // "2.5.4.10" is an X.500 OID (organizationName). Four dotted decimals, all
+    // <=255, so the old heuristic read it as a bare IPv4 with no port.
+    let source = r#"
+pub const OID: &str = "2.5.4.10";
+"#;
+    let result = analyze("oid.rs", source, &permissive_config(), None).unwrap();
+    let caps = result.capabilities.capabilities();
+    assert!(
+        !caps.contains(&Capability::Network),
+        "an OID literal must not be classified as network, got {caps:?}"
+    );
+}
+
+#[test]
+fn test_rust_path_string_is_not_network() {
+    // A `::`-separated path has many `::`; valid IPv6 has at most one.
+    let source = r#"
+pub const PATH: &str = "A::B::C::D::E::F";
+"#;
+    let result = analyze("path.rs", source, &permissive_config(), None).unwrap();
+    let caps = result.capabilities.capabilities();
+    assert!(
+        !caps.contains(&Capability::Network),
+        "a `::`-separated path must not be classified as network, got {caps:?}"
+    );
+}
+
+#[test]
+fn test_version_string_is_not_network() {
+    // A dotted version quad is also IPv4-shaped without a port.
+    let source = r#"
+pub const VERSION: &str = "1.2.3.40";
+"#;
+    let result = analyze("ver.rs", source, &permissive_config(), None).unwrap();
+    let caps = result.capabilities.capabilities();
+    assert!(
+        !caps.contains(&Capability::Network),
+        "a version literal must not be classified as network, got {caps:?}"
+    );
+}
+
+#[test]
 fn test_short_string_not_flagged() {
     let source = r#"
 fn foo() {

@@ -1265,3 +1265,80 @@ fn update_prunes_and_rehashes_using_reachable_file_set() {
         "expected clean verify after update, stdout={stdout}"
     );
 }
+
+/// A workspace that resolves several versions of one crate (common transitively,
+/// e.g. getrandom 0.2/0.3/0.4) must keep an exact baseline for every resolved
+/// version after `update`. Regression for the prune_stale_baselines map that
+/// keyed on crate name alone and so retained only one version. Closes #60.
+#[test]
+fn update_retains_concurrent_versions_of_one_crate() {
+    let dir = tempfile::tempdir().unwrap();
+    let vendor_root = dir.path().join("vendor");
+
+    // Two vendored crates share the package name `dup` at different versions —
+    // the shape cargo produces for a diamond dependency on incompatible semver.
+    for version in ["0.2.17", "0.4.3"] {
+        let crate_dir = vendor_root.join(format!("dup-{version}"));
+        fs::create_dir_all(crate_dir.join("src")).unwrap();
+        fs::write(
+            crate_dir.join("Cargo.toml"),
+            format!("[package]\nname = \"dup\"\nversion = \"{version}\"\nedition = \"2024\"\n"),
+        )
+        .unwrap();
+        fs::write(crate_dir.join("src/lib.rs"), "pub fn f() {}\n").unwrap();
+    }
+
+    let consumer = dir.path().join("consumer");
+    write_minimal_consumer(&consumer);
+    let baselines = consumer.join(".pedant/baselines");
+
+    let init = run_with_fake_vendor(
+        dir.path(),
+        &consumer,
+        &vendor_root,
+        &[
+            "supply-chain",
+            "init",
+            "--baseline-path",
+            baselines.to_str().unwrap(),
+        ],
+    );
+    assert!(
+        init.status.success(),
+        "init failed: stderr={}",
+        String::from_utf8_lossy(&init.stderr)
+    );
+    let v2 = baselines.join("cargo/dup/0.2.17.json");
+    let v4 = baselines.join("cargo/dup/0.4.3.json");
+    assert!(
+        v2.is_file() && v4.is_file(),
+        "init must write both versions"
+    );
+
+    let update = run_with_fake_vendor(
+        dir.path(),
+        &consumer,
+        &vendor_root,
+        &[
+            "supply-chain",
+            "update",
+            "--baseline-path",
+            baselines.to_str().unwrap(),
+        ],
+    );
+    assert!(
+        update.status.success(),
+        "update failed: stderr={}",
+        String::from_utf8_lossy(&update.stderr)
+    );
+
+    // Both are still resolved by the workspace, so update must prune neither.
+    assert!(
+        v2.is_file(),
+        "update pruned the concurrent version dup@0.2.17, losing its exact-hash baseline"
+    );
+    assert!(
+        v4.is_file(),
+        "update pruned the concurrent version dup@0.4.3, losing its exact-hash baseline"
+    );
+}

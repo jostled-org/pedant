@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -65,10 +65,16 @@ pub(super) fn prune_stale_baselines(
         return Ok(());
     }
 
-    let current_versions: BTreeMap<&str, &str> = attestations
-        .iter()
-        .map(|attestation| (attestation.name.as_ref(), attestation.version.as_ref()))
-        .collect();
+    // A crate may resolve to several versions at once (a diamond dependency on
+    // incompatible semver), so each name maps to the set of its current
+    // versions. Keying on name alone would drop every version but one.
+    let mut current_versions: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+    for attestation in attestations {
+        current_versions
+            .entry(attestation.name.as_ref())
+            .or_default()
+            .insert(attestation.version.as_ref());
+    }
 
     for crate_entry in read_dir_sorted(&cargo_root)? {
         if !entry_file_type(&crate_entry, &cargo_root)?.is_dir() {
@@ -82,19 +88,19 @@ pub(super) fn prune_stale_baselines(
 
 fn prune_crate_dir(
     crate_dir: &Path,
-    current_versions: &BTreeMap<&str, &str>,
+    current_versions: &BTreeMap<&str, BTreeSet<&str>>,
 ) -> Result<(), SupplyChainError> {
     let crate_name = crate_dir
         .file_name()
         .and_then(OsStr::to_str)
         .unwrap_or_default();
-    let Some(current_version) = current_versions.get(crate_name).copied() else {
+    let Some(current) = current_versions.get(crate_name) else {
         return remove_dir_all(crate_dir);
     };
 
     for version_entry in read_dir_sorted(crate_dir)? {
         let version_path = version_entry.path();
-        match stale_baseline_version(&version_path, current_version) {
+        match stale_baseline_version(&version_path, current) {
             true => remove_file(&version_path)?,
             false => continue,
         }
@@ -107,7 +113,7 @@ fn prune_crate_dir(
 }
 
 /// A `<version>.json` file is stale when it names a version we no longer use.
-fn stale_baseline_version(version_path: &Path, current_version: &str) -> bool {
+fn stale_baseline_version(version_path: &Path, current: &BTreeSet<&str>) -> bool {
     if version_path.extension() != Some(OsStr::new("json")) {
         return false;
     }
@@ -115,7 +121,7 @@ fn stale_baseline_version(version_path: &Path, current_version: &str) -> bool {
         .file_stem()
         .and_then(OsStr::to_str)
         .unwrap_or_default();
-    version != current_version
+    !current.contains(version)
 }
 
 fn remove_dir_all(path: &Path) -> Result<(), SupplyChainError> {

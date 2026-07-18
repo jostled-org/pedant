@@ -5,7 +5,6 @@ use std::time::Instant;
 
 use notify::event::ModifyKind;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use pedant_core::Config;
 use thiserror::Error;
 
 use crate::index::{IndexError, WorkspaceIndex};
@@ -37,7 +36,6 @@ pub enum WatcherError {
 /// Returns the watcher handle; dropping it stops watching.
 pub fn start_watcher(
     index: &Arc<RwLock<WorkspaceIndex>>,
-    config: Arc<Config>,
 ) -> Result<RecommendedWatcher, WatcherError> {
     let watch_roots: Vec<std::path::PathBuf> = {
         let idx = index.read().map_err(|_| WatcherError::LockPoisoned)?;
@@ -55,7 +53,7 @@ pub fn start_watcher(
                 return;
             }
         };
-        handle_fs_event(&event, &index, &config, &last_reindex);
+        handle_fs_event(&event, &index, &last_reindex);
     })?;
 
     for root in &watch_roots {
@@ -79,7 +77,6 @@ pub fn start_watcher(
 fn handle_fs_event(
     event: &Event,
     index: &Arc<RwLock<WorkspaceIndex>>,
-    config: &Config,
     last_reindex: &Arc<RwLock<std::collections::BTreeMap<std::path::PathBuf, Instant>>>,
 ) {
     let now = Instant::now();
@@ -133,10 +130,10 @@ fn handle_fs_event(
                 timestamps.remove(path);
             }
             EventKind::Modify(ModifyKind::Name(_)) => {
-                handle_rename_like_modify(path, &mut idx, config, &mut timestamps, now);
+                handle_rename_like_modify(path, &mut idx, &mut timestamps, now);
             }
             EventKind::Create(_) | EventKind::Modify(_) => {
-                reindex_changed_file(path, &mut idx, config, &mut timestamps, now);
+                reindex_changed_file(path, &mut idx, &mut timestamps, now);
             }
             _ => {}
         }
@@ -146,12 +143,11 @@ fn handle_fs_event(
 fn handle_rename_like_modify(
     path: &Path,
     index: &mut WorkspaceIndex,
-    config: &Config,
     timestamps: &mut std::collections::BTreeMap<std::path::PathBuf, Instant>,
     now: Instant,
 ) {
     match path.exists() {
-        true => reindex_changed_file(path, index, config, timestamps, now),
+        true => reindex_changed_file(path, index, timestamps, now),
         false => {
             index.remove_file(path);
             timestamps.remove(path);
@@ -162,11 +158,10 @@ fn handle_rename_like_modify(
 fn reindex_changed_file(
     path: &Path,
     index: &mut WorkspaceIndex,
-    config: &Config,
     timestamps: &mut std::collections::BTreeMap<std::path::PathBuf, Instant>,
     now: Instant,
 ) {
-    match index.reindex_file(path, config) {
+    match index.reindex_file(path) {
         Ok(()) => {
             timestamps.insert(path.to_path_buf(), now);
         }

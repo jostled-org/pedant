@@ -3,7 +3,6 @@ use std::path::Path;
 use std::process;
 use std::sync::{Arc, RwLock};
 
-use pedant_core::Config;
 use pedant_core::ir::semantic::SemanticContext;
 use pedant_mcp::index::{WorkspaceIndex, discover_workspace_root};
 use pedant_mcp::server::PedantServer;
@@ -36,15 +35,14 @@ async fn main() {
     };
 
     let semantic = load_semantic(&workspace_root);
-    let config = Arc::new(Config::default());
-    let index = match WorkspaceIndex::build(&workspace_root, &config, semantic) {
+    let index = match WorkspaceIndex::build(&workspace_root, semantic) {
         Ok(idx) => idx,
         Err(e) => exit_with_error(format_args!("failed to index workspace: {e}")),
     };
 
     let index = Arc::new(RwLock::new(index));
 
-    let _watcher = match start_watcher(&index, Arc::clone(&config)) {
+    let _watcher = match start_watcher(&index) {
         Ok(w) => w,
         Err(e) => exit_with_error(format_args!("file watcher failed to start: {e}")),
     };

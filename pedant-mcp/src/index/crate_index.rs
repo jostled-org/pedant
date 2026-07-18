@@ -9,6 +9,15 @@ use pedant_types::CapabilityProfile;
 use walkdir::WalkDir;
 
 use super::IndexError;
+use super::config::WorkspaceConfig;
+
+/// Analyze a Rust file with a pre-computed path string into an [`AnalysisResult`].
+///
+/// Both [`analyze_source_at`] and [`analyze_build_script_at`] match this shape,
+/// letting a single helper apply path-override resolution to source and build
+/// scripts alike.
+pub(super) type AnalyzeAt =
+    fn(&Path, &str, &Config, Option<&SemanticContext>) -> Result<AnalysisResult, IndexError>;
 
 /// Cached analysis results for a single crate.
 pub(super) struct CrateIndex {
@@ -22,23 +31,30 @@ pub(super) struct CrateIndex {
 /// and manifest/hook-entrypoint files.
 pub(super) fn build_crate_index(
     crate_root: &Path,
-    config: &Config,
-    gate_config: &GateConfig,
+    config: &WorkspaceConfig,
     semantic: Option<&SemanticContext>,
 ) -> Result<CrateIndex, IndexError> {
     let mut files = BTreeMap::new();
 
     for source_path in discover_rust_sources(crate_root) {
-        let result = analyze_source_file(&source_path, config, semantic)?;
-        let path_str: Box<str> = source_path.to_string_lossy().into();
-        files.insert(path_str, result);
+        analyze_rust_into(
+            &mut files,
+            &source_path,
+            config,
+            semantic,
+            analyze_source_at,
+        )?;
     }
 
     let build_rs = crate_root.join("build.rs");
     if build_rs.is_file() {
-        let result = analyze_build_script_file(&build_rs, config, semantic)?;
-        let path_str: Box<str> = build_rs.to_string_lossy().into();
-        files.insert(path_str, result);
+        analyze_rust_into(
+            &mut files,
+            &build_rs,
+            config,
+            semantic,
+            analyze_build_script_at,
+        )?;
     }
 
     // Analyze non-Rust source files and dual-role files like `.go`.
@@ -56,7 +72,7 @@ pub(super) fn build_crate_index(
     }
 
     let profile = aggregate_profile(&files);
-    let gate_verdicts = compute_gate_verdicts(&profile, &files, gate_config);
+    let gate_verdicts = compute_gate_verdicts(&profile, &files, config.gate());
 
     Ok(CrateIndex {
         root: crate_root.to_path_buf(),
@@ -64,6 +80,26 @@ pub(super) fn build_crate_index(
         profile,
         gate_verdicts,
     })
+}
+
+/// Resolve path overrides for a Rust file, analyze it, and cache the result.
+///
+/// Skips the file when a `[overrides]` rule disables analysis for its path,
+/// matching the CLI's per-file `resolve_for_path` contract.
+fn analyze_rust_into(
+    files: &mut BTreeMap<Box<str>, AnalysisResult>,
+    path: &Path,
+    config: &WorkspaceConfig,
+    semantic: Option<&SemanticContext>,
+    analyze: AnalyzeAt,
+) -> Result<(), IndexError> {
+    let path_str: Box<str> = path.to_string_lossy().into();
+    let Some(cfg) = config.resolve_for_path(&path_str) else {
+        return Ok(());
+    };
+    let result = analyze(path, &path_str, &cfg, semantic)?;
+    files.insert(path_str, result);
+    Ok(())
 }
 
 /// Recompute a crate's aggregated profile and gate verdicts from its cached file results.
@@ -204,16 +240,6 @@ fn analysis_result_from_profile(profile: CapabilityProfile) -> AnalysisResult {
     }
 }
 
-/// Analyze a single Rust source file.
-fn analyze_source_file(
-    path: &Path,
-    config: &Config,
-    semantic: Option<&SemanticContext>,
-) -> Result<AnalysisResult, IndexError> {
-    let path_lossy = path.to_string_lossy();
-    analyze_source_at(path, &path_lossy, config, semantic)
-}
-
 /// Analyze a source file with a pre-computed path string.
 pub(super) fn analyze_source_at(
     path: &Path,
@@ -226,16 +252,6 @@ pub(super) fn analyze_source_at(
         path: path_str.into(),
         source: e,
     })
-}
-
-/// Analyze a build.rs file, tagging all findings as build-script.
-fn analyze_build_script_file(
-    path: &Path,
-    config: &Config,
-    semantic: Option<&SemanticContext>,
-) -> Result<AnalysisResult, IndexError> {
-    let path_lossy = path.to_string_lossy();
-    analyze_build_script_at(path, &path_lossy, config, semantic)
 }
 
 /// Analyze a build script with a pre-computed path string.

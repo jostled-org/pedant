@@ -1,7 +1,6 @@
 use std::fs;
 use std::path::Path;
 
-use pedant_core::Config;
 use pedant_mcp::index::{WorkspaceIndex, discover_workspace_root};
 use pedant_types::{AnalysisTier, Capability};
 
@@ -150,8 +149,7 @@ fn make_nested_glob_workspace() -> tempfile::TempDir {
 #[test]
 fn test_index_discovers_workspace_crates() {
     let root = fixture_path("multi_crate");
-    let config = Config::default();
-    let index = WorkspaceIndex::build(&root, &config, None).unwrap();
+    let index = WorkspaceIndex::build(&root, None).unwrap();
 
     let names: Box<[&str]> = index.crate_names().collect::<Vec<_>>().into_boxed_slice();
     assert!(names.contains(&"lib-a"), "missing lib-a: {names:?}");
@@ -161,8 +159,7 @@ fn test_index_discovers_workspace_crates() {
 #[test]
 fn test_index_caches_analysis_results() {
     let root = fixture_path("multi_crate");
-    let config = Config::default();
-    let index = WorkspaceIndex::build(&root, &config, None).unwrap();
+    let index = WorkspaceIndex::build(&root, None).unwrap();
 
     let profile = index.crate_profile("lib-a").expect("lib-a not indexed");
     let caps = profile.capabilities();
@@ -175,8 +172,7 @@ fn test_index_caches_analysis_results() {
 #[test]
 fn test_index_aggregates_crate_profile() {
     let root = fixture_path("multi_crate");
-    let config = Config::default();
-    let index = WorkspaceIndex::build(&root, &config, None).unwrap();
+    let index = WorkspaceIndex::build(&root, None).unwrap();
 
     let profile = index.crate_profile("lib-a").expect("lib-a not indexed");
     let caps = profile.capabilities();
@@ -193,8 +189,7 @@ fn test_index_aggregates_crate_profile() {
 #[test]
 fn test_index_empty_workspace() {
     let root = fixture_path("empty_workspace");
-    let config = Config::default();
-    let index = WorkspaceIndex::build(&root, &config, None).unwrap();
+    let index = WorkspaceIndex::build(&root, None).unwrap();
 
     let names: Box<[&str]> = index.crate_names().collect::<Vec<_>>().into_boxed_slice();
     assert!(names.is_empty(), "expected no crates, found: {names:?}");
@@ -203,8 +198,7 @@ fn test_index_empty_workspace() {
 #[test]
 fn test_index_builds_single_crate_workspace() {
     let root = make_single_crate_workspace();
-    let config = Config::default();
-    let index = WorkspaceIndex::build(root.path(), &config, None).unwrap();
+    let index = WorkspaceIndex::build(root.path(), None).unwrap();
 
     let names: Box<[&str]> = index.crate_names().collect::<Vec<_>>().into_boxed_slice();
     assert_eq!(&*names, &["single-crate"]);
@@ -213,8 +207,7 @@ fn test_index_builds_single_crate_workspace() {
 #[test]
 fn test_index_analyzes_go_source_and_generate_directives() {
     let root = make_workspace_with_go_generator();
-    let config = Config::default();
-    let index = WorkspaceIndex::build(root.path(), &config, None).unwrap();
+    let index = WorkspaceIndex::build(root.path(), None).unwrap();
 
     let profile = index
         .crate_profile("go-generator")
@@ -236,8 +229,7 @@ fn test_index_analyzes_go_source_and_generate_directives() {
 #[test]
 fn test_index_builds_glob_workspace_member_patterns() {
     let root = make_glob_workspace();
-    let config = Config::default();
-    let index = WorkspaceIndex::build(root.path(), &config, None).unwrap();
+    let index = WorkspaceIndex::build(root.path(), None).unwrap();
 
     let names: Box<[&str]> = index.crate_names().collect::<Vec<_>>().into_boxed_slice();
     assert_eq!(&*names, &["fs-util", "http-util"]);
@@ -246,8 +238,7 @@ fn test_index_builds_glob_workspace_member_patterns() {
 #[test]
 fn test_index_builds_nested_glob_workspace_member_patterns() {
     let root = make_nested_glob_workspace();
-    let config = Config::default();
-    let index = WorkspaceIndex::build(root.path(), &config, None).unwrap();
+    let index = WorkspaceIndex::build(root.path(), None).unwrap();
 
     let names: Box<[&str]> = index.crate_names().collect::<Vec<_>>().into_boxed_slice();
     assert_eq!(&*names, &["alpha-member", "beta-member"]);
@@ -256,8 +247,7 @@ fn test_index_builds_nested_glob_workspace_member_patterns() {
 #[test]
 fn test_index_reports_typed_syntactic_tier() {
     let root = fixture_path("multi_crate");
-    let config = Config::default();
-    let index = WorkspaceIndex::build(&root, &config, None).unwrap();
+    let index = WorkspaceIndex::build(&root, None).unwrap();
 
     assert_eq!(index.crate_tier("lib-a"), AnalysisTier::Syntactic);
 }
@@ -265,8 +255,7 @@ fn test_index_reports_typed_syntactic_tier() {
 #[test]
 fn test_index_gate_verdicts() {
     let root = fixture_path("multi_crate");
-    let config = Config::default();
-    let index = WorkspaceIndex::build(&root, &config, None).unwrap();
+    let index = WorkspaceIndex::build(&root, None).unwrap();
 
     let verdicts = index.crate_verdicts("lib-a").expect("lib-a not indexed");
     let rules: Box<[&str]> = verdicts
@@ -302,8 +291,7 @@ fn test_workspace_discovery_from_subdirectory() {
 #[test]
 fn test_file_change_triggers_reindex() {
     let tmp = copy_fixture_to_temp("multi_crate");
-    let config = Config::default();
-    let mut index = WorkspaceIndex::build(tmp.path(), &config, None).unwrap();
+    let mut index = WorkspaceIndex::build(tmp.path(), None).unwrap();
 
     // lib-a/src/lib.rs has std::net — verify Network present
     let profile = index.crate_profile("lib-a").expect("lib-a not indexed");
@@ -315,7 +303,7 @@ fn test_file_change_triggers_reindex() {
     // Remove the std::net import from lib.rs
     let lib_rs = tmp.path().join("lib-a/src/lib.rs");
     fs::write(&lib_rs, "pub fn placeholder() {}\n").unwrap();
-    index.reindex_file(&lib_rs, &config).unwrap();
+    index.reindex_file(&lib_rs).unwrap();
 
     // Also clear build.rs (it has reqwest which contributes Network)
     let build_rs = tmp.path().join("lib-a/build.rs");
@@ -324,20 +312,20 @@ fn test_file_change_triggers_reindex() {
         "fn main() { println!(\"cargo:rerun-if-changed=build.rs\"); }\n",
     )
     .unwrap();
-    index.reindex_file(&build_rs, &config).unwrap();
+    index.reindex_file(&build_rs).unwrap();
 
     // Clear non-Rust network sources (Python script with `import requests`)
     let fetch_py = tmp.path().join("lib-a/scripts/fetch_data.py");
     if fetch_py.exists() {
         fs::write(&fetch_py, "# no capabilities\n").unwrap();
-        index.reindex_file(&fetch_py, &config).unwrap();
+        index.reindex_file(&fetch_py).unwrap();
     }
 
     // Clear manifest hook findings (package.json postinstall)
     let pkg_json = tmp.path().join("lib-a/package.json");
     if pkg_json.exists() {
         fs::write(&pkg_json, "{}\n").unwrap();
-        index.reindex_file(&pkg_json, &config).unwrap();
+        index.reindex_file(&pkg_json).unwrap();
     }
 
     let profile = index.crate_profile("lib-a").expect("lib-a not indexed");
@@ -354,8 +342,7 @@ fn test_file_change_triggers_reindex() {
 #[test]
 fn test_new_file_added_to_index() {
     let tmp = copy_fixture_to_temp("multi_crate");
-    let config = Config::default();
-    let mut index = WorkspaceIndex::build(tmp.path(), &config, None).unwrap();
+    let mut index = WorkspaceIndex::build(tmp.path(), None).unwrap();
 
     // Add a new file with std::fs import to lib-a
     let new_file = tmp.path().join("lib-a/src/extra.rs");
@@ -365,7 +352,7 @@ fn test_new_file_added_to_index() {
     )
     .unwrap();
 
-    index.reindex_file(&new_file, &config).unwrap();
+    index.reindex_file(&new_file).unwrap();
 
     let profile = index.crate_profile("lib-a").expect("lib-a not indexed");
     assert!(
@@ -381,8 +368,7 @@ fn test_new_file_added_to_index() {
 #[test]
 fn test_file_deleted_from_index() {
     let tmp = copy_fixture_to_temp("multi_crate");
-    let config = Config::default();
-    let mut index = WorkspaceIndex::build(tmp.path(), &config, None).unwrap();
+    let mut index = WorkspaceIndex::build(tmp.path(), None).unwrap();
 
     // lib-a/src/other.rs has std::fs — verify FileRead present
     let profile = index.crate_profile("lib-a").expect("lib-a not indexed");
@@ -410,8 +396,7 @@ fn test_file_deleted_from_index() {
 #[test]
 fn test_gate_verdicts_recomputed_after_change() {
     let tmp = copy_fixture_to_temp("multi_crate");
-    let config = Config::default();
-    let mut index = WorkspaceIndex::build(tmp.path(), &config, None).unwrap();
+    let mut index = WorkspaceIndex::build(tmp.path(), None).unwrap();
 
     // lib-a has build.rs using reqwest — gate rule should fire
     let verdicts = index.crate_verdicts("lib-a").expect("lib-a not indexed");
@@ -433,7 +418,7 @@ fn test_gate_verdicts_recomputed_after_change() {
     )
     .unwrap();
 
-    index.reindex_file(&build_rs, &config).unwrap();
+    index.reindex_file(&build_rs).unwrap();
 
     let verdicts = index.crate_verdicts("lib-a").expect("lib-a not indexed");
     let rules: Box<[&str]> = verdicts
@@ -450,8 +435,7 @@ fn test_gate_verdicts_recomputed_after_change() {
 #[test]
 fn test_reindex_file_prefers_most_specific_crate_root() {
     let tmp = make_nested_workspace();
-    let config = Config::default();
-    let mut index = WorkspaceIndex::build(tmp.path(), &config, None).unwrap();
+    let mut index = WorkspaceIndex::build(tmp.path(), None).unwrap();
     let nested_extra = tmp.path().join("shared/nested/src/extra.rs");
     fs::write(
         &nested_extra,
@@ -459,7 +443,7 @@ fn test_reindex_file_prefers_most_specific_crate_root() {
     )
     .unwrap();
 
-    index.reindex_file(&nested_extra, &config).unwrap();
+    index.reindex_file(&nested_extra).unwrap();
 
     let nested_caps = index.crate_profile("nested").unwrap().capabilities();
     let shared_caps = index.crate_profile("shared").unwrap().capabilities();
@@ -475,8 +459,7 @@ fn test_reindex_file_prefers_most_specific_crate_root() {
 #[test]
 fn mcp_reindex_preserves_gate_verdicts_through_summary_evaluation() {
     let tmp = copy_fixture_to_temp("multi_crate");
-    let config = Config::default();
-    let mut index = WorkspaceIndex::build(tmp.path(), &config, None).unwrap();
+    let mut index = WorkspaceIndex::build(tmp.path(), None).unwrap();
 
     // lib-a has build.rs with reqwest — gate rule fires initially.
     let verdicts = index.crate_verdicts("lib-a").expect("lib-a not indexed");
@@ -488,7 +471,7 @@ fn mcp_reindex_preserves_gate_verdicts_through_summary_evaluation() {
     // Reindex an unrelated file — gate verdicts must still be present.
     let lib_rs = tmp.path().join("lib-a/src/lib.rs");
     fs::write(&lib_rs, "use std::net::TcpStream;\npub fn net() {}\n").unwrap();
-    index.reindex_file(&lib_rs, &config).unwrap();
+    index.reindex_file(&lib_rs).unwrap();
 
     let verdicts = index.crate_verdicts("lib-a").expect("lib-a not indexed");
     assert!(
@@ -498,7 +481,7 @@ fn mcp_reindex_preserves_gate_verdicts_through_summary_evaluation() {
 
     // Reindex degraded file handling: mark a file degraded, verify it tracks.
     let bad_path = tmp.path().join("lib-a/src/nonexistent.rs");
-    let err = index.reindex_file(&bad_path, &config).unwrap_err();
+    let err = index.reindex_file(&bad_path).unwrap_err();
     index.mark_file_degraded(&bad_path, &err);
 
     let degraded: Box<[_]> = index

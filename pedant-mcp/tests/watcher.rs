@@ -4,7 +4,6 @@ use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use pedant_core::Config;
 use pedant_mcp::index::WorkspaceIndex;
 use pedant_mcp::watcher::start_watcher;
 use pedant_types::Capability;
@@ -87,8 +86,7 @@ fn wait_for_rename_reindex(index: &Arc<RwLock<WorkspaceIndex>>, old_path: &Path,
 fn test_watcher_keeps_last_good_result_and_marks_file_degraded() {
     let tmp = copy_fixture_to_temp("multi_crate");
     let workspace_root = tmp.path().canonicalize().unwrap();
-    let config = Arc::new(Config::default());
-    let index = WorkspaceIndex::build(&workspace_root, config.as_ref(), None).unwrap();
+    let index = WorkspaceIndex::build(&workspace_root, None).unwrap();
     let shared_index = Arc::new(RwLock::new(index));
 
     assert!(
@@ -100,7 +98,7 @@ fn test_watcher_keeps_last_good_result_and_marks_file_degraded() {
         "expected FileRead before introducing invalid Rust"
     );
 
-    let _watcher = start_watcher(&shared_index, Arc::clone(&config)).unwrap();
+    let _watcher = start_watcher(&shared_index).unwrap();
     thread::sleep(Duration::from_millis(200));
 
     let other_rs = workspace_root.join("lib-a/src/other.rs");
@@ -122,8 +120,7 @@ fn test_watcher_keeps_last_good_result_and_marks_file_degraded() {
 fn test_watcher_removes_stale_entry_after_rename() {
     let tmp = copy_fixture_to_temp("multi_crate");
     let workspace_root = tmp.path().canonicalize().unwrap();
-    let config = Arc::new(Config::default());
-    let index = WorkspaceIndex::build(&workspace_root, config.as_ref(), None).unwrap();
+    let index = WorkspaceIndex::build(&workspace_root, None).unwrap();
     let shared_index = Arc::new(RwLock::new(index));
 
     let old_path = workspace_root.join("lib-a/src/other.rs");
@@ -138,7 +135,7 @@ fn test_watcher_removes_stale_entry_after_rename() {
         "expected old file path to be indexed before rename"
     );
 
-    let _watcher = start_watcher(&shared_index, Arc::clone(&config)).unwrap();
+    let _watcher = start_watcher(&shared_index).unwrap();
     thread::sleep(Duration::from_millis(200));
 
     fs::rename(&old_path, &new_path).unwrap();

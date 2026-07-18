@@ -1,6 +1,5 @@
 use std::path::Path;
 
-use pedant_core::Config;
 use pedant_mcp::index::WorkspaceIndex;
 use pedant_mcp::registry;
 use pedant_mcp::tools::{
@@ -19,8 +18,7 @@ fn fixture_path(name: &str) -> std::path::PathBuf {
 
 fn fixture_index() -> WorkspaceIndex {
     let root = fixture_path("multi_crate");
-    let config = Config::default();
-    WorkspaceIndex::build(&root, &config, None).unwrap()
+    WorkspaceIndex::build(&root, None).unwrap()
 }
 
 fn result_text(result: &rmcp::model::CallToolResult) -> String {
@@ -331,9 +329,8 @@ fn test_mcp_audit_includes_quality_flows() {
         .parent()
         .unwrap()
         .join("pedant-core/tests/fixtures/dataflow_workspace");
-    let config = Config::default();
     let semantic = pedant_core::SemanticContext::load(&root);
-    let index = WorkspaceIndex::build(&root, &config, semantic).unwrap();
+    let index = WorkspaceIndex::build(&root, semantic).unwrap();
 
     let result = audit_crate(
         AuditCrateParams {

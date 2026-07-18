@@ -1,5 +1,6 @@
 use pedant_core::gate::GateSeverity;
 use pedant_core::ir::DataFlowFact;
+use pedant_core::violation::Severity;
 use pedant_types::{AnalysisTier, Capability, CapabilityFinding, ExecutionContext, Language};
 use serde::Serialize;
 
@@ -28,6 +29,7 @@ pub(super) struct VerdictOutput<'a> {
 pub(super) struct ViolationOutput<'a> {
     pub(super) check: &'a str,
     pub(super) category: &'a str,
+    pub(super) severity: Severity,
     pub(super) file: &'a str,
     pub(super) line: usize,
     pub(super) column: usize,
@@ -92,6 +94,7 @@ pub(super) fn violation_output(v: &pedant_core::Violation) -> ViolationOutput<'_
     ViolationOutput {
         check: v.violation_type.code(),
         category: v.violation_type.category(),
+        severity: v.severity,
         file: &v.file_path,
         line: v.line,
         column: v.column,

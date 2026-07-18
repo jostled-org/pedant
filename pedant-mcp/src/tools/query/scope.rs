@@ -66,6 +66,7 @@ pub(super) fn resolve_violations<'a>(
             index
                 .crate_names()
                 .flat_map(|name| collect_crate_violations(index, name))
+                .chain(index.project_violations().iter())
                 .collect()
         },
         |s| {

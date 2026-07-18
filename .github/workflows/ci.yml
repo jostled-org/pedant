@@ -43,7 +43,8 @@ jobs:
         with:
           baseline-path: .pedant/baselines
           # Cargo.lock already checksums every registry dep, so hash-mismatch
-          # duplicates it. new-capability is the tier that adds signal: it fails
-          # when a dependency gains a capability (process_exec, network, ...)
-          # across a version bump — a maintainer-takeover shape Cargo cannot see.
-          fail-on: new-capability
+          # duplicates it and new-capability admits a wholly-new crate. This tier
+          # fails on a new dependency AND on capability escalation, but not on a
+          # routine version bump — so a maintainer-takeover or an injected crate
+          # trips CI until a human reviews it and runs `supply-chain update`.
+          fail-on: new-dependency

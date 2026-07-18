@@ -45,7 +45,7 @@ jobs:
       - uses: jostled-org/pedant/.github/actions/supply-chain-check@<commit-hash>
         with:
           baseline-path: .pedant/baselines
-          fail-on: hash-mismatch
+          fail-on: new-dependency
 ```
 
 Replace `<commit-hash>` with a specific pedant commit. All action refs are pinned to commit hashes — no mutable tags.
@@ -122,9 +122,9 @@ Same version, different content. Build fails. No baseline update fixes this — 
 
 | Level | What it catches | When to use |
 |-------|----------------|-------------|
-| `hash-mismatch` | Tag-swap attacks only | Default — catches the worst attack with zero false positives |
-| `new-capability` | Tag-swaps + capability drift | Stricter — flags dependency updates that add capabilities |
-| `new-dependency` | All of the above + unreviewed deps | Strictest — every new dependency must be explicitly approved |
+| `hash-mismatch` | Same-version content change | Action default, but for registry deps Cargo.lock already checksums this — adds little on a lockfile-pinned tree |
+| `new-capability` | Content change + capability escalation on an existing dep | Flags a dependency that gains a capability across a bump; misses a wholly-new crate |
+| `new-dependency` | All of the above + a new crate entering the tree | Recommended — a new or tampered dependency fails CI until reviewed and re-baselined; routine bumps still pass |
 | `none` | Nothing (report only) | Monitoring mode — see findings without failing the build |
 
 ### Supported ecosystems

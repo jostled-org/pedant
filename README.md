@@ -104,10 +104,12 @@ jobs:
       - uses: jostled-org/pedant/.github/actions/supply-chain-check@<commit> # pin to commit
         with:
           baseline-path: .pedant/baselines
-          fail-on: hash-mismatch
+          fail-on: new-dependency
 ```
 
-Pedant is built from the same pinned commit as the action — no registry fetch, one trust boundary. See [examples/supply-chain-check.md](examples/supply-chain-check.md) for setup, baseline management, and configuration.
+`new-dependency` fails when a crate enters the tree or gains a capability, but not on a routine version bump — a new or tampered dependency trips CI until you review it and run `pedant supply-chain update`. `hash-mismatch` (the action default) only re-checks content that Cargo.lock already verifies, and `new-capability` misses a wholly-new crate; see [examples/supply-chain-check.md](examples/supply-chain-check.md) for the trade-offs.
+
+Pedant is built from the same pinned commit as the action — no registry fetch, one trust boundary. That example covers setup and baseline management.
 
 ## Capability Detection
 

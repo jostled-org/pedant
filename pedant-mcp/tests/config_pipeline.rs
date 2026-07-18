@@ -104,6 +104,49 @@ fn project_level_conflicting_module_root_surfaces() {
     );
 }
 
+/// Issue #63: the cross-file type-footprint check (#56) must run through MCP.
+/// A type whose inherent methods span two files is a god-object the per-file
+/// pass cannot see; only the project pass, given every file's shape, catches it.
+/// Before shapes were threaded, MCP passed `file_shapes: &[]` and this produced
+/// nothing.
+#[test]
+fn cross_file_high_method_count_surfaces() {
+    let toml = "check_high_method_count = true\nmax_methods = 3\n";
+    let methods_a = (0..3)
+        .map(|i| format!("    pub fn a{i}(&self) -> usize {{ self.n + {i} }}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let methods_b = (0..3)
+        .map(|i| format!("    pub fn b{i}(&self) -> usize {{ self.n + {i} }}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let files = [
+        (
+            "demo/src/lib.rs",
+            "pub mod a;\npub mod b;\npub struct God { pub n: usize }\n",
+        ),
+        (
+            "demo/src/a.rs",
+            &format!("use super::God;\nimpl God {{\n{methods_a}\n}}\n"),
+        ),
+        (
+            "demo/src/b.rs",
+            &format!("use super::God;\nimpl God {{\n{methods_b}\n}}\n"),
+        ),
+    ];
+    let (_tmp, index) = workspace_with(toml, &files);
+
+    let violations = violations_json("workspace", &index);
+    let items = violations.as_array().expect("array of violations");
+    let has_god_object = items
+        .iter()
+        .any(|v| v["check"].as_str() == Some("high-method-count"));
+    assert!(
+        has_god_object,
+        "expected a cross-file high-method-count violation (6 methods over the limit of 3), got: {violations}"
+    );
+}
+
 /// Defect 3: every violation carries a `severity` field, serialized lowercase.
 #[test]
 fn violations_expose_severity() {

@@ -3,6 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use pedant_core::gate::{GateInputSummary, GateVerdict};
+use pedant_core::project::FileShape;
 use pedant_core::{AnalysisResult, Config, GateConfig, SemanticContext};
 use pedant_lang::FileClassification;
 use pedant_types::CapabilityProfile;
@@ -11,18 +12,25 @@ use walkdir::WalkDir;
 use super::IndexError;
 use super::config::WorkspaceConfig;
 
-/// Analyze a Rust file with a pre-computed path string into an [`AnalysisResult`].
+/// Analyze a Rust file, returning its [`AnalysisResult`] and the [`FileShape`]
+/// the whole-crate project checks consume.
 ///
 /// Both [`analyze_source_at`] and [`analyze_build_script_at`] match this shape,
 /// letting a single helper apply path-override resolution to source and build
 /// scripts alike.
-pub(super) type AnalyzeAt =
-    fn(&Path, &str, &Config, Option<&SemanticContext>) -> Result<AnalysisResult, IndexError>;
+pub(super) type AnalyzeAt = fn(
+    &Path,
+    &str,
+    &Config,
+    Option<&SemanticContext>,
+) -> Result<(AnalysisResult, FileShape), IndexError>;
 
 /// Cached analysis results for a single crate.
 pub(super) struct CrateIndex {
     pub(super) root: PathBuf,
     pub(super) files: BTreeMap<Box<str>, AnalysisResult>,
+    /// Per-file shapes for the whole-crate project checks, keyed like `files`.
+    pub(super) shapes: BTreeMap<Box<str>, FileShape>,
     pub(super) profile: CapabilityProfile,
     pub(super) gate_verdicts: Box<[GateVerdict]>,
 }
@@ -35,10 +43,12 @@ pub(super) fn build_crate_index(
     semantic: Option<&SemanticContext>,
 ) -> Result<CrateIndex, IndexError> {
     let mut files = BTreeMap::new();
+    let mut shapes = BTreeMap::new();
 
     for source_path in discover_rust_sources(crate_root) {
         analyze_rust_into(
             &mut files,
+            &mut shapes,
             &source_path,
             config,
             semantic,
@@ -50,6 +60,7 @@ pub(super) fn build_crate_index(
     if build_rs.is_file() {
         analyze_rust_into(
             &mut files,
+            &mut shapes,
             &build_rs,
             config,
             semantic,
@@ -77,6 +88,7 @@ pub(super) fn build_crate_index(
     Ok(CrateIndex {
         root: crate_root.to_path_buf(),
         files,
+        shapes,
         profile,
         gate_verdicts,
     })
@@ -88,6 +100,7 @@ pub(super) fn build_crate_index(
 /// matching the CLI's per-file `resolve_for_path` contract.
 fn analyze_rust_into(
     files: &mut BTreeMap<Box<str>, AnalysisResult>,
+    shapes: &mut BTreeMap<Box<str>, FileShape>,
     path: &Path,
     config: &WorkspaceConfig,
     semantic: Option<&SemanticContext>,
@@ -97,8 +110,9 @@ fn analyze_rust_into(
     let Some(cfg) = config.resolve_for_path(&path_str) else {
         return Ok(());
     };
-    let result = analyze(path, &path_str, &cfg, semantic)?;
-    files.insert(path_str, result);
+    let (result, shape) = analyze(path, &path_str, &cfg, semantic)?;
+    files.insert(path_str.clone(), result);
+    shapes.insert(path_str, shape);
     Ok(())
 }
 
@@ -246,11 +260,13 @@ pub(super) fn analyze_source_at(
     path_str: &str,
     config: &Config,
     semantic: Option<&SemanticContext>,
-) -> Result<AnalysisResult, IndexError> {
+) -> Result<(AnalysisResult, FileShape), IndexError> {
     let source = read_file(path)?;
-    pedant_core::analyze(path_str, &source, config, semantic).map_err(|e| IndexError::RustParse {
-        path: path_str.into(),
-        source: e,
+    pedant_core::analyze_with_shape(path_str, &source, config, semantic).map_err(|e| {
+        IndexError::RustParse {
+            path: path_str.into(),
+            source: e,
+        }
     })
 }
 
@@ -260,9 +276,9 @@ pub(super) fn analyze_build_script_at(
     path_str: &str,
     config: &Config,
     semantic: Option<&SemanticContext>,
-) -> Result<AnalysisResult, IndexError> {
+) -> Result<(AnalysisResult, FileShape), IndexError> {
     let source = read_file(path)?;
-    pedant_core::analyze_build_script(path_str, &source, config, semantic).map_err(|e| {
+    pedant_core::analyze_build_script_with_shape(path_str, &source, config, semantic).map_err(|e| {
         IndexError::RustParse {
             path: path_str.into(),
             source: e,

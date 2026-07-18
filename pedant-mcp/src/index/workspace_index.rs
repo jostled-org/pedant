@@ -3,7 +3,7 @@ use std::io::Write;
 use std::path::Path;
 
 use pedant_core::gate::GateVerdict;
-use pedant_core::project::{CargoMetadata, ProjectContext, check_project};
+use pedant_core::project::{CargoMetadata, FileShape, ProjectContext, check_project};
 use pedant_core::{AnalysisResult, Config, SemanticContext, Violation};
 use pedant_types::{AnalysisTier, CapabilityProfile};
 
@@ -149,25 +149,27 @@ impl WorkspaceIndex {
         let is_rust = path.extension().is_some_and(|ext| ext == "rs");
         let is_build_script = path.file_name().is_some_and(|n| n == "build.rs");
         let semantic_root = self.semantic_root.as_deref();
-        let result = match (is_rust, is_build_script) {
+        let analyzed = match (is_rust, is_build_script) {
             (true, true) => reindex_rust(
                 &self.config,
                 semantic_root,
                 path,
                 &path_lossy,
                 analyze_build_script_at,
-            )?,
+            )?
+            .map(|(result, shape)| (result, Some(shape))),
             (true, false) => reindex_rust(
                 &self.config,
                 semantic_root,
                 path,
                 &path_lossy,
                 analyze_source_at,
-            )?,
-            (false, _) => Some(analyze_non_rust_or_manifest(path)?),
+            )?
+            .map(|(result, shape)| (result, Some(shape))),
+            (false, _) => Some((analyze_non_rust_or_manifest(path)?, None)),
         };
 
-        let Some(result) = result else {
+        let Some((result, shape)) = analyzed else {
             // A path override disabled analysis for this file; drop any stale entry.
             self.remove_file(path);
             return Ok(());
@@ -180,6 +182,12 @@ impl WorkspaceIndex {
             };
 
             crate_index.files.insert(path_key.clone(), result);
+            // A non-Rust file has no shape; clear any stale one so shapes stay
+            // aligned with files.
+            match shape {
+                Some(shape) => crate_index.shapes.insert(path_key.clone(), shape),
+                None => crate_index.shapes.remove(path_key.as_ref()),
+            };
             recompute_aggregates(crate_index, self.config.gate());
         }
         self.degraded_files.remove(path_key.as_ref());
@@ -197,6 +205,7 @@ impl WorkspaceIndex {
                 None => return,
             };
             crate_index.files.remove(path_lossy.as_ref());
+            crate_index.shapes.remove(path_lossy.as_ref());
             recompute_aggregates(crate_index, self.config.gate());
         }
         self.degraded_files.remove(path_lossy.as_ref());
@@ -238,13 +247,13 @@ fn reindex_rust(
     path: &Path,
     path_str: &str,
     analyze: AnalyzeAt,
-) -> Result<Option<AnalysisResult>, IndexError> {
+) -> Result<Option<(AnalysisResult, FileShape)>, IndexError> {
     let Some(cfg) = config.resolve_for_path(path_str) else {
         return Ok(None);
     };
     let semantic = load_semantic_for_reindex(semantic_root);
-    let result = analyze(path, path_str, &cfg, semantic.as_ref())?;
-    Ok(Some(result))
+    let analyzed = analyze(path, path_str, &cfg, semantic.as_ref())?;
+    Ok(Some(analyzed))
 }
 
 /// Run the whole-workspace structural checks over the indexed Rust files.
@@ -258,13 +267,13 @@ fn compute_project_violations(
     config: &Config,
 ) -> Box<[Violation]> {
     let rust_files = collect_rust_files(crates);
+    let shapes = collect_shapes(crates);
     let metadata = load_cargo_metadata_if_needed(config, workspace_root);
     let ctx = ProjectContext {
         rust_files: &rust_files,
         workspace_root,
         metadata: metadata.as_ref(),
-        // TODO(#57 follow-up): thread FileShapes for cross-file type checks in MCP.
-        file_shapes: &[],
+        file_shapes: &shapes,
     };
     let mut violations = Vec::new();
     check_project(&ctx, config, &mut violations);
@@ -278,6 +287,14 @@ fn collect_rust_files(crates: &BTreeMap<Box<str>, CrateIndex>) -> Vec<String> {
         .flat_map(|c| c.files.keys())
         .filter(|path| path.ends_with(".rs"))
         .map(ToString::to_string)
+        .collect()
+}
+
+/// Collect every file shape across all crates, for the cross-file type checks.
+fn collect_shapes(crates: &BTreeMap<Box<str>, CrateIndex>) -> Vec<FileShape> {
+    crates
+        .values()
+        .flat_map(|c| c.shapes.values().cloned())
         .collect()
 }
 

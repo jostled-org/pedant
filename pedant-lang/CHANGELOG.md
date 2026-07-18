@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.2](https://github.com/jostled-org/pedant/compare/pedant-lang-v0.3.1...pedant-lang-v0.3.2) - 2026-07-18
+
+### Fixed
+
+- *(capabilities)* stop reading OIDs, paths, and versions as network endpoints
+
 ## [0.3.1](https://github.com/jostled-org/pedant/compare/pedant-lang-v0.3.0...pedant-lang-v0.3.1) - 2026-07-17
 
 ### Other

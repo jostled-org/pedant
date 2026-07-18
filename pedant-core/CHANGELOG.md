@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0](https://github.com/jostled-org/pedant/compare/pedant-core-v0.16.0...pedant-core-v0.17.0) - 2026-07-18
+
+### Added
+
+- *(checks)* [**breaking**] count high-method-count across files, add scattered-inherent-impl
+
+### Fixed
+
+- *(capabilities)* stop reading OIDs, paths, and versions as network endpoints
+
+### Other
+
+- *(supply-chain)* gate on new-dependency to catch injected crates
+
 ## [0.16.0](https://github.com/jostled-org/pedant/compare/pedant-core-v0.15.0...pedant-core-v0.16.0) - 2026-07-17
 
 ### Other

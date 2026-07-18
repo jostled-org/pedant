@@ -1,0 +1,26 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "09e68bdaec211681b365157e131462704dd01bac72c16cf704ad0c099fa31f57",
+  "crate_name": "utf8parse",
+  "crate_version": "0.2.2",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344445,
+  "analysis_completeness": {
+    "analyzed_files": 2,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": [
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 70,
+          "column": 25
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

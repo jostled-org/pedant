@@ -1,0 +1,47 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "53ac6a39deb4c63df6e82b2552a81efd9930cd91a39ddeb01d2db668b0f35afc",
+  "crate_name": "derive-where",
+  "crate_version": "1.6.1",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344427,
+  "analysis_completeness": {
+    "analyzed_files": 46,
+    "skipped_files": 0
+  },
+  "rust_version": "1.57",
+  "profile": {
+    "findings": [
+      {
+        "capability": "proc_macro",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 474,
+          "column": 1
+        },
+        "evidence": "#[proc_macro_attribute]",
+        "origin": "attribute"
+      },
+      {
+        "capability": "proc_macro",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 622,
+          "column": 1
+        },
+        "evidence": "#[proc_macro_attribute]",
+        "origin": "attribute"
+      },
+      {
+        "capability": "proc_macro",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 746,
+          "column": 1
+        },
+        "evidence": "#[proc_macro_attribute]",
+        "origin": "attribute"
+      }
+    ]
+  }
+}

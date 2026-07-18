@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "06d4286090da4a47323020aa52f63f131d19f244ba2cc7023a7d0941924d98f3",
+  "crate_name": "regex-syntax",
+  "crate_version": "0.8.11",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344439,
+  "analysis_completeness": {
+    "analyzed_files": 33,
+    "skipped_files": 0
+  },
+  "rust_version": "1.65",
+  "profile": {
+    "findings": []
+  }
+}

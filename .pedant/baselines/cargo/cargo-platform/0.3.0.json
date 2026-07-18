@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "4ec7e04dc148f862271d3dcc0dd2b1fe436f80c4b526a2a408ad6aab74f3ca82",
+  "crate_name": "cargo-platform",
+  "crate_version": "0.3.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344425,
+  "analysis_completeness": {
+    "analyzed_files": 3,
+    "skipped_files": 0
+  },
+  "rust_version": "1.83",
+  "profile": {
+    "findings": []
+  }
+}

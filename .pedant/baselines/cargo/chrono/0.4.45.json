@@ -1,0 +1,267 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "d3de9749dac47c4a29f13fd9d0298e1090b600fa32d46c9559ee31fe5e932ced",
+  "crate_name": "chrono",
+  "crate_version": "0.4.45",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344426,
+  "analysis_completeness": {
+    "analyzed_files": 39,
+    "skipped_files": 0
+  },
+  "rust_version": "1.62.0",
+  "profile": {
+    "findings": [
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/date.rs",
+          "line": 468,
+          "column": 1
+        },
+        "evidence": "unsafe impl",
+        "origin": "code_site"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/datetime/mod.rs",
+          "line": 15,
+          "column": 1
+        },
+        "evidence": "std::time::SystemTime",
+        "origin": "import"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/datetime/tests.rs",
+          "line": 1392,
+          "column": 5
+        },
+        "evidence": "std::time::SystemTime",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/format/parse.rs",
+          "line": 1126,
+          "column": 15
+        },
+        "evidence": "12:34:56",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/format/parse.rs",
+          "line": 1235,
+          "column": 15
+        },
+        "evidence": "12:34:56",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/format/parse.rs",
+          "line": 1331,
+          "column": 15
+        },
+        "evidence": "12:34:56",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/format/parse.rs",
+          "line": 1427,
+          "column": 15
+        },
+        "evidence": "12:34:56",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/naive/date/mod.rs",
+          "line": 1496,
+          "column": 26
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/naive/time/tests.rs",
+          "line": 256,
+          "column": 9
+        },
+        "evidence": "01:02:03",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/naive/time/tests.rs",
+          "line": 266,
+          "column": 9
+        },
+        "evidence": "09:08:07",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/naive/time/tests.rs",
+          "line": 315,
+          "column": 9
+        },
+        "evidence": "23:59:61",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/naive/time/tests.rs",
+          "line": 321,
+          "column": 9
+        },
+        "evidence": "001:02:03",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/naive/time/tests.rs",
+          "line": 322,
+          "column": 9
+        },
+        "evidence": "01:002:03",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/naive/time/tests.rs",
+          "line": 323,
+          "column": 9
+        },
+        "evidence": "01:02:003",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/naive/time/tests.rs",
+          "line": 326,
+          "column": 9
+        },
+        "evidence": "09:08:00000000007",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/offset/local/tz_data.rs",
+          "line": 4,
+          "column": 1
+        },
+        "evidence": "std::fs::File",
+        "origin": "import"
+      },
+      {
+        "capability": "env_access",
+        "location": {
+          "file": "./src/offset/local/tz_data.rs",
+          "line": 36,
+          "column": 32
+        },
+        "evidence": "std::env::var",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/offset/local/tz_data.rs",
+          "line": 158,
+          "column": 10
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/offset/local/tz_info/timezone.rs",
+          "line": 3,
+          "column": 1
+        },
+        "evidence": "std::fs::self",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/offset/local/tz_info/timezone.rs",
+          "line": 3,
+          "column": 1
+        },
+        "evidence": "std::fs::File",
+        "origin": "import"
+      },
+      {
+        "capability": "env_access",
+        "location": {
+          "file": "./src/offset/local/tz_info/timezone.rs",
+          "line": 854,
+          "column": 29
+        },
+        "evidence": "std::env::var",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/offset/local/tz_info/timezone.rs",
+          "line": 550,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/offset/local/win_bindings.rs",
+          "line": 23,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/offset/local/win_bindings.rs",
+          "line": 57,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/offset/utc.rs",
+          "line": 15,
+          "column": 1
+        },
+        "evidence": "std::time::SystemTime",
+        "origin": "import"
+      }
+    ]
+  }
+}

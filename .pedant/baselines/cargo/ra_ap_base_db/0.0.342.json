@@ -1,0 +1,37 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "60828f59787600a92a1a7ed1d7ff9c417377ddd460dc1043a2bad845ca65ea35",
+  "crate_name": "ra_ap_base_db",
+  "crate_version": "0.0.342",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344433,
+  "analysis_completeness": {
+    "analyzed_files": 5,
+    "skipped_files": 0
+  },
+  "rust_version": "1.95",
+  "profile": {
+    "findings": [
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 71,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 76,
+          "column": 27
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

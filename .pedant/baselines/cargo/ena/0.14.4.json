@@ -1,0 +1,15 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "1fcd074dbbdd2270a550496f9a86eba3f9e917a3aa2c8bc44241287c18fd478f",
+  "crate_name": "ena",
+  "crate_version": "0.14.4",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344427,
+  "analysis_completeness": {
+    "analyzed_files": 6,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": []
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "90962f1d2c39df5eb4d488c93b81b039d61b5295aab2d0aa97c67483d674afd3",
+  "crate_name": "salsa-macro-rules",
+  "crate_version": "0.27.2",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344440,
+  "analysis_completeness": {
+    "analyzed_files": 13,
+    "skipped_files": 0
+  },
+  "rust_version": "1.85",
+  "profile": {
+    "findings": []
+  }
+}

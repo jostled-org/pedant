@@ -1,0 +1,46 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "0792801b755f54ef8329a6df287f1697ec3efb8efb97f9faa20f7b6af4348666",
+  "crate_name": "scopeguard",
+  "crate_version": "1.2.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344441,
+  "analysis_completeness": {
+    "analyzed_files": 1,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": [
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 361,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 435,
+          "column": 1
+        },
+        "evidence": "unsafe impl",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 473,
+          "column": 31
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

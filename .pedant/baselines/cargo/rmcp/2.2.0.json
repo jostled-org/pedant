@@ -1,0 +1,1618 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "4bc289357e04099c780c8242a9216faa210a2a5e4afca91762824d58ec9d6671",
+  "crate_name": "rmcp",
+  "crate_version": "2.2.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344440,
+  "analysis_completeness": {
+    "analyzed_files": 59,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": [
+      {
+        "capability": "env_access",
+        "location": {
+          "file": "./build.rs",
+          "line": 4,
+          "column": 24
+        },
+        "evidence": "std::env::var",
+        "origin": "import",
+        "execution_context": "build_hook"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./build.rs",
+          "line": 17,
+          "column": 21
+        },
+        "evidence": "std::process::Command::new",
+        "origin": "import",
+        "execution_context": "build_hook"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/model.rs",
+          "line": 4099,
+          "column": 18
+        },
+        "evidence": "https://example.com/icon.png",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/model.rs",
+          "line": 4153,
+          "column": 31
+        },
+        "evidence": "https://example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/model.rs",
+          "line": 4201,
+          "column": 35
+        },
+        "evidence": "https://docs.example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/model.rs",
+          "line": 4342,
+          "column": 18
+        },
+        "evidence": "https://example.com/form",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/model/annotated.rs",
+          "line": 6,
+          "column": 1
+        },
+        "evidence": "chrono::DateTime",
+        "origin": "import"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/model/annotated.rs",
+          "line": 6,
+          "column": 1
+        },
+        "evidence": "chrono::Utc",
+        "origin": "import"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/task_manager.rs",
+          "line": 109,
+          "column": 5
+        },
+        "evidence": "chrono::Utc::now",
+        "origin": "import"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/task_manager.rs",
+          "line": 198,
+          "column": 25
+        },
+        "evidence": "std::time::Instant::now",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 1,
+          "column": 1
+        },
+        "evidence": "std::net::IpAddr",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 1,
+          "column": 1
+        },
+        "evidence": "std::net::Ipv4Addr",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 1,
+          "column": 1
+        },
+        "evidence": "std::net::Ipv6Addr",
+        "origin": "import"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 1,
+          "column": 1
+        },
+        "evidence": "std::time::SystemTime",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 18,
+          "column": 1
+        },
+        "evidence": "reqwest::Client",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 18,
+          "column": 1
+        },
+        "evidence": "reqwest::IntoUrl",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 18,
+          "column": 1
+        },
+        "evidence": "reqwest::StatusCode",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 18,
+          "column": 1
+        },
+        "evidence": "reqwest::Url",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 18,
+          "column": 1
+        },
+        "evidence": "reqwest::header::AUTHORIZATION",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 18,
+          "column": 1
+        },
+        "evidence": "reqwest::header::CONTENT_TYPE",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 18,
+          "column": 1
+        },
+        "evidence": "reqwest::header::LOCATION",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 18,
+          "column": 1
+        },
+        "evidence": "reqwest::header::WWW_AUTHENTICATE",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 117,
+          "column": 23
+        },
+        "evidence": "reqwest::redirect::Policy::none",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 139,
+          "column": 27
+        },
+        "evidence": "reqwest::Request::try_from",
+        "origin": "import"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 353,
+          "column": 25
+        },
+        "evidence": "std::time::SystemTime::now",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 2895,
+          "column": 36
+        },
+        "evidence": "reqwest::Method::GET",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 2902,
+          "column": 22
+        },
+        "evidence": "reqwest::Method::POST",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5635,
+          "column": 24
+        },
+        "evidence": "tokio::net::TcpListener::bind",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5645,
+          "column": 35
+        },
+        "evidence": "reqwest::header::HeaderMap::new",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5649,
+          "column": 17
+        },
+        "evidence": "reqwest::Client::builder",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 188,
+          "column": 36
+        },
+        "evidence": "http://localhost",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 3376,
+          "column": 13
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 3439,
+          "column": 13
+        },
+        "evidence": "https://mcp.example.com/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 3502,
+          "column": 13
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 3552,
+          "column": 13
+        },
+        "evidence": "https://legacy.example.com/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 3593,
+          "column": 13
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 3600,
+          "column": 40
+        },
+        "evidence": "https://mcp.example.com/start",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 3629,
+          "column": 13
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 3636,
+          "column": 40
+        },
+        "evidence": "https://mcp.example.com/start",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 3681,
+          "column": 13
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 3738,
+          "column": 13
+        },
+        "evidence": "http://localhost/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 3787,
+          "column": 13
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 3822,
+          "column": 13
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 3900,
+          "column": 13
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 3906,
+          "column": 37
+        },
+        "evidence": "https://auth.example.com/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 3907,
+          "column": 29
+        },
+        "evidence": "https://auth.example.com/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 3908,
+          "column": 41
+        },
+        "evidence": "https://auth.example.com/register",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 3915,
+          "column": 17
+        },
+        "evidence": "http://localhost/callback",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4031,
+          "column": 35
+        },
+        "evidence": "https://auth.example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4043,
+          "column": 35
+        },
+        "evidence": "https://auth.example.com/tenant1",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4063,
+          "column": 35
+        },
+        "evidence": "https://auth.example.com/v1/mcp/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4083,
+          "column": 35
+        },
+        "evidence": "https://auth.example.com/tenant1/subtenant",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4106,
+          "column": 35
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4110,
+          "column": 13
+        },
+        "evidence": "https://mcp.example.com/.well-known/oauth-authorization-server",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4164,
+          "column": 31
+        },
+        "evidence": "https://example.com/api",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4175,
+          "column": 31
+        },
+        "evidence": "https://example.com/api",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4186,
+          "column": 31
+        },
+        "evidence": "https://example.com/api",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4196,
+          "column": 31
+        },
+        "evidence": "https://example.com/api",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4205,
+          "column": 31
+        },
+        "evidence": "https://example.com/api",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4220,
+          "column": 31
+        },
+        "evidence": "https://example.com/api",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4236,
+          "column": 31
+        },
+        "evidence": "https://example.com/api",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4249,
+          "column": 31
+        },
+        "evidence": "https://example.com/api",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4261,
+          "column": 31
+        },
+        "evidence": "https://example.com/api",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4274,
+          "column": 31
+        },
+        "evidence": "https://example.com/api",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4304,
+          "column": 18
+        },
+        "evidence": "https://auth.example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4515,
+          "column": 53
+        },
+        "evidence": "http://localhost",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4524,
+          "column": 49
+        },
+        "evidence": "http://localhost",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4526,
+          "column": 37
+        },
+        "evidence": "http://localhost/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4527,
+          "column": 29
+        },
+        "evidence": "http://localhost/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4538,
+          "column": 27
+        },
+        "evidence": "http://localhost/callback",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4551,
+          "column": 37
+        },
+        "evidence": "http://localhost/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4552,
+          "column": 29
+        },
+        "evidence": "http://localhost/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4582,
+          "column": 37
+        },
+        "evidence": "http://localhost/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4583,
+          "column": 29
+        },
+        "evidence": "http://localhost/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4603,
+          "column": 37
+        },
+        "evidence": "http://localhost/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4604,
+          "column": 29
+        },
+        "evidence": "http://localhost/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4625,
+          "column": 37
+        },
+        "evidence": "http://localhost/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4626,
+          "column": 29
+        },
+        "evidence": "http://localhost/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4666,
+          "column": 53
+        },
+        "evidence": "https://example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4670,
+          "column": 37
+        },
+        "evidence": "https://auth.example.com/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4671,
+          "column": 29
+        },
+        "evidence": "https://auth.example.com/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4681,
+          "column": 37
+        },
+        "evidence": "https://auth.example.com/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4682,
+          "column": 29
+        },
+        "evidence": "https://auth.example.com/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4691,
+          "column": 53
+        },
+        "evidence": "https://example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4703,
+          "column": 53
+        },
+        "evidence": "https://example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4712,
+          "column": 53
+        },
+        "evidence": "https://example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4721,
+          "column": 49
+        },
+        "evidence": "https://example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4731,
+          "column": 24
+        },
+        "evidence": "https://mcp.example.com/api",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4732,
+          "column": 29
+        },
+        "evidence": "https://auth.example.com/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4737,
+          "column": 29
+        },
+        "evidence": "https://auth.example.com/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4790,
+          "column": 13
+        },
+        "evidence": "http://localhost/callback?code=abc&state=csrf&iss=https%3A%2F%2Fauth.example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4802,
+          "column": 13
+        },
+        "evidence": "http://localhost/callback?state=csrf&iss=https%3A%2F%2Fauth.example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4810,
+          "column": 13
+        },
+        "evidence": "http://localhost/callback?code=abc&iss=https%3A%2F%2Fauth.example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4930,
+          "column": 37
+        },
+        "evidence": "https://auth.example.com/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4931,
+          "column": 29
+        },
+        "evidence": "https://auth.example.com/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4932,
+          "column": 26
+        },
+        "evidence": "https://auth.example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4997,
+          "column": 37
+        },
+        "evidence": "http://localhost/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4998,
+          "column": 29
+        },
+        "evidence": "http://localhost/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5016,
+          "column": 37
+        },
+        "evidence": "http://localhost/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5017,
+          "column": 29
+        },
+        "evidence": "http://localhost/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5034,
+          "column": 37
+        },
+        "evidence": "http://localhost/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5035,
+          "column": 29
+        },
+        "evidence": "http://localhost/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5048,
+          "column": 37
+        },
+        "evidence": "http://localhost/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5049,
+          "column": 29
+        },
+        "evidence": "http://localhost/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5065,
+          "column": 37
+        },
+        "evidence": "http://localhost/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5066,
+          "column": 29
+        },
+        "evidence": "http://localhost/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5081,
+          "column": 37
+        },
+        "evidence": "http://localhost/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5082,
+          "column": 29
+        },
+        "evidence": "http://localhost/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5097,
+          "column": 37
+        },
+        "evidence": "http://localhost/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5098,
+          "column": 29
+        },
+        "evidence": "http://localhost/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5112,
+          "column": 37
+        },
+        "evidence": "http://localhost/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5113,
+          "column": 29
+        },
+        "evidence": "http://localhost/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5130,
+          "column": 37
+        },
+        "evidence": "http://localhost/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5131,
+          "column": 29
+        },
+        "evidence": "http://localhost/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5159,
+          "column": 49
+        },
+        "evidence": "http://localhost",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5172,
+          "column": 53
+        },
+        "evidence": "http://localhost",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5214,
+          "column": 49
+        },
+        "evidence": "http://localhost",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5221,
+          "column": 49
+        },
+        "evidence": "http://localhost",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5256,
+          "column": 49
+        },
+        "evidence": "http://localhost",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5291,
+          "column": 49
+        },
+        "evidence": "http://localhost",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5375,
+          "column": 65
+        },
+        "evidence": "http://127.0.0.1:8080/callback",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5381,
+          "column": 65
+        },
+        "evidence": "https://app.example.com/callback",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5418,
+          "column": 49
+        },
+        "evidence": "http://localhost",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5438,
+          "column": 37
+        },
+        "evidence": "http://localhost/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5439,
+          "column": 29
+        },
+        "evidence": "http://localhost/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5472,
+          "column": 37
+        },
+        "evidence": "http://localhost/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5473,
+          "column": 29
+        },
+        "evidence": "http://localhost/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5504,
+          "column": 37
+        },
+        "evidence": "http://localhost/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5505,
+          "column": 29
+        },
+        "evidence": "http://localhost/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5530,
+          "column": 28
+        },
+        "evidence": "https://example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5635,
+          "column": 54
+        },
+        "evidence": "127.0.0.1:0",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5703,
+          "column": 54
+        },
+        "evidence": "127.0.0.1:0",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5787,
+          "column": 54
+        },
+        "evidence": "127.0.0.1:0",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5844,
+          "column": 54
+        },
+        "evidence": "127.0.0.1:0",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6062,
+          "column": 54
+        },
+        "evidence": "127.0.0.1:0",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/transport/child_process.rs",
+          "line": 1,
+          "column": 1
+        },
+        "evidence": "std::process::Stdio",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/transport/child_process.rs",
+          "line": 5,
+          "column": 1
+        },
+        "evidence": "tokio::process::ChildStderr",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/transport/child_process.rs",
+          "line": 5,
+          "column": 1
+        },
+        "evidence": "tokio::process::ChildStdin",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/transport/child_process.rs",
+          "line": 5,
+          "column": 1
+        },
+        "evidence": "tokio::process::ChildStdout",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/transport/child_process.rs",
+          "line": 261,
+          "column": 8
+        },
+        "evidence": "tokio::process::Command::new",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/transport/child_process.rs",
+          "line": 289,
+          "column": 5
+        },
+        "evidence": "tokio::process::Command",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/reqwest/streamable_http_client.rs",
+          "line": 5,
+          "column": 1
+        },
+        "evidence": "reqwest::header::ACCEPT",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/reqwest/streamable_http_client.rs",
+          "line": 69,
+          "column": 33
+        },
+        "evidence": "reqwest::StatusCode::METHOD_NOT_ALLOWED",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/reqwest/streamable_http_client.rs",
+          "line": 73,
+          "column": 38
+        },
+        "evidence": "reqwest::header::CONTENT_TYPE",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/reqwest/streamable_http_client.rs",
+          "line": 136,
+          "column": 33
+        },
+        "evidence": "reqwest::StatusCode::UNAUTHORIZED",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/reqwest/streamable_http_client.rs",
+          "line": 151,
+          "column": 33
+        },
+        "evidence": "reqwest::StatusCode::FORBIDDEN",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/reqwest/streamable_http_client.rs",
+          "line": 174,
+          "column": 22
+        },
+        "evidence": "reqwest::StatusCode::NOT_FOUND",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/reqwest/streamable_http_client.rs",
+          "line": 306,
+          "column": 9
+        },
+        "evidence": "reqwest::Client::builder",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/reqwest/streamable_http_client.rs",
+          "line": 308,
+          "column": 23
+        },
+        "evidence": "reqwest::redirect::Policy::none",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/reqwest/streamable_http_client.rs",
+          "line": 370,
+          "column": 9
+        },
+        "evidence": "std::net::SocketAddr",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/reqwest/streamable_http_client.rs",
+          "line": 429,
+          "column": 13
+        },
+        "evidence": "tokio::net::TcpListener::bind",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/unix_socket.rs",
+          "line": 7,
+          "column": 1
+        },
+        "evidence": "hyper::body::Incoming",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/unix_socket.rs",
+          "line": 10,
+          "column": 1
+        },
+        "evidence": "tokio::net::UnixStream",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/unix_socket.rs",
+          "line": 138,
+          "column": 30
+        },
+        "evidence": "hyper::client::conn::http1::handshake",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/unix_socket.rs",
+          "line": 508,
+          "column": 40
+        },
+        "evidence": "http://localhost/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/unix_socket.rs",
+          "line": 514,
+          "column": 39
+        },
+        "evidence": "http://localhost/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/unix_socket.rs",
+          "line": 520,
+          "column": 62
+        },
+        "evidence": "http://mcp-server.internal/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/unix_socket.rs",
+          "line": 527,
+          "column": 62
+        },
+        "evidence": "http://mcp-server.internal:8080/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/unix_socket.rs",
+          "line": 559,
+          "column": 46
+        },
+        "evidence": "http://localhost/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/transport/streamable_http_server/session/local.rs",
+          "line": 1,
+          "column": 1
+        },
+        "evidence": "std::time::Instant",
+        "origin": "import"
+      }
+    ]
+  }
+}

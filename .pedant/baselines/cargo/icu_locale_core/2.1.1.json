@@ -1,0 +1,47 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "4eab161dd3ff8b2b24161a9218030323db5bc967bd82bedec674c47ef30cf0a7",
+  "crate_name": "icu_locale_core",
+  "crate_version": "2.1.1",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344429,
+  "analysis_completeness": {
+    "analyzed_files": 63,
+    "skipped_files": 0
+  },
+  "rust_version": "1.83",
+  "profile": {
+    "findings": [
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/extensions/other/mod.rs",
+          "line": 161,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/parser/mod.rs",
+          "line": 30,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/parser/mod.rs",
+          "line": 69,
+          "column": 30
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "e796119ba71bf31444e91f26371271b6dfa6ef70e662a0d78f3c6eaf58fba898",
+  "crate_name": "num_threads",
+  "crate_version": "0.1.7",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344432,
+  "analysis_completeness": {
+    "analyzed_files": 2,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": []
+  }
+}

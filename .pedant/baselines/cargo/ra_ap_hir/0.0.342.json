@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "3c9025c0aee3dacf932b54c181cb70a4d584715ad6a23ed7e7dedb99af64c4f9",
+  "crate_name": "ra_ap_hir",
+  "crate_version": "0.0.342",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344434,
+  "analysis_completeness": {
+    "analyzed_files": 15,
+    "skipped_files": 0
+  },
+  "rust_version": "1.95",
+  "profile": {
+    "findings": []
+  }
+}

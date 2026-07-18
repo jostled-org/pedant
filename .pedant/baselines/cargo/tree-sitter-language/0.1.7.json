@@ -1,0 +1,38 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "c09d3497f72b7c97b5c6385d2b472b392e2ef43ba54e312b2392def5f55b5f15",
+  "crate_name": "tree-sitter-language",
+  "crate_version": "0.1.7",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344444,
+  "analysis_completeness": {
+    "analyzed_files": 2,
+    "skipped_files": 0
+  },
+  "rust_version": "1.77",
+  "profile": {
+    "findings": [
+      {
+        "capability": "env_access",
+        "location": {
+          "file": "./build.rs",
+          "line": 2,
+          "column": 8
+        },
+        "evidence": "std::env::var",
+        "origin": "import",
+        "execution_context": "build_hook"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/language.rs",
+          "line": 14,
+          "column": 15
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "241a803dc818d2e29e322e5e4fe10f773030512c9c601f92f192a11a09d6356d",
+  "crate_name": "strsim",
+  "crate_version": "0.11.1",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344441,
+  "analysis_completeness": {
+    "analyzed_files": 1,
+    "skipped_files": 0
+  },
+  "rust_version": "1.56",
+  "profile": {
+    "findings": []
+  }
+}

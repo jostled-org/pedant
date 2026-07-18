@@ -1,0 +1,847 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "27dce200bfe0eee24babfb7b85e550099cd33237566959ac941f2a665b2842ea",
+  "crate_name": "notify",
+  "crate_version": "8.2.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344432,
+  "analysis_completeness": {
+    "analyzed_files": 9,
+    "skipped_files": 0
+  },
+  "rust_version": "1.77",
+  "profile": {
+    "findings": [
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/fsevent.rs",
+          "line": 238,
+          "column": 53
+        },
+        "evidence": "std::process::id",
+        "origin": "import"
+      },
+      {
+        "capability": "file_write",
+        "location": {
+          "file": "./src/fsevent.rs",
+          "line": 622,
+          "column": 15
+        },
+        "evidence": "tempfile::tempdir",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/fsevent.rs",
+          "line": 90,
+          "column": 1
+        },
+        "evidence": "unsafe impl",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/fsevent.rs",
+          "line": 93,
+          "column": 1
+        },
+        "evidence": "unsafe impl",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/fsevent.rs",
+          "line": 258,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/fsevent.rs",
+          "line": 296,
+          "column": 20
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/fsevent.rs",
+          "line": 335,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/fsevent.rs",
+          "line": 352,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/fsevent.rs",
+          "line": 394,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/fsevent.rs",
+          "line": 412,
+          "column": 12
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/fsevent.rs",
+          "line": 434,
+          "column": 22
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/fsevent.rs",
+          "line": 452,
+          "column": 9
+        },
+        "evidence": "unsafe impl",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/fsevent.rs",
+          "line": 466,
+          "column": 17
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/fsevent.rs",
+          "line": 514,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/fsevent.rs",
+          "line": 526,
+          "column": 1
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/fsevent.rs",
+          "line": 611,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/fsevent.rs",
+          "line": 265,
+          "column": 1
+        },
+        "evidence": "extern block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/inotify.rs",
+          "line": 15,
+          "column": 1
+        },
+        "evidence": "std::fs::metadata",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/inotify.rs",
+          "line": 20,
+          "column": 1
+        },
+        "evidence": "walkdir::WalkDir",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/inotify.rs",
+          "line": 449,
+          "column": 53
+        },
+        "evidence": "libc::ENOSPC",
+        "origin": "import"
+      },
+      {
+        "capability": "file_write",
+        "location": {
+          "file": "./src/inotify.rs",
+          "line": 659,
+          "column": 22
+        },
+        "evidence": "tempfile::tempdir",
+        "origin": "import"
+      },
+      {
+        "capability": "file_write",
+        "location": {
+          "file": "./src/inotify.rs",
+          "line": 689,
+          "column": 9
+        },
+        "evidence": "std::fs::create_dir",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/inotify.rs",
+          "line": 726,
+          "column": 9
+        },
+        "evidence": "std::fs::File::create",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/inotify.rs",
+          "line": 736,
+          "column": 33
+        },
+        "evidence": "std::fs::File::open",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/kqueue.rs",
+          "line": 13,
+          "column": 1
+        },
+        "evidence": "std::fs::metadata",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/kqueue.rs",
+          "line": 18,
+          "column": 1
+        },
+        "evidence": "walkdir::WalkDir",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/kqueue.rs",
+          "line": 178,
+          "column": 29
+        },
+        "evidence": "std::fs::read_dir",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 447,
+          "column": 5
+        },
+        "evidence": "std::fs",
+        "origin": "import"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 447,
+          "column": 5
+        },
+        "evidence": "std::time::Instant",
+        "origin": "import"
+      },
+      {
+        "capability": "file_write",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 452,
+          "column": 5
+        },
+        "evidence": "tempfile::tempdir",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/poll.rs",
+          "line": 69,
+          "column": 5
+        },
+        "evidence": "std::fs::self",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/poll.rs",
+          "line": 69,
+          "column": 5
+        },
+        "evidence": "std::fs::File",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/poll.rs",
+          "line": 69,
+          "column": 5
+        },
+        "evidence": "std::fs::Metadata",
+        "origin": "import"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/poll.rs",
+          "line": 69,
+          "column": 5
+        },
+        "evidence": "std::time::Instant",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/poll.rs",
+          "line": 79,
+          "column": 5
+        },
+        "evidence": "walkdir::WalkDir",
+        "origin": "import"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/poll.rs",
+          "line": 84,
+          "column": 35
+        },
+        "evidence": "std::time::SystemTime::UNIX_EPOCH",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 22,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::CloseHandle",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 22,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 22,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::ERROR_OPERATION_ABORTED",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 22,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::ERROR_SUCCESS",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 22,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::HANDLE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 22,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 22,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::WAIT_OBJECT_0",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 26,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::CreateFileW",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 26,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::ReadDirectoryChangesW",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 26,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_ACTION_ADDED",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 26,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_ACTION_MODIFIED",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 26,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_ACTION_REMOVED",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 26,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_ACTION_RENAMED_NEW_NAME",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 26,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_ACTION_RENAMED_OLD_NAME",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 26,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_FLAG_BACKUP_SEMANTICS",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 26,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OVERLAPPED",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 26,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_LIST_DIRECTORY",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 26,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_NOTIFY_CHANGE_ATTRIBUTES",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 26,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_NOTIFY_CHANGE_CREATION",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 26,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_NOTIFY_CHANGE_DIR_NAME",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 26,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_NOTIFY_CHANGE_FILE_NAME",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 26,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_NOTIFY_CHANGE_LAST_WRITE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 26,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_NOTIFY_CHANGE_SECURITY",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 26,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_NOTIFY_CHANGE_SIZE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 26,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_NOTIFY_INFORMATION",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 26,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_SHARE_DELETE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 26,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 26,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_SHARE_WRITE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 26,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::OPEN_EXISTING",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 35,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Threading::CreateSemaphoreW",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 35,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Threading::ReleaseSemaphore",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 35,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Threading::WaitForSingleObjectEx",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 35,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Threading::INFINITE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 38,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::IO::CancelIo",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 38,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::IO::OVERLAPPED",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 152,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 162,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 191,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 221,
+          "column": 25
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 223,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 256,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 298,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 331,
+          "column": 1
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 481,
+          "column": 26
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 500,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 600,
+          "column": 1
+        },
+        "evidence": "unsafe impl",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 602,
+          "column": 1
+        },
+        "evidence": "unsafe impl",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

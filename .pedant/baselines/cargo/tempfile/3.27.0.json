@@ -1,0 +1,107 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "5e5de334c822a637ca3bbfe086722b9ea78a0a937f949c4abba7601856434cdd",
+  "crate_name": "tempfile",
+  "crate_version": "3.27.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344442,
+  "analysis_completeness": {
+    "analyzed_files": 11,
+    "skipped_files": 0
+  },
+  "rust_version": "1.63",
+  "profile": {
+    "findings": [
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/dir/imp/any.rs",
+          "line": 4,
+          "column": 1
+        },
+        "evidence": "std::fs",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/dir/imp/unix.rs",
+          "line": 11,
+          "column": 27
+        },
+        "evidence": "std::fs::DirBuilder::new",
+        "origin": "import"
+      },
+      {
+        "capability": "file_write",
+        "location": {
+          "file": "./src/dir/mod.rs",
+          "line": 10,
+          "column": 1
+        },
+        "evidence": "std::fs::remove_dir_all",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/file/mod.rs",
+          "line": 4,
+          "column": 1
+        },
+        "evidence": "std::fs::self",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/file/mod.rs",
+          "line": 4,
+          "column": 1
+        },
+        "evidence": "std::fs::File",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/file/mod.rs",
+          "line": 4,
+          "column": 1
+        },
+        "evidence": "std::fs::OpenOptions",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 198,
+          "column": 1
+        },
+        "evidence": "std::fs::OpenOptions",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 198,
+          "column": 1
+        },
+        "evidence": "std::fs::Permissions",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/spooled.rs",
+          "line": 3,
+          "column": 1
+        },
+        "evidence": "std::fs::File",
+        "origin": "import"
+      }
+    ]
+  }
+}

@@ -1,0 +1,1917 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "5d8af7f00eb98517c62d7bec70e22e5b1612dd438bdfb3badc2847aea0706ffe",
+  "crate_name": "const-oid",
+  "crate_version": "0.10.2",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344426,
+  "analysis_completeness": {
+    "analyzed_files": 10,
+    "skipped_files": 0
+  },
+  "rust_version": "1.85",
+  "profile": {
+    "findings": [
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 496,
+          "column": 45
+        },
+        "evidence": "2.5.13.22",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 498,
+          "column": 45
+        },
+        "evidence": "2.5.13.24",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 504,
+          "column": 45
+        },
+        "evidence": "2.5.4.29",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 506,
+          "column": 45
+        },
+        "evidence": "2.5.4.30",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 508,
+          "column": 45
+        },
+        "evidence": "2.5.4.48",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 509,
+          "column": 87
+        },
+        "evidence": "2.5.4.54",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 515,
+          "column": 45
+        },
+        "evidence": "2.5.6.12",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 516,
+          "column": 82
+        },
+        "evidence": "2.5.6.13",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 517,
+          "column": 82
+        },
+        "evidence": "2.5.6.20",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 688,
+          "column": 88
+        },
+        "evidence": "2.5.4.65",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 698,
+          "column": 45
+        },
+        "evidence": "2.5.18.12",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 700,
+          "column": 45
+        },
+        "evidence": "2.5.18.7",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 702,
+          "column": 45
+        },
+        "evidence": "2.5.20.2",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 726,
+          "column": 87
+        },
+        "evidence": "2.5.17.0",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 728,
+          "column": 45
+        },
+        "evidence": "2.5.18.5",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 730,
+          "column": 45
+        },
+        "evidence": "2.5.18.6",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 732,
+          "column": 45
+        },
+        "evidence": "2.5.23.1",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 734,
+          "column": 45
+        },
+        "evidence": "2.5.23.2",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 736,
+          "column": 45
+        },
+        "evidence": "2.5.23.3",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 738,
+          "column": 45
+        },
+        "evidence": "2.5.23.4",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 740,
+          "column": 45
+        },
+        "evidence": "2.5.23.5",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 742,
+          "column": 45
+        },
+        "evidence": "2.5.23.6",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 758,
+          "column": 45
+        },
+        "evidence": "2.5.13.41",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1382,
+          "column": 45
+        },
+        "evidence": "2.5.18.1",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1384,
+          "column": 45
+        },
+        "evidence": "2.5.18.10",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1386,
+          "column": 45
+        },
+        "evidence": "2.5.18.2",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1388,
+          "column": 45
+        },
+        "evidence": "2.5.18.3",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1390,
+          "column": 45
+        },
+        "evidence": "2.5.18.4",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1391,
+          "column": 88
+        },
+        "evidence": "2.5.20.1",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1393,
+          "column": 45
+        },
+        "evidence": "2.5.21.1",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1395,
+          "column": 45
+        },
+        "evidence": "2.5.21.10",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1397,
+          "column": 45
+        },
+        "evidence": "2.5.21.2",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1399,
+          "column": 45
+        },
+        "evidence": "2.5.21.4",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1401,
+          "column": 45
+        },
+        "evidence": "2.5.21.5",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1403,
+          "column": 45
+        },
+        "evidence": "2.5.21.6",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1404,
+          "column": 89
+        },
+        "evidence": "2.5.21.7",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1406,
+          "column": 45
+        },
+        "evidence": "2.5.21.8",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1408,
+          "column": 45
+        },
+        "evidence": "2.5.21.9",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1424,
+          "column": 45
+        },
+        "evidence": "2.5.13.0",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1426,
+          "column": 45
+        },
+        "evidence": "2.5.13.1",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1428,
+          "column": 45
+        },
+        "evidence": "2.5.13.10",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1430,
+          "column": 45
+        },
+        "evidence": "2.5.13.11",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1432,
+          "column": 45
+        },
+        "evidence": "2.5.13.12",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1434,
+          "column": 45
+        },
+        "evidence": "2.5.13.13",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1436,
+          "column": 45
+        },
+        "evidence": "2.5.13.14",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1438,
+          "column": 45
+        },
+        "evidence": "2.5.13.15",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1440,
+          "column": 45
+        },
+        "evidence": "2.5.13.16",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1442,
+          "column": 45
+        },
+        "evidence": "2.5.13.17",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1444,
+          "column": 45
+        },
+        "evidence": "2.5.13.18",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1446,
+          "column": 45
+        },
+        "evidence": "2.5.13.2",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1448,
+          "column": 45
+        },
+        "evidence": "2.5.13.20",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1450,
+          "column": 45
+        },
+        "evidence": "2.5.13.21",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1452,
+          "column": 45
+        },
+        "evidence": "2.5.13.23",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1454,
+          "column": 45
+        },
+        "evidence": "2.5.13.27",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1456,
+          "column": 45
+        },
+        "evidence": "2.5.13.28",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1458,
+          "column": 45
+        },
+        "evidence": "2.5.13.29",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1460,
+          "column": 45
+        },
+        "evidence": "2.5.13.3",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1462,
+          "column": 45
+        },
+        "evidence": "2.5.13.30",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1464,
+          "column": 45
+        },
+        "evidence": "2.5.13.31",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1466,
+          "column": 45
+        },
+        "evidence": "2.5.13.32",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1468,
+          "column": 45
+        },
+        "evidence": "2.5.13.33",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1470,
+          "column": 45
+        },
+        "evidence": "2.5.13.4",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1472,
+          "column": 45
+        },
+        "evidence": "2.5.13.5",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1474,
+          "column": 45
+        },
+        "evidence": "2.5.13.6",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1476,
+          "column": 45
+        },
+        "evidence": "2.5.13.7",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1478,
+          "column": 45
+        },
+        "evidence": "2.5.13.8",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1480,
+          "column": 45
+        },
+        "evidence": "2.5.13.9",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1495,
+          "column": 80
+        },
+        "evidence": "2.5.4.10",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1497,
+          "column": 45
+        },
+        "evidence": "2.5.4.10",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1498,
+          "column": 81
+        },
+        "evidence": "2.5.4.11",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1500,
+          "column": 45
+        },
+        "evidence": "2.5.4.11",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1501,
+          "column": 84
+        },
+        "evidence": "2.5.4.12",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1503,
+          "column": 45
+        },
+        "evidence": "2.5.4.13",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1505,
+          "column": 45
+        },
+        "evidence": "2.5.4.14",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1507,
+          "column": 45
+        },
+        "evidence": "2.5.4.15",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1509,
+          "column": 45
+        },
+        "evidence": "2.5.4.16",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1511,
+          "column": 45
+        },
+        "evidence": "2.5.4.17",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1513,
+          "column": 45
+        },
+        "evidence": "2.5.4.18",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1515,
+          "column": 45
+        },
+        "evidence": "2.5.4.19",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1517,
+          "column": 45
+        },
+        "evidence": "2.5.4.20",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1519,
+          "column": 45
+        },
+        "evidence": "2.5.4.21",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1521,
+          "column": 45
+        },
+        "evidence": "2.5.4.22",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1523,
+          "column": 45
+        },
+        "evidence": "2.5.4.23",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1525,
+          "column": 45
+        },
+        "evidence": "2.5.4.24",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1527,
+          "column": 45
+        },
+        "evidence": "2.5.4.25",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1529,
+          "column": 45
+        },
+        "evidence": "2.5.4.26",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1531,
+          "column": 45
+        },
+        "evidence": "2.5.4.27",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1533,
+          "column": 45
+        },
+        "evidence": "2.5.4.28",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1536,
+          "column": 85
+        },
+        "evidence": "2.5.4.31",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1537,
+          "column": 84
+        },
+        "evidence": "2.5.4.32",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1539,
+          "column": 45
+        },
+        "evidence": "2.5.4.33",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1540,
+          "column": 87
+        },
+        "evidence": "2.5.4.34",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1542,
+          "column": 45
+        },
+        "evidence": "2.5.4.35",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1545,
+          "column": 83
+        },
+        "evidence": "2.5.4.41",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1546,
+          "column": 81
+        },
+        "evidence": "2.5.4.42",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1547,
+          "column": 89
+        },
+        "evidence": "2.5.4.42",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1548,
+          "column": 87
+        },
+        "evidence": "2.5.4.43",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1550,
+          "column": 45
+        },
+        "evidence": "2.5.4.44",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1552,
+          "column": 45
+        },
+        "evidence": "2.5.4.45",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1554,
+          "column": 45
+        },
+        "evidence": "2.5.4.46",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1556,
+          "column": 45
+        },
+        "evidence": "2.5.4.47",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1558,
+          "column": 45
+        },
+        "evidence": "2.5.4.49",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1562,
+          "column": 45
+        },
+        "evidence": "2.5.4.50",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1564,
+          "column": 45
+        },
+        "evidence": "2.5.4.51",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1574,
+          "column": 45
+        },
+        "evidence": "2.5.6.10",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1576,
+          "column": 45
+        },
+        "evidence": "2.5.6.11",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1577,
+          "column": 85
+        },
+        "evidence": "2.5.6.14",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1579,
+          "column": 45
+        },
+        "evidence": "2.5.6.17",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1596,
+          "column": 45
+        },
+        "evidence": "2.5.13.34",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1598,
+          "column": 45
+        },
+        "evidence": "2.5.13.35",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1600,
+          "column": 45
+        },
+        "evidence": "2.5.13.36",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1602,
+          "column": 45
+        },
+        "evidence": "2.5.13.37",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1604,
+          "column": 45
+        },
+        "evidence": "2.5.13.38",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1606,
+          "column": 45
+        },
+        "evidence": "2.5.13.39",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1608,
+          "column": 45
+        },
+        "evidence": "2.5.13.40",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1610,
+          "column": 45
+        },
+        "evidence": "2.5.4.36",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1612,
+          "column": 45
+        },
+        "evidence": "2.5.4.37",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1614,
+          "column": 45
+        },
+        "evidence": "2.5.4.38",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1616,
+          "column": 45
+        },
+        "evidence": "2.5.4.39",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1618,
+          "column": 45
+        },
+        "evidence": "2.5.4.40",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1620,
+          "column": 45
+        },
+        "evidence": "2.5.4.52",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1622,
+          "column": 45
+        },
+        "evidence": "2.5.4.53",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1624,
+          "column": 45
+        },
+        "evidence": "2.5.6.15",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1626,
+          "column": 45
+        },
+        "evidence": "2.5.6.16",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1630,
+          "column": 45
+        },
+        "evidence": "2.5.6.18",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1632,
+          "column": 45
+        },
+        "evidence": "2.5.6.19",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1633,
+          "column": 87
+        },
+        "evidence": "2.5.6.21",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1634,
+          "column": 85
+        },
+        "evidence": "2.5.6.22",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1635,
+          "column": 88
+        },
+        "evidence": "2.5.6.23",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1820,
+          "column": 45
+        },
+        "evidence": "2.5.29.14",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1822,
+          "column": 45
+        },
+        "evidence": "2.5.29.15",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1824,
+          "column": 45
+        },
+        "evidence": "2.5.29.16",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1826,
+          "column": 45
+        },
+        "evidence": "2.5.29.17",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1828,
+          "column": 45
+        },
+        "evidence": "2.5.29.18",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1830,
+          "column": 45
+        },
+        "evidence": "2.5.29.19",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1832,
+          "column": 45
+        },
+        "evidence": "2.5.29.20",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1834,
+          "column": 45
+        },
+        "evidence": "2.5.29.21",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1836,
+          "column": 45
+        },
+        "evidence": "2.5.29.23",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1838,
+          "column": 45
+        },
+        "evidence": "2.5.29.24",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1840,
+          "column": 45
+        },
+        "evidence": "2.5.29.27",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1842,
+          "column": 45
+        },
+        "evidence": "2.5.29.28",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1844,
+          "column": 45
+        },
+        "evidence": "2.5.29.29",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1846,
+          "column": 45
+        },
+        "evidence": "2.5.29.30",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1848,
+          "column": 45
+        },
+        "evidence": "2.5.29.31",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1850,
+          "column": 45
+        },
+        "evidence": "2.5.29.32",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1854,
+          "column": 45
+        },
+        "evidence": "2.5.29.33",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1856,
+          "column": 45
+        },
+        "evidence": "2.5.29.35",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1858,
+          "column": 45
+        },
+        "evidence": "2.5.29.36",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1860,
+          "column": 45
+        },
+        "evidence": "2.5.29.37",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1864,
+          "column": 45
+        },
+        "evidence": "2.5.29.46",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1866,
+          "column": 45
+        },
+        "evidence": "2.5.29.54",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1868,
+          "column": 45
+        },
+        "evidence": "2.5.29.9",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 1919,
+          "column": 45
+        },
+        "evidence": "1.3.132.1",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2490,
+          "column": 45
+        },
+        "evidence": "2.5.29.14",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2492,
+          "column": 45
+        },
+        "evidence": "2.5.29.15",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2494,
+          "column": 45
+        },
+        "evidence": "2.5.29.16",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2496,
+          "column": 45
+        },
+        "evidence": "2.5.29.17",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2498,
+          "column": 45
+        },
+        "evidence": "2.5.29.18",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2500,
+          "column": 45
+        },
+        "evidence": "2.5.29.19",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2502,
+          "column": 45
+        },
+        "evidence": "2.5.29.20",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2504,
+          "column": 45
+        },
+        "evidence": "2.5.29.21",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2506,
+          "column": 45
+        },
+        "evidence": "2.5.29.23",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2508,
+          "column": 45
+        },
+        "evidence": "2.5.29.24",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2510,
+          "column": 45
+        },
+        "evidence": "2.5.29.27",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2512,
+          "column": 45
+        },
+        "evidence": "2.5.29.28",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2514,
+          "column": 45
+        },
+        "evidence": "2.5.29.29",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2516,
+          "column": 45
+        },
+        "evidence": "2.5.29.30",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2518,
+          "column": 45
+        },
+        "evidence": "2.5.29.31",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2520,
+          "column": 45
+        },
+        "evidence": "2.5.29.32",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2522,
+          "column": 45
+        },
+        "evidence": "2.5.29.33",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2524,
+          "column": 45
+        },
+        "evidence": "2.5.29.35",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2526,
+          "column": 45
+        },
+        "evidence": "2.5.29.36",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2528,
+          "column": 45
+        },
+        "evidence": "2.5.29.37",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2532,
+          "column": 45
+        },
+        "evidence": "2.5.29.46",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2534,
+          "column": 45
+        },
+        "evidence": "2.5.29.54",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2536,
+          "column": 45
+        },
+        "evidence": "2.5.29.55",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2538,
+          "column": 45
+        },
+        "evidence": "2.5.29.56",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2540,
+          "column": 45
+        },
+        "evidence": "2.5.29.9",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2542,
+          "column": 89
+        },
+        "evidence": "2.5.4.72",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2901,
+          "column": 45
+        },
+        "evidence": "1.3.101.110",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2903,
+          "column": 45
+        },
+        "evidence": "1.3.101.111",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2905,
+          "column": 45
+        },
+        "evidence": "1.3.101.112",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2907,
+          "column": 45
+        },
+        "evidence": "1.3.101.113",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 2995,
+          "column": 45
+        },
+        "evidence": "2.23.133.1",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 3001,
+          "column": 45
+        },
+        "evidence": "2.23.133.2",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 3035,
+          "column": 45
+        },
+        "evidence": "2.23.133.3",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 3039,
+          "column": 45
+        },
+        "evidence": "2.23.133.4",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 3042,
+          "column": 85
+        },
+        "evidence": "2.23.133.6",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/db/generated.rs",
+          "line": 3055,
+          "column": 85
+        },
+        "evidence": "2.23.133.8",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 320,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

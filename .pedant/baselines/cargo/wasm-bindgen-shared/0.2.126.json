@@ -1,0 +1,39 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "cadc0e2223cc8d1d3bf42d930f2ed7607daff3be38e96a9544d4e2880f659ee7",
+  "crate_name": "wasm-bindgen-shared",
+  "crate_version": "0.2.126",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344445,
+  "analysis_completeness": {
+    "analyzed_files": 5,
+    "skipped_files": 0
+  },
+  "rust_version": "1.77",
+  "profile": {
+    "findings": [
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./build.rs",
+          "line": 5,
+          "column": 1
+        },
+        "evidence": "std::process::Command",
+        "origin": "import",
+        "execution_context": "build_hook"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./build.rs",
+          "line": 29,
+          "column": 23
+        },
+        "evidence": "std::fs::read_to_string",
+        "origin": "import",
+        "execution_context": "build_hook"
+      }
+    ]
+  }
+}

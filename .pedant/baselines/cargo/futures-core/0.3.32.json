@@ -1,0 +1,67 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "33649158b9f083e4e684e378b058e32d31602752eeda12324afcfbfd5d5cd47f",
+  "crate_name": "futures-core",
+  "crate_version": "0.3.32",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344427,
+  "analysis_completeness": {
+    "analyzed_files": 7,
+    "skipped_files": 0
+  },
+  "rust_version": "1.36",
+  "profile": {
+    "findings": [
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/stream.rs",
+          "line": 232,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/task/__internal/atomic_waker.rs",
+          "line": 273,
+          "column": 17
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/task/__internal/atomic_waker.rs",
+          "line": 385,
+          "column": 29
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/task/__internal/atomic_waker.rs",
+          "line": 422,
+          "column": 1
+        },
+        "evidence": "unsafe impl",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/task/__internal/atomic_waker.rs",
+          "line": 423,
+          "column": 1
+        },
+        "evidence": "unsafe impl",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

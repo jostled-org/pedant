@@ -1,0 +1,15 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "ec91eb8450c70ebbd732ae7594779008891255c07ba3995b8f44599556ad2b2c",
+  "crate_name": "drop_bomb",
+  "crate_version": "0.1.5",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344427,
+  "analysis_completeness": {
+    "analyzed_files": 1,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": []
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "ffc23dc8fb29be7379871b79d3e8178b81f1ff1f493f9b74412e46b596cab2b1",
+  "crate_name": "wasm-bindgen-macro-support",
+  "crate_version": "0.2.126",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344445,
+  "analysis_completeness": {
+    "analyzed_files": 8,
+    "skipped_files": 0
+  },
+  "rust_version": "1.77",
+  "profile": {
+    "findings": [
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/encode.rs",
+          "line": 6,
+          "column": 1
+        },
+        "evidence": "std::fs",
+        "origin": "import"
+      }
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "d276d885a028d4a5e4097fa833ce5ae640875559190c562498d119e496f3aa9a",
+  "crate_name": "ra_ap_query-group-macro",
+  "crate_version": "0.0.342",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344437,
+  "analysis_completeness": {
+    "analyzed_files": 2,
+    "skipped_files": 0
+  },
+  "rust_version": "1.95",
+  "profile": {
+    "findings": [
+      {
+        "capability": "proc_macro",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 17,
+          "column": 1
+        },
+        "evidence": "#[proc_macro_attribute]",
+        "origin": "attribute"
+      }
+    ]
+  }
+}

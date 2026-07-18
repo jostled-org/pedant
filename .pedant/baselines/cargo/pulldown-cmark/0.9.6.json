@@ -1,0 +1,138 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "1ad08b84c51e574d273f497dc092d33ec53f757d713df8213f4400bbcc17b09d",
+  "crate_name": "pulldown-cmark",
+  "crate_version": "0.9.6",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344433,
+  "analysis_completeness": {
+    "analyzed_files": 13,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": [
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./build.rs",
+          "line": 23,
+          "column": 5
+        },
+        "evidence": "std::fs::self",
+        "origin": "import",
+        "execution_context": "build_hook"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./build.rs",
+          "line": 23,
+          "column": 5
+        },
+        "evidence": "std::fs::File",
+        "origin": "import",
+        "execution_context": "build_hook"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/escape.rs",
+          "line": 211,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/escape.rs",
+          "line": 244,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/escape.rs",
+          "line": 277,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/escape.rs",
+          "line": 323,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/escape.rs",
+          "line": 339,
+          "column": 17
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/firstpass.rs",
+          "line": 1757,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/firstpass.rs",
+          "line": 1806,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/firstpass.rs",
+          "line": 1816,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/firstpass.rs",
+          "line": 1842,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/main.rs",
+          "line": 77,
+          "column": 13
+        },
+        "evidence": "std::process::exit",
+        "origin": "import"
+      }
+    ]
+  }
+}

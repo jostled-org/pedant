@@ -1,0 +1,567 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "9de56bcad86960fbb30f0be9c98d601773526853d737246a7f45fb5ad521068e",
+  "crate_name": "ra_ap_stdx",
+  "crate_version": "0.0.342",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344437,
+  "analysis_completeness": {
+    "analyzed_files": 12,
+    "skipped_files": 0
+  },
+  "rust_version": "1.95",
+  "profile": {
+    "findings": [
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/anymap.rs",
+          "line": 120,
+          "column": 52
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/anymap.rs",
+          "line": 175,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/anymap.rs",
+          "line": 184,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 5,
+          "column": 1
+        },
+        "evidence": "std::process::Command",
+        "origin": "import"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 6,
+          "column": 1
+        },
+        "evidence": "std::time::Instant",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 328,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 6,
+          "column": 1
+        },
+        "evidence": "std::process::ChildStderr",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 6,
+          "column": 1
+        },
+        "evidence": "std::process::ChildStdout",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 6,
+          "column": 1
+        },
+        "evidence": "std::process::Command",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 6,
+          "column": 1
+        },
+        "evidence": "std::process::Output",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 6,
+          "column": 1
+        },
+        "evidence": "std::process::Stdio",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 81,
+          "column": 5
+        },
+        "evidence": "std::process::ChildStderr",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 81,
+          "column": 5
+        },
+        "evidence": "std::process::ChildStdout",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 94,
+          "column": 13
+        },
+        "evidence": "libc::fcntl",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 94,
+          "column": 47
+        },
+        "evidence": "libc::F_SETFL",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 94,
+          "column": 62
+        },
+        "evidence": "libc::O_NONBLOCK",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 105,
+          "column": 25
+        },
+        "evidence": "libc::POLLIN",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 113,
+          "column": 30
+        },
+        "evidence": "libc::poll",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 156,
+          "column": 5
+        },
+        "evidence": "std::process::ChildStderr",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 156,
+          "column": 5
+        },
+        "evidence": "std::process::ChildStdout",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 168,
+          "column": 5
+        },
+        "evidence": "windows_sys::Win32::Foundation::ERROR_BROKEN_PIPE",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 261,
+          "column": 5
+        },
+        "evidence": "std::process::ChildStderr",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 261,
+          "column": 5
+        },
+        "evidence": "std::process::ChildStdout",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 93,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 103,
+          "column": 42
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 113,
+          "column": 21
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 189,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 217,
+          "column": 9
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 218,
+          "column": 24
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 222,
+          "column": 9
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 223,
+          "column": 23
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 224,
+          "column": 19
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 237,
+          "column": 9
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 239,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 246,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 253,
+          "column": 20
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 255,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/thread/intent.rs",
+          "line": 176,
+          "column": 42
+        },
+        "evidence": "libc::qos_class_t::QOS_CLASS_USER_INTERACTIVE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/thread/intent.rs",
+          "line": 177,
+          "column": 40
+        },
+        "evidence": "libc::qos_class_t::QOS_CLASS_USER_INITIATED",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/thread/intent.rs",
+          "line": 178,
+          "column": 34
+        },
+        "evidence": "libc::qos_class_t::QOS_CLASS_UTILITY",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/thread/intent.rs",
+          "line": 179,
+          "column": 37
+        },
+        "evidence": "libc::qos_class_t::QOS_CLASS_BACKGROUND",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/thread/intent.rs",
+          "line": 182,
+          "column": 29
+        },
+        "evidence": "libc::pthread_set_qos_class_self_np",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/thread/intent.rs",
+          "line": 188,
+          "column": 31
+        },
+        "evidence": "libc::__error",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/thread/intent.rs",
+          "line": 191,
+          "column": 13
+        },
+        "evidence": "libc::EPERM",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/thread/intent.rs",
+          "line": 201,
+          "column": 13
+        },
+        "evidence": "libc::EINVAL",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/thread/intent.rs",
+          "line": 220,
+          "column": 39
+        },
+        "evidence": "libc::pthread_self",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/thread/intent.rs",
+          "line": 221,
+          "column": 33
+        },
+        "evidence": "libc::qos_class_t::QOS_CLASS_UNSPECIFIED",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/thread/intent.rs",
+          "line": 223,
+          "column": 13
+        },
+        "evidence": "libc::pthread_get_qos_class_np",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/thread/intent.rs",
+          "line": 243,
+          "column": 13
+        },
+        "evidence": "libc::qos_class_t::QOS_CLASS_DEFAULT",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/thread/intent.rs",
+          "line": 182,
+          "column": 20
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/thread/intent.rs",
+          "line": 188,
+          "column": 21
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/thread/intent.rs",
+          "line": 220,
+          "column": 30
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/thread/intent.rs",
+          "line": 222,
+          "column": 20
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/thread/intent.rs",
+          "line": 236,
+          "column": 25
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/thread/pool.rs",
+          "line": 143,
+          "column": 16
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

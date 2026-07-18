@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "28abb84c1564d48d40c79af4053b55d94da4dde16edbb1f0d2ed4548a5e98fa3",
+  "crate_name": "crypto-common",
+  "crate_version": "0.2.2",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344426,
+  "analysis_completeness": {
+    "analyzed_files": 3,
+    "skipped_files": 0
+  },
+  "rust_version": "1.85",
+  "profile": {
+    "findings": []
+  }
+}

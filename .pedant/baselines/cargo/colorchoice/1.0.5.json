@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "2c31b3ee2cc60e9aedbf94aca6446e9615e592b8e44825cfd092fd6f5a9de9e2",
+  "crate_name": "colorchoice",
+  "crate_version": "1.0.5",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344426,
+  "analysis_completeness": {
+    "analyzed_files": 1,
+    "skipped_files": 0
+  },
+  "rust_version": "1.66.0",
+  "profile": {
+    "findings": []
+  }
+}

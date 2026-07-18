@@ -1,0 +1,36 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "dfeb1ed3537e5381096cc29161dcfdf33a5b56cd3b3cc14694fc8a87b2138dbf",
+  "crate_name": "countme",
+  "crate_version": "3.0.1",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344426,
+  "analysis_completeness": {
+    "analyzed_files": 2,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": [
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp.rs",
+          "line": 32,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/imp.rs",
+          "line": 26,
+          "column": 13
+        },
+        "evidence": "extern block",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

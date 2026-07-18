@@ -1,0 +1,27 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "dea4376f60abf8a305280ae09f7937aaafd277ca80c089c7dadb72ef687afd3c",
+  "crate_name": "tracing-attributes",
+  "crate_version": "0.1.31",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344444,
+  "analysis_completeness": {
+    "analyzed_files": 3,
+    "skipped_files": 0
+  },
+  "rust_version": "1.65.0",
+  "profile": {
+    "findings": [
+      {
+        "capability": "proc_macro",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 575,
+          "column": 1
+        },
+        "evidence": "#[proc_macro_attribute]",
+        "origin": "attribute"
+      }
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "a5bb33c4c5a1d36130ea3305c062132800a57afc908c2af481ccfabe503d05ed",
+  "crate_name": "toml_writer",
+  "crate_version": "1.1.2+spec-1.1.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344444,
+  "analysis_completeness": {
+    "analyzed_files": 6,
+    "skipped_files": 0
+  },
+  "rust_version": "1.85",
+  "profile": {
+    "findings": []
+  }
+}

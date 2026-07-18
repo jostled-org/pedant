@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "f3f0a0b181b9e1d63824ab57bd22fbb672b061158c62fed977067e00b1d1c857",
+  "crate_name": "rustc-hash",
+  "crate_version": "2.1.3",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344440,
+  "analysis_completeness": {
+    "analyzed_files": 3,
+    "skipped_files": 0
+  },
+  "rust_version": "1.77",
+  "profile": {
+    "findings": []
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "d61d15ec37e6603827d07e64682829c9256356295fddfee5e34ecdeec1a86b2d",
+  "crate_name": "windows_x86_64_msvc",
+  "crate_version": "0.53.1",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344446,
+  "analysis_completeness": {
+    "analyzed_files": 2,
+    "skipped_files": 0
+  },
+  "rust_version": "1.60",
+  "profile": {
+    "findings": [
+      {
+        "capability": "env_access",
+        "location": {
+          "file": "./build.rs",
+          "line": 2,
+          "column": 15
+        },
+        "evidence": "std::env::var",
+        "origin": "import",
+        "execution_context": "build_hook"
+      }
+    ]
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "4b543f1dfd1641385375123d7ef005180f2b252cadf059b568a2b349b1807799",
+  "crate_name": "fsevent-sys",
+  "crate_version": "4.1.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344427,
+  "analysis_completeness": {
+    "analyzed_files": 3,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": [
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/core_foundation.rs",
+          "line": 151,
+          "column": 17
+        },
+        "evidence": "libc::strlen",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/core_foundation.rs",
+          "line": 149,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/core_foundation.rs",
+          "line": 73,
+          "column": 1
+        },
+        "evidence": "extern block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/core_foundation.rs",
+          "line": 72,
+          "column": 1
+        },
+        "evidence": "#[link]",
+        "origin": "attribute"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/fsevent.rs",
+          "line": 8,
+          "column": 1
+        },
+        "evidence": "libc::dev_t",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/fsevent.rs",
+          "line": 77,
+          "column": 1
+        },
+        "evidence": "extern block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/fsevent.rs",
+          "line": 76,
+          "column": 1
+        },
+        "evidence": "#[link]",
+        "origin": "attribute"
+      }
+    ]
+  }
+}

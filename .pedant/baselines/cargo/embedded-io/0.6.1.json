@@ -1,0 +1,15 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "d08eb2c48189a0754425773aba7b801b9ee1d2ed8d5298deff91f8d784b3a8cb",
+  "crate_name": "embedded-io",
+  "crate_version": "0.6.1",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344427,
+  "analysis_completeness": {
+    "analyzed_files": 6,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": []
+  }
+}

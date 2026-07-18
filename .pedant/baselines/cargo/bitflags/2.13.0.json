@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "3143da10c6ba6923f3505953563f85bfb58a83099bc228e08648e5fc1e25b69c",
+  "crate_name": "bitflags",
+  "crate_version": "2.13.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344425,
+  "analysis_completeness": {
+    "analyzed_files": 45,
+    "skipped_files": 0
+  },
+  "rust_version": "1.56.0",
+  "profile": {
+    "findings": []
+  }
+}

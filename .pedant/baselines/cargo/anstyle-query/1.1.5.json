@@ -1,0 +1,77 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "a7ca5d05294573b5548f6ebd1d6ee0495249aed4175f564c3ad5dce78aecad19",
+  "crate_name": "anstyle-query",
+  "crate_version": "1.1.5",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344424,
+  "analysis_completeness": {
+    "analyzed_files": 2,
+    "skipped_files": 0
+  },
+  "rust_version": "1.66.0",
+  "profile": {
+    "findings": [
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 8,
+          "column": 5
+        },
+        "evidence": "windows_sys::Win32::Foundation::HANDLE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 9,
+          "column": 5
+        },
+        "evidence": "windows_sys::Win32::System::Console::CONSOLE_MODE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 10,
+          "column": 5
+        },
+        "evidence": "windows_sys::Win32::System::Console::ENABLE_VIRTUAL_TERMINAL_PROCESSING",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 23,
+          "column": 16
+        },
+        "evidence": "windows_sys::Win32::System::Console::GetConsoleMode",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 28,
+          "column": 16
+        },
+        "evidence": "windows_sys::Win32::System::Console::SetConsoleMode",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 13,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

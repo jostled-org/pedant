@@ -1,0 +1,27 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "e64f79b9d18a394deb7bb9cdd4936b0d7dc0c61ac16bb08f3c6d67871d7b1033",
+  "crate_name": "anstyle",
+  "crate_version": "1.0.14",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344424,
+  "analysis_completeness": {
+    "analyzed_files": 6,
+    "skipped_files": 0
+  },
+  "rust_version": "1.66.0",
+  "profile": {
+    "findings": [
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/color.rs",
+          "line": 615,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

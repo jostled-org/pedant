@@ -1,0 +1,27 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "50ca20839673e6f4eb9abc6ebd83a134750c81b763eef4d3ba28a0e7f0dabc4d",
+  "crate_name": "fastrand",
+  "crate_version": "2.4.1",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344427,
+  "analysis_completeness": {
+    "analyzed_files": 2,
+    "skipped_files": 0
+  },
+  "rust_version": "1.63",
+  "profile": {
+    "findings": [
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/global_rng.rs",
+          "line": 207,
+          "column": 5
+        },
+        "evidence": "std::time::Instant",
+        "origin": "import"
+      }
+    ]
+  }
+}

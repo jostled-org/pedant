@@ -1,0 +1,38 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "e462a451a8fe56a5b9178f76524ad65d471df50f57266d9eea97fef408f47c8e",
+  "crate_name": "typeid",
+  "crate_version": "1.0.3",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344444,
+  "analysis_completeness": {
+    "analyzed_files": 2,
+    "skipped_files": 0
+  },
+  "rust_version": "1.34",
+  "profile": {
+    "findings": [
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./build.rs",
+          "line": 2,
+          "column": 1
+        },
+        "evidence": "std::process::Command",
+        "origin": "import",
+        "execution_context": "build_hook"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 219,
+          "column": 31
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

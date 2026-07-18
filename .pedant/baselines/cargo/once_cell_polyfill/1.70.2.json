@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "073fa9dbe873b8b224608123e6770213a00a09b072c912aac862fb60cb40aea1",
+  "crate_name": "once_cell_polyfill",
+  "crate_version": "1.70.2",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344432,
+  "analysis_completeness": {
+    "analyzed_files": 2,
+    "skipped_files": 0
+  },
+  "rust_version": "1.70.0",
+  "profile": {
+    "findings": []
+  }
+}

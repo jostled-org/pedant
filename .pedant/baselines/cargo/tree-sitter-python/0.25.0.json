@@ -1,0 +1,36 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "8cd2ddeee09316560581a6a758f6421f9f5ba6ce0240d1304e740ed5338a997f",
+  "crate_name": "tree-sitter-python",
+  "crate_version": "0.25.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344444,
+  "analysis_completeness": {
+    "analyzed_files": 2,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": [
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./bindings/rust/lib.rs",
+          "line": 30,
+          "column": 34
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./bindings/rust/lib.rs",
+          "line": 25,
+          "column": 1
+        },
+        "evidence": "extern block",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

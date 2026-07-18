@@ -1,0 +1,15 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "e1665274cba3a652fb1d058ea86cd722bf7472ac0a121ec1b6cd34cbaf87768c",
+  "crate_name": "pulldown-cmark-to-cmark",
+  "crate_version": "10.0.4",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344433,
+  "analysis_completeness": {
+    "analyzed_files": 1,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": []
+  }
+}

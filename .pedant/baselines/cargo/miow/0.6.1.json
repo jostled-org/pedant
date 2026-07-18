@@ -1,0 +1,1777 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "79b1a92e7c180ed08074f643f6476c266505e52edb7fcdf2fef7f928c578024c",
+  "crate_name": "miow",
+  "crate_version": "0.6.1",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344432,
+  "analysis_completeness": {
+    "analyzed_files": 6,
+    "skipped_files": 0
+  },
+  "rust_version": "1.77",
+  "profile": {
+    "findings": [
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/handle.rs",
+          "line": 6,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::CloseHandle",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/handle.rs",
+          "line": 6,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::ERROR_IO_INCOMPLETE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/handle.rs",
+          "line": 6,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::ERROR_IO_PENDING",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/handle.rs",
+          "line": 6,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::HANDLE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/handle.rs",
+          "line": 7,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::ReadFile",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/handle.rs",
+          "line": 7,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::WriteFile",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/handle.rs",
+          "line": 8,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::IO::GetOverlappedResult",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/handle.rs",
+          "line": 8,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::IO::OVERLAPPED",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/handle.rs",
+          "line": 13,
+          "column": 1
+        },
+        "evidence": "unsafe impl",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/handle.rs",
+          "line": 14,
+          "column": 1
+        },
+        "evidence": "unsafe impl",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/handle.rs",
+          "line": 36,
+          "column": 20
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/handle.rs",
+          "line": 51,
+          "column": 20
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/handle.rs",
+          "line": 63,
+          "column": 9
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/handle.rs",
+          "line": 71,
+          "column": 9
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/handle.rs",
+          "line": 83,
+          "column": 9
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/handle.rs",
+          "line": 116,
+          "column": 9
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/handle.rs",
+          "line": 124,
+          "column": 9
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/handle.rs",
+          "line": 136,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/handle.rs",
+          "line": 172,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/iocp.rs",
+          "line": 13,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::HANDLE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/iocp.rs",
+          "line": 13,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/iocp.rs",
+          "line": 14,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::IO::CreateIoCompletionPort",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/iocp.rs",
+          "line": 14,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::IO::GetQueuedCompletionStatus",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/iocp.rs",
+          "line": 14,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::IO::GetQueuedCompletionStatusEx",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/iocp.rs",
+          "line": 14,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::IO::PostQueuedCompletionStatus",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/iocp.rs",
+          "line": 14,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::IO::OVERLAPPED",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/iocp.rs",
+          "line": 14,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::IO::OVERLAPPED_ENTRY",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/iocp.rs",
+          "line": 279,
+          "column": 5
+        },
+        "evidence": "windows_sys::Win32::Foundation",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/iocp.rs",
+          "line": 40,
+          "column": 1
+        },
+        "evidence": "unsafe impl",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/iocp.rs",
+          "line": 41,
+          "column": 1
+        },
+        "evidence": "unsafe impl",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/iocp.rs",
+          "line": 50,
+          "column": 19
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/iocp.rs",
+          "line": 90,
+          "column": 19
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/iocp.rs",
+          "line": 117,
+          "column": 19
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/iocp.rs",
+          "line": 157,
+          "column": 19
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/iocp.rs",
+          "line": 179,
+          "column": 19
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/iocp.rs",
+          "line": 198,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/iocp.rs",
+          "line": 236,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 11,
+          "column": 1
+        },
+        "evidence": "windows_sys::core::BOOL",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 12,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Threading::INFINITE",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 10,
+          "column": 1
+        },
+        "evidence": "std::net::Ipv4Addr",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 10,
+          "column": 1
+        },
+        "evidence": "std::net::Ipv6Addr",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 10,
+          "column": 1
+        },
+        "evidence": "std::net::SocketAddrV4",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 10,
+          "column": 1
+        },
+        "evidence": "std::net::SocketAddrV6",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 11,
+          "column": 1
+        },
+        "evidence": "std::net::SocketAddr",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 11,
+          "column": 1
+        },
+        "evidence": "std::net::TcpListener",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 11,
+          "column": 1
+        },
+        "evidence": "std::net::TcpStream",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 11,
+          "column": 1
+        },
+        "evidence": "std::net::UdpSocket",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 15,
+          "column": 1
+        },
+        "evidence": "windows_sys::core::GUID",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::setsockopt",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::WSAGetLastError",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::WSAGetOverlappedResult",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::WSAIoctl",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::WSARecv",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::WSARecvFrom",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::WSASend",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::WSASendTo",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::AF_INET",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::AF_INET6",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::IN6_ADDR",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::IN6_ADDR_0",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::IN_ADDR",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::IN_ADDR_0",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::LPFN_ACCEPTEX",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::LPFN_CONNECTEX",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::LPFN_GETACCEPTEXSOCKADDRS",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::SOCKADDR",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::SOCKADDR_IN",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::SOCKADDR_IN6",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::SOCKADDR_IN6_0",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::SOCKADDR_STORAGE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::SOCKET",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::SOCKET_ERROR",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::SOL_SOCKET",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::WSABUF",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::WSA_IO_PENDING",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 22,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::IO::OVERLAPPED",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 1001,
+          "column": 5
+        },
+        "evidence": "std::net::IpAddr",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 1001,
+          "column": 5
+        },
+        "evidence": "std::net::Ipv4Addr",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 1001,
+          "column": 5
+        },
+        "evidence": "std::net::Ipv6Addr",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 1001,
+          "column": 5
+        },
+        "evidence": "std::net::SocketAddr",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 1001,
+          "column": 5
+        },
+        "evidence": "std::net::SocketAddrV6",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 1001,
+          "column": 5
+        },
+        "evidence": "std::net::TcpListener",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 1001,
+          "column": 5
+        },
+        "evidence": "std::net::TcpStream",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 1001,
+          "column": 5
+        },
+        "evidence": "std::net::UdpSocket",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 440,
+          "column": 15
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 512,
+          "column": 1
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 553,
+          "column": 1
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 560,
+          "column": 1
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 572,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 592,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 628,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 639,
+          "column": 22
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 655,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 660,
+          "column": 1
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 699,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 722,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 742,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 765,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 784,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 790,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 834,
+          "column": 22
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 850,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 868,
+          "column": 18
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 881,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 905,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 923,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 955,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 960,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 976,
+          "column": 17
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 1035,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 1067,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 1096,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 1126,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 1158,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 1190,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 1223,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 1252,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 1274,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 1297,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/overlapped.rs",
+          "line": 6,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::HANDLE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/overlapped.rs",
+          "line": 7,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Threading::CreateEventW",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/overlapped.rs",
+          "line": 8,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::IO::OVERLAPPED",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/overlapped.rs",
+          "line": 20,
+          "column": 1
+        },
+        "evidence": "unsafe impl",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/overlapped.rs",
+          "line": 21,
+          "column": 1
+        },
+        "evidence": "unsafe impl",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/overlapped.rs",
+          "line": 29,
+          "column": 20
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/overlapped.rs",
+          "line": 37,
+          "column": 21
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/overlapped.rs",
+          "line": 55,
+          "column": 9
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/overlapped.rs",
+          "line": 76,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 49,
+          "column": 1
+        },
+        "evidence": "std::fs::File",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 49,
+          "column": 1
+        },
+        "evidence": "std::fs::OpenOptions",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 59,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::ERROR_IO_PENDING",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 59,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::ERROR_NO_DATA",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 59,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::ERROR_PIPE_BUSY",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 59,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::ERROR_PIPE_CONNECTED",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 59,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::HANDLE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 59,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 63,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Security::SECURITY_ATTRIBUTES",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 64,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FlushFileBuffers",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 64,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_FLAG_FIRST_PIPE_INSTANCE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 64,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OVERLAPPED",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 64,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::PIPE_ACCESS_DUPLEX",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 64,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::PIPE_ACCESS_INBOUND",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 64,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::PIPE_ACCESS_OUTBOUND",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 68,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Pipes::ConnectNamedPipe",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 68,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Pipes::CreateNamedPipeW",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 68,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Pipes::CreatePipe",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 68,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Pipes::DisconnectNamedPipe",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 68,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Pipes::WaitNamedPipeW",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 68,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Pipes::PIPE_REJECT_REMOTE_CLIENTS",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 68,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Pipes::PIPE_TYPE_BYTE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 68,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Pipes::PIPE_UNLIMITED_INSTANCES",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 72,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::IO::GetOverlappedResult",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 72,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::IO::OVERLAPPED",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 573,
+          "column": 5
+        },
+        "evidence": "std::fs::File",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 573,
+          "column": 5
+        },
+        "evidence": "std::fs::OpenOptions",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 107,
+          "column": 16
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 128,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 161,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 235,
+          "column": 20
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 245,
+          "column": 26
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 271,
+          "column": 9
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 283,
+          "column": 20
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 312,
+          "column": 9
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 346,
+          "column": 9
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 371,
+          "column": 9
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 405,
+          "column": 50
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 413,
+          "column": 50
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 422,
+          "column": 50
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 433,
+          "column": 50
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 438,
+          "column": 20
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 448,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 534,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 548,
+          "column": 9
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 658,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 755,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/pipe.rs",
+          "line": 784,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

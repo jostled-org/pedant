@@ -1,0 +1,15 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "b4b82e33181a52f2d18002e328ad9257a3ccc473c4849d3249b5be0b742ebae4",
+  "crate_name": "dot",
+  "crate_version": "0.1.4",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344427,
+  "analysis_completeness": {
+    "analyzed_files": 1,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": []
+  }
+}

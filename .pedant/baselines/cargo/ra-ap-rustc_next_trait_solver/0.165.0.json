@@ -1,0 +1,15 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "e6f5cd146f1a9db4f92a0afba4dc0ad65c4f6fee21cc50c2e6511fe2ef2038cc",
+  "crate_name": "ra-ap-rustc_next_trait_solver",
+  "crate_version": "0.165.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344433,
+  "analysis_completeness": {
+    "analyzed_files": 25,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": []
+  }
+}

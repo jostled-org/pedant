@@ -1,0 +1,15 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "395c7bb01284e8b13279f07f359fa7f3a4eab494ca4e7f1cd711356e806759cc",
+  "crate_name": "synstructure",
+  "crate_version": "0.13.2",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344442,
+  "analysis_completeness": {
+    "analyzed_files": 2,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": []
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "f06ff8d2d35a6a3181ca378a7c7b570d06173889db5345d0c92890bd3f15a8b5",
+  "crate_name": "oorandom",
+  "crate_version": "11.1.5",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344432,
+  "analysis_completeness": {
+    "analyzed_files": 1,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": []
+  }
+}

@@ -42,4 +42,8 @@ jobs:
       - uses: ./.github/actions/supply-chain-check
         with:
           baseline-path: .pedant/baselines
-          fail-on: hash-mismatch
+          # Cargo.lock already checksums every registry dep, so hash-mismatch
+          # duplicates it. new-capability is the tier that adds signal: it fails
+          # when a dependency gains a capability (process_exec, network, ...)
+          # across a version bump — a maintainer-takeover shape Cargo cannot see.
+          fail-on: new-capability

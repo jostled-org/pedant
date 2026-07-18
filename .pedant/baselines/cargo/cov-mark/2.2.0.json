@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "cca407cb50ba086d25d6383f8494e9d02102a4b4bd49aa50efeb2356f5bb826e",
+  "crate_name": "cov-mark",
+  "crate_version": "2.2.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344426,
+  "analysis_completeness": {
+    "analyzed_files": 1,
+    "skipped_files": 0
+  },
+  "rust_version": "1.63",
+  "profile": {
+    "findings": []
+  }
+}

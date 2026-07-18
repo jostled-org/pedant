@@ -1,0 +1,36 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "7160bd4c5e93587d0c71ffb09b334809f5f89177293dde1215054b3e9567afbd",
+  "crate_name": "temp-dir",
+  "crate_version": "0.2.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344442,
+  "analysis_completeness": {
+    "analyzed_files": 1,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": [
+      {
+        "capability": "file_write",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 149,
+          "column": 15
+        },
+        "evidence": "std::fs::remove_dir_all",
+        "origin": "import"
+      },
+      {
+        "capability": "file_write",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 205,
+          "column": 19
+        },
+        "evidence": "std::fs::create_dir",
+        "origin": "import"
+      }
+    ]
+  }
+}

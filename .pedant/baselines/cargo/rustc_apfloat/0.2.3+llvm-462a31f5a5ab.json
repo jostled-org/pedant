@@ -1,0 +1,27 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "eeb22f8bc169ee4257cdc23d260d2b42db4cf2331962e9c0e114d4ae33f97107",
+  "crate_name": "rustc_apfloat",
+  "crate_version": "0.2.3+llvm-462a31f5a5ab",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344440,
+  "analysis_completeness": {
+    "analyzed_files": 4,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": [
+      {
+        "capability": "env_access",
+        "location": {
+          "file": "./build.rs",
+          "line": 39,
+          "column": 26
+        },
+        "evidence": "std::env::var",
+        "origin": "import",
+        "execution_context": "build_hook"
+      }
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "549a7886a611ca13998db3e152b4345a40227a92e37ad9a600d3ead4b6294451",
+  "crate_name": "zerofrom",
+  "crate_version": "0.1.8",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344446,
+  "analysis_completeness": {
+    "analyzed_files": 3,
+    "skipped_files": 0
+  },
+  "rust_version": "1.71.1",
+  "profile": {
+    "findings": []
+  }
+}

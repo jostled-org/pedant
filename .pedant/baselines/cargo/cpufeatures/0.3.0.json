@@ -1,0 +1,287 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "0516fc81ca77330ba869e10067096c5a6e58442c00ae9d564bdfdc6df59b90bc",
+  "crate_name": "cpufeatures",
+  "crate_version": "0.3.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344426,
+  "analysis_completeness": {
+    "analyzed_files": 5,
+    "skipped_files": 0
+  },
+  "rust_version": "1.85",
+  "profile": {
+    "findings": [
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/aarch64.rs",
+          "line": 37,
+          "column": 14
+        },
+        "evidence": "libc::getauxval",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/aarch64.rs",
+          "line": 37,
+          "column": 30
+        },
+        "evidence": "libc::AT_HWCAP",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/aarch64.rs",
+          "line": 85,
+          "column": 5
+        },
+        "evidence": "libc::c_ulong",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/aarch64.rs",
+          "line": 87,
+          "column": 30
+        },
+        "evidence": "libc::HWCAP_AES",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/aarch64.rs",
+          "line": 87,
+          "column": 48
+        },
+        "evidence": "libc::HWCAP_PMULL",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/aarch64.rs",
+          "line": 88,
+          "column": 30
+        },
+        "evidence": "libc::HWCAP_DIT",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/aarch64.rs",
+          "line": 89,
+          "column": 31
+        },
+        "evidence": "libc::HWCAP_SHA2",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/aarch64.rs",
+          "line": 90,
+          "column": 31
+        },
+        "evidence": "libc::HWCAP_SHA3",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/aarch64.rs",
+          "line": 90,
+          "column": 50
+        },
+        "evidence": "libc::HWCAP_SHA512",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/aarch64.rs",
+          "line": 91,
+          "column": 30
+        },
+        "evidence": "libc::HWCAP_SM3",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/aarch64.rs",
+          "line": 91,
+          "column": 48
+        },
+        "evidence": "libc::HWCAP_SM4",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/aarch64.rs",
+          "line": 161,
+          "column": 9
+        },
+        "evidence": "libc::sysctlbyname",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/aarch64.rs",
+          "line": 37,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/aarch64.rs",
+          "line": 141,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/aarch64.rs",
+          "line": 160,
+          "column": 14
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/loongarch64.rs",
+          "line": 49,
+          "column": 14
+        },
+        "evidence": "libc::getauxval",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/loongarch64.rs",
+          "line": 49,
+          "column": 30
+        },
+        "evidence": "libc::AT_HWCAP",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/loongarch64.rs",
+          "line": 108,
+          "column": 5
+        },
+        "evidence": "libc::c_ulong",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/loongarch64.rs",
+          "line": 110,
+          "column": 30
+        },
+        "evidence": "libc::HWCAP_LOONGARCH_UAL",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/loongarch64.rs",
+          "line": 111,
+          "column": 30
+        },
+        "evidence": "libc::HWCAP_LOONGARCH_FPU",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/loongarch64.rs",
+          "line": 112,
+          "column": 30
+        },
+        "evidence": "libc::HWCAP_LOONGARCH_LSX",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/loongarch64.rs",
+          "line": 113,
+          "column": 31
+        },
+        "evidence": "libc::HWCAP_LOONGARCH_LASX",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/loongarch64.rs",
+          "line": 114,
+          "column": 30
+        },
+        "evidence": "libc::HWCAP_LOONGARCH_LVZ",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/loongarch64.rs",
+          "line": 115,
+          "column": 34
+        },
+        "evidence": "libc::HWCAP_LOONGARCH_LBT_X86",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/loongarch64.rs",
+          "line": 116,
+          "column": 34
+        },
+        "evidence": "libc::HWCAP_LOONGARCH_LBT_ARM",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/loongarch64.rs",
+          "line": 117,
+          "column": 35
+        },
+        "evidence": "libc::HWCAP_LOONGARCH_LBT_MIPS",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/loongarch64.rs",
+          "line": 49,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

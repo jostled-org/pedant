@@ -1,0 +1,66 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "60197ff1d081aa27c2889c22fd89f8de81fa6d5d6ee54ee8c29a676559013e60",
+  "crate_name": "perf-event-open-sys",
+  "crate_version": "4.0.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344432,
+  "analysis_completeness": {
+    "analyzed_files": 2,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": [
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/functions.rs",
+          "line": 17,
+          "column": 1
+        },
+        "evidence": "libc::pid_t",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/functions.rs",
+          "line": 45,
+          "column": 5
+        },
+        "evidence": "libc::syscall",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/functions.rs",
+          "line": 101,
+          "column": 16
+        },
+        "evidence": "libc::ioctl",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/functions.rs",
+          "line": 38,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/functions.rs",
+          "line": 99,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "17e4b70c089a6b218d42fc4739de2997940e6ad4ce2580a57c4d7a2bb50ab71a",
+  "crate_name": "memoffset",
+  "crate_version": "0.9.1",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344431,
+  "analysis_completeness": {
+    "analyzed_files": 5,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": []
+  }
+}

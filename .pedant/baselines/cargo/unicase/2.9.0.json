@@ -1,0 +1,15 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "3f2751aa96a05badb08542b5b097806e3f7f1cf125f5af875c192c44c5fe6700",
+  "crate_name": "unicase",
+  "crate_version": "2.9.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344445,
+  "analysis_completeness": {
+    "analyzed_files": 4,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": []
+  }
+}

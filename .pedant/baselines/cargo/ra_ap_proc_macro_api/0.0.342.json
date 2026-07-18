@@ -1,0 +1,107 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "85dff7a01f2da56dfb6df7cf4a656e38fbaa0aee96b40ab841b85983b97892e6",
+  "crate_name": "ra_ap_proc_macro_api",
+  "crate_version": "0.0.342",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344437,
+  "analysis_completeness": {
+    "analyzed_files": 11,
+    "skipped_files": 0
+  },
+  "rust_version": "1.95",
+  "profile": {
+    "findings": [
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/legacy_protocol/msg.rs",
+          "line": 208,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/legacy_protocol/msg/flat.rs",
+          "line": 82,
+          "column": 22
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 27,
+          "column": 1
+        },
+        "evidence": "std::time::SystemTime",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/pool.rs",
+          "line": 57,
+          "column": 13
+        },
+        "evidence": "std::fs::metadata",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 3,
+          "column": 1
+        },
+        "evidence": "std::process::Child",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 3,
+          "column": 1
+        },
+        "evidence": "std::process::ChildStdin",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 3,
+          "column": 1
+        },
+        "evidence": "std::process::ChildStdout",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 3,
+          "column": 1
+        },
+        "evidence": "std::process::Command",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/process.rs",
+          "line": 3,
+          "column": 1
+        },
+        "evidence": "std::process::Stdio",
+        "origin": "import"
+      }
+    ]
+  }
+}

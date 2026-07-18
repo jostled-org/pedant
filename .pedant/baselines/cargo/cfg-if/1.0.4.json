@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "9fb652fb870b1a4813a7579c16cfacbb25ab1b43daa5c3e367e0d94832a8c573",
+  "crate_name": "cfg-if",
+  "crate_version": "1.0.4",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344425,
+  "analysis_completeness": {
+    "analyzed_files": 1,
+    "skipped_files": 0
+  },
+  "rust_version": "1.32",
+  "profile": {
+    "findings": []
+  }
+}

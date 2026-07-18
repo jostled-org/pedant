@@ -1,0 +1,536 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "7a9cd39bec7c165ea1755791dc36e97a7f6424c23c51bdabe31d3416b97be998",
+  "crate_name": "winapi-util",
+  "crate_version": "0.1.11",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344445,
+  "analysis_completeness": {
+    "analyzed_files": 5,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": [
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/console.rs",
+          "line": 3,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::HANDLE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/console.rs",
+          "line": 4,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Console::GetConsoleMode",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/console.rs",
+          "line": 4,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Console::SetConsoleMode",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/console.rs",
+          "line": 5,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Console::GetConsoleScreenBufferInfo",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/console.rs",
+          "line": 5,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Console::SetConsoleTextAttribute",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/console.rs",
+          "line": 5,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Console::CONSOLE_SCREEN_BUFFER_INFO",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/console.rs",
+          "line": 5,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Console::ENABLE_VIRTUAL_TERMINAL_PROCESSING",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/console.rs",
+          "line": 5,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Console::FOREGROUND_BLUE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/console.rs",
+          "line": 5,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Console::FOREGROUND_GREEN",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/console.rs",
+          "line": 5,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Console::FOREGROUND_INTENSITY",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/console.rs",
+          "line": 5,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Console::FOREGROUND_RED",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/console.rs",
+          "line": 34,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/console.rs",
+          "line": 53,
+          "column": 8
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/console.rs",
+          "line": 70,
+          "column": 8
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/console.rs",
+          "line": 84,
+          "column": 8
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file.rs",
+          "line": 3,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::HANDLE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file.rs",
+          "line": 4,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::GetLastError",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file.rs",
+          "line": 4,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::FILETIME",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file.rs",
+          "line": 4,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::NO_ERROR",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file.rs",
+          "line": 5,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::GetFileInformationByHandle",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file.rs",
+          "line": 5,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::GetFileType",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file.rs",
+          "line": 5,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::BY_HANDLE_FILE_INFORMATION",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file.rs",
+          "line": 5,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_HIDDEN",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file.rs",
+          "line": 137,
+          "column": 21
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_TYPE_CHAR",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file.rs",
+          "line": 142,
+          "column": 21
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_TYPE_DISK",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file.rs",
+          "line": 148,
+          "column": 21
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_TYPE_PIPE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file.rs",
+          "line": 155,
+          "column": 21
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_TYPE_UNKNOWN",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/file.rs",
+          "line": 21,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/file.rs",
+          "line": 39,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sysinfo.rs",
+          "line": 3,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::SystemInformation::GetComputerNameExW",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sysinfo.rs",
+          "line": 3,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::SystemInformation::COMPUTER_NAME_FORMAT",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sysinfo.rs",
+          "line": 54,
+          "column": 9
+        },
+        "evidence": "windows_sys::Win32::System::SystemInformation",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/sysinfo.rs",
+          "line": 94,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/sysinfo.rs",
+          "line": 109,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/win.rs",
+          "line": 1,
+          "column": 1
+        },
+        "evidence": "std::fs::File",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/win.rs",
+          "line": 1,
+          "column": 1
+        },
+        "evidence": "std::process",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/win.rs",
+          "line": 67,
+          "column": 9
+        },
+        "evidence": "std::fs::OpenOptions",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/win.rs",
+          "line": 69,
+          "column": 9
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_FLAG_BACKUP_SEMANTICS",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/win.rs",
+          "line": 24,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/win.rs",
+          "line": 116,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/win.rs",
+          "line": 125,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/win.rs",
+          "line": 132,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/win.rs",
+          "line": 139,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/win.rs",
+          "line": 146,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/win.rs",
+          "line": 161,
+          "column": 9
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/win.rs",
+          "line": 196,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/win.rs",
+          "line": 214,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/win.rs",
+          "line": 220,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/win.rs",
+          "line": 226,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/win.rs",
+          "line": 232,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/win.rs",
+          "line": 238,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/win.rs",
+          "line": 244,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

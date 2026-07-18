@@ -1,0 +1,127 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "18fc5ddddbff4ba6838ef590e8f2f118deeb8127b6cbe0c082bc61be1b94a3aa",
+  "crate_name": "anstyle-wincon",
+  "crate_version": "3.0.11",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344424,
+  "analysis_completeness": {
+    "analyzed_files": 4,
+    "skipped_files": 0
+  },
+  "rust_version": "1.66.0",
+  "profile": {
+    "findings": [
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 87,
+          "column": 5
+        },
+        "evidence": "windows_sys::Win32::Foundation::HANDLE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 88,
+          "column": 5
+        },
+        "evidence": "windows_sys::Win32::System::Console::CONSOLE_CHARACTER_ATTRIBUTES",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 89,
+          "column": 5
+        },
+        "evidence": "windows_sys::Win32::System::Console::CONSOLE_SCREEN_BUFFER_INFO",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 90,
+          "column": 5
+        },
+        "evidence": "windows_sys::Win32::System::Console::FOREGROUND_BLUE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 91,
+          "column": 5
+        },
+        "evidence": "windows_sys::Win32::System::Console::FOREGROUND_GREEN",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 92,
+          "column": 5
+        },
+        "evidence": "windows_sys::Win32::System::Console::FOREGROUND_INTENSITY",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 93,
+          "column": 5
+        },
+        "evidence": "windows_sys::Win32::System::Console::FOREGROUND_RED",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 134,
+          "column": 16
+        },
+        "evidence": "windows_sys::Win32::System::Console::GetConsoleScreenBufferInfo",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 154,
+          "column": 16
+        },
+        "evidence": "windows_sys::Win32::System::Console::SetConsoleTextAttribute",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 127,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 148,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

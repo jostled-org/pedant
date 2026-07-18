@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "ddfce14d114328368d356b90a230ccc9788eb09cdec4307c3eb38e9f04dbfbee",
+  "crate_name": "errno",
+  "crate_version": "0.3.14",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344427,
+  "analysis_completeness": {
+    "analyzed_files": 2,
+    "skipped_files": 0
+  },
+  "rust_version": "1.56",
+  "profile": {
+    "findings": []
+  }
+}

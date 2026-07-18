@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "8b5cff78cec7e5b5d520c06b589fd37f0ed2bb9e7860883d226f456cc0ce965d",
+  "crate_name": "streaming-iterator",
+  "crate_version": "0.1.9",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344441,
+  "analysis_completeness": {
+    "analyzed_files": 3,
+    "skipped_files": 0
+  },
+  "rust_version": "1.56",
+  "profile": {
+    "findings": []
+  }
+}

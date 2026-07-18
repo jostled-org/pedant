@@ -1,0 +1,15 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "c61882f5e351846eea06bbf25a8cc0f204819c7d7a4007c32b7b08a851606743",
+  "crate_name": "lazy_static",
+  "crate_version": "1.5.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344430,
+  "analysis_completeness": {
+    "analyzed_files": 1,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": []
+  }
+}

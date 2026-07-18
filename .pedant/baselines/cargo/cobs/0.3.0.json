@@ -1,0 +1,15 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "1884263570210c8c4addebfbf27da598d95db2cd76e2d380bc4eb2667a35f1c2",
+  "crate_name": "cobs",
+  "crate_version": "0.3.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344426,
+  "analysis_completeness": {
+    "analyzed_files": 3,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": []
+  }
+}

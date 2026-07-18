@@ -1,0 +1,27 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "eb2063532f163c241955d2ff257d6bae3675b4e0667b0dacee69f683af7d3106",
+  "crate_name": "iana-time-zone",
+  "crate_version": "0.1.65",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344428,
+  "analysis_completeness": {
+    "analyzed_files": 3,
+    "skipped_files": 0
+  },
+  "rust_version": "1.62.0",
+  "profile": {
+    "findings": [
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/ffi_utils.rs",
+          "line": 45,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "b6054802128b7b79f8c1f55a664a6693ecc232293bbd349030826fbc3f98c3b1",
+  "crate_name": "jod-thread",
+  "crate_version": "1.0.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344429,
+  "analysis_completeness": {
+    "analyzed_files": 1,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": []
+  }
+}

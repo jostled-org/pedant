@@ -1,0 +1,106 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "f3bd1dc12d650cc8d464af722109b812cc331f08483e56618ae056044de3dfbc",
+  "crate_name": "signal-hook-registry",
+  "crate_version": "1.4.8",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344441,
+  "analysis_completeness": {
+    "analyzed_files": 2,
+    "skipped_files": 1,
+    "skipped_paths": [
+      "./src/lib.rs"
+    ],
+    "skipped_details": [
+      {
+        "path": "./src/lib.rs",
+        "error": "expected `;`"
+      }
+    ]
+  },
+  "rust_version": "1.26",
+  "profile": {
+    "findings": [
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/half_lock.rs",
+          "line": 42,
+          "column": 1
+        },
+        "evidence": "libc",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/half_lock.rs",
+          "line": 145,
+          "column": 22
+        },
+        "evidence": "libc::abort",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/half_lock.rs",
+          "line": 77,
+          "column": 21
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/half_lock.rs",
+          "line": 86,
+          "column": 14
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/half_lock.rs",
+          "line": 145,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/half_lock.rs",
+          "line": 154,
+          "column": 20
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/half_lock.rs",
+          "line": 209,
+          "column": 20
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/half_lock.rs",
+          "line": 226,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

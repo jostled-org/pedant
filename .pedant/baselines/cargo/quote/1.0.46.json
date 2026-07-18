@@ -1,0 +1,28 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "cf6b239cf9a543c65dfcbc9e97bed5230b48dd8d9f3cff4a6223a74d6c780f2d",
+  "crate_name": "quote",
+  "crate_version": "1.0.46",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344433,
+  "analysis_completeness": {
+    "analyzed_files": 7,
+    "skipped_files": 0
+  },
+  "rust_version": "1.71",
+  "profile": {
+    "findings": [
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./build.rs",
+          "line": 2,
+          "column": 1
+        },
+        "evidence": "std::process::Command",
+        "origin": "import",
+        "execution_context": "build_hook"
+      }
+    ]
+  }
+}

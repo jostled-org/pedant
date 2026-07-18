@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "2fafd8d4e33b7e1d03011743b2671c54345720fa01f2f14215b34ce328c17f09",
+  "crate_name": "icu_properties",
+  "crate_version": "2.1.2",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344429,
+  "analysis_completeness": {
+    "analyzed_files": 12,
+    "skipped_files": 0
+  },
+  "rust_version": "1.83",
+  "profile": {
+    "findings": []
+  }
+}

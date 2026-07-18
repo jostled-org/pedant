@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "5383d72e295b7a834cdf8d7f76deb5286d4b648d6b0f0de10b94958756797d28",
+  "crate_name": "ra_ap_syntax-bridge",
+  "crate_version": "0.0.342",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344437,
+  "analysis_completeness": {
+    "analyzed_files": 4,
+    "skipped_files": 0
+  },
+  "rust_version": "1.95",
+  "profile": {
+    "findings": []
+  }
+}

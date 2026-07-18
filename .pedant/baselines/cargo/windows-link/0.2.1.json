@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "6b3234f67151f402445e2b6b3a58af9d1dfac4498285816a086007505175e245",
+  "crate_name": "windows-link",
+  "crate_version": "0.2.1",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344445,
+  "analysis_completeness": {
+    "analyzed_files": 1,
+    "skipped_files": 0
+  },
+  "rust_version": "1.71",
+  "profile": {
+    "findings": []
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "1293000826f960f7545c014966f6705aa723704975a1473a01fa295727770961",
+  "crate_name": "tracing-tree",
+  "crate_version": "0.4.1",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344444,
+  "analysis_completeness": {
+    "analyzed_files": 3,
+    "skipped_files": 0
+  },
+  "rust_version": "1.70",
+  "profile": {
+    "findings": [
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 8,
+          "column": 1
+        },
+        "evidence": "std::time::Instant",
+        "origin": "import"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/time.rs",
+          "line": 68,
+          "column": 20
+        },
+        "evidence": "time::OffsetDateTime::now_utc",
+        "origin": "import"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/time.rs",
+          "line": 104,
+          "column": 20
+        },
+        "evidence": "time::OffsetDateTime::now_local",
+        "origin": "import"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/time.rs",
+          "line": 132,
+          "column": 22
+        },
+        "evidence": "std::time::Instant::now",
+        "origin": "import"
+      }
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "9c275564fd6612b28a54e8705e07d11e6394f6e77d4cda8eb9a8eb8db09b659e",
+  "crate_name": "regex",
+  "crate_version": "1.13.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344438,
+  "analysis_completeness": {
+    "analyzed_files": 12,
+    "skipped_files": 0
+  },
+  "rust_version": "1.65",
+  "profile": {
+    "findings": [
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/pattern.rs",
+          "line": 30,
+          "column": 1
+        },
+        "evidence": "unsafe impl",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

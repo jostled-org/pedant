@@ -1,0 +1,15 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "142d2ea246f507d8a5490347f607f8c45f431db5c8ad311b9d8fe2b8776ea6d7",
+  "crate_name": "ra-ap-rustc_pattern_analysis",
+  "crate_version": "0.165.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344433,
+  "analysis_completeness": {
+    "analyzed_files": 10,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": []
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "0bafa64bd8ece6351e34208bc0ad004e4efe84904c5e34f29ea71f3b4f8982ef",
+  "crate_name": "tree-sitter-typescript",
+  "crate_version": "0.23.2",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344444,
+  "analysis_completeness": {
+    "analyzed_files": 2,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": [
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./bindings/rust/lib.rs",
+          "line": 36,
+          "column": 45
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./bindings/rust/lib.rs",
+          "line": 41,
+          "column": 38
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./bindings/rust/lib.rs",
+          "line": 28,
+          "column": 1
+        },
+        "evidence": "extern block",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "8b0bbb1fe9628b56ba4273151b3ee29da9c3f0513e652772e8cb49187ec93d7f",
+  "crate_name": "thiserror",
+  "crate_version": "2.0.18",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344442,
+  "analysis_completeness": {
+    "analyzed_files": 7,
+    "skipped_files": 0
+  },
+  "rust_version": "1.68",
+  "profile": {
+    "findings": [
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./build.rs",
+          "line": 3,
+          "column": 1
+        },
+        "evidence": "std::fs",
+        "origin": "import",
+        "execution_context": "build_hook"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./build.rs",
+          "line": 7,
+          "column": 1
+        },
+        "evidence": "std::process::self",
+        "origin": "import",
+        "execution_context": "build_hook"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./build.rs",
+          "line": 7,
+          "column": 1
+        },
+        "evidence": "std::process::Command",
+        "origin": "import",
+        "execution_context": "build_hook"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./build.rs",
+          "line": 7,
+          "column": 1
+        },
+        "evidence": "std::process::Stdio",
+        "origin": "import",
+        "execution_context": "build_hook"
+      }
+    ]
+  }
+}

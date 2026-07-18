@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "6ef858ff05800146a016c5007776deff213a3e885cca13c8abec93cd411d4d17",
+  "crate_name": "windows-sys",
+  "crate_version": "0.60.2",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344446,
+  "analysis_completeness": {
+    "analyzed_files": 3,
+    "skipped_files": 0
+  },
+  "rust_version": "1.60",
+  "profile": {
+    "findings": []
+  }
+}

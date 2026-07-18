@@ -1,0 +1,15 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "aacf25c2dcf3f7d58e94a7140fe6241bc37f2fe46e2dded21fcf439589d31c5a",
+  "crate_name": "ra-ap-rustc_parse_format",
+  "crate_version": "0.165.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344433,
+  "analysis_completeness": {
+    "analyzed_files": 2,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": []
+  }
+}

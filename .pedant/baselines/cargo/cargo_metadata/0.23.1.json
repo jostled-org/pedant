@@ -1,0 +1,37 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "71219e34532937eda5dc5572ac67a6e3655c6992e2614a822d3f345e2e30f3be",
+  "crate_name": "cargo_metadata",
+  "crate_version": "0.23.1",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344425,
+  "analysis_completeness": {
+    "analyzed_files": 6,
+    "skipped_files": 0
+  },
+  "rust_version": "1.86.0",
+  "profile": {
+    "findings": [
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 96,
+          "column": 1
+        },
+        "evidence": "std::process::Command",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 96,
+          "column": 1
+        },
+        "evidence": "std::process::Stdio",
+        "origin": "import"
+      }
+    ]
+  }
+}

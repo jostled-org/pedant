@@ -1,0 +1,15 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "a614d2b9437068d5620550aaf814575cabfd53d1c931ebc31a2278db317f16d0",
+  "crate_name": "unicode-properties",
+  "crate_version": "0.1.4",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344445,
+  "analysis_completeness": {
+    "analyzed_files": 2,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": []
+  }
+}

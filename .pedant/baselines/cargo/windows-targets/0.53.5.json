@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "62b1cead53aa0c0cd0b979f334250f5c4731a6e9019cbf4a33fe03b2eeaf7f6e",
+  "crate_name": "windows-targets",
+  "crate_version": "0.53.5",
+  "analysis_tier": "syntactic",
+  "timestamp": 1784344446,
+  "analysis_completeness": {
+    "analyzed_files": 1,
+    "skipped_files": 0
+  },
+  "rust_version": "1.60",
+  "profile": {
+    "findings": []
+  }
+}

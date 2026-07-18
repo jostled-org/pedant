@@ -341,6 +341,9 @@ pub struct ConfigFile {
     /// Cargo feature-boundary invariants.
     #[serde(default)]
     pub feature_boundaries: Vec<FeatureBoundaryRule>,
+    /// Flag types whose inherent impls span more than one file.
+    #[serde(default)]
+    pub check_scattered_inherent_impl: bool,
     /// Per-path configuration overrides keyed by glob pattern.
     #[serde(default)]
     pub overrides: BTreeMap<Box<str>, PathOverride>,
@@ -429,6 +432,8 @@ pub struct PathOverride {
     pub check_flat_module_family: Option<bool>,
     /// Replace feature-boundary check state.
     pub check_feature_boundary: Option<bool>,
+    /// Replace scattered-inherent-impl check state.
+    pub check_scattered_inherent_impl: Option<bool>,
 }
 
 fn default_max_depth() -> usize {
@@ -542,6 +547,7 @@ macro_rules! for_each_bool_check {
             "Flag sibling `<stem>.rs` and `<stem>/` module roots.", check_conflicting_module_root, false;
             "Enforce configured flat-module-family layout rules.", check_flat_module_family, true;
             "Enforce configured Cargo feature-boundary invariants.", check_feature_boundary, true;
+            "Flag types whose inherent impls span more than one file.", check_scattered_inherent_impl, false;
         }
     };
 }

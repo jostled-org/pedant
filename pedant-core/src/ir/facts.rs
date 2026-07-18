@@ -206,6 +206,10 @@ pub struct FnFact {
     /// Feature names of the `#[cfg(feature = "…")]` gates enclosing this item
     /// (its own and every ancestor module/impl), for `ungated-test-api`.
     pub cfg_feature_gates: Box<[Rc<str>]>,
+    /// Rendered `#[cfg(…)]` predicates — of any kind, not just `feature` —
+    /// on this item and every ancestor module/impl within the file. Empty
+    /// means the method is in every build of the file.
+    pub cfg_predicates: Box<[Rc<str>]>,
 }
 
 /// Extracted metadata for a function parameter.
@@ -376,6 +380,9 @@ pub struct ImplFact {
     pub trait_name: Option<Box<str>>,
     /// Location of the `impl` keyword.
     pub span: IrSpan,
+    /// Rendered `#[cfg(…)]` predicates on this block and every ancestor module
+    /// within the file. Empty means the block is in every build of the file.
+    pub cfg_predicates: Box<[Rc<str>]>,
     /// Pairwise type-relationship edges for mixed-concerns graph analysis.
     pub edges: Box<[(Rc<str>, Rc<str>)]>,
 }
@@ -501,4 +508,8 @@ pub struct ModuleFact {
     pub span: IrSpan,
     /// `true` when annotated with `#[cfg(test)]`.
     pub is_cfg_test: bool,
+    /// Rendered `#[cfg(…)]` predicates guarding this declaration. For a file
+    /// module (`mod x;`) they guard the whole of `x.rs` / `x/`, which is the
+    /// only way that gate is visible from inside those files.
+    pub cfg_predicates: Box<[Rc<str>]>,
 }

@@ -227,6 +227,7 @@ fn run_gate(args: GateArgs, stderr: &mut impl Write) -> ExitCode {
         no_conflicting_module_root: false,
         no_flat_module_family: false,
         no_feature_boundary: false,
+        no_scattered_inherent_impl: false,
     }
     .to_check_config(file_config.as_ref());
     let files = match resolve_input_files(&args.input, stderr) {

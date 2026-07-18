@@ -161,10 +161,12 @@ Pass directories rather than a `**` glob. Recursion happens inside pedant, so ev
 | Forbidden patterns | `forbidden-attribute`, `forbidden-type`, `forbidden-call`, `forbidden-macro`, `forbidden-else`, `forbidden-unsafe` |
 | Performance & dispatch | `dyn-return`, `dyn-param`, `vec-box-dyn`, `dyn-field`, `clone-in-loop`, `default-hasher` |
 | Structure (per file) | `mixed-concerns`, `inline-tests`, `let-underscore-result`, `high-param-count`, `long-function-body`, `module-root-definitions`, `large-source-file`, `high-method-count`, `item-visibility-policy`, `ungated-test-api` |
-| Structure (whole project) | `conflicting-module-root`, `flat-module-family`, `feature-boundary` |
+| Structure (whole project) | `conflicting-module-root`, `flat-module-family`, `feature-boundary`, `scattered-inherent-impl` |
 | Naming | `generic-naming` |
 
 The project-level checks read the source tree and Cargo metadata rather than a single file, so run them from the workspace root and give them the whole tree — `feature-boundary` shells out to `cargo metadata`.
+
+`high-method-count` spans both rows. Given a whole crate it counts a type's inherent methods across every file, so splitting an `impl` in two does not duck the ceiling; given one file it counts what that file shows. Aggregation is deliberately conservative — a type name is totalled only when the crate defines it in exactly one place. `#[cfg]`-gated impls are grouped by predicate and the type is measured against its worst build (everything unconditional plus the single richest alternative), so mutually exclusive platform impls never sum into a phantom god-object, yet a `#[cfg(feature = "…")]` on a default-on feature cannot hide one either.
 
 Violations carry a severity. `deny` fails the run; `warn` is reported but exits 0. Every check denies by default; only checks with an explicit warning tier, like `large-source-file`, emit warnings.
 

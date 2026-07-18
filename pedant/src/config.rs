@@ -156,6 +156,10 @@ pub struct ConfigArgs {
     /// Disable feature-boundary check
     #[arg(long)]
     pub no_feature_boundary: bool,
+
+    /// Disable scattered-inherent-impl check
+    #[arg(long)]
+    pub no_scattered_inherent_impl: bool,
 }
 
 impl ConfigArgs {
@@ -203,6 +207,8 @@ impl ConfigArgs {
         base.check_flat_module_family =
             base.check_flat_module_family && !self.no_flat_module_family;
         base.check_feature_boundary = base.check_feature_boundary && !self.no_feature_boundary;
+        base.check_scattered_inherent_impl =
+            base.check_scattered_inherent_impl && !self.no_scattered_inherent_impl;
         base
     }
 }

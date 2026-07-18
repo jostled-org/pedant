@@ -28,7 +28,9 @@ use crate::ir::facts::{
 };
 
 use super::fn_scope::FnScope;
-use super::syn_helpers::{block_line_count, cfg_feature_name, normalize_visibility, span_from};
+use super::syn_helpers::{
+    block_line_count, cfg_feature_name, cfg_predicate, normalize_visibility, span_from,
+};
 use super::use_paths::UsePathCollector;
 
 /// Single-pass AST visitor that populates a [`FileIr`] from a parsed source file.
@@ -83,9 +85,9 @@ pub(super) struct IrExtractor {
     /// `impl` block so methods can be tagged with their type and inherent-ness.
     pub(super) current_impl: Option<(Rc<str>, bool)>,
 
-    /// Feature names of the `#[cfg(feature = "…")]` gates currently in scope,
-    /// pushed on entry to a gated item/module and popped on exit.
-    cfg_feature_stack: Vec<Rc<str>>,
+    /// `#[cfg(…)]` gates currently in scope, pushed on entry to a gated
+    /// item/module and popped on exit.
+    cfg_gates: Vec<CfgGate>,
 
     /// Suppresses Body-context emission inside signature/field type visits.
     pub(super) in_non_body_type: bool,
@@ -95,6 +97,22 @@ pub(super) struct IrExtractor {
 
     /// Qualified paths referenced by this file.
     pub(super) use_paths: UsePathCollector,
+}
+
+/// One `#[cfg(…)]` gate in scope during traversal.
+pub(super) struct CfgGate {
+    /// Rendered predicate text: the identity of a build alternative.
+    predicate: Rc<str>,
+    /// Feature name when the predicate is exactly `feature = "…"`.
+    feature: Option<Rc<str>>,
+}
+
+/// Build a gate from an attribute, or `None` when it is not a `#[cfg(…)]`.
+fn cfg_gate(attr: &syn::Attribute) -> Option<CfgGate> {
+    Some(CfgGate {
+        predicate: cfg_predicate(attr)?,
+        feature: cfg_feature_name(attr),
+    })
 }
 
 impl IrExtractor {
@@ -119,7 +137,7 @@ impl IrExtractor {
             branch_context: None,
             item_depth: 0,
             current_impl: None,
-            cfg_feature_stack: Vec::new(),
+            cfg_gates: Vec::new(),
             in_non_body_type: false,
             fn_scope: FnScope::new(),
             use_paths: UsePathCollector::new(),
@@ -200,7 +218,8 @@ impl IrExtractor {
             inherent_method_of: None,
             is_pure_forwarder: false,
             visibility: Visibility::Private,
-            cfg_feature_gates: self.cfg_feature_stack.iter().cloned().collect(),
+            cfg_feature_gates: self.cfg_feature_gates(),
+            cfg_predicates: self.cfg_predicates(),
         });
         index
     }
@@ -309,12 +328,37 @@ impl IrExtractor {
         attrs: &[syn::Attribute],
         body: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        let start = self.cfg_feature_stack.len();
-        self.cfg_feature_stack
-            .extend(attrs.iter().filter_map(cfg_feature_name));
+        let start = self.cfg_gates.len();
+        self.cfg_gates.extend(attrs.iter().filter_map(cfg_gate));
         let result = body(self);
-        self.cfg_feature_stack.truncate(start);
+        self.cfg_gates.truncate(start);
         result
+    }
+
+    /// Feature names of the `#[cfg(feature = "…")]` gates in scope.
+    pub(super) fn cfg_feature_gates(&self) -> Box<[Rc<str>]> {
+        self.cfg_gates
+            .iter()
+            .filter_map(|gate| gate.feature.clone())
+            .collect()
+    }
+
+    /// Predicates of every `#[cfg(…)]` gate in scope, of any kind.
+    pub(super) fn cfg_predicates(&self) -> Box<[Rc<str>]> {
+        self.cfg_gates
+            .iter()
+            .map(|gate| Rc::clone(&gate.predicate))
+            .collect()
+    }
+
+    /// [`Self::cfg_predicates`] plus those on `attrs`, for facts recorded
+    /// before the traversal has pushed the item's own gates.
+    pub(super) fn cfg_predicates_with(&self, attrs: &[syn::Attribute]) -> Box<[Rc<str>]> {
+        self.cfg_gates
+            .iter()
+            .map(|gate| Rc::clone(&gate.predicate))
+            .chain(attrs.iter().filter_map(cfg_predicate))
+            .collect()
     }
 
     fn register_type_with_edges(
@@ -330,7 +374,7 @@ impl IrExtractor {
             span,
             kind,
             visibility,
-            cfg_feature_gates: self.cfg_feature_stack.iter().cloned().collect(),
+            cfg_feature_gates: self.cfg_feature_gates(),
             edges,
         });
     }

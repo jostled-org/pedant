@@ -399,13 +399,22 @@ define_checks! {
         exception: "None. Test-only APIs belong behind the configured feature; adjust the naming pattern or feature in config if the convention differs.",
         llm_specific: false,
     },
-    HighMethodCount => {
+    HighMethodCount { type_name: Box<str> } => {
         code: "high-method-count",
         description: "Type has too many inherent methods (god-object)",
         category: "structure",
         problem: "A type whose inherent methods span many unrelated concerns is a god-object: maximally connected, so `mixed-concerns` stays silent, yet carrying far more than one responsibility. It is the dominant single-responsibility failure mode in large AI-generated Rust.",
         fix: "Extract cohesive groups of methods onto collaborator types the god-object delegates to. Pure forwarders that preserve the public API are not counted.",
         exception: "A facade that has genuinely shed its logic into collaborators and keeps only thin forwarders — those are excluded by default.",
+        llm_specific: false,
+    },
+    ScatteredInherentImpl => {
+        code: "scattered-inherent-impl",
+        description: "A type's inherent impls span more than one file",
+        category: "structure",
+        problem: "A type whose own API is spread across files has no single place to read what it does. It also hides god-objects: a per-file method ceiling counts only the slice in front of it, so splitting an `impl` in two silences the ceiling while the type keeps every method it had.",
+        fix: "Gather the type's inherent impls into the file that defines it, or split the type itself so each file owns a type with its own responsibility.",
+        exception: "Impls that never coexist in one build — platform or feature `#[cfg]` splits — are already excluded.",
         llm_specific: false,
     },
     LargeSourceFile => {

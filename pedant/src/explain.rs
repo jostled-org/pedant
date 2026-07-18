@@ -33,11 +33,14 @@ pub(crate) fn print_explain(code: &str, stderr: &mut impl Write) -> ExitCode {
     ExitCode::from(1)
 }
 
+/// Column width for the check-code table: the longest code plus a space.
+const CODE_WIDTH: usize = 24;
+
 fn print_checks_list() -> io::Result<()> {
     let mut stdout = io::stdout().lock();
     writeln!(stdout, "Available checks:\n")?;
-    writeln!(stdout, "{:<20} {:<8} DESCRIPTION", "CODE", "LLM?")?;
-    writeln!(stdout, "{:-<20} {:-<8} {:-<30}", "", "", "")?;
+    writeln!(stdout, "{:<CODE_WIDTH$} {:<8} DESCRIPTION", "CODE", "LLM?")?;
+    writeln!(stdout, "{:-<CODE_WIDTH$} {:-<8} {:-<30}", "", "", "")?;
 
     for check in ALL_CHECKS {
         let llm_marker = match check.llm_specific {
@@ -46,7 +49,7 @@ fn print_checks_list() -> io::Result<()> {
         };
         writeln!(
             stdout,
-            "{:<20} {:<8} {}",
+            "{:<CODE_WIDTH$} {:<8} {}",
             check.code, llm_marker, check.description
         )?;
     }

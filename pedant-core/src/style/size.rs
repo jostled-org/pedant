@@ -82,6 +82,10 @@ pub(super) fn check_large_source_file(
 /// trait impls are excluded. Pure single-expression forwarders are excluded
 /// unless `count_forwarders` is set. The type is reported once, at its first
 /// inherent impl in the file.
+///
+/// This counts one file's slice of a type. When the whole crate is analyzed,
+/// the project pass re-counts any type whose impls span several files and
+/// supersedes the finding emitted here.
 pub(super) fn check_high_method_count(
     ir: &FileIr,
     config: &CheckConfig,
@@ -123,7 +127,9 @@ pub(super) fn check_high_method_count(
             violations,
             fp,
             span,
-            ViolationType::HighMethodCount,
+            ViolationType::HighMethodCount {
+                type_name: Box::from(ty),
+            },
             format!(
                 "`{ty}` has {count} inherent methods (limit: {}), split its responsibilities into focused types",
                 config.max_methods

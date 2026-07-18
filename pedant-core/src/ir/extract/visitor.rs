@@ -206,10 +206,13 @@ impl<'ast> Visit<'ast> for IrExtractor {
         }
 
         let is_trait_impl = trait_name.is_some();
+        // The block's own attributes are not on the gate stack yet.
+        let cfg_predicates = self.cfg_predicates_with(&node.attrs);
         self.impl_blocks.push(ImplFact {
             self_type: Rc::clone(&self_name),
             trait_name,
             span,
+            cfg_predicates,
             edges: edges.into_boxed_slice(),
         });
 
@@ -475,6 +478,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
             name: node.ident.to_string().into_boxed_str(),
             span,
             is_cfg_test: has_cfg_test,
+            cfg_predicates: self.cfg_predicates_with(&node.attrs),
         });
         self.with_cfg_gates(&node.attrs, |this| {
             syn::visit::visit_item_mod(this, node);

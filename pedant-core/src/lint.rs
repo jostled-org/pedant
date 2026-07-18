@@ -10,6 +10,7 @@ use crate::ir;
 use crate::ir::DataFlowFact;
 use crate::ir::extract::compute_fingerprints;
 use crate::ir::semantic::SemanticContext;
+use crate::project::{FileShape, project_shape};
 use crate::style::check_style;
 
 type ManifestPresence = (bool, bool);
@@ -38,7 +39,7 @@ pub fn analyze(
     config: &CheckConfig,
     semantic: Option<&SemanticContext>,
 ) -> Result<AnalysisResult, syn::Error> {
-    analyze_inner(file_path, source, config, semantic, None)
+    Ok(analyze_inner(file_path, source, config, semantic, None)?.0)
 }
 
 /// Like [`analyze`], but tags all capability findings with `ExecutionContext::BuildHook`.
@@ -48,6 +49,37 @@ pub fn analyze_build_script(
     config: &CheckConfig,
     semantic: Option<&SemanticContext>,
 ) -> Result<AnalysisResult, syn::Error> {
+    Ok(analyze_inner(
+        file_path,
+        source,
+        config,
+        semantic,
+        Some(ExecutionContext::BuildHook),
+    )?
+    .0)
+}
+
+/// [`analyze`], plus the [`FileShape`] that whole-crate checks consume.
+///
+/// [`analyze`] discards the shape. Callers that also run
+/// [`check_project`](crate::project::check_project) take it from here, since
+/// projecting it later would mean parsing the file a second time.
+pub fn analyze_with_shape(
+    file_path: &str,
+    source: &str,
+    config: &CheckConfig,
+    semantic: Option<&SemanticContext>,
+) -> Result<(AnalysisResult, FileShape), syn::Error> {
+    analyze_inner(file_path, source, config, semantic, None)
+}
+
+/// [`analyze_build_script`], plus the [`FileShape`] whole-crate checks consume.
+pub fn analyze_build_script_with_shape(
+    file_path: &str,
+    source: &str,
+    config: &CheckConfig,
+    semantic: Option<&SemanticContext>,
+) -> Result<(AnalysisResult, FileShape), syn::Error> {
     analyze_inner(
         file_path,
         source,
@@ -63,11 +95,12 @@ fn analyze_inner(
     config: &CheckConfig,
     semantic: Option<&SemanticContext>,
     execution_context: Option<ExecutionContext>,
-) -> Result<AnalysisResult, syn::Error> {
+) -> Result<(AnalysisResult, FileShape), syn::Error> {
     let syntax = syn::parse_file(source)?;
     let mut ir = ir::extract(file_path, &syntax, semantic);
     ir.source_line_count = source.lines().count();
     let violations = check_style(&ir, config).into_boxed_slice();
+    let shape = project_shape(&ir, config);
     let capabilities = detect_capabilities(&ir, execution_context);
 
     #[cfg(feature = "semantic")]
@@ -81,12 +114,15 @@ fn analyze_inner(
 
     let fn_fingerprints = compute_fingerprints(&ir);
 
-    Ok(AnalysisResult {
-        violations,
-        capabilities,
-        data_flows: ir.data_flows,
-        fn_fingerprints,
-    })
+    Ok((
+        AnalysisResult {
+            violations,
+            capabilities,
+            data_flows: ir.data_flows,
+            fn_fingerprints,
+        },
+        shape,
+    ))
 }
 
 /// Convenience wrapper: analyze a Rust source string with no file path or semantic context.
@@ -124,6 +160,21 @@ pub fn discover_workspace_root(start: &Path) -> Result<Option<PathBuf>, LintErro
         }
     }
     Ok(nearest_package)
+}
+
+/// Walk ancestors of `file` to the nearest directory holding a `Cargo.toml`.
+///
+/// That directory is the file's crate root: Cargo resolves a source file's
+/// package by exactly this rule. Returns `None` for a file with no manifest
+/// above it, which has no crate to belong to.
+pub fn discover_crate_root(file: &Path) -> Option<&Path> {
+    let mut dir = file.parent()?;
+    loop {
+        match dir.join("Cargo.toml").is_file() {
+            true => return Some(dir),
+            false => dir = dir.parent()?,
+        }
+    }
 }
 
 fn read_manifest_presence(cargo_toml: &Path) -> Result<ManifestPresence, LintError> {

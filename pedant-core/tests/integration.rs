@@ -1101,7 +1101,7 @@ fn high_method_findings(config: &CheckConfig) -> Vec<pedant_core::violation::Vio
         .unwrap()
         .violations
         .into_iter()
-        .filter(|v| matches!(v.violation_type, ViolationType::HighMethodCount))
+        .filter(|v| matches!(v.violation_type, ViolationType::HighMethodCount { .. }))
         .collect()
 }
 

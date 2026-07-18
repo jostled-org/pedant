@@ -11,6 +11,7 @@ check_module_root_definitions = true
 check_large_source_file = true
 check_high_method_count = true
 max_methods = 15
+check_scattered_inherent_impl = true
 check_conflicting_module_root = true
 check_nested_if = true
 check_if_in_match = true

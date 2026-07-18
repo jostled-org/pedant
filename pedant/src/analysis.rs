@@ -8,9 +8,10 @@ use pedant_core::SemanticContext;
 use pedant_core::check_config::CheckConfig;
 use pedant_core::hash::compute_source_hash;
 use pedant_core::lint::{
-    analyze, analyze_build_script, discover_build_script, discover_workspace_root,
+    analyze_build_script_with_shape, analyze_with_shape, discover_build_script,
+    discover_crate_root, discover_workspace_root,
 };
-use pedant_core::project::{CargoMetadata, ProjectContext, check_project};
+use pedant_core::project::{CargoMetadata, FileShape, ProjectContext, check_project};
 use pedant_lang::FileClassification;
 use pedant_types::Language;
 
@@ -21,7 +22,7 @@ type AnalyzeFn = fn(
     &str,
     &CheckConfig,
     Option<&SemanticContext>,
-) -> Result<AnalysisResult, pedant_core::ParseError>;
+) -> Result<(AnalysisResult, FileShape), pedant_core::ParseError>;
 
 struct RustAnalysisPlan<'a> {
     analyze_fn: AnalyzeFn,
@@ -40,6 +41,8 @@ pub(crate) struct AnalysisAccumulator {
     pub(crate) violations: Vec<pedant_core::Violation>,
     pub(crate) findings: Vec<pedant_types::CapabilityFinding>,
     pub(crate) data_flows: Vec<pedant_core::ir::DataFlowFact>,
+    /// One shape per analyzed Rust file, feeding the whole-crate checks.
+    pub(crate) file_shapes: Vec<FileShape>,
     pub(crate) had_error: bool,
 }
 
@@ -55,22 +58,24 @@ impl AnalysisAccumulator {
             violations: Vec::with_capacity(file_count),
             findings: Vec::with_capacity(file_count),
             data_flows: Vec::new(),
+            file_shapes: Vec::with_capacity(file_count),
             had_error: false,
         }
     }
 
     pub(crate) fn handle(
         &mut self,
-        result: Result<AnalysisResult, ProcessError>,
+        result: Result<(AnalysisResult, FileShape), ProcessError>,
         context: &str,
         stderr: &mut impl Write,
     ) {
         match result {
-            Ok(r) => {
+            Ok((r, shape)) => {
                 self.violations.append(&mut r.violations.into_vec());
                 self.findings
                     .append(&mut r.capabilities.findings.into_vec());
                 self.data_flows.extend_from_slice(&r.data_flows);
+                self.file_shapes.push(shape);
             }
             Err(e) => {
                 crate::report_error(stderr, format_args!("{context}: {e}"));
@@ -124,8 +129,9 @@ pub(crate) fn run_project_checks(
         rust_files: files,
         workspace_root: &workspace_root,
         metadata: metadata.as_ref(),
+        file_shapes: &acc.file_shapes,
     };
-    acc.violations.extend(check_project(&ctx, config));
+    check_project(&ctx, config, &mut acc.violations);
 }
 
 /// Run `cargo metadata` for the feature-boundary check, but only when it is
@@ -267,7 +273,7 @@ fn attest_stdin(
         }
     };
     acc.handle(
-        analyze("<stdin>", &source, config, None).map_err(ProcessError::from),
+        analyze_with_shape("<stdin>", &source, config, None).map_err(ProcessError::from),
         "error",
         stderr,
     );
@@ -413,7 +419,7 @@ fn classify_rust_analysis<'a>(
 ) -> Result<RustAnalysisPlan<'a>, ProcessError> {
     let Some(crate_root) = find_crate_root(file_path) else {
         return Ok(RustAnalysisPlan {
-            analyze_fn: analyze,
+            analyze_fn: analyze_with_shape,
             semantic,
             crate_root: None,
             build_script: None,
@@ -432,13 +438,13 @@ fn classify_rust_analysis<'a>(
 
     match is_build_script {
         true => Ok(RustAnalysisPlan {
-            analyze_fn: analyze_build_script,
+            analyze_fn: analyze_build_script_with_shape,
             semantic: None,
             crate_root: Some(Box::from(crate_root)),
             build_script,
         }),
         false => Ok(RustAnalysisPlan {
-            analyze_fn: analyze,
+            analyze_fn: analyze_with_shape,
             semantic,
             crate_root: Some(Box::from(crate_root)),
             build_script,
@@ -448,13 +454,7 @@ fn classify_rust_analysis<'a>(
 
 /// Find the crate root by walking up from a file path to locate `Cargo.toml`.
 fn find_crate_root(file_path: &str) -> Option<&Path> {
-    let mut dir = Path::new(file_path).parent()?;
-    loop {
-        match dir.join("Cargo.toml").is_file() {
-            true => return Some(dir),
-            false => dir = dir.parent()?,
-        }
-    }
+    discover_crate_root(Path::new(file_path))
 }
 
 fn paths_match(left: &Path, right: &Path) -> bool {
@@ -493,7 +493,7 @@ fn discover_and_analyze_build_script(
     }
     analyze_single_file(
         &build_path_label,
-        analyze_build_script,
+        analyze_build_script_with_shape,
         config,
         None,
         sources,
@@ -534,9 +534,9 @@ fn read_stdin_source() -> Result<String, ProcessError> {
     Ok(source)
 }
 
-fn process_stdin(config: &CheckConfig) -> Result<AnalysisResult, ProcessError> {
+fn process_stdin(config: &CheckConfig) -> Result<(AnalysisResult, FileShape), ProcessError> {
     let source = read_stdin_source()?;
-    Ok(analyze("<stdin>", &source, config, None)?)
+    Ok(analyze_with_shape("<stdin>", &source, config, None)?)
 }
 
 /// Reborrow an `Option<&mut T>` so the original option remains usable.

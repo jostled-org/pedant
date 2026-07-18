@@ -2,6 +2,7 @@ use std::path::Path;
 
 use pedant_core::check_config::{CheckConfig, FlatModuleFamily};
 use pedant_core::project::{ProjectContext, check_project};
+use pedant_core::violation::Violation;
 use pedant_core::violation::ViolationType;
 
 fn conflicting_config() -> CheckConfig {
@@ -22,8 +23,9 @@ fn conflicts(files: &[String], root: &Path, config: &CheckConfig) -> Vec<String>
         rust_files: files,
         workspace_root: root,
         metadata: None,
+        file_shapes: &[],
     };
-    check_project(&ctx, config)
+    project_violations(&ctx, config)
         .into_iter()
         .filter(|v| matches!(v.violation_type, ViolationType::ConflictingModuleRoot))
         .map(|v| v.file_path.to_string())
@@ -75,8 +77,9 @@ fn flat_family_hits(root: &Path, config: &CheckConfig) -> Vec<String> {
         rust_files: &[],
         workspace_root: root,
         metadata: None,
+        file_shapes: &[],
     };
-    check_project(&ctx, config)
+    project_violations(&ctx, config)
         .into_iter()
         .filter(|v| matches!(v.violation_type, ViolationType::FlatModuleFamily))
         .map(|v| v.file_path.to_string())
@@ -192,8 +195,9 @@ fn fb_hits(meta: &CargoMetadata, config: &CheckConfig) -> Vec<String> {
         rust_files: &[],
         workspace_root: Path::new("."),
         metadata: Some(meta),
+        file_shapes: &[],
     };
-    check_project(&ctx, config)
+    project_violations(&ctx, config)
         .into_iter()
         .filter(|v| matches!(v.violation_type, ViolationType::FeatureBoundary))
         .map(|v| v.message.to_string())
@@ -300,4 +304,12 @@ fn test_feature_boundary_disabled() {
         ..CheckConfig::default()
     };
     assert!(fb_hits(&m, &config).is_empty());
+}
+
+/// `check_project` appends to a caller-owned list so a whole-crate check can
+/// supersede a per-file one; these tests only care about what it adds.
+fn project_violations(ctx: &ProjectContext<'_>, config: &CheckConfig) -> Vec<Violation> {
+    let mut violations = Vec::new();
+    check_project(ctx, config, &mut violations);
+    violations
 }

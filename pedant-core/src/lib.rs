@@ -55,8 +55,9 @@ pub use gate::{
     GateInputSummary, GateRuleInfo, GateSeverity, GateVerdict, all_gate_rules, evaluate_gate_rules,
 };
 pub use lint::{
-    LintError, analyze, analyze_build_script, analyze_with_build_script, determine_analysis_tier,
-    discover_build_script, discover_workspace_root, lint_file, lint_str,
+    LintError, analyze, analyze_build_script, analyze_build_script_with_shape,
+    analyze_with_build_script, analyze_with_shape, determine_analysis_tier, discover_build_script,
+    discover_crate_root, discover_workspace_root, lint_file, lint_str,
 };
 pub use violation::{CheckRationale, Violation, ViolationType, lookup_rationale};
 pub use workspace::{WorkspaceMemberError, resolve_workspace_members};

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0](https://github.com/jostled-org/pedant/compare/pedant-mcp-v0.10.1...pedant-mcp-v0.11.0) - 2026-07-18
+
+### Added
+
+- *(mcp)* run the cross-file type-footprint check via threaded FileShapes
+- *(checks)* [**breaking**] count high-method-count across files, add scattered-inherent-impl
+
+### Fixed
+
+- *(mcp)* [**breaking**] honor .pedant.toml, run project checks, and expose severity
+
+### Other
+
+- *(supply-chain)* gate on new-dependency to catch injected crates
+
 ## [0.10.1](https://github.com/jostled-org/pedant/compare/pedant-mcp-v0.10.0...pedant-mcp-v0.10.1) - 2026-07-17
 
 ### Other

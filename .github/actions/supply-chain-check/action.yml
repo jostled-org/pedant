@@ -8,6 +8,9 @@ inputs:
   fail-on:
     description: 'Fail on: hash-mismatch, new-capability, new-dependency, or none'
     default: 'hash-mismatch'
+  debug-package:
+    description: 'Print the exact hashed Rust inputs for one vendored crate. Unset means no debug output.'
+    default: ''
 
 outputs:
   status:
@@ -30,7 +33,26 @@ runs:
     - name: Verify supply chain baselines
       id: scan
       shell: bash
+      # Inputs travel through the environment, never interpolated into the script
+      # body, so a crafted input cannot inject shell. Mirrors pedant-check and
+      # pedant-gate. `status` and `report` outputs are written to $GITHUB_OUTPUT
+      # by the binary itself — see pedant/src/supply_chain/github_output.rs.
+      env:
+        PEDANT_BASELINE_PATH: ${{ inputs.baseline-path }}
+        PEDANT_FAIL_ON: ${{ inputs.fail-on }}
+        PEDANT_DEBUG_PACKAGE: ${{ inputs.debug-package }}
       run: |
-        "$PEDANT_BIN" supply-chain verify \
-          --baseline-path "${{ inputs.baseline-path }}" \
-          --fail-on "${{ inputs.fail-on }}"
+        set -uo pipefail
+
+        args=(
+          supply-chain verify
+          --baseline-path "$PEDANT_BASELINE_PATH"
+          --fail-on "$PEDANT_FAIL_ON"
+        )
+        # Only forward the debug flag when set: `--debug-package ""` is not a
+        # valid crate name and would fail the run.
+        if [ -n "$PEDANT_DEBUG_PACKAGE" ]; then
+          args+=( --debug-package "$PEDANT_DEBUG_PACKAGE" )
+        fi
+
+        "$PEDANT_BIN" "${args[@]}"

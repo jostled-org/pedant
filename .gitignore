@@ -10,8 +10,10 @@ docs/.codebase-snapshot.md
 docs/specs/
 docs/plans/
 docs/scripts/
+docs/internal/
 docs/planning_guidelines.md
 docs/introspection_guidelines.md
+docs/rust_profile.md
 docs/design-rationale.md
 docs/testing.md
 .mcp.json

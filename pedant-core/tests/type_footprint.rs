@@ -1,3 +1,4 @@
+#![cfg(feature = "checks")]
 //! Whole-crate inherent-impl aggregation: `high-method-count` across files and
 //! `scattered-inherent-impl`.
 

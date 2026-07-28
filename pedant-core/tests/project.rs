@@ -1,3 +1,4 @@
+#![cfg(feature = "checks")]
 use std::path::Path;
 
 use pedant_core::check_config::{CheckConfig, FlatModuleFamily};

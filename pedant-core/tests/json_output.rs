@@ -1,3 +1,4 @@
+#![cfg(feature = "checks")]
 use std::sync::Arc;
 
 use pedant_core::json_format::JsonViolation;

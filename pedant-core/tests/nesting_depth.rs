@@ -1,3 +1,4 @@
+#![cfg(feature = "checks")]
 //! A closure is a value, not a control-flow nesting level. Combinator chains
 //! like `.or_else(|| …).map(|pos| …)` are flat code, so they must not inflate
 //! `max-depth`; genuine `if`/`match`/loop nesting still does, including nesting

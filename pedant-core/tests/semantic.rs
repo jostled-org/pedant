@@ -1,4 +1,5 @@
 #![cfg(feature = "semantic")]
+#![cfg(feature = "checks")]
 
 use std::path::PathBuf;
 use std::sync::Arc;

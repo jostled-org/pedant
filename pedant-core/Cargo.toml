@@ -10,7 +10,12 @@ readme = "../README.md"
 keywords = ["linter", "lint", "static-analysis", "ai", "code-quality"]
 
 [features]
-default = []
+default = ["checks"]
+# The judgment surface: style checks, the gate engine, check config, violation
+# output, and the orchestrating lint entry points. Disabling it leaves the
+# substrate — fact extraction, capability detection, hashing, pattern matching,
+# workspace expansion.
+checks = ["dep:toml", "dep:serde"]
 semantic = [
     "ra_ap_ide",
     "ra_ap_hir",
@@ -23,14 +28,13 @@ semantic = [
 
 [dependencies]
 syn = { version = "2", features = ["full", "visit", "parsing"] }
-toml = "1"
-serde = { version = "1", features = ["derive"] }
+toml = { version = "1", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = "1"
 pedant-types = { version = "0.13.0", path = "../pedant-types" }
 thiserror = "2"
 sha2 = "0.11"
-serde_json = "1"
 ra_ap_ide = { version = "0.0.342", optional = true }
 ra_ap_hir = { version = "0.0.342", optional = true }
 ra_ap_vfs = { version = "0.0.342", optional = true }
@@ -42,6 +46,11 @@ line-index = { version = "0.1.2", optional = true }
 [dev-dependencies]
 serde_json = "1"
 tempfile = "3"
+# tests/substrate.rs parses Cargo.toml and lib.rs. `toml` is optional above and
+# absent under --no-default-features, so the substrate suite needs its own copy.
+# `syn` is stated here so a later gate on it cannot silently break these tests.
+toml = "1"
+syn = { version = "2", features = ["full", "visit", "parsing"] }
 
 [package.metadata.docs.rs]
 all-features = true

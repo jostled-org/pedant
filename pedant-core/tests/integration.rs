@@ -1,3 +1,4 @@
+#![cfg(feature = "checks")]
 use std::collections::BTreeMap;
 use std::sync::Arc;
 

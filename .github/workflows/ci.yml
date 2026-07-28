@@ -31,6 +31,17 @@ jobs:
       - run: cargo test --workspace --features semantic
       - run: RUSTDOCFLAGS="-D missing_docs" cargo doc --no-deps
       - run: RUSTDOCFLAGS="-D missing_docs" cargo doc --no-deps --features semantic
+      # The substrate configurations. Clippy rather than `cargo check`, because
+      # dead code is the failure mode the item-level `checks` gates guard and
+      # `cargo check` does not fail on it; the workspace declares no
+      # [workspace.lints], so `-D warnings` belongs on the invocation. Clippy
+      # alone is not enough either: these invocations omit `--all-targets`, so
+      # they never compile the test targets, hence the paired `cargo test`.
+      - run: cargo clippy -p pedant-core --no-default-features -- -D warnings
+      - run: RUSTDOCFLAGS="-D missing_docs" cargo doc --no-deps -p pedant-core --no-default-features
+      - run: cargo clippy -p pedant-core --no-default-features --features semantic -- -D warnings
+      - run: cargo test -p pedant-core --no-default-features
+      - run: cargo test -p pedant-core --no-default-features --features semantic
       - run: cargo install cargo-deny && cargo deny check
 
   supply-chain:

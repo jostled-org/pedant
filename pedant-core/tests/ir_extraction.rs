@@ -1,3 +1,4 @@
+#![cfg(feature = "checks")]
 use pedant_core::capabilities::detect_capabilities;
 use pedant_core::check_config::{CheckConfig, NamingCheck, PatternCheck};
 use pedant_core::ir::extract::compute_fingerprints;

@@ -5,6 +5,10 @@ use syn::{Expr, FnArg, ReturnType, Signature, Type};
 
 /// Classifies a single-character binding name. Returns `Some(true)` if generic,
 /// `Some(false)` if contextually allowed, `None` if the name is multi-character.
+///
+/// Judgment-only: `style/naming.rs` is the sole consumer. Its siblings below are
+/// substrate, consumed by `ir/extract`, so the gate is per item.
+#[cfg(feature = "checks")]
 pub(crate) fn classify_single_char(
     name: &str,
     loop_depth: usize,

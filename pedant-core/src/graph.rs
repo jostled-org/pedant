@@ -1,6 +1,10 @@
+#[cfg(feature = "checks")]
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::rc::Rc;
 
+/// Judgment-only: `style/mixed_concerns.rs` is the sole consumer. Its siblings
+/// below are substrate, consumed by `ir/extract`, so the gate is per item.
+#[cfg(feature = "checks")]
 pub(crate) fn bfs_component<'a>(
     start: &'a str,
     adj: &BTreeMap<&'a str, Vec<&'a str>>,

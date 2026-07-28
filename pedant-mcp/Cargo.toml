@@ -13,7 +13,7 @@ name = "pedant-mcp"
 path = "src/main.rs"
 
 [dependencies]
-pedant-core = { version = "0.18.0", path = "../pedant-core" }
+pedant-core = { version = "0.18.0", path = "../pedant-core", features = ["checks"] }
 pedant-lang = { version = "0.4.0", path = "../pedant-lang" }
 pedant-types = { version = "0.13.0", path = "../pedant-types" }
 serde = { version = "1", features = ["derive"] }

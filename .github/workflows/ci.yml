@@ -117,6 +117,10 @@ jobs:
       # `javascript.rs::ts_grammar_enabled` must answer false for a `.ts` file
       # while the tree-sitter path is live for a `.js` one.
       - run: cargo test -p pedant-lang --no-default-features --features ts-javascript
+      # Deliberately unify the dependency's TypeScript grammar without enabling
+      # pedant-lang's matching feature. The boundary test proves pedant-lang
+      # still chooses its regex fallback for TypeScript in this graph.
+      - run: cargo test -p pedant-lang --no-default-features --features ts-javascript,pedant-syntax/ts-typescript
       - run: cargo test -p pedant-syntax -p pedant-snippet --all-features
       # The parserless and Rust-only builds are the only ones that execute the
       # disabled-backend contract: everywhere else `extraction_enabled` is true

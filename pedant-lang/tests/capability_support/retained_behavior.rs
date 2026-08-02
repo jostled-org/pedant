@@ -102,3 +102,37 @@ fn javascript_module_findings_follow_source_order() {
         "require and import findings must interleave by source position"
     );
 }
+
+#[cfg(all(feature = "ts-javascript", not(feature = "ts-typescript")))]
+#[test]
+fn javascript_feature_boundary_ignores_unified_typescript_grammar() {
+    let javascript = analyze_file(
+        Path::new("worker.js"),
+        "const child = require(`child_process`);",
+        pedant_types::Language::JavaScript,
+    )
+    .findings;
+    assert!(
+        has_capability(&javascript, Capability::ProcessExec),
+        "the enabled JavaScript grammar must recognize template require calls: {javascript:?}"
+    );
+
+    let typescript = analyze_file(
+        Path::new("worker.ts"),
+        "const fs = require('fs');",
+        pedant_types::Language::TypeScript,
+    )
+    .findings;
+    let file_read = typescript
+        .iter()
+        .find(|finding| {
+            finding.capability == Capability::FileRead
+                && finding.origin == Some(FindingOrigin::Import)
+        })
+        .unwrap_or_else(|| panic!("TypeScript must fall back to regex analysis: {typescript:?}"));
+
+    assert_eq!(
+        file_read.location.column, 1,
+        "pedant-lang/ts-javascript must not inherit a unified TypeScript grammar"
+    );
+}

@@ -54,8 +54,8 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # Every path below is repository-relative, and the mirror reproduces those
 # relative paths under one temporary root. `cd_repo_root` is what makes the `-d`
 # guards below mean "the trees are gone" instead of "you stood in the wrong
-# directory". All three checks call it; it lives in `check_lib.sh` because all
-# three read a workspace and none of them may read the caller's.
+# directory". All four checks call it; it lives in `check_lib.sh` because all
+# four read a workspace and none of them may read the caller's.
 cd_repo_root
 
 require_tools cargo jq find mktemp dirname wc tr

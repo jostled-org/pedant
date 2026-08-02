@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Shared helpers for the three repository boundary checks in this directory.
+# Shared helpers for the four repository boundary checks in this directory.
 #
-# All three prove a claim about the workspace's shape, and all three prove it
+# All four prove a claim about the workspace's shape, and all four prove it
 # the same way: confirm the tools resolve, capture cargo's output into a shell
 # variable, then read that capture with one `jq` predicate. Stated once, a fix
 # to the tool message or the failure report reaches every check instead of one.

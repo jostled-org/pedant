@@ -16,14 +16,19 @@ jobs:
       FIRST_PARTY_SOURCES: pedant/src pedant-core/src pedant-lang/src pedant-mcp/src pedant-snippet/src pedant-syntax/src pedant-types/src
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # The published-manifest check compares each current Cargo.toml with
+          # its exact release tag. A shallow checkout would silently omit the
+          # evidence that makes an already-published version immutable.
+          fetch-depth: 0
       # The cheapest gate in the job, and it needs no toolchain: shellcheck runs
       # in milliseconds against a checkout alone, so a broken script fails here
-      # rather than after twenty minutes of cargo. The four files this glob
+      # rather than after twenty minutes of cargo. The five files this glob
       # matches are the only committed shell in the repository, and each of the
-      # three checks carries a `# shellcheck source=` directive. A directive is
+      # four checks carries a `# shellcheck source=` directive. A directive is
       # an instruction to a lint; running the lint is what makes it mean
       # anything. `-x` is the flag that follows those directives, so without it
-      # the three would be linted against an unresolved `check_lib.sh` and every
+      # the four would be linted against an unresolved `check_lib.sh` and every
       # helper it defines would read as an unknown command. The runner image
       # ships shellcheck.
       - run: shellcheck -x docs/scripts/check_*.sh
@@ -39,6 +44,7 @@ jobs:
       # `pedant` itself: its claim is about what pedant's own detection reports.
       - run: docs/scripts/check_syntax_dependency_closure.sh
       - run: docs/scripts/check_lang_feature_forwarding.sh
+      - run: docs/scripts/check_published_manifests.sh
       - run: cargo fmt --check
       - run: cargo clippy -- -D warnings
       - run: cargo clippy --workspace --features semantic -- -D warnings

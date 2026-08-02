@@ -16,5 +16,5 @@ ts-go = ["pedant-syntax/ts-go"]
 ts-bash = ["pedant-syntax/ts-bash"]
 
 [dependencies]
-pedant-syntax = { version = "0.1.0", path = "../pedant-syntax", default-features = false }
+pedant-syntax = { version = "0.2.0", path = "../pedant-syntax", default-features = false }
 pedant-types = { version = "0.14.0", path = "../pedant-types" }

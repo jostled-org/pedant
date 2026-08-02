@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/jostled-org/pedant/compare/pedant-snippet-v0.1.0...pedant-snippet-v0.2.0) - 2026-08-02
+
+### Fixed
+
+- [**breaking**] consume pedant-syntax 0.2.0 so packaged builds use one pedant-types version
+
 ## [0.1.0](https://github.com/jostled-org/pedant/releases/tag/pedant-snippet-v0.1.0) - 2026-08-02
 
 ### Added

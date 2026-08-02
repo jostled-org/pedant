@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 
 - [**breaking**] implement syntax-substrate-and-snippet-tool
 
+### Fixed
+
+- require pedant-syntax 0.2.0 so packaged builds use one pedant-types version
+
 ### Other
 
 - *(lang)* split string analysis by concern

@@ -9,15 +9,16 @@ docs/.codebase-snapshot.md
 .manifest.toml
 docs/specs/
 docs/plans/
-# The plan-loop machinery under docs/scripts/ is local tooling, but the three
+# The plan-loop machinery under docs/scripts/ is local tooling, but the four
 # repository boundary checks below are named by .github/workflows/ci.yml and must
-# exist in a fresh checkout. So must check_lib.sh: all three source it, and a
+# exist in a fresh checkout. So must check_lib.sh: all four source it, and a
 # checkout without it fails every boundary check at line one. Ignoring the
 # directory itself would stop git descending into it, so the entries are ignored
-# and the four files re-included.
+# and the five files re-included.
 docs/scripts/*
 !docs/scripts/check_lang_feature_forwarding.sh
 !docs/scripts/check_lib.sh
+!docs/scripts/check_published_manifests.sh
 !docs/scripts/check_syntax_capabilities.sh
 !docs/scripts/check_syntax_dependency_closure.sh
 docs/internal/

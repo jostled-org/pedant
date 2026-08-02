@@ -668,3 +668,6 @@ fn regex_fallback_without_feature() {
         "regex tier should detect Network from Go import"
     );
 }
+
+#[path = "capability_support/retained_behavior.rs"]
+mod retained_behavior;

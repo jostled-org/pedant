@@ -65,6 +65,14 @@ fn detect_language_js_ts_go() {
         Some(Language::JavaScript)
     );
     assert_eq!(
+        detect_language(Path::new("component.jsx"), ""),
+        Some(Language::JavaScript)
+    );
+    assert_eq!(
+        detect_language(Path::new("module.cts"), ""),
+        Some(Language::TypeScript)
+    );
+    assert_eq!(
         detect_language(Path::new("main.go"), ""),
         Some(Language::Go)
     );
@@ -98,4 +106,7 @@ fn detect_language_bash_shebang() {
 
     let sh_shebang = detect_language(Path::new("script"), "#!/bin/sh\necho hello");
     assert_eq!(sh_shebang, Some(Language::Bash));
+
+    let env_options = detect_language(Path::new("script"), "#!/usr/bin/env -S bash -e\necho hello");
+    assert_eq!(env_options, Some(Language::Bash));
 }

@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0](https://github.com/jostled-org/pedant/compare/pedant-lang-v0.4.0...pedant-lang-v0.5.0) - 2026-08-02
+
+### Added
+
+- [**breaking**] implement syntax-substrate-and-snippet-tool
+
+### Other
+
+- *(lang)* split string analysis by concern
+- *(lang)* cover retained syntax migration behavior
+
 ## [0.4.0](https://github.com/jostled-org/pedant/compare/pedant-lang-v0.3.2...pedant-lang-v0.4.0) - 2026-07-18
 
 ### Fixed

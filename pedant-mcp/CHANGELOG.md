@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0](https://github.com/jostled-org/pedant/compare/pedant-mcp-v0.11.1...pedant-mcp-v0.12.0) - 2026-08-02
+
+### Added
+
+- [**breaking**] implement syntax-substrate-and-snippet-tool
+- [**breaking**] implement analysis-surface-split
+
 ## [0.11.1](https://github.com/jostled-org/pedant/compare/pedant-mcp-v0.11.0...pedant-mcp-v0.11.1) - 2026-07-18
 
 ### Other

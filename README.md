@@ -207,6 +207,23 @@ claude mcp add --transport stdio --scope user pedant -- pedant-mcp
 
 Tools: `query_capabilities`, `query_gate_verdicts`, `query_violations`, `search_by_capability`, `explain_finding`, `audit_crate`, `find_structural_duplicates`.
 
+### pedant-snippet
+
+`pedant-snippet` returns the source declaration enclosing one file location, byte for byte. It serves the same operation as a CLI and as a stdio MCP server. It parses Rust, Python, JavaScript, TypeScript, TSX, Go, and Bash.
+
+```bash
+cargo install pedant-snippet
+claude mcp add --transport stdio --scope user pedant-snippet -- pedant-snippet mcp
+```
+
+The CLI takes the location and the output shape:
+
+```bash
+pedant-snippet extract --file src/lib.rs --line 42 --column 9 --format text
+```
+
+`--column` is optional and `--format` defaults to `json`. Tool: `enclosing_unit`.
+
 ## Configuration
 
 ```toml

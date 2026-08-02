@@ -1,0 +1,43 @@
+[package]
+name = "pedant-snippet"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+description = "Byte-exact enclosing-declaration extraction as a library, CLI, and MCP server"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/jostled-org/pedant"
+readme = "../README.md"
+keywords = ["mcp", "extraction", "syntax", "tree-sitter", "snippet"]
+categories = ["development-tools", "command-line-utilities"]
+
+[[bin]]
+name = "pedant-snippet"
+path = "src/main.rs"
+
+[dependencies]
+pedant-syntax = { version = "0.1.0", path = "../pedant-syntax", default-features = false, features = [
+  "rust",
+  "ts-python",
+  "ts-javascript",
+  "ts-typescript",
+  "ts-go",
+  "ts-bash",
+] }
+clap = { version = "4", features = ["derive"] }
+rmcp = { version = "2", features = ["server", "transport-io"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+# `time` is not optional: rmcp's normal shutdown path calls `tokio::time::timeout`,
+# which panics when the timer driver is off. Relying on another crate's manifest
+# to pull the feature in leaves this binary one semver-compatible release away
+# from panicking on every clean exit.
+tokio = { version = "1", features = ["rt", "time"] }
+
+[dev-dependencies]
+serde_json = "1"
+tempfile = "3"
+# No `rt-multi-thread`: every test is a bare `#[tokio::test]`, which builds the
+# current-thread runtime the binary itself uses, and nothing here spawns onto a
+# second scheduler.
+tokio = { version = "1", features = ["macros", "rt", "process", "io-util", "time"] }

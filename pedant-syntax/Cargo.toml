@@ -1,0 +1,59 @@
+[package]
+name = "pedant-syntax"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+description = "Language classification, parser selection, and enclosing-declaration extraction for pedant"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/jostled-org/pedant"
+readme = "../README.md"
+keywords = ["parser", "tree-sitter", "syntax", "extraction", "static-analysis"]
+
+[features]
+default = []
+rust = ["dep:syn", "dep:proc-macro2"]
+ts-python = ["_ts", "dep:tree-sitter-python"]
+ts-javascript = ["_ts", "dep:tree-sitter-javascript"]
+ts-typescript = ["_ts", "dep:tree-sitter-typescript"]
+ts-go = ["_ts", "dep:tree-sitter-go"]
+ts-bash = ["_ts", "dep:tree-sitter-bash"]
+# Internal, and never selected on its own: it means "this build links at least
+# one grammar", so every `ts-*` feature enables it. The shared tree-sitter
+# module, the traversal, and the tree-sitter arm of backend dispatch gate on
+# this one name instead of on a grammar list that a seventh backend would have
+# to be added to in ten places. Enabling it without a grammar leaves the
+# recognizer with no language to recognize, which is a dead-code error, not a
+# supported configuration.
+_ts = ["dep:tree-sitter"]
+
+[dependencies]
+pedant-types = { version = "0.13.0", path = "../pedant-types" }
+serde = { version = "1", features = ["derive"] }
+# Both parser crates take their minimum feature set, because a consumer that
+# links only this crate must not pay for `syn`'s derive, clone, and proc-macro
+# surfaces to extract a declaration. `printing` stays: `syn::spanned::Spanned`
+# is gated on `parsing` and `printing` together.
+syn = { version = "2", default-features = false, features = [
+  "full",
+  "visit",
+  "parsing",
+  "printing",
+], optional = true }
+proc-macro2 = { version = "1", default-features = false, features = [
+  "span-locations",
+], optional = true }
+tree-sitter = { version = "0.26", optional = true }
+tree-sitter-python = { version = "0.25", optional = true }
+tree-sitter-javascript = { version = "0.25", optional = true }
+tree-sitter-typescript = { version = "0.23", optional = true }
+tree-sitter-go = { version = "0.25", optional = true }
+tree-sitter-bash = { version = "0.25", optional = true }
+
+[dev-dependencies]
+serde_json = "1"
+
+# Every feature is off by default, so the published page would otherwise carry
+# no `tree_sitter` module, no backend, and no `invalidate_parser_cache`.
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

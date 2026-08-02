@@ -9,13 +9,27 @@
 
 use std::sync::Arc;
 
+// Grammar selection, traversal, and the node type the AST signatures below name
+// all come from `pedant-syntax`, which owns the grammar and the parser version.
+// Naming the node type through a second `tree-sitter` dependency here would pin
+// the same crate twice. One gated import serves the whole module: every helper
+// below sits under the same feature, so repeating the `use` inside each one
+// restates that gate without narrowing anything.
+#[cfg(feature = "ts-bash")]
+use pedant_syntax::{
+    SyntaxLanguage,
+    tree_sitter::{self, node_text, parse, walk_descendants},
+};
 use pedant_types::{Capability, CapabilityFinding, FindingOrigin, Language, SourceLocation};
 
-use crate::string_analysis::is_shell_command_boundary;
+use crate::string_analysis::{
+    CommentStyle, detect_string_literal_findings, is_shell_command_boundary, scan_string_literals,
+};
 
-/// Command patterns: the command name at a word boundary mapped to capability.
+/// Network commands: the command name at a word boundary mapped to capability.
+///
+/// Also read by `manifest.rs`, which scans recipe bodies with this group alone.
 pub(crate) const NETWORK_COMMAND_PATTERNS: &[(&str, Capability)] = &[
-    // Network
     ("curl", Capability::Network),
     ("wget", Capability::Network),
     ("nc", Capability::Network),
@@ -25,22 +39,7 @@ pub(crate) const NETWORK_COMMAND_PATTERNS: &[(&str, Capability)] = &[
     ("rsync", Capability::Network),
 ];
 
-pub(crate) const PROCESS_EXEC_COMMAND_PATTERNS: &[(&str, Capability)] = &[
-    // Process execution
-    ("exec", Capability::ProcessExec),
-    ("eval", Capability::ProcessExec),
-    ("bash -c", Capability::ProcessExec),
-    ("sh -c", Capability::ProcessExec),
-];
-
-const COMMAND_PATTERNS: &[(&str, Capability)] = &[
-    ("curl", Capability::Network),
-    ("wget", Capability::Network),
-    ("nc", Capability::Network),
-    ("ncat", Capability::Network),
-    ("ssh", Capability::Network),
-    ("scp", Capability::Network),
-    ("rsync", Capability::Network),
+const FILE_WRITE_COMMAND_PATTERNS: &[(&str, Capability)] = &[
     ("cp", Capability::FileWrite),
     ("mv", Capability::FileWrite),
     ("rm", Capability::FileWrite),
@@ -48,17 +47,72 @@ const COMMAND_PATTERNS: &[(&str, Capability)] = &[
     ("touch", Capability::FileWrite),
     ("tee", Capability::FileWrite),
     ("dd", Capability::FileWrite),
+];
+
+/// Process-execution commands, also read by `manifest.rs`.
+pub(crate) const PROCESS_EXEC_COMMAND_PATTERNS: &[(&str, Capability)] = &[
     ("exec", Capability::ProcessExec),
     ("eval", Capability::ProcessExec),
     ("bash -c", Capability::ProcessExec),
     ("sh -c", Capability::ProcessExec),
+];
+
+const ENV_COMMAND_PATTERNS: &[(&str, Capability)] = &[
     ("env", Capability::EnvAccess),
     ("printenv", Capability::EnvAccess),
     ("export", Capability::EnvAccess),
+];
+
+const CRYPTO_COMMAND_PATTERNS: &[(&str, Capability)] = &[
     ("openssl", Capability::Crypto),
     ("gpg", Capability::Crypto),
     ("ssh-keygen", Capability::Crypto),
 ];
+
+/// The whole Bash command vocabulary, one group per capability.
+///
+/// Two of the groups are `pub(crate)` because `manifest.rs` scans with them
+/// alone. Restating their rows in a flat table made a new network command a
+/// three-place edit with nothing checking that all three landed, so the groups
+/// are the single source and the flat table below is derived from them.
+const COMMAND_PATTERN_GROUPS: &[&[(&str, Capability)]] = &[
+    NETWORK_COMMAND_PATTERNS,
+    FILE_WRITE_COMMAND_PATTERNS,
+    PROCESS_EXEC_COMMAND_PATTERNS,
+    ENV_COMMAND_PATTERNS,
+    CRYPTO_COMMAND_PATTERNS,
+];
+
+const COMMAND_PATTERN_COUNT: usize = NETWORK_COMMAND_PATTERNS.len()
+    + FILE_WRITE_COMMAND_PATTERNS.len()
+    + PROCESS_EXEC_COMMAND_PATTERNS.len()
+    + ENV_COMMAND_PATTERNS.len()
+    + CRYPTO_COMMAND_PATTERNS.len();
+
+/// Flatten the groups into one table at compile time, in group order.
+const fn flatten_command_groups() -> [(&'static str, Capability); COMMAND_PATTERN_COUNT] {
+    let mut table = [("", Capability::Network); COMMAND_PATTERN_COUNT];
+    let mut written = 0;
+    let mut group = 0;
+    while group < COMMAND_PATTERN_GROUPS.len() {
+        let rows = COMMAND_PATTERN_GROUPS[group];
+        let mut row = 0;
+        while row < rows.len() {
+            table[written] = rows[row];
+            written += 1;
+            row += 1;
+        }
+        group += 1;
+    }
+    table
+}
+
+/// Every command pattern, flattened. Both scanners read this one table.
+///
+/// A `static` rather than a `const`: both readers take it by reference, and a
+/// by-value `const` would leave that to rvalue static promotion instead of
+/// naming the one allocation outright.
+static COMMAND_PATTERNS: [(&str, Capability); COMMAND_PATTERN_COUNT] = flatten_command_groups();
 
 /// Analyze Bash source for capability findings.
 pub(crate) fn analyze(path: &Arc<str>, source: &str) -> Box<[CapabilityFinding]> {
@@ -69,6 +123,13 @@ pub(crate) fn analyze(path: &Arc<str>, source: &str) -> Box<[CapabilityFinding]>
 
     #[cfg(not(feature = "ts-bash"))]
     analyze_regex(path, source, &mut findings);
+
+    // Python, JavaScript, and Go all end here, and Bash literals hold the same
+    // evidence: a hard-coded endpoint, a PEM block, an `AKIA…` credential. The
+    // scanner skips `#` comments, which shell shares — but only at a word
+    // start, so `$#` and `${var##*/}` keep the rest of their line as code.
+    let literals = scan_string_literals(source, CommentStyle::ShellWord);
+    detect_string_literal_findings(path, &literals, Language::Bash, &mut findings);
 
     findings.into_boxed_slice()
 }
@@ -98,7 +159,7 @@ fn detect_commands(
     line_num: usize,
     findings: &mut Vec<CapabilityFinding>,
 ) {
-    detect_commands_with_patterns(path, line, line_num, COMMAND_PATTERNS, None, findings);
+    detect_commands_with_patterns(path, line, line_num, &COMMAND_PATTERNS, None, findings);
 }
 
 pub(crate) fn detect_commands_with_patterns(
@@ -134,44 +195,13 @@ pub(crate) fn detect_commands_with_patterns(
 
 // ── Tree-sitter structured extraction ──────────────────────────────────
 
-/// Single-word commands mapped to capabilities for tree-sitter lookup.
-///
-/// Multi-word patterns (`bash -c`, `sh -c`) are handled structurally by
-/// inspecting command arguments rather than text matching.
-#[cfg(feature = "ts-bash")]
-const TS_COMMAND_TABLE: &[(&str, Capability)] = &[
-    ("curl", Capability::Network),
-    ("wget", Capability::Network),
-    ("nc", Capability::Network),
-    ("ncat", Capability::Network),
-    ("ssh", Capability::Network),
-    ("scp", Capability::Network),
-    ("rsync", Capability::Network),
-    ("cp", Capability::FileWrite),
-    ("mv", Capability::FileWrite),
-    ("rm", Capability::FileWrite),
-    ("mkdir", Capability::FileWrite),
-    ("touch", Capability::FileWrite),
-    ("tee", Capability::FileWrite),
-    ("dd", Capability::FileWrite),
-    ("exec", Capability::ProcessExec),
-    ("eval", Capability::ProcessExec),
-    ("env", Capability::EnvAccess),
-    ("printenv", Capability::EnvAccess),
-    ("openssl", Capability::Crypto),
-    ("gpg", Capability::Crypto),
-    ("ssh-keygen", Capability::Crypto),
-];
-
 /// Tree-sitter Bash analysis: parses source into an AST and walks
 /// `command_name` nodes for structured command detection. Falls back to
 /// regex only when parsing fails.
 #[cfg(feature = "ts-bash")]
 fn ts_analyze(path: &Arc<str>, source: &str, findings: &mut Vec<CapabilityFinding>) {
-    use crate::tree_sitter_ext::parse;
-
     let bytes = source.as_bytes();
-    let tree = match parse(bytes, tree_sitter_bash::LANGUAGE.into()) {
+    let tree = match parse(bytes, SyntaxLanguage::Bash) {
         Some(t) => t,
         None => {
             analyze_regex(path, source, findings);
@@ -195,8 +225,6 @@ fn ts_extract_commands(
     path: &Arc<str>,
     findings: &mut Vec<CapabilityFinding>,
 ) {
-    use crate::tree_sitter_ext::walk_descendants;
-
     walk_descendants(root, |node| match node.kind() {
         "command" => ts_handle_command(node, source, path, findings),
         "declaration_command" => ts_handle_declaration(node, source, path, findings),
@@ -212,8 +240,6 @@ fn ts_handle_command(
     path: &Arc<str>,
     findings: &mut Vec<CapabilityFinding>,
 ) {
-    use crate::tree_sitter_ext::node_text;
-
     let name_node = match node.child_by_field_name("name") {
         Some(n) => n,
         None => return,
@@ -230,20 +256,22 @@ fn ts_handle_command(
         _ => {}
     }
 
-    // Lookup single-word command in capability table.
-    for &(pattern, capability) in TS_COMMAND_TABLE {
-        if cmd == pattern {
-            emit_ts_finding(path, node, pattern, capability, findings);
-            return;
-        }
+    // Look the command name up in the shared table. A `command` node's name is
+    // one word, so the equality alone excludes every multi-word row — `bash -c`
+    // and `sh -c` match structurally above — and that is what lets one table
+    // serve both scanners instead of a second copy drifting from the first.
+    // `("export", EnvAccess)` is reachable here for the same reason it is in the
+    // table at all, but `export` parses as `declaration_command` rather than
+    // `command`, so `ts_handle_declaration` stays its only emitter.
+    let matched = COMMAND_PATTERNS.iter().find(|(pattern, _)| cmd == *pattern);
+    if let Some(&(pattern, capability)) = matched {
+        emit_ts_finding(path, node, pattern, capability, findings);
     }
 }
 
 /// Check whether a command node has a `-c` argument among its children.
 #[cfg(feature = "ts-bash")]
 fn has_dash_c_arg(command: tree_sitter::Node<'_>, source: &[u8]) -> bool {
-    use crate::tree_sitter_ext::node_text;
-
     let mut cursor = command.walk();
     for child in command.children(&mut cursor) {
         match child.kind() {
@@ -262,8 +290,6 @@ fn ts_handle_declaration(
     path: &Arc<str>,
     findings: &mut Vec<CapabilityFinding>,
 ) {
-    use crate::tree_sitter_ext::node_text;
-
     // The first child of a declaration_command is the keyword (export, declare, local, etc.)
     let keyword = match node.child(0) {
         Some(k) => node_text(k, source),

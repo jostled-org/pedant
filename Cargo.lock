@@ -1208,13 +1208,8 @@ dependencies = [
 name = "pedant-lang"
 version = "0.4.0"
 dependencies = [
+ "pedant-syntax",
  "pedant-types",
- "tree-sitter",
- "tree-sitter-bash",
- "tree-sitter-go",
- "tree-sitter-javascript",
- "tree-sitter-python",
- "tree-sitter-typescript",
 ]
 
 [[package]]
@@ -1233,6 +1228,37 @@ dependencies = [
  "tokio",
  "toml",
  "walkdir",
+]
+
+[[package]]
+name = "pedant-snippet"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "pedant-syntax",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "pedant-syntax"
+version = "0.1.0"
+dependencies = [
+ "pedant-types",
+ "proc-macro2",
+ "serde",
+ "serde_json",
+ "syn",
+ "tree-sitter",
+ "tree-sitter-bash",
+ "tree-sitter-go",
+ "tree-sitter-javascript",
+ "tree-sitter-python",
+ "tree-sitter-typescript",
 ]
 
 [[package]]

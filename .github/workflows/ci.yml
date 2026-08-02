@@ -8,12 +8,37 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    env:
+      # The seven first-party source trees, named once. `pedant-check` and
+      # `pedant-gate` both scan exactly this set, and a crate added to one list
+      # and forgotten in the other drops gate coverage — capability attestation
+      # — with nothing turning red.
+      FIRST_PARTY_SOURCES: pedant/src pedant-core/src pedant-lang/src pedant-mcp/src pedant-snippet/src pedant-syntax/src pedant-types/src
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      # The cheapest gate in the job, and it needs no toolchain: shellcheck runs
+      # in milliseconds against a checkout alone, so a broken script fails here
+      # rather than after twenty minutes of cargo. The four files this glob
+      # matches are the only committed shell in the repository, and each of the
+      # three checks carries a `# shellcheck source=` directive. A directive is
+      # an instruction to a lint; running the lint is what makes it mean
+      # anything. `-x` is the flag that follows those directives, so without it
+      # the three would be linted against an unresolved `check_lib.sh` and every
+      # helper it defines would read as an unknown command. The runner image
+      # ships shellcheck.
+      - run: shellcheck -x docs/scripts/check_*.sh
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+      # Two of the three boundary checks need only cargo's resolver — about a
+      # second between them, no compile — so they run ahead of everything that
+      # builds. A forbidden crate edge or a dropped feature forwarding fails in
+      # seconds instead of behind the whole build.
+      # `check_syntax_capabilities.sh` stays below, because it builds and runs
+      # `pedant` itself: its claim is about what pedant's own detection reports.
+      - run: docs/scripts/check_syntax_dependency_closure.sh
+      - run: docs/scripts/check_lang_feature_forwarding.sh
       - run: cargo fmt --check
       - run: cargo clippy -- -D warnings
       - run: cargo clippy --workspace --features semantic -- -D warnings
@@ -23,10 +48,17 @@ jobs:
       # reached 42 of 53 sources and never once covered pedant-core/src/ir/semantic/.
       - uses: ./.github/actions/pedant-check
         with:
-          paths: pedant/src pedant-core/src pedant-lang/src pedant-mcp/src pedant-types/src
+          paths: ${{ env.FIRST_PARTY_SOURCES }}
+      # pedant-snippet and pedant-syntax are the two crates whose test helpers
+      # are held to the same structural limits as production source. The other
+      # five carry `tests/` directories that no step here checks. Test sources
+      # stay out of the capability attestation surface either way.
+      - uses: ./.github/actions/pedant-check
+        with:
+          paths: pedant-snippet/tests pedant-syntax/tests
       - uses: ./.github/actions/pedant-gate
         with:
-          paths: pedant/src pedant-core/src pedant-lang/src pedant-mcp/src pedant-types/src
+          paths: ${{ env.FIRST_PARTY_SOURCES }}
       - run: cargo test
       - run: cargo test --workspace --features semantic
       - run: RUSTDOCFLAGS="-D missing_docs" cargo doc --no-deps
@@ -42,6 +74,63 @@ jobs:
       - run: cargo clippy -p pedant-core --no-default-features --features semantic -- -D warnings
       - run: cargo test -p pedant-core --no-default-features
       - run: cargo test -p pedant-core --no-default-features --features semantic
+      # The third boundary check, and the only one that needs a build: it runs
+      # pedant's own capability detection over the two first-party trees, so a
+      # new write, spawn, or network call there fails here rather than arriving
+      # as a documented exception. Its two cargo-only siblings run near the top
+      # of this job.
+      - run: docs/scripts/check_syntax_capabilities.sh
+      - run: cargo clippy -p pedant-syntax -p pedant-snippet --all-targets --all-features -- -D warnings
+      - run: RUSTDOCFLAGS="-D missing_docs" cargo doc --no-deps -p pedant-syntax -p pedant-snippet --all-features
+      # `pedant-syntax` gates parser dispatch on each backend feature, so every
+      # configuration a consumer can enable is its own compile path and
+      # `--all-features` proves nothing about the one that enables `rust` alone.
+      # These carry `--all-targets` because the test root gates its modules on
+      # the same features: without it no CI job ever compiles a single-feature
+      # test configuration, and a module that vanishes under one feature reads
+      # as a passing run.
+      - run: cargo clippy -p pedant-syntax --no-default-features --all-targets -- -D warnings
+      - run: cargo clippy -p pedant-syntax --no-default-features --features rust --all-targets -- -D warnings
+      - run: cargo clippy -p pedant-syntax --no-default-features --features ts-python --all-targets -- -D warnings
+      - run: cargo clippy -p pedant-syntax --no-default-features --features ts-javascript --all-targets -- -D warnings
+      - run: cargo clippy -p pedant-syntax --no-default-features --features ts-typescript --all-targets -- -D warnings
+      - run: cargo clippy -p pedant-syntax --no-default-features --features ts-go --all-targets -- -D warnings
+      - run: cargo clippy -p pedant-syntax --no-default-features --features ts-bash --all-targets -- -D warnings
+      # `pedant-lang` forwards each backend to `pedant-syntax`, so every
+      # single-feature configuration is a separate compile path. These carry
+      # `--all-targets` for the same reason the block above does:
+      # `tests/capability.rs` gates twelve tests on individual `ts-*` features,
+      # and without it no job ever compiled one of those configurations.
+      - run: cargo clippy -p pedant-lang --no-default-features --all-targets -- -D warnings
+      - run: cargo clippy -p pedant-lang --no-default-features --features ts-python --all-targets -- -D warnings
+      - run: cargo clippy -p pedant-lang --no-default-features --features ts-javascript --all-targets -- -D warnings
+      - run: cargo clippy -p pedant-lang --no-default-features --features ts-typescript --all-targets -- -D warnings
+      - run: cargo clippy -p pedant-lang --no-default-features --features ts-go --all-targets -- -D warnings
+      - run: cargo clippy -p pedant-lang --no-default-features --features ts-bash --all-targets -- -D warnings
+      - run: cargo test -p pedant-lang --no-default-features
+      # Clippy proving a mixed `ts-*` configuration compiles is not the same as
+      # running it, and until this step no job ran one. Every `#[cfg(feature =
+      # "ts-*")]` test in `tests/capability.rs` gates on a single positive
+      # feature, so all twelve execute under the default-feature `cargo test`
+      # above and none under one grammar alone. This run links JavaScript and
+      # leaves TypeScript, Python, Go, and Bash out — the configuration where
+      # `javascript.rs::ts_grammar_enabled` must answer false for a `.ts` file
+      # while the tree-sitter path is live for a `.js` one.
+      - run: cargo test -p pedant-lang --no-default-features --features ts-javascript
+      - run: cargo test -p pedant-syntax -p pedant-snippet --all-features
+      # The parserless and Rust-only builds are the only ones that execute the
+      # disabled-backend contract: everywhere else `extraction_enabled` is true
+      # for every language and those assertions are skipped, so clippy proving
+      # they compile is not the same as running them.
+      - run: cargo test -p pedant-syntax --no-default-features
+      - run: cargo test -p pedant-syntax --no-default-features --features rust
+      # One grammar and five disabled ones. This is the only configuration that
+      # compiles the shared tree-sitter support module and still answers false
+      # for `extraction_enabled`, so it is the only one where the disabled-
+      # grammar assertions in that module execute at all. Under `--all-features`
+      # their loops run zero bodies, and under the two runs above the module
+      # does not compile.
+      - run: cargo test -p pedant-syntax --no-default-features --features ts-python
       - run: cargo install cargo-deny && cargo deny check
 
   supply-chain:

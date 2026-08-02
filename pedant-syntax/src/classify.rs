@@ -1,3 +1,9 @@
+//! Path, extension, and shebang classification.
+//!
+//! Capability routing and syntax dispatch ask the same question about a file,
+//! so they read the same answer here rather than keeping two rule sets that can
+//! disagree about what a path is.
+
 use std::path::Path;
 
 use pedant_types::Language;
@@ -35,15 +41,22 @@ pub fn classify_path(path: &Path) -> FileClassification {
         .unwrap_or("");
     match filename {
         "package.json" | "setup.py" | "pyproject.toml" | "Makefile" | "makefile"
-        | "GNUmakefile" | "justfile" | "Justfile" => return FileClassification::Manifest,
-        _ => {}
+        | "GNUmakefile" | "justfile" | "Justfile" => FileClassification::Manifest,
+        _ => classify_extension(path),
     }
+}
 
+/// Classify a path a manifest name does not claim, by extension alone.
+///
+/// Visible to the crate so syntax dispatch can ask the extension question about
+/// a path a manifest name already claimed, which is how `setup.py` resolves as
+/// Python source without a second extension table.
+pub(crate) fn classify_extension(path: &Path) -> FileClassification {
     match path.extension().and_then(|ext| ext.to_str()) {
         Some("rs") => FileClassification::Rust,
         Some("py") => FileClassification::Source(Language::Python),
-        Some("js" | "mjs" | "cjs") => FileClassification::Source(Language::JavaScript),
-        Some("ts" | "tsx" | "mts") => FileClassification::Source(Language::TypeScript),
+        Some("js" | "jsx" | "mjs" | "cjs") => FileClassification::Source(Language::JavaScript),
+        Some("ts" | "tsx" | "mts" | "cts") => FileClassification::Source(Language::TypeScript),
         Some("go") => FileClassification::SourceAndManifest(Language::Go),
         Some("sh" | "bash" | "zsh") => FileClassification::Source(Language::Bash),
         _ => FileClassification::Unsupported,
@@ -54,25 +67,37 @@ pub fn classify_path(path: &Path) -> FileClassification {
 ///
 /// Falls back to shebang detection when no extension matches.
 pub fn detect_language(path: &Path, source: &str) -> Option<Language> {
-    classify_path(path)
+    language_or_shebang(classify_path(path), source)
+}
+
+/// The language `classification` names, or the one a leading shebang names.
+///
+/// The one tail both [`detect_language`] and [`crate::syntax_language`] read,
+/// so capability routing and syntax dispatch cannot disagree about when a
+/// shebang speaks.
+pub(crate) fn language_or_shebang(
+    classification: FileClassification,
+    source: &str,
+) -> Option<Language> {
+    classification
         .language()
         .or_else(|| detect_from_shebang(source))
 }
 
+/// The language a leading shebang names, for a path no extension claimed.
 fn detect_from_shebang(source: &str) -> Option<Language> {
-    let first_line = source.lines().next()?;
-    if !first_line.starts_with("#!") {
-        return None;
-    }
-    let shebang = first_line.trim_start_matches("#!");
+    let shebang = source.lines().next()?.strip_prefix("#!")?;
+    let mut words = shebang.split_whitespace();
     // Handle both `/bin/bash` and `/usr/bin/env bash` forms.
-    let command = shebang.rsplit('/').next()?.split_whitespace().next()?;
-    // For `#!/usr/bin/env X`, resolve the interpreter name after `env`.
-    let interpreter = match command {
-        "env" => shebang.split_whitespace().nth(1)?,
-        other => other,
-    };
-    language_from_interpreter(interpreter)
+    let command = words.next()?.rsplit('/').next()?;
+    match command {
+        // `env` takes its own options before the program it runs, so
+        // `#!/usr/bin/env -S python3` names `python3` rather than `-S`.
+        "env" => words
+            .find(|word| !word.starts_with('-'))
+            .and_then(language_from_interpreter),
+        other => language_from_interpreter(other),
+    }
 }
 
 fn language_from_interpreter(name: &str) -> Option<Language> {

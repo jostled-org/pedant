@@ -5,6 +5,12 @@ name = "pedant-types"
 name = "pedant-core"
 
 [[package]]
+name = "pedant-syntax"
+
+[[package]]
+name = "pedant-snippet"
+
+[[package]]
 name = "pedant-lang"
 
 [[package]]

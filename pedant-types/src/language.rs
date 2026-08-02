@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 pub enum Language {
     /// Python (`.py`).
     Python,
-    /// JavaScript (`.js`, `.mjs`, `.cjs`).
+    /// JavaScript (`.js`, `.jsx`, `.mjs`, `.cjs`).
     JavaScript,
-    /// TypeScript (`.ts`, `.tsx`, `.mts`).
+    /// TypeScript (`.ts`, `.tsx`, `.mts`, `.cts`).
     TypeScript,
     /// Go (`.go`).
     Go,

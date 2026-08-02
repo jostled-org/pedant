@@ -201,11 +201,44 @@ pub(crate) const STRING_LITERAL_CHECKS: &[StringLiteralCheck] = &[
     (check_string_for_pem, Capability::Crypto),
 ];
 
+/// When an unquoted `#` opens a comment.
+///
+/// Python and shell share one literal scanner but not one comment rule, and the
+/// difference is not cosmetic: reading `#` the Python way in a shell script
+/// swallows the rest of every line holding `$#` or `${var##*/}`, and reading it
+/// the shell way in Python misses `x=1#note`. The caller names its language's
+/// rule so neither reading leaks into the other.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CommentStyle {
+    /// Any unquoted `#` opens a comment, wherever it sits. Python's rule.
+    Always,
+    /// `#` opens a comment only at a word start — start of input, or after
+    /// space, tab, newline, `;`, `|`, `&`, or `(`. Bash's rule, which leaves
+    /// `$#`, `${1#--}`, and `${var##*/}` as the parameter expansions they are.
+    ShellWord,
+}
+
+/// Whether the `#` at `pos` opens a comment under `style`.
+fn opens_comment(bytes: &[u8], pos: usize, style: CommentStyle) -> bool {
+    match (style, pos) {
+        (CommentStyle::Always, _) | (CommentStyle::ShellWord, 0) => true,
+        (CommentStyle::ShellWord, _) => matches!(
+            bytes[pos - 1],
+            b' ' | b'\t' | b'\n' | b';' | b'|' | b'&' | b'('
+        ),
+    }
+}
+
 /// Extract string literals from source, yielding (value, line, column) tuples.
 ///
 /// Handles single-quoted and double-quoted strings with backslash escapes.
 /// Does not handle triple-quoted strings or raw strings in v1.
-pub(crate) fn scan_string_literals(source: &str) -> Box<[(Box<str>, usize, usize)]> {
+///
+/// `comments` names the language's `#` rule; see [`CommentStyle`].
+pub(crate) fn scan_string_literals(
+    source: &str,
+    comments: CommentStyle,
+) -> Box<[(Box<str>, usize, usize)]> {
     let mut results = Vec::new();
     let bytes = source.as_bytes();
     let mut i = 0;
@@ -219,7 +252,7 @@ pub(crate) fn scan_string_literals(source: &str) -> Box<[(Box<str>, usize, usize
                 line_start = i + 1;
                 i += 1;
             }
-            b'#' => {
+            b'#' if opens_comment(bytes, i, comments) => {
                 i = skip_to_eol(bytes, i);
             }
             b'\'' | b'"' => {

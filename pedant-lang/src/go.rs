@@ -5,9 +5,21 @@
 //! (`os.Open`) to their imported package accurately. Falls back to regex
 //! when disabled.
 
+#[cfg(feature = "ts-go")]
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+// Grammar selection, traversal, and the node type the AST signatures below name
+// all come from `pedant-syntax`, which owns the grammar and the parser version.
+// Naming the node type through a second `tree-sitter` dependency here would pin
+// the same crate twice. One gated import serves the whole module: every helper
+// below sits under the same feature, so repeating the `use` inside each one
+// restates that gate without narrowing anything.
+#[cfg(feature = "ts-go")]
+use pedant_syntax::{
+    SyntaxLanguage,
+    tree_sitter::{self, node_text, parse, walk_descendants},
+};
 use pedant_types::{Capability, CapabilityFinding, FindingOrigin, Language, SourceLocation};
 
 use crate::string_analysis::{
@@ -157,10 +169,8 @@ fn emit_import_findings(
 
 #[cfg(feature = "ts-go")]
 fn ts_analyze(path: &Arc<str>, source: &str, findings: &mut Vec<CapabilityFinding>) {
-    use crate::tree_sitter_ext::parse;
-
     let bytes = source.as_bytes();
-    let tree = match parse(bytes, tree_sitter_go::LANGUAGE.into()) {
+    let tree = match parse(bytes, SyntaxLanguage::Go) {
         Some(t) => t,
         None => {
             detect_imports(path, source, findings);
@@ -208,8 +218,6 @@ fn ts_extract_imports(
     findings: &mut Vec<CapabilityFinding>,
     pkg_map: &mut BTreeMap<Box<str>, Box<str>>,
 ) {
-    use crate::tree_sitter_ext::{node_text, walk_descendants};
-
     walk_descendants(root, |node| {
         if node.kind() != "import_spec" {
             return;
@@ -268,8 +276,6 @@ fn ts_detect_qualified_calls(
     pkg_map: &BTreeMap<Box<str>, Box<str>>,
     findings: &mut Vec<CapabilityFinding>,
 ) {
-    use crate::tree_sitter_ext::{node_text, walk_descendants};
-
     walk_descendants(root, |node| {
         if node.kind() != "call_expression" {
             return;

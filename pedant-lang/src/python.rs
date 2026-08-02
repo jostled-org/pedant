@@ -4,13 +4,25 @@
 //! for structured AST extraction. This handles aliased imports (`import X as Y`)
 //! and multi-line imports accurately. Falls back to regex when disabled.
 
+#[cfg(feature = "ts-python")]
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+// Grammar selection, traversal, and the node type the AST signatures below name
+// all come from `pedant-syntax`, which owns the grammar and the parser version.
+// Naming the node type through a second `tree-sitter` dependency here would pin
+// the same crate twice. One gated import serves the whole module: every helper
+// below sits under the same feature, so repeating the `use` inside each one
+// restates that gate without narrowing anything.
+#[cfg(feature = "ts-python")]
+use pedant_syntax::{
+    SyntaxLanguage,
+    tree_sitter::{self, node_text, parse, walk_descendants},
+};
 use pedant_types::{Capability, CapabilityFinding, FindingOrigin, Language, SourceLocation};
 
 use crate::string_analysis::{
-    detect_call_sites, detect_string_literal_findings, scan_string_literals,
+    CommentStyle, detect_call_sites, detect_string_literal_findings, scan_string_literals,
 };
 
 /// Import-level pattern: module name prefix mapped to capability.
@@ -75,7 +87,9 @@ pub(crate) fn analyze(path: &Arc<str>, source: &str) -> Box<[CapabilityFinding]>
         );
     }
 
-    let literals = scan_string_literals(source);
+    // Python ends a line at any unquoted `#`, including one with no space in
+    // front of it: `x=1#note` is a comment.
+    let literals = scan_string_literals(source, CommentStyle::Always);
     detect_string_literal_findings(path, &literals, Language::Python, &mut findings);
 
     findings.into_boxed_slice()
@@ -129,10 +143,8 @@ fn detect_imports(path: &Arc<str>, source: &str, findings: &mut Vec<CapabilityFi
 
 #[cfg(feature = "ts-python")]
 fn ts_analyze(path: &Arc<str>, source: &str, findings: &mut Vec<CapabilityFinding>) {
-    use crate::tree_sitter_ext::parse;
-
     let bytes = source.as_bytes();
-    let tree = match parse(bytes, tree_sitter_python::LANGUAGE.into()) {
+    let tree = match parse(bytes, SyntaxLanguage::Python) {
         Some(t) => t,
         None => {
             // Fall back to regex on parse failure.
@@ -161,8 +173,6 @@ fn ts_extract_imports(
     findings: &mut Vec<CapabilityFinding>,
     alias_map: &mut BTreeMap<Box<str>, Box<str>>,
 ) {
-    use crate::tree_sitter_ext::walk_descendants;
-
     walk_descendants(root, |node| match node.kind() {
         "import_statement" => {
             ts_process_import_statement(node, source, path, findings, alias_map);
@@ -183,8 +193,6 @@ fn ts_process_import_statement(
     findings: &mut Vec<CapabilityFinding>,
     alias_map: &mut BTreeMap<Box<str>, Box<str>>,
 ) {
-    use crate::tree_sitter_ext::node_text;
-
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) {
         let (module_name, alias) = match child.kind() {
@@ -218,8 +226,6 @@ fn ts_process_import_from_statement(
     path: &Arc<str>,
     findings: &mut Vec<CapabilityFinding>,
 ) {
-    use crate::tree_sitter_ext::node_text;
-
     let module_node = match node.child_by_field_name("module_name") {
         Some(n) => n,
         None => return,
@@ -280,8 +286,6 @@ fn resolve_aliased_call<'a>(
     source: &'a [u8],
     alias_map: &'a BTreeMap<Box<str>, Box<str>>,
 ) -> Option<AliasedCall<'a>> {
-    use crate::tree_sitter_ext::node_text;
-
     match node.kind() {
         "call" => {}
         _ => return None,
@@ -341,8 +345,6 @@ fn ts_detect_aliased_calls(
     alias_map: &BTreeMap<Box<str>, Box<str>>,
     findings: &mut Vec<CapabilityFinding>,
 ) {
-    use crate::tree_sitter_ext::walk_descendants;
-
     if alias_map.is_empty() {
         return;
     }

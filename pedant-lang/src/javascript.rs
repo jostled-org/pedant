@@ -7,6 +7,16 @@
 
 use std::sync::Arc;
 
+// Grammar selection, traversal, and the node type the AST signatures below name
+// all come from `pedant-syntax`, which owns the grammar and the parser version.
+// Naming the node type through a second `tree-sitter` dependency here would pin
+// the same crate twice. One gated import serves every tree-sitter helper: they
+// all sit under the same feature, so repeating the `use` inside each one
+// restates that gate without narrowing anything. `SyntaxLanguage` is ungated
+// because `analyze` and `grammar_enabled` name it in every configuration.
+use pedant_syntax::SyntaxLanguage;
+#[cfg(any(feature = "ts-javascript", feature = "ts-typescript"))]
+use pedant_syntax::tree_sitter::{self, node_text, parse, walk_descendants};
 use pedant_types::{Capability, CapabilityFinding, FindingOrigin, Language, SourceLocation};
 
 use crate::string_analysis::{
@@ -46,20 +56,32 @@ const CALL_SITE_PATTERNS: &[(&str, Capability, &str)] = &[
 ];
 
 /// Analyze JavaScript or TypeScript source for capability findings.
+///
+/// `language` tags every finding; `syntax` selects the grammar. The two differ
+/// for `.tsx`, which carries capability [`Language::TypeScript`] and needs the
+/// TSX grammar — the caller resolves that distinction and passes it here.
 pub(crate) fn analyze(
     path: &Arc<str>,
     source: &str,
     language: Language,
+    syntax: SyntaxLanguage,
 ) -> Box<[CapabilityFinding]> {
     let mut findings = Vec::new();
 
     #[cfg(any(feature = "ts-javascript", feature = "ts-typescript"))]
-    ts_analyze(path, source, language, &mut findings);
+    let structured = ts_analyze(path, source, language, syntax, &mut findings);
 
+    // This build links no JavaScript or TypeScript grammar, so `grammar_enabled`
+    // answers false for every syntax and the regex scanners are the only path.
     #[cfg(not(any(feature = "ts-javascript", feature = "ts-typescript")))]
-    {
-        detect_imports(path, source, language, &mut findings);
-        detect_call_sites(path, source, CALL_SITE_PATTERNS, language, &mut findings);
+    let structured = grammar_enabled(syntax);
+
+    match structured {
+        true => {}
+        false => {
+            detect_imports(path, source, language, &mut findings);
+            detect_call_sites(path, source, CALL_SITE_PATTERNS, language, &mut findings);
+        }
     }
 
     let literals = scan_js_string_literals(source);
@@ -143,112 +165,143 @@ fn detect_imports(
 
 // ── Tree-sitter structured extraction ──────────────────────────────────
 
+/// Structured extraction through tree-sitter.
+///
+/// Answers whether a grammar ran. `false` means this build links no grammar for
+/// `syntax`, or the parser failed outright, and the caller owes the file a regex
+/// scan.
 #[cfg(any(feature = "ts-javascript", feature = "ts-typescript"))]
 fn ts_analyze(
     path: &Arc<str>,
     source: &str,
     language: Language,
+    syntax: SyntaxLanguage,
     findings: &mut Vec<CapabilityFinding>,
-) {
-    use crate::tree_sitter_ext::parse;
-
+) -> bool {
     let bytes = source.as_bytes();
-    let ts_lang = ts_language_for(language);
-    let tree = match ts_lang.and_then(|lang| parse(bytes, lang)) {
+    let parsed = grammar_enabled(syntax)
+        .then(|| parse(bytes, syntax))
+        .flatten();
+    let tree = match parsed {
         Some(t) => t,
-        None => {
-            // Fall back to regex on parse failure or unsupported language variant.
-            detect_imports(path, source, language, findings);
-            detect_call_sites(path, source, CALL_SITE_PATTERNS, language, findings);
-            return;
-        }
+        None => return false,
     };
     let root = tree.root_node();
 
-    // Phase 1: detect imports via tree-sitter (handles ES imports structurally).
-    ts_detect_imports(root, bytes, path, language, findings);
+    // Phase 1: detect module references via tree-sitter — ES imports and
+    // require() calls, in one walk.
+    ts_detect_module_references(root, bytes, path, language, findings);
 
-    // Phase 2: detect require() calls including template literal arguments.
-    ts_detect_require_calls(root, bytes, path, language, findings);
-
-    // Phase 3: regex call-site patterns (fetch(), process.env, etc.).
+    // Phase 2: regex call-site patterns (fetch(), process.env, etc.).
     detect_call_sites(path, source, CALL_SITE_PATTERNS, language, findings);
+
+    true
 }
 
-/// Get the tree-sitter Language for a pedant Language variant.
-#[cfg(any(feature = "ts-javascript", feature = "ts-typescript"))]
-fn ts_language_for(language: Language) -> Option<tree_sitter::Language> {
-    match language {
+/// Whether this crate's own features link a grammar for `syntax`.
+///
+/// `pedant_syntax::tree_sitter::parse` answers from the feature set of the whole
+/// build, and Cargo unifies features across every member that names
+/// `pedant-syntax`. In a build where `pedant-lang/ts-typescript` is off but some
+/// other member turns on `pedant-syntax/ts-typescript`, asking `parse` alone
+/// would take a `.ts` file down the tree-sitter path that this crate's manifest
+/// says is off. The decision is this crate's, so it is made here, and a syntax
+/// this build has no feature for falls through to the regex scanner.
+///
+/// `Tsx` rides `ts-typescript` because one grammar crate ships both tables.
+///
+/// Every variant names both arms — the `true` its feature enables and the
+/// `false` its feature leaves — so the match is exhaustive in every
+/// configuration and a new [`SyntaxLanguage`] fails to compile here rather than
+/// silently picking a side.
+fn grammar_enabled(syntax: SyntaxLanguage) -> bool {
+    match syntax {
         #[cfg(feature = "ts-javascript")]
-        Language::JavaScript => Some(tree_sitter_javascript::LANGUAGE.into()),
+        SyntaxLanguage::JavaScript => true,
+        #[cfg(not(feature = "ts-javascript"))]
+        SyntaxLanguage::JavaScript => false,
         #[cfg(feature = "ts-typescript")]
-        Language::TypeScript => Some(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()),
-        _ => None,
+        SyntaxLanguage::TypeScript | SyntaxLanguage::Tsx => true,
+        #[cfg(not(feature = "ts-typescript"))]
+        SyntaxLanguage::TypeScript | SyntaxLanguage::Tsx => false,
+        // This module analyzes no other syntax; `analyze_file` dispatches them
+        // to their own scanners.
+        SyntaxLanguage::Rust
+        | SyntaxLanguage::Python
+        | SyntaxLanguage::Go
+        | SyntaxLanguage::Bash => false,
     }
 }
 
-/// Extract ES import statements from tree-sitter AST.
+/// Walk the AST once, extracting both spellings of a module reference.
+///
+/// `import_statement` and `call_expression` are disjoint kinds, and neither
+/// handler reads the other's output, so one cursor walk answers both. A second
+/// full-tree walk per JS/TS file bought nothing. Findings now interleave by
+/// source position instead of grouping imports ahead of requires; this module
+/// neither sorts nor dedups, so position order is the honest order.
 #[cfg(any(feature = "ts-javascript", feature = "ts-typescript"))]
-fn ts_detect_imports(
+fn ts_detect_module_references(
     root: tree_sitter::Node<'_>,
     source: &[u8],
     path: &Arc<str>,
     language: Language,
     findings: &mut Vec<CapabilityFinding>,
 ) {
-    use crate::tree_sitter_ext::{node_text, walk_descendants};
-
-    walk_descendants(root, |node| {
-        if node.kind() != "import_statement" {
-            return;
-        }
-        let source_node = match node.child_by_field_name("source") {
-            Some(n) => n,
-            None => return,
-        };
-        let raw = node_text(source_node, source);
-        // Strip quotes from string literal.
-        let module_name = raw
-            .strip_prefix(|c| c == '\'' || c == '"')
-            .and_then(|s| s.strip_suffix(|c| c == '\'' || c == '"'))
-            .unwrap_or(raw);
-
-        emit_js_import_finding(module_name, node, path, language, findings);
+    walk_descendants(root, |node| match node.kind() {
+        "import_statement" => ts_handle_import(node, source, path, language, findings),
+        "call_expression" => ts_handle_require_call(node, source, path, language, findings),
+        _ => {}
     });
 }
 
-/// Detect `require()` calls with both string and template-literal arguments.
+/// Handle an `import_statement` node: pull the module name and match it.
 #[cfg(any(feature = "ts-javascript", feature = "ts-typescript"))]
-fn ts_detect_require_calls(
-    root: tree_sitter::Node<'_>,
+fn ts_handle_import(
+    node: tree_sitter::Node<'_>,
     source: &[u8],
     path: &Arc<str>,
     language: Language,
     findings: &mut Vec<CapabilityFinding>,
 ) {
-    use crate::tree_sitter_ext::{node_text, walk_descendants};
+    let source_node = match node.child_by_field_name("source") {
+        Some(n) => n,
+        None => return,
+    };
+    let raw = node_text(source_node, source);
+    // An `import` source is always a quoted string, never a template, so the
+    // shared helper's extra backtick arm is unreachable here and harmless.
+    let module_name = strip_js_string_delimiters(raw).unwrap_or(raw);
 
-    walk_descendants(root, |node| {
-        if node.kind() != "call_expression" {
-            return;
-        }
-        let func = match node.child_by_field_name("function") {
-            Some(f) => f,
-            None => return,
-        };
-        if node_text(func, source) != "require" {
-            return;
-        }
-        let args = match node.child_by_field_name("arguments") {
-            Some(a) => a,
-            None => return,
-        };
+    emit_js_import_finding(module_name, node, path, language, findings);
+}
 
-        // Extract module name from the first argument (string or template_string).
-        if let Some(name) = extract_require_arg(args, source) {
-            emit_js_import_finding(name, node, path, language, findings);
-        }
-    });
+/// Handle a `call_expression` node, matching `require()` calls with both
+/// string and template-literal arguments.
+#[cfg(any(feature = "ts-javascript", feature = "ts-typescript"))]
+fn ts_handle_require_call(
+    node: tree_sitter::Node<'_>,
+    source: &[u8],
+    path: &Arc<str>,
+    language: Language,
+    findings: &mut Vec<CapabilityFinding>,
+) {
+    let func = match node.child_by_field_name("function") {
+        Some(f) => f,
+        None => return,
+    };
+    if node_text(func, source) != "require" {
+        return;
+    }
+    let args = match node.child_by_field_name("arguments") {
+        Some(a) => a,
+        None => return,
+    };
+
+    // Extract module name from the first argument (string or template_string).
+    if let Some(name) = extract_require_arg(args, source) {
+        emit_js_import_finding(name, node, path, language, findings);
+    }
 }
 
 /// Strip surrounding quotes or backticks from a tree-sitter string/template node.
@@ -263,8 +316,6 @@ fn strip_js_string_delimiters(raw: &str) -> Option<&str> {
 /// Handles string literals (`'fs'`, `"fs"`) and template strings (`` `fs` ``).
 #[cfg(any(feature = "ts-javascript", feature = "ts-typescript"))]
 fn extract_require_arg<'a>(args: tree_sitter::Node<'_>, source: &'a [u8]) -> Option<&'a str> {
-    use crate::tree_sitter_ext::node_text;
-
     let mut cursor = args.walk();
     args.named_children(&mut cursor)
         .find(|child| matches!(child.kind(), "string" | "template_string"))

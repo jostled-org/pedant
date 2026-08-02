@@ -6,20 +6,15 @@
 
 mod analyze;
 mod bash;
-mod classify;
 mod go;
 mod javascript;
 mod manifest;
 mod python;
 mod string_analysis;
-#[cfg(any(
-    feature = "ts-python",
-    feature = "ts-javascript",
-    feature = "ts-typescript",
-    feature = "ts-go",
-    feature = "ts-bash"
-))]
-mod tree_sitter_ext;
 
 pub use analyze::{analyze_file, analyze_manifest};
-pub use classify::{FileClassification, classify_path, detect_language};
+// Classification moved to `pedant-syntax`, which needs the same path and
+// shebang rules for syntax dispatch. Re-exported rather than relocated in every
+// caller, so `pedant`, `pedant-mcp`, and downstream consumers import no new
+// crate to keep reading a file's language from here.
+pub use pedant_syntax::{FileClassification, classify_path, detect_language};

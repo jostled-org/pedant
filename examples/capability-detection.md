@@ -77,8 +77,8 @@ pedant gate --cross-language src/**/*.rs scripts/*.py
 | Language | Extensions | Detection method |
 |----------|-----------|-----------------|
 | Python | `.py` | Tree-sitter AST + regex fallback |
-| JavaScript | `.js`, `.mjs`, `.cjs` | Tree-sitter AST + regex fallback |
-| TypeScript | `.ts`, `.tsx`, `.mts` | Tree-sitter AST + regex fallback |
+| JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs` | Tree-sitter AST + regex fallback |
+| TypeScript | `.ts`, `.tsx`, `.mts`, `.cts` | Tree-sitter AST + regex fallback |
 | Go | `.go` | Tree-sitter AST + regex fallback |
 | Bash | `.sh`, `.bash`, `.zsh` | Tree-sitter AST + regex fallback |
 

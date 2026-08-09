@@ -45,7 +45,7 @@ pub(crate) enum ProcessError {
     BuildScriptDiscovery {
         crate_root: Box<str>,
         #[source]
-        source: pedant_core::lint::LintError,
+        source: Box<pedant_core::lint::LintError>,
     },
 }
 

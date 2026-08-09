@@ -166,7 +166,7 @@ fn classify_rust_analysis<'a>(
     let build_script =
         discover_build_script(crate_root).map_err(|source| ProcessError::BuildScriptDiscovery {
             crate_root: crate_root.display().to_string().into_boxed_str(),
-            source,
+            source: Box::new(source),
         })?;
     let is_build_script = match build_script.as_deref() {
         Some(build_path) => paths_match(Path::new(file_path), build_path),

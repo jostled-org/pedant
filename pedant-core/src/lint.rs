@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use pedant_types::{AnalysisTier, ExecutionContext};
 
@@ -13,7 +13,11 @@ use crate::ir::semantic::SemanticContext;
 use crate::project::{FileShape, project_shape};
 use crate::style::check_style;
 
-type ManifestPresence = (bool, bool);
+struct ManifestPresence {
+    workspace: bool,
+    package: bool,
+    workspace_pointer: Option<Box<str>>,
+}
 
 /// Failure modes for the lint pipeline (I/O, parse, config).
 #[derive(Debug, thiserror::Error)]
@@ -27,6 +31,42 @@ pub enum LintError {
     /// TOML syntax or schema error in a config file.
     #[error("TOML parse error: {0}")]
     TomlParseError(#[from] toml::de::Error),
+    /// A package's explicit workspace manifest could not be read.
+    #[error("failed to read pointed workspace manifest {path}: {source}")]
+    PointedWorkspaceRead {
+        /// The `Cargo.toml` selected by `package.workspace`.
+        path: PathBuf,
+        /// The filesystem failure.
+        #[source]
+        source: std::io::Error,
+    },
+    /// A package's explicit workspace manifest is not valid TOML.
+    #[error("failed to parse pointed workspace manifest {path}: {source}")]
+    PointedWorkspaceParse {
+        /// The `Cargo.toml` selected by `package.workspace`.
+        path: PathBuf,
+        /// The TOML parser failure.
+        #[source]
+        source: toml::de::Error,
+    },
+    /// A package's explicit workspace manifest lacks its required table.
+    #[error("pointed workspace manifest {path} does not declare [workspace]")]
+    PointedWorkspaceDeclarationMissing {
+        /// The `Cargo.toml` selected by `package.workspace`.
+        path: PathBuf,
+    },
+    /// A package's explicit workspace pointer is not a TOML string.
+    #[error("package.workspace in {path} must be a string")]
+    WorkspacePointerNotString {
+        /// The package manifest holding the invalid pointer.
+        path: PathBuf,
+    },
+    /// One manifest cannot be both the local workspace and point elsewhere.
+    #[error("manifest {path} declares both [workspace] and package.workspace")]
+    WorkspacePointerWithLocalWorkspace {
+        /// The contradictory package manifest.
+        path: PathBuf,
+    },
 }
 
 /// Full analysis pipeline: parse, extract IR, run style checks, detect capabilities.
@@ -139,9 +179,11 @@ pub fn lint_file(path: &Path, config: &CheckConfig) -> Result<AnalysisResult, Li
 
 /// Walk ancestors of `start` looking for a Cargo workspace or package root.
 ///
-/// Prefers a directory containing a `Cargo.toml` with `[workspace]`. Falls back
-/// to the nearest `Cargo.toml` with `[package]` if no workspace is found.
-/// Returns an error when a manifest exists but cannot be read.
+/// An explicit `package.workspace` selects that workspace before an ancestor
+/// can be considered. Otherwise, a directory containing a `Cargo.toml` with
+/// `[workspace]` is preferred, with the nearest package as the fallback.
+/// Returns an error when a manifest exists but cannot be read or when an
+/// explicit workspace pointer cannot identify a workspace manifest.
 pub fn discover_workspace_root(start: &Path) -> Result<Option<PathBuf>, LintError> {
     let start_dir = match (start.is_dir(), start.parent()) {
         (true, _) => start,
@@ -152,10 +194,18 @@ pub fn discover_workspace_root(start: &Path) -> Result<Option<PathBuf>, LintErro
     let mut nearest_package: Option<PathBuf> = None;
     for dir in start_dir.ancestors() {
         let cargo_toml = dir.join("Cargo.toml");
-        let (has_workspace, has_package) = read_manifest_presence(&cargo_toml)?;
-        match (has_workspace, has_package, nearest_package.is_some()) {
-            (true, _, _) => return Ok(Some(dir.to_path_buf())),
-            (false, true, false) => nearest_package = Some(dir.to_path_buf()),
+        let presence = read_manifest_presence(&cargo_toml)?;
+        match (
+            presence.workspace,
+            presence.package,
+            nearest_package.is_some(),
+            presence.workspace_pointer,
+        ) {
+            (true, _, _, _) => return Ok(Some(dir.to_path_buf())),
+            (false, true, false, Some(pointer)) => {
+                return pointed_workspace_root(dir, &pointer).map(Some);
+            }
+            (false, true, false, None) => nearest_package = Some(dir.to_path_buf()),
             _ => {}
         }
     }
@@ -180,14 +230,80 @@ pub fn discover_crate_root(file: &Path) -> Option<&Path> {
 fn read_manifest_presence(cargo_toml: &Path) -> Result<ManifestPresence, LintError> {
     let contents = match fs::read_to_string(cargo_toml) {
         Ok(contents) => contents,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok((false, false)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(ManifestPresence {
+                workspace: false,
+                package: false,
+                workspace_pointer: None,
+            });
+        }
         Err(error) => return Err(LintError::IoError(error)),
     };
     let table: toml::Table = contents.parse()?;
-    Ok((
-        contains_manifest_table(&table, "workspace"),
-        contains_manifest_table(&table, "package"),
-    ))
+    let package = table.get("package").and_then(toml::Value::as_table);
+    let workspace_pointer = match package.and_then(|package| package.get("workspace")) {
+        Some(toml::Value::String(pointer)) => Some(Box::from(pointer.as_str())),
+        Some(_) => {
+            return Err(LintError::WorkspacePointerNotString {
+                path: cargo_toml.to_path_buf(),
+            });
+        }
+        None => None,
+    };
+    let workspace = contains_manifest_table(&table, "workspace");
+    if let (true, true) = (workspace, workspace_pointer.is_some()) {
+        return Err(LintError::WorkspacePointerWithLocalWorkspace {
+            path: cargo_toml.to_path_buf(),
+        });
+    }
+    Ok(ManifestPresence {
+        workspace,
+        package: package.is_some(),
+        workspace_pointer,
+    })
+}
+
+fn pointed_workspace_root(package_root: &Path, pointer: &str) -> Result<PathBuf, LintError> {
+    let workspace_root = lexical_path(package_root.join(pointer));
+    let manifest = workspace_root.join("Cargo.toml");
+    let contents =
+        fs::read_to_string(&manifest).map_err(|source| LintError::PointedWorkspaceRead {
+            path: manifest.clone(),
+            source,
+        })?;
+    let table =
+        contents
+            .parse::<toml::Table>()
+            .map_err(|source| LintError::PointedWorkspaceParse {
+                path: manifest.clone(),
+                source,
+            })?;
+    match contains_manifest_table(&table, "workspace") {
+        true => Ok(workspace_root),
+        false => Err(LintError::PointedWorkspaceDeclarationMissing { path: manifest }),
+    }
+}
+
+fn lexical_path(path: PathBuf) -> PathBuf {
+    let rooted = path.has_root();
+    path.components().fold(PathBuf::new(), |mut result, part| {
+        match part {
+            Component::ParentDir => resolve_parent(&mut result, rooted),
+            Component::CurDir => {}
+            _ => result.push(part.as_os_str()),
+        }
+        result
+    })
+}
+
+fn resolve_parent(path: &mut PathBuf, rooted: bool) {
+    match path.components().next_back() {
+        Some(Component::Normal(_)) => {
+            path.pop();
+        }
+        Some(Component::ParentDir) | None if !rooted => path.push(".."),
+        _ => {}
+    }
 }
 
 fn contains_manifest_table(table: &toml::Table, section_name: &str) -> bool {

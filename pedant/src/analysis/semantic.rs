@@ -1,8 +1,9 @@
 use std::io::Write;
-#[cfg(feature = "semantic")]
-use std::path::Path;
 
 use pedant_core::SemanticContext;
+
+#[cfg(feature = "semantic")]
+use super::project::discover_requested_workspace_root;
 
 /// Load `SemanticContext` when `--semantic` is requested.
 ///
@@ -19,7 +20,7 @@ pub(crate) fn load_semantic_if_requested(
         return None;
     }
 
-    let root = match discover_semantic_workspace_root(files) {
+    let root = match discover_requested_workspace_root(files) {
         Ok(Some(root)) => root,
         Ok(None) => {
             crate::report_error(
@@ -33,9 +34,7 @@ pub(crate) fn load_semantic_if_requested(
         Err(error) => {
             crate::report_error(
                 stderr,
-                format_args!(
-                    "warning: --semantic: failed to discover workspace root: {error}; falling back to syntactic analysis"
-                ),
+                format_args!("warning: --semantic: {error}; falling back to syntactic analysis"),
             );
             return None;
         }
@@ -66,28 +65,6 @@ pub(crate) fn load_semantic_if_requested(
             );
             None
         }
-    }
-}
-
-#[cfg(feature = "semantic")]
-fn discover_semantic_workspace_root(
-    files: &[String],
-) -> Result<Option<Box<Path>>, pedant_core::lint::LintError> {
-    use pedant_core::lint::discover_workspace_root;
-
-    let mut last_error = None;
-
-    for file in files {
-        match discover_workspace_root(Path::new(file.as_str())) {
-            Ok(Some(root)) => return Ok(Some(root.into_boxed_path())),
-            Ok(None) => {}
-            Err(error) => last_error = Some(error),
-        }
-    }
-
-    match last_error {
-        Some(error) => Err(error),
-        None => Ok(None),
     }
 }
 

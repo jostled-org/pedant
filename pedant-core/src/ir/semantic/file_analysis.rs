@@ -2,10 +2,15 @@
 //!
 //! `SemanticFileAnalysis` is the primary semantic boundary. For one file, it
 //! owns every derived fact that the per-query API previously rebuilt on each
-//! call: call graph edges, function entries, reachability set, per-function
-//! data flow facts, resolved types, and a flat aggregate of all flows.
-//! Constructed once by `SemanticContext::analyze_file`, then cached and
-//! shared via `Arc`.
+//! call: function entries, the reachability set, per-function data flow facts,
+//! resolved types, a flat aggregate of all flows, and the definition edges
+//! resolution promotes through. Constructed once by
+//! `SemanticContext::analyze_file`, then cached and shared via `Arc`.
+//!
+//! Name-only `(caller, callee)` pairs are not among them. They are derived
+//! while the file is walked, consumed once to compute reachability, and
+//! dropped: a name pair cannot tell one Cargo target's definition from
+//! another's, so it stays detector input and is never a graph surface.
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -16,10 +21,13 @@ use ra_ap_ide::RootDatabase;
 use ra_ap_syntax::{AstNode, SyntaxKind, ast};
 
 use super::super::facts::DataFlowFact;
-use super::common::{FnContext, ParsedFile, display_target_for_file, format_type};
-use super::context::FnEntry;
+use super::common::{FnContext, ParsedFile, format_type};
 use super::function_summary::{FunctionAnalysisSummary, FunctionSummaryData, run_detectors};
+use super::targets::{self, SemanticEdge};
 use super::{concurrency, reachability};
+
+/// Function entry: (name, start_line, end_line, is_entry_point).
+pub(super) type FnEntry = (Box<str>, usize, usize, bool);
 
 /// Cached file-level semantic analysis.
 ///
@@ -27,7 +35,7 @@ use super::{concurrency, reachability};
 /// depending on whether downstream consumers share ownership. Per-function
 /// summaries are stored in a sorted `BTreeMap` keyed by function name.
 pub struct SemanticFileAnalysis {
-    call_graph: Box<[(Box<str>, Box<str>)]>,
+    semantic_edges: Box<[SemanticEdge]>,
     fn_entries: Box<[FnEntry]>,
     reachable_names: BTreeSet<Box<str>>,
     data_flows: Arc<[DataFlowFact]>,
@@ -40,8 +48,8 @@ impl SemanticFileAnalysis {
     /// Build a complete file analysis from a parsed file context.
     ///
     /// One traversal of the file's functions builds `FnContext` per function,
-    /// deriving call graph edges, function entries, data flow facts, and
-    /// detector outputs from the same precomputed state. Type resolution is
+    /// deriving the reachability call pairs, function entries, data flow facts,
+    /// and detector outputs from the same precomputed state. Type resolution is
     /// eagerly cached. No subsequent parse is needed.
     pub(super) fn build(pf: &ParsedFile<'_>) -> Self {
         let mut call_graph_edges: Vec<(Box<str>, Box<str>)> = Vec::new();
@@ -51,7 +59,7 @@ impl SemanticFileAnalysis {
         let mut resolved_types: BTreeMap<(usize, usize), Box<str>> = BTreeMap::new();
 
         // Compute display target once for the file (all functions share it).
-        let display_target = display_target_for_file(&pf.sema, pf.file_id, pf.db);
+        let display_target = Some(pf.display_target);
 
         // Track function syntax ranges to skip during module-level type resolution.
         let mut fn_ranges: Vec<ra_ap_syntax::TextRange> = Vec::new();
@@ -97,7 +105,7 @@ impl SemanticFileAnalysis {
         }
 
         Self {
-            call_graph,
+            semantic_edges: targets::collect(pf),
             fn_entries,
             reachable_names,
             data_flows,
@@ -106,9 +114,9 @@ impl SemanticFileAnalysis {
         }
     }
 
-    /// Deduplicated `(caller, callee)` pairs for this file's call graph.
-    pub fn call_graph(&self) -> &[(Box<str>, Box<str>)] {
-        &self.call_graph
+    /// The definition edges this file states, taken while it was analyzed.
+    pub(super) fn semantic_edges(&self) -> &[SemanticEdge] {
+        &self.semantic_edges
     }
 
     /// All data flow facts detected in this file (taint, quality, perf, concurrency).

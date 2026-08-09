@@ -1,12 +1,12 @@
 {
   "spec_version": "0.1.0",
-  "source_hash": "2d94f7d61e4d5be96b49b7dda8fbfbd8beec28ac9aa97d72a4cde65d18f379b3",
+  "source_hash": "df401868c076d7ec936c1f86b9ddd6170c0daa79f13bf488268c41fb1e0cb328",
   "crate_name": "r-efi",
   "crate_version": "6.0.0",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344433,
+  "timestamp": 1786296237,
   "analysis_completeness": {
-    "analyzed_files": 54,
+    "analyzed_files": 55,
     "skipped_files": 0
   },
   "rust_version": "1.68",

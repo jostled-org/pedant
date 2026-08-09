@@ -5,7 +5,7 @@
 //! `FnContext` and assembled in `SemanticFileAnalysis::build`; this module
 //! provides the reachability computation and line-level lookup.
 
-use super::context::FnEntry;
+use super::file_analysis::FnEntry;
 
 /// Compute the set of function names reachable from public entry points.
 ///

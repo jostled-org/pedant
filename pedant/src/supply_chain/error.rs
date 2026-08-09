@@ -1,6 +1,9 @@
 use std::path::Path;
 
-use pedant_core::WorkspaceMemberError;
+use pedant_core::resolution::rust::{
+    RustPackage, RustPackageSnapshotError, RustProject, RustProjectError, RustSnapshotError,
+    SourceClosureFailure,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub(super) enum SupplyChainError {
@@ -38,16 +41,48 @@ pub(super) enum SupplyChainError {
         #[source]
         source: std::io::Error,
     },
-    #[error("manifest {path} is missing a [package] section")]
-    MissingPackageSection { path: Box<str> },
-    #[error("failed to parse manifest {path}: {source}")]
-    ManifestParse {
-        path: Box<str>,
-        #[source]
-        source: toml::de::Error,
+    #[error("the vendored Cargo project at {path} publishes no package")]
+    PublishesNothing { path: Box<str> },
+    #[error("failed to load a vendored Cargo project: {source}")]
+    Project {
+        #[from]
+        source: RustProjectError,
     },
+    #[error("{package}: target {target} has no complete source closure: {detail}")]
+    TargetSourceClosure {
+        package: Box<str>,
+        target: Box<str>,
+        /// Every closure failure, rendered for a reader.
+        detail: Box<str>,
+        /// The typed failure the substrate reported.
+        #[source]
+        source: RustSnapshotError,
+    },
+    #[error("{package} reaches {path}, which lies outside the package directory")]
+    SourceOutsidePackage { package: Box<str>, path: Box<str> },
+    #[error("package snapshot stored {path} without a primary-target owner")]
+    UnownedSnapshotSource { path: Box<str> },
     #[error("failed to parse baseline {path}: {source}")]
     BaselineParse {
+        path: Box<str>,
+        #[source]
+        source: serde_json::Error,
+    },
+    #[error("failed to serialize the baseline for {path}: {source}")]
+    BaselineSerialize {
+        path: Box<str>,
+        #[source]
+        source: serde_json::Error,
+    },
+    #[error("failed to serialize the report for {path}: {source}")]
+    ReportSerialize {
+        path: Box<str>,
+        #[source]
+        source: serde_json::Error,
+    },
+    #[error("failed to serialize the proof receipt for {path}: {source}")]
+    #[cfg(feature = "resolution-test-support")]
+    ReceiptSerialize {
         path: Box<str>,
         #[source]
         source: serde_json::Error,
@@ -64,21 +99,81 @@ pub(super) enum SupplyChainError {
     },
 }
 
+/// The selected target a snapshot failure belongs to.
+pub(super) struct TargetContext<'a> {
+    pub(super) package: &'a str,
+    pub(super) target: &'a str,
+}
+
 /// Render a path for an error payload without borrowing it.
 pub(super) fn path_text(path: &Path) -> Box<str> {
     path.display().to_string().into_boxed_str()
 }
 
-pub(super) fn missing_package_section(crate_dir: &Path) -> SupplyChainError {
-    SupplyChainError::MissingPackageSection {
-        path: path_text(&crate_dir.join("Cargo.toml")),
+/// Bind a write failure to the path it was attempted on.
+pub(super) fn write_error(path: &Path) -> impl Fn(std::io::Error) -> SupplyChainError {
+    let path = path_text(path);
+    move |source| SupplyChainError::WriteFile {
+        path: path.clone(),
+        source,
     }
 }
 
-pub(super) fn map_workspace_member_error(error: WorkspaceMemberError) -> SupplyChainError {
+/// A selected target with no complete closure is security-fatal, so the failure
+/// keeps the target it belongs to beside every declaring site, attempted path,
+/// and cause the substrate reported. The typed failure travels as the source,
+/// so a caller can still tell a limit breach from a broken `mod` path.
+pub(super) fn map_snapshot_error(
+    context: &TargetContext<'_>,
+    error: RustSnapshotError,
+) -> SupplyChainError {
+    SupplyChainError::TargetSourceClosure {
+        package: Box::from(context.package),
+        target: Box::from(context.target),
+        detail: snapshot_detail(&error),
+        source: error,
+    }
+}
+
+/// Bind a package-primary snapshot failure back to the target whose closure
+/// failed. Package-level authority refusals retain a stable aggregate label.
+pub(super) fn map_package_snapshot_error(
+    project: &RustProject,
+    package: &RustPackage,
+    error: RustPackageSnapshotError,
+) -> SupplyChainError {
+    let target = error
+        .target()
+        .and_then(|id| project.target(id))
+        .map_or("primary-target set", |target| target.name());
+    map_snapshot_error(
+        &TargetContext {
+            package: package.name(),
+            target,
+        },
+        error.into_source(),
+    )
+}
+
+fn snapshot_detail(error: &RustSnapshotError) -> Box<str> {
     match error {
-        WorkspaceMemberError::ReadDir { path, source } => {
-            SupplyChainError::ReadDir { path, source }
-        }
+        RustSnapshotError::SourceClosure(closure) => closure
+            .failures()
+            .iter()
+            .map(failure_detail)
+            .collect::<Vec<_>>()
+            .join("; ")
+            .into_boxed_str(),
+        authority => authority.to_string().into_boxed_str(),
+    }
+}
+
+/// One closure failure with its declaring site, the path it attempted while
+/// that path stayed inside the repository root, and its cause.
+fn failure_detail(failure: &SourceClosureFailure) -> String {
+    let site = failure.site();
+    match failure.attempted() {
+        Some(attempted) => format!("[{site}] {} (attempted {attempted})", failure.message()),
+        None => format!("[{site}] {}", failure.message()),
     }
 }

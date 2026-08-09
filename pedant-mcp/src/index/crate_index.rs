@@ -10,20 +10,8 @@ use pedant_types::CapabilityProfile;
 use walkdir::WalkDir;
 
 use super::IndexError;
+use super::analyze_at::AnalyzeAt;
 use super::config::WorkspaceConfig;
-
-/// Analyze a Rust file, returning its [`AnalysisResult`] and the [`FileShape`]
-/// the whole-crate project checks consume.
-///
-/// Both [`analyze_source_at`] and [`analyze_build_script_at`] match this shape,
-/// letting a single helper apply path-override resolution to source and build
-/// scripts alike.
-pub(super) type AnalyzeAt = fn(
-    &Path,
-    &str,
-    &Config,
-    Option<&SemanticContext>,
-) -> Result<(AnalysisResult, FileShape), IndexError>;
 
 /// Cached analysis results for a single crate.
 pub(super) struct CrateIndex {
@@ -288,16 +276,6 @@ pub(super) fn analyze_build_script_at(
 
 pub(super) fn read_file(path: &Path) -> Result<String, IndexError> {
     fs::read_to_string(path).map_err(|e| IndexError::Io {
-        path: path.to_string_lossy().into(),
-        source: e,
-    })
-}
-
-pub(super) fn parse_toml<T: serde::de::DeserializeOwned>(
-    content: &str,
-    path: &Path,
-) -> Result<T, IndexError> {
-    toml::from_str(content).map_err(|e| IndexError::TomlParse {
         path: path.to_string_lossy().into(),
         source: e,
     })

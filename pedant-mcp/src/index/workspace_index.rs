@@ -7,10 +7,11 @@ use pedant_core::project::{CargoMetadata, FileShape, ProjectContext, check_proje
 use pedant_core::{AnalysisResult, Config, SemanticContext, Violation};
 use pedant_types::{AnalysisTier, CapabilityProfile};
 
+use super::analyze_at::AnalyzeAt;
 use super::config::{self, WorkspaceConfig};
 use super::crate_index::{
-    self, AnalyzeAt, CrateIndex, analyze_build_script_at, analyze_non_rust_or_manifest,
-    analyze_source_at, recompute_aggregates,
+    self, CrateIndex, analyze_build_script_at, analyze_non_rust_or_manifest, analyze_source_at,
+    recompute_aggregates,
 };
 use super::error::IndexError;
 use super::workspace;
@@ -38,17 +39,10 @@ impl WorkspaceIndex {
         workspace_root: &Path,
         semantic: Option<SemanticContext>,
     ) -> Result<Self, IndexError> {
-        let cargo_toml_path = workspace_root.join("Cargo.toml");
-        let cargo_toml_str = crate_index::read_file(&cargo_toml_path)?;
-
         let config = config::load_workspace_config(workspace_root);
         let mut crates = BTreeMap::new();
 
-        let members = workspace::resolve_workspace_members_with_names(
-            workspace_root,
-            &cargo_toml_str,
-            &cargo_toml_path,
-        )?;
+        let members = workspace::member_directories_with_names(workspace_root)?;
 
         for (member_dir, crate_name) in members {
             let crate_idx =

@@ -1,12 +1,12 @@
 {
   "spec_version": "0.1.0",
-  "source_hash": "ccc19202dcf0a1e4e7f5b48cf529cd5731c7abe2c27d77c667b7ae5be9245d2a",
+  "source_hash": "26f127de1940e5adff0593e4cf79dfea62f944872e0050d0d820bcac972c6db5",
   "crate_name": "wasm-bindgen",
   "crate_version": "0.2.126",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344445,
+  "timestamp": 1786296407,
   "analysis_completeness": {
-    "analyzed_files": 17,
+    "analyzed_files": 19,
     "skipped_files": 0
   },
   "rust_version": "1.77",
@@ -677,6 +677,196 @@
         "location": {
           "file": "./src/lib.rs",
           "line": 1245,
+          "column": 1
+        },
+        "evidence": "extern block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rt/marker.rs",
+          "line": 83,
+          "column": 1
+        },
+        "evidence": "unsafe impl",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rt/marker.rs",
+          "line": 87,
+          "column": 1
+        },
+        "evidence": "unsafe impl",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rt/mod.rs",
+          "line": 89,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rt/mod.rs",
+          "line": 111,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rt/mod.rs",
+          "line": 124,
+          "column": 1
+        },
+        "evidence": "unsafe impl",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rt/mod.rs",
+          "line": 127,
+          "column": 1
+        },
+        "evidence": "unsafe impl",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rt/mod.rs",
+          "line": 191,
+          "column": 47
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rt/mod.rs",
+          "line": 207,
+          "column": 32
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rt/mod.rs",
+          "line": 227,
+          "column": 1
+        },
+        "evidence": "unsafe impl",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rt/mod.rs",
+          "line": 230,
+          "column": 1
+        },
+        "evidence": "unsafe impl",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rt/mod.rs",
+          "line": 612,
+          "column": 20
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rt/mod.rs",
+          "line": 645,
+          "column": 20
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rt/mod.rs",
+          "line": 685,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rt/mod.rs",
+          "line": 701,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rt/mod.rs",
+          "line": 742,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rt/mod.rs",
+          "line": 823,
+          "column": 16
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rt/mod.rs",
+          "line": 824,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rt/mod.rs",
+          "line": 845,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/rt/mod.rs",
+          "line": 1006,
           "column": 1
         },
         "evidence": "extern block",

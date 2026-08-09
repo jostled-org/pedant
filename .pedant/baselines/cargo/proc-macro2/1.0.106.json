@@ -1,12 +1,12 @@
 {
   "spec_version": "0.1.0",
-  "source_hash": "356b9afa104a59cc094c08c49c741b8ef03c2799a26a166c000f0d95a90d0eac",
+  "source_hash": "b3485b90ed586956756dd426869cbd561eaeabae62bb4136e61445945be006bf",
   "crate_name": "proc-macro2",
   "crate_version": "1.0.106",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344433,
+  "timestamp": 1786296234,
   "analysis_completeness": {
-    "analyzed_files": 15,
+    "analyzed_files": 16,
     "skipped_files": 0
   },
   "rust_version": "1.68",
@@ -92,6 +92,26 @@
           "file": "./src/lib.rs",
           "line": 1422,
           "column": 23
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/wrapper.rs",
+          "line": 802,
+          "column": 16
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/wrapper.rs",
+          "line": 806,
+          "column": 31
         },
         "evidence": "unsafe block",
         "origin": "code_site"

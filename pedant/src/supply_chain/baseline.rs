@@ -8,7 +8,7 @@ use semver::Version;
 
 use super::attestation::CrateAttestation;
 use super::dir::{entry_file_type, read_dir_sorted};
-use super::error::{SupplyChainError, path_text};
+use super::error::{SupplyChainError, path_text, write_error};
 
 /// The only ecosystem this baseline store covers; also the first path segment.
 pub(super) const ECOSYSTEM: &str = "cargo";
@@ -38,21 +38,15 @@ pub(super) fn write_baseline_file(
 ) -> Result<(), SupplyChainError> {
     let path = baseline_file_path(baseline_root, &attestation.name, &attestation.version);
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|source| SupplyChainError::WriteFile {
-            path: path_text(parent),
-            source,
-        })?;
+        fs::create_dir_all(parent).map_err(write_error(parent))?;
     }
     let json = serde_json::to_vec_pretty(&attestation.content).map_err(|source| {
-        SupplyChainError::BaselineParse {
+        SupplyChainError::BaselineSerialize {
             path: path_text(&path),
             source,
         }
     })?;
-    fs::write(&path, json).map_err(|source| SupplyChainError::WriteFile {
-        path: path_text(&path),
-        source,
-    })
+    fs::write(&path, json).map_err(write_error(&path))
 }
 
 /// Drop baselines for crates that left the tree, and versions that moved on.

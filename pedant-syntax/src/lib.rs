@@ -27,5 +27,9 @@ pub use extract::enclosing_unit;
 pub use extract::invalidate_parser_cache;
 pub use language::{SyntaxLanguage, syntax_language};
 pub use location::Location;
+// The shared language enum is part of this crate's public surface already —
+// `detect_language` returns it and `SyntaxLanguage` converts from it — so a
+// consumer that links only `pedant-syntax` can name it.
+pub use pedant_types::Language;
 pub use span::LineSpan;
 pub use unit::{SourceUnit, SourceUnitKind};

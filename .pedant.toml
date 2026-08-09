@@ -107,5 +107,11 @@ enabled = false
 [overrides."tests/**".forbid_macros]
 enabled = false
 
+# Process-tree containment is shared test infrastructure moved outside a
+# conventional `tests/` tree for reuse. This exact file is the required libc
+# and Windows Job Object FFI boundary; every other Pedant rule stays active.
+[overrides."test-support/process-guard/src/containment.rs"]
+forbid_unsafe = false
+
 [overrides."target/**"]
 enabled = false

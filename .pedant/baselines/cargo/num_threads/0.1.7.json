@@ -1,15 +1,186 @@
 {
   "spec_version": "0.1.0",
-  "source_hash": "e796119ba71bf31444e91f26371271b6dfa6ef70e662a0d78f3c6eaf58fba898",
+  "source_hash": "c7fb8f24ac32b0b75032c5fc7d16d497d75edab4c1a717c081068273fa3ab1bd",
   "crate_name": "num_threads",
   "crate_version": "0.1.7",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344432,
+  "timestamp": 1786296221,
   "analysis_completeness": {
-    "analyzed_files": 2,
+    "analyzed_files": 5,
     "skipped_files": 0
   },
   "profile": {
-    "findings": []
+    "findings": [
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/aix.rs",
+          "line": 2,
+          "column": 1
+        },
+        "evidence": "std::fs::File",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/aix.rs",
+          "line": 15,
+          "column": 15
+        },
+        "evidence": "std::process::id",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/aix.rs",
+          "line": 21,
+          "column": 16
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/apple.rs",
+          "line": 34,
+          "column": 25
+        },
+        "evidence": "libc::mach_task_self",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/apple.rs",
+          "line": 37,
+          "column": 18
+        },
+        "evidence": "libc::KERN_SUCCESS",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/apple.rs",
+          "line": 34,
+          "column": 16
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/apple.rs",
+          "line": 35,
+          "column": 18
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/apple.rs",
+          "line": 40,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/apple.rs",
+          "line": 45,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/apple.rs",
+          "line": 13,
+          "column": 1
+        },
+        "evidence": "extern block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/freebsd.rs",
+          "line": 11,
+          "column": 19
+        },
+        "evidence": "libc::getpid",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/freebsd.rs",
+          "line": 12,
+          "column": 38
+        },
+        "evidence": "libc::CTL_KERN",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/freebsd.rs",
+          "line": 12,
+          "column": 54
+        },
+        "evidence": "libc::KERN_PROC",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/freebsd.rs",
+          "line": 12,
+          "column": 71
+        },
+        "evidence": "libc::KERN_PROC_PID",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/freebsd.rs",
+          "line": 17,
+          "column": 19
+        },
+        "evidence": "libc::sysctl",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/freebsd.rs",
+          "line": 10,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/linux.rs",
+          "line": 1,
+          "column": 1
+        },
+        "evidence": "std::fs",
+        "origin": "import"
+      }
+    ]
   }
 }

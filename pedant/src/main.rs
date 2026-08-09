@@ -1,6 +1,7 @@
 //! CLI interface for the pedant linter and capability analyzer.
 
 mod analysis;
+mod attestation_inputs;
 mod command;
 mod config;
 mod explain;

@@ -110,3 +110,27 @@ fn detect_language_bash_shebang() {
     let env_options = detect_language(Path::new("script"), "#!/usr/bin/env -S bash -e\necho hello");
     assert_eq!(env_options, Some(Language::Bash));
 }
+
+/// `Language::Rust` exists as a shared language, but Rust path classification
+/// and capability-language detection are unchanged: `.rs` keeps its dedicated
+/// classification and names no detected language.
+#[test]
+fn rust_file_classification_remains_detection_exempt() {
+    for path in ["src/lib.rs", "build.rs", "nested/mod.rs"] {
+        assert_eq!(
+            classify_path(Path::new(path)),
+            FileClassification::Rust,
+            "{path} classifies as Rust source"
+        );
+        assert_eq!(
+            classify_path(Path::new(path)).language(),
+            None,
+            "{path} names no capability language"
+        );
+        assert_eq!(
+            detect_language(Path::new(path), "fn main() {}"),
+            None,
+            "{path} stays outside capability-language detection"
+        );
+    }
+}

@@ -4,6 +4,8 @@ use std::borrow::Cow;
 
 use pedant_types::Capability;
 
+use super::validation::PrefixValidator;
+
 const URL_SCHEMES: &[&str] = &["http://", "https://", "ws://", "wss://"];
 
 pub(super) fn check_string_for_endpoint(value: &str) -> bool {
@@ -116,8 +118,6 @@ fn check_string_for_base58_key(value: &str) -> bool {
         _ => false,
     }
 }
-
-type PrefixValidator = fn(&str, &str) -> bool;
 
 fn check_string_for_key_prefix(value: &str) -> bool {
     const KEY_PREFIXES: &[(&str, PrefixValidator)] = &[

@@ -1,12 +1,12 @@
 {
   "spec_version": "0.1.0",
-  "source_hash": "543cdf1071617fe8aed3d858745c2d3142cc1945033713977333f1117a2af900",
+  "source_hash": "230f7086b69913c41b4cad85e4cff9992dce2f289af98dc52a5f9ba376c0f10f",
   "crate_name": "hashbrown",
   "crate_version": "0.14.5",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344428,
+  "timestamp": 1786296092,
   "analysis_completeness": {
-    "analyzed_files": 24,
+    "analyzed_files": 21,
     "skipped_files": 0
   },
   "rust_version": "1.63.0",
@@ -1027,36 +1027,6 @@
         "location": {
           "file": "./src/raw/bitmask.rs",
           "line": 115,
-          "column": 16
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/raw/generic.rs",
-          "line": 75,
-          "column": 16
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/raw/generic.rs",
-          "line": 83,
-          "column": 16
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/raw/generic.rs",
-          "line": 93,
           "column": 16
         },
         "evidence": "unsafe fn",
@@ -2520,136 +2490,6 @@
           "column": 13
         },
         "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/raw/neon.rs",
-          "line": 46,
-          "column": 16
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/raw/neon.rs",
-          "line": 54,
-          "column": 16
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/raw/neon.rs",
-          "line": 64,
-          "column": 16
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/raw/neon.rs",
-          "line": 74,
-          "column": 9
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/raw/neon.rs",
-          "line": 91,
-          "column": 9
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/raw/neon.rs",
-          "line": 100,
-          "column": 9
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/raw/neon.rs",
-          "line": 119,
-          "column": 9
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/raw/sse2.rs",
-          "line": 52,
-          "column": 16
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/raw/sse2.rs",
-          "line": 60,
-          "column": 16
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/raw/sse2.rs",
-          "line": 70,
-          "column": 16
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/raw/sse2.rs",
-          "line": 88,
-          "column": 9
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/raw/sse2.rs",
-          "line": 112,
-          "column": 9
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/raw/sse2.rs",
-          "line": 140,
-          "column": 9
-        },
-        "evidence": "unsafe block",
         "origin": "code_site"
       },
       {

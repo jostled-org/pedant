@@ -27,6 +27,11 @@ pub fn analyze_manifest(path: &Path, source: &str) -> CapabilityProfile {
 pub fn analyze_file(path: &Path, source: &str, language: Language) -> CapabilityProfile {
     let file: std::sync::Arc<str> = path.to_string_lossy().into();
     let findings = match language {
+        // Rust capability extraction belongs to `pedant-core`, which owns the
+        // `syn` IR this crate never builds. Answering with another language's
+        // scanner would report findings from the wrong grammar, so the honest
+        // answer at this boundary is an empty profile.
+        Language::Rust => Box::default(),
         Language::Python => python::analyze(&file, source),
         Language::JavaScript | Language::TypeScript => {
             // A path `syntax_language` does not recognize keeps the plain

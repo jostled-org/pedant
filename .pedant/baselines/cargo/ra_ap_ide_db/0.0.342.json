@@ -1,12 +1,12 @@
 {
   "spec_version": "0.1.0",
-  "source_hash": "ba41f84791e408d5f14b03fae6a1a2f2dcbefe87c37e33869aa45edd132ccdeb",
+  "source_hash": "e10de75db2255c5a4b795cd639345088c1c188dce08ed1705416c5fe5b9979b4",
   "crate_name": "ra_ap_ide_db",
   "crate_version": "0.0.342",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344436,
+  "timestamp": 1786296293,
   "analysis_completeness": {
-    "analyzed_files": 23,
+    "analyzed_files": 33,
     "skipped_files": 0
   },
   "rust_version": "1.95",

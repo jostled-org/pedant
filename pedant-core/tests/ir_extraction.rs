@@ -856,6 +856,35 @@ fn test_ir_style_mixed_concerns() {
     assert!(mc_violations.is_empty());
 }
 
+#[test]
+fn test_ir_extracts_generic_alias_target_and_argument_edges() {
+    let source = include_str!("fixtures/mixed_concerns_generic_aliases.rs");
+    let ir = parse_and_extract(source);
+    let edges: Vec<String> = ir
+        .type_aliases
+        .iter()
+        .flat_map(|alias| {
+            alias
+                .edges
+                .iter()
+                .map(|(source, target)| format!("{source}->{target}"))
+        })
+        .collect();
+
+    assert_eq!(
+        edges,
+        [
+            "UnitHandle->Handle",
+            "UnitHandle->UnitKind",
+            "DefinitionHandle->Handle",
+            "DefinitionHandle->DefinitionKind",
+            "ReferenceHandle->Handle",
+            "ReferenceHandle->ReferenceKind",
+        ],
+        "each alias connects its declared name to the generic target and marker argument",
+    );
+}
+
 // 3.T6: Dyn dispatch checks via IR
 #[test]
 fn test_ir_style_dyn_dispatch() {

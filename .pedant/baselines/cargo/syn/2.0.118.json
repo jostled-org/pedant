@@ -1,12 +1,12 @@
 {
   "spec_version": "0.1.0",
-  "source_hash": "1b6d047303f1864a3836a07110831bf1958cbd063c8123e814d1d73ecfdafc10",
+  "source_hash": "d665f20352f4e5abc9d8b1eaf096c044813ec3519383de4b78b50012cb9346f9",
   "crate_name": "syn",
   "crate_version": "2.0.118",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344442,
+  "timestamp": 1786296376,
   "analysis_completeness": {
-    "analyzed_files": 46,
+    "analyzed_files": 55,
     "skipped_files": 0
   },
   "rust_version": "1.71",
@@ -298,6 +298,16 @@
           "file": "./src/buffer.rs",
           "line": 420,
           "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/discouraged.rs",
+          "line": 199,
+          "column": 18
         },
         "evidence": "unsafe block",
         "origin": "code_site"

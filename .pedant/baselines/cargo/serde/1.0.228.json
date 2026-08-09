@@ -1,12 +1,12 @@
 {
   "spec_version": "0.1.0",
-  "source_hash": "3b401a69299bee4e2dd758dc04ae0b8983ab8cd378b625a90b797ecd0c9aa764",
+  "source_hash": "08c3cce5ef8cba57aed0861af72cec6462e67963fb76c501b5c182b097222e62",
   "crate_name": "serde",
   "crate_version": "1.0.228",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344441,
+  "timestamp": 1786296357,
   "analysis_completeness": {
-    "analyzed_files": 6,
+    "analyzed_files": 5,
     "skipped_files": 0
   },
   "rust_version": "1.56",

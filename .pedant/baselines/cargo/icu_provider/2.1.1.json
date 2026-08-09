@@ -1,12 +1,12 @@
 {
   "spec_version": "0.1.0",
-  "source_hash": "f0fddbc7013903e1c44c1556c8422311c8808673e8b1787fdfa732813e5873d1",
+  "source_hash": "699f8a5764f3e8266d93260ff729e796a51567f98c2d98d08d9c8f3bbb8f2c86",
   "crate_name": "icu_provider",
   "crate_version": "2.1.1",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344429,
+  "timestamp": 1786296105,
   "analysis_completeness": {
-    "analyzed_files": 17,
+    "analyzed_files": 18,
     "skipped_files": 0
   },
   "rust_version": "1.83",
@@ -70,6 +70,16 @@
           "column": 22
         },
         "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/marker.rs",
+          "line": 323,
+          "column": 1
+        },
+        "evidence": "unsafe impl",
         "origin": "code_site"
       },
       {

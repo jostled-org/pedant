@@ -11,11 +11,10 @@ use pedant_types::{
 use serde::Serialize;
 
 use crate::ProcessError;
+use crate::attestation_inputs::AttestationInputs;
 use crate::config::OutputFormat;
 
 const SPEC_VERSION: &str = "0.1.0";
-
-type AttestationInputs = (Box<str>, Box<str>, Box<str>);
 
 #[derive(Serialize)]
 struct JsonOutput<'a> {

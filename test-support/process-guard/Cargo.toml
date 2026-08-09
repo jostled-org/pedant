@@ -1,0 +1,21 @@
+[package]
+name = "pedant-process-guard"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+publish = false
+description = "Shared process-tree containment for pedant integration tests"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+thiserror = "2"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",
+] }

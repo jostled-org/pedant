@@ -1,12 +1,12 @@
 {
   "spec_version": "0.1.0",
-  "source_hash": "452e946e420efbaed9e65c603572a7eba1bfde5cfb5e94c4834b78a89e5ca21f",
+  "source_hash": "5c897b985962a636c008572bb3b05d0de829fa18dd7848656b924dc608cd4c57",
   "crate_name": "dashmap",
   "crate_version": "6.2.1",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344427,
+  "timestamp": 1786296068,
   "analysis_completeness": {
-    "analyzed_files": 18,
+    "analyzed_files": 21,
     "skipped_files": 0
   },
   "rust_version": "1.65",
@@ -1038,6 +1038,26 @@
           "file": "./src/mapref/one.rs",
           "line": 297,
           "column": 25
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rayon/map.rs",
+          "line": 143,
+          "column": 36
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rayon/map.rs",
+          "line": 201,
+          "column": 36
         },
         "evidence": "unsafe block",
         "origin": "code_site"

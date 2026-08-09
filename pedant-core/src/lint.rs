@@ -8,7 +8,7 @@ use crate::capabilities::detect_capabilities;
 use crate::check_config::CheckConfig;
 use crate::ir;
 use crate::ir::DataFlowFact;
-use crate::ir::extract::compute_fingerprints;
+use crate::ir::extract::{compute_fingerprints, parse_source};
 use crate::ir::semantic::SemanticContext;
 use crate::project::{FileShape, project_shape};
 use crate::style::check_style;
@@ -96,7 +96,7 @@ fn analyze_inner(
     semantic: Option<&SemanticContext>,
     execution_context: Option<ExecutionContext>,
 ) -> Result<(AnalysisResult, FileShape), syn::Error> {
-    let syntax = syn::parse_file(source)?;
+    let syntax = parse_source(file_path, source)?;
     let mut ir = ir::extract(file_path, &syntax, semantic);
     ir.source_line_count = source.lines().count();
     let violations = check_style(&ir, config).into_boxed_slice();

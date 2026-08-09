@@ -593,6 +593,25 @@ fn test_mixed_concerns_body_coupling() {
 }
 
 #[test]
+fn test_mixed_concerns_connects_generic_alias_targets_and_arguments() {
+    let source = include_str!("fixtures/mixed_concerns_generic_aliases.rs");
+    let config = CheckConfig {
+        check_mixed_concerns: true,
+        ..permissive_config()
+    };
+    let violations = analyze("mixed_concerns_generic_aliases.rs", source, &config, None)
+        .unwrap()
+        .violations;
+
+    assert!(
+        violations
+            .iter()
+            .all(|violation| !matches!(violation.violation_type, ViolationType::MixedConcerns)),
+        "generic aliases connect their authority, marker arguments, and consumers: {violations:?}",
+    );
+}
+
+#[test]
 fn test_mixed_concerns_disabled() {
     let source = include_str!("fixtures/mixed_concerns.rs");
     let violations = analyze("mixed_concerns.rs", source, &permissive_config(), None)

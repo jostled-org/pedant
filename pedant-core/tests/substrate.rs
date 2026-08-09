@@ -18,6 +18,23 @@
 #[path = "substrate_support/declaration_scan.rs"]
 mod declaration_scan;
 
+/// Published-package release order and the plan loop's verification commands.
+/// Same `#[path]` reason as [`declaration_scan`].
+#[path = "substrate_support/release_contract.rs"]
+mod release_contract;
+
+/// Focused lexical-path authority and production-wiring proofs. The test-only
+/// adapter exists only under the proof feature, so ordinary builds expose no
+/// additional surface. Same `#[path]` reason as [`declaration_scan`].
+#[cfg(feature = "resolution-test-support")]
+#[path = "substrate_support/path_normalization.rs"]
+mod path_normalization;
+
+/// Rust resolution substrate: Cargo project authority and the integration-root
+/// contract. Same `#[path]` reason as [`declaration_scan`].
+#[path = "substrate_support/resolution/mod.rs"]
+mod resolution;
+
 mod substrate_behavior {
     use pedant_core::capabilities::detect_capabilities;
     use pedant_core::ir::extract;
@@ -69,9 +86,11 @@ mod declared_surface {
         "pedant-types",
         "proc-macro2",
         "quote",
+        "semver",
         "sha2",
         "syn",
         "thiserror",
+        "toml",
     ];
 
     #[test]
@@ -179,22 +198,12 @@ mod declared_surface {
 }
 
 mod parse_only {
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
 
-    use pedant_core::capabilities::detect_capabilities;
-    use pedant_core::ir::extract;
-    use pedant_types::Capability;
-
-    use crate::declaration_scan::{LibSurface, crate_path, module_files, parse_rust_file};
-
-    /// The sole exclusion from the scanned substrate source set, named by path
-    /// rather than derived. `ir/semantic` compiles in every configuration so
-    /// `extract` can accept `Option<&SemanticContext>` unconditionally, and
-    /// `ir/semantic/context.rs` names rust-analyzer's workspace loader, which
-    /// invokes the toolchain. Those items are `semantic`-gated, but this scanner
-    /// reads source text and evaluates no `cfg`, so it cannot tell a gated item
-    /// from a live one. That is also why `semantic` sits outside the claim.
-    const SEMANTIC_EXCLUSION: &str = "ir/semantic";
+    use crate::declaration_scan::{
+        LibSurface, assert_semantic_exclusion_is_not_vacuous, crate_path, excluded_root,
+        module_files, process_evidence,
+    };
 
     #[test]
     fn scanned_substrate_source_set_names_no_process_api() {
@@ -207,19 +216,14 @@ mod parse_only {
         assert!(
             sources
                 .iter()
-                .any(|path| path.ends_with("ir/extract/visitor.rs")),
-            "directory-module subtrees should be expanded: ir/extract/visitor.rs is missing"
+                .any(|path| path.ends_with("ir/extract/visitor/implementation.rs")),
+            "directory-module subtrees should be expanded: visitor implementation is missing"
         );
         assert!(
             !sources.iter().any(|path| path.starts_with(&excluded)),
             "the semantic adapter subtree should stay out of the scanned set"
         );
-        assert!(
-            module_files("ir")
-                .iter()
-                .any(|path| path.ends_with("ir/semantic/context.rs")),
-            "the exclusion is not vacuous: context.rs is in the unfiltered expansion"
-        );
+        assert_semantic_exclusion_is_not_vacuous();
 
         let offenders: Box<[Box<str>]> = sources
             .iter()
@@ -232,7 +236,7 @@ mod parse_only {
     }
 
     /// `lib.rs` plus every file of every ungated `lib.rs` module declaration,
-    /// less [`SEMANTIC_EXCLUSION`].
+    /// less the semantic adapter subtree.
     fn scanned_sources() -> Box<[PathBuf]> {
         let surface = LibSurface::classify();
         let excluded = excluded_root();
@@ -244,21 +248,6 @@ mod parse_only {
         files.sort();
         files.dedup();
         files.into_boxed_slice()
-    }
-
-    /// Absolute form of [`SEMANTIC_EXCLUSION`].
-    fn excluded_root() -> PathBuf {
-        crate_path("src").join(SEMANTIC_EXCLUSION)
-    }
-
-    fn process_evidence(path: &Path) -> Option<Box<str>> {
-        let syntax = parse_rust_file(path);
-        let ir = extract(&path.to_string_lossy(), &syntax, None);
-        detect_capabilities(&ir, None)
-            .findings
-            .iter()
-            .find(|finding| finding.capability == Capability::ProcessExec)
-            .map(|finding| format!("{}: {}", path.display(), finding.evidence).into_boxed_str())
     }
 }
 

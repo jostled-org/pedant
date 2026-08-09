@@ -1037,8 +1037,14 @@ extern "C" {
 
 #[test]
 fn test_self_analysis_no_false_positives() {
-    let source = include_str!("../../pedant-core/src/capabilities.rs");
-    let syntax = syn::parse_file(source).unwrap();
+    let source = [
+        include_str!("../../pedant-core/src/capabilities/mod.rs"),
+        include_str!("../../pedant-core/src/capabilities/detection.rs"),
+        include_str!("../../pedant-core/src/capabilities/paths.rs"),
+        include_str!("../../pedant-core/src/capabilities/strings.rs"),
+    ]
+    .concat();
+    let syntax = syn::parse_file(&source).unwrap();
     let ir_data = ir::extract("capabilities.rs", &syntax, None);
     let profile = detect_capabilities(&ir_data, None);
 

@@ -40,7 +40,7 @@ fn output_error(github_output: &OsStr) -> impl Fn(std::io::Error) -> SupplyChain
 fn persist_report(report: &Report) -> Result<PathBuf, SupplyChainError> {
     let file = NamedTempFile::new().map_err(SupplyChainError::PersistReport)?;
     serde_json::to_writer_pretty(file.as_file(), report).map_err(|source| {
-        SupplyChainError::BaselineParse {
+        SupplyChainError::ReportSerialize {
             path: path_text(file.path()),
             source,
         }

@@ -1,10 +1,10 @@
 {
   "spec_version": "0.1.0",
-  "source_hash": "85f08686f8a9eb30cc5f5b8ce67e8591e05f279446561630f8fdd0091468d55a",
+  "source_hash": "c0a8968ec905c60528d9c67d1d0d2658cdfb519e16dcd5ace741ecd3b311c496",
   "crate_name": "crossbeam-utils",
   "crate_version": "0.8.22",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344426,
+  "timestamp": 1786296065,
   "analysis_completeness": {
     "analyzed_files": 14,
     "skipped_files": 0

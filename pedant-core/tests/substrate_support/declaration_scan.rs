@@ -11,20 +11,57 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use pedant_core::capabilities::detect_capabilities;
+use pedant_core::ir::extract;
+use pedant_types::Capability;
 use syn::punctuated::Punctuated;
 use syn::visit::Visit;
 
 /// The feature that selects pedant-core's judgment surface.
 pub(crate) const CHECKS_FEATURE: &str = "checks";
 
+/// The sole exclusion from every scanned parse-only source set, named by path
+/// rather than derived. `ir/semantic` compiles in every configuration so
+/// `extract` can accept `Option<&SemanticContext>` unconditionally, and
+/// `ir/semantic/context.rs` names rust-analyzer's workspace loader, which
+/// invokes the toolchain. Those items are `semantic`-gated, but this scanner
+/// reads source text and evaluates no `cfg`, so it cannot tell a gated item
+/// from a live one. That is also why `semantic` sits outside the claim.
+pub(crate) const SEMANTIC_EXCLUSION: &str = "ir/semantic";
+
+/// Absolute form of [`SEMANTIC_EXCLUSION`].
+pub(crate) fn excluded_root() -> PathBuf {
+    crate_path("src").join(SEMANTIC_EXCLUSION)
+}
+
+/// The process-capability evidence one source names, when it names any.
+///
+/// Both the whole-substrate scan and the narrower Tier 1 scan ask this one
+/// question, so the production entry points it asks it through are named once.
+pub(crate) fn process_evidence(path: &Path) -> Option<Box<str>> {
+    let syntax = parse_rust_file(path);
+    let ir = extract(&path.to_string_lossy(), &syntax, None);
+    detect_capabilities(&ir, None)
+        .findings
+        .iter()
+        .find(|finding| finding.capability == Capability::ProcessExec)
+        .map(|finding| format!("{}: {}", path.display(), finding.evidence).into_boxed_str())
+}
+
+/// Prove the semantic exclusion removes something: `ir/semantic/context.rs` is
+/// in the unfiltered expansion, so filtering it out is not a no-op.
+pub(crate) fn assert_semantic_exclusion_is_not_vacuous() {
+    assert!(
+        module_files("ir")
+            .iter()
+            .any(|path| path.ends_with("ir/semantic/context.rs")),
+        "the exclusion is not vacuous: context.rs is in the unfiltered expansion"
+    );
+}
+
 /// Test roots that exercise the substrate only. They must carry no `checks`
 /// gate, so they run in every configuration.
-pub(crate) const SUBSTRATE_ROOTS: &[&str] = &[
-    "hash.rs",
-    "pattern.rs",
-    "substrate.rs",
-    "workspace_members.rs",
-];
+pub(crate) const SUBSTRATE_ROOTS: &[&str] = &["hash.rs", "pattern.rs", "substrate.rs"];
 
 /// A path inside this crate, resolved against the manifest directory.
 pub(crate) fn crate_path(relative: &str) -> PathBuf {
@@ -76,6 +113,21 @@ pub(crate) fn test_root_paths() -> Box<[PathBuf]> {
         .collect();
     roots.sort();
     roots.into_boxed_slice()
+}
+
+/// Every Rust source this crate compiles, sorted — the whole `src/` tree, with
+/// no module declaration and no `cfg` consulted.
+///
+/// A claim about the routes production code takes holds in every configuration,
+/// so its subject is every file rather than the modules one feature set leaves
+/// live. The parse-route scan is the one caller, and it observes counters only
+/// the proof feature installs, so this follows that gate.
+#[cfg(feature = "resolution-test-support")]
+pub(crate) fn crate_sources() -> Box<[PathBuf]> {
+    let mut files = Vec::new();
+    collect_rust_files(&crate_path("src"), &mut files);
+    files.sort();
+    files.into_boxed_slice()
 }
 
 /// Files owned by the `lib.rs` module declaration `module`: the flat
@@ -174,6 +226,15 @@ impl PathIdents {
         let mut scan = Self::default();
         scan.visit_file(file);
         scan
+    }
+
+    /// Whether the file names any of `candidates` as a path segment or a
+    /// use-tree entry. Gated with its one caller, the parse-route scan.
+    #[cfg(feature = "resolution-test-support")]
+    pub(crate) fn names_any(&self, candidates: &[&str]) -> bool {
+        candidates
+            .iter()
+            .any(|candidate| self.idents.contains(*candidate))
     }
 
     /// Visit a macro body under the two shapes `syn` can re-parse: a

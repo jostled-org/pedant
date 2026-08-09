@@ -11,9 +11,10 @@ mod dir;
 mod discovery;
 mod error;
 mod github_output;
-mod manifest;
-mod module_graph;
+#[cfg(feature = "resolution-test-support")]
+mod receipt;
 mod report;
+mod selection;
 mod source_input;
 mod vendor;
 

@@ -1,0 +1,3 @@
+[workspace]
+members = ["../semantic_workspace", "../dataflow_workspace"]
+resolver = "2"

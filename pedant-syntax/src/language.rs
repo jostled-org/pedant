@@ -9,9 +9,10 @@ use crate::classify::{FileClassification, classify_extension, classify_path, lan
 
 /// A language whose syntax `pedant-syntax` can parse.
 ///
-/// Wider than the capability [`Language`] set: it adds Rust, which capability
-/// analysis leaves to `pedant-core`, and TSX, which shares TypeScript's
-/// classification but needs its own grammar.
+/// Wider than the detected [`Language`] set: it adds TSX, which shares
+/// TypeScript's classification but needs its own grammar. Rust is in both, but
+/// only this enum reaches it by path: `.rs` classifies as
+/// [`FileClassification::Rust`] and names no detected language.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum SyntaxLanguage {
@@ -39,6 +40,7 @@ impl From<Language> for SyntaxLanguage {
     /// [`syntax_language`] distinguishes TSX.
     fn from(language: Language) -> Self {
         match language {
+            Language::Rust => Self::Rust,
             Language::Python => Self::Python,
             Language::JavaScript => Self::JavaScript,
             Language::TypeScript => Self::TypeScript,

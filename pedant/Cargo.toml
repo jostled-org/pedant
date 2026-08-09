@@ -1,6 +1,6 @@
 [package]
 name = "pedant"
-version = "0.26.0"
+version = "0.27.0"
 edition = "2024"
 rust-version = "1.96"
 description = "An opinionated Rust linter, with special focus on AI-generated code"
@@ -21,24 +21,29 @@ name = "pedant"
 path = "src/main.rs"
 
 [dependencies]
-pedant-core = { version = "0.19.0", path = "../pedant-core", features = ["checks"] }
-pedant-lang = { version = "0.5.0", path = "../pedant-lang" }
-pedant-types = { version = "0.14.0", path = "../pedant-types" }
+pedant-core = { version = "0.20.0", path = "../pedant-core", features = ["checks"] }
+pedant-lang = { version = "0.6.0", path = "../pedant-lang" }
+pedant-types = { version = "0.15.0", path = "../pedant-types" }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 semver = "1"
-sha2 = "0.11"
 tempfile = "3"
 thiserror = "2"
-toml = "1"
 
 [features]
 default = []
 semantic = ["pedant-core/semantic"]
+# Forwards the substrate's proof-only observation so the spawned binary can
+# report what its production loaders did. No default or non-dev edge selects it.
+resolution-test-support = ["pedant-core/resolution-test-support"]
 
 [dev-dependencies]
+pedant-process-guard = { version = "=0.1.0", path = "../test-support/process-guard" }
 serde_json = "1"
+# tests/supply_chain_support/probe_receipt.rs recomputes the digests a receipt
+# reports.
+sha2 = "0.11"
 
 [package.metadata.docs.rs]
 # pedant is a CLI binary — the library API lives in pedant-core.

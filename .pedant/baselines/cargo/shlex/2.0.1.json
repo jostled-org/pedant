@@ -1,12 +1,12 @@
 {
   "spec_version": "0.1.0",
-  "source_hash": "91643fb7511c5eb41d0cd0aa3ff07b7a90f0fa9422196b7e8df69901b9976723",
+  "source_hash": "f978ed0cfcb7f90303c7a8ebffe74c356a8fe600e97548a4cbade62869e0aa7b",
   "crate_name": "shlex",
   "crate_version": "2.0.1",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344441,
+  "timestamp": 1786296364,
   "analysis_completeness": {
-    "analyzed_files": 2,
+    "analyzed_files": 3,
     "skipped_files": 0
   },
   "rust_version": "1.46.0",

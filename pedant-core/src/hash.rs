@@ -17,6 +17,18 @@ pub fn compute_source_hash<K: Ord + AsRef<str>, V: AsRef<str>>(
     encode_hex_digest(&digest)
 }
 
+/// The raw SHA-256 digest of one byte run.
+///
+/// Kept beside [`compute_source_hash`] because both answer the same question
+/// about bytes; the difference is only whether the caller wants the digest or
+/// its rendering. Manifest freshness and semantic-snapshot verification both
+/// compare digests rather than hex, so they read this one.
+pub fn digest_bytes(bytes: &[u8]) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    hasher.finalize().into()
+}
+
 fn update_hash_entry(hasher: &mut Sha256, path: &str, content: &str) {
     let path_bytes = path.as_bytes();
     let content_bytes = content.as_bytes();

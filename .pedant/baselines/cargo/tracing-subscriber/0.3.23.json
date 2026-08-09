@@ -1,197 +1,17 @@
 {
   "spec_version": "0.1.0",
-  "source_hash": "9d973c78acc5cd9e645489fcc3d6fcb072b74e2b4a79573ea7b55b00531e6a4b",
+  "source_hash": "2ca491b0a7502e6ad1b2fd2c96c9addfd27d419cf822024dbdcdf2d25dfc816c",
   "crate_name": "tracing-subscriber",
   "crate_version": "0.3.23",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344444,
+  "timestamp": 1786296390,
   "analysis_completeness": {
-    "analyzed_files": 40,
+    "analyzed_files": 16,
     "skipped_files": 0
   },
   "rust_version": "1.65.0",
   "profile": {
     "findings": [
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/filter/layer_filters/mod.rs",
-          "line": 873,
-          "column": 5
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/filter/layer_filters/mod.rs",
-          "line": 881,
-          "column": 18
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/filter/layer_filters/mod.rs",
-          "line": 1309,
-          "column": 5
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "system_time",
-        "location": {
-          "file": "./src/fmt/fmt_layer.rs",
-          "line": 10,
-          "column": 1
-        },
-        "evidence": "std::time::Instant",
-        "origin": "import"
-      },
-      {
-        "capability": "system_time",
-        "location": {
-          "file": "./src/fmt/fmt_layer.rs",
-          "line": 1314,
-          "column": 46
-        },
-        "evidence": "time::Uptime::default",
-        "origin": "import"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/fmt/fmt_layer.rs",
-          "line": 1070,
-          "column": 5
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "system_time",
-        "location": {
-          "file": "./src/fmt/mod.rs",
-          "line": 1353,
-          "column": 46
-        },
-        "evidence": "time::Uptime::default",
-        "origin": "import"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/fmt/mod.rs",
-          "line": 445,
-          "column": 5
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/fmt/mod.rs",
-          "line": 449,
-          "column": 13
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "system_time",
-        "location": {
-          "file": "./src/fmt/time/chrono_crate.rs",
-          "line": 47,
-          "column": 17
-        },
-        "evidence": "chrono::Local::now",
-        "origin": "import"
-      },
-      {
-        "capability": "system_time",
-        "location": {
-          "file": "./src/fmt/time/chrono_crate.rs",
-          "line": 50,
-          "column": 17
-        },
-        "evidence": "chrono::format::Fixed",
-        "origin": "import"
-      },
-      {
-        "capability": "system_time",
-        "location": {
-          "file": "./src/fmt/time/chrono_crate.rs",
-          "line": 50,
-          "column": 17
-        },
-        "evidence": "chrono::format::Item",
-        "origin": "import"
-      },
-      {
-        "capability": "system_time",
-        "location": {
-          "file": "./src/fmt/time/chrono_crate.rs",
-          "line": 98,
-          "column": 17
-        },
-        "evidence": "chrono::Utc::now",
-        "origin": "import"
-      },
-      {
-        "capability": "system_time",
-        "location": {
-          "file": "./src/fmt/time/mod.rs",
-          "line": 4,
-          "column": 1
-        },
-        "evidence": "std::time::Instant",
-        "origin": "import"
-      },
-      {
-        "capability": "system_time",
-        "location": {
-          "file": "./src/fmt/time/time_crate.rs",
-          "line": 3,
-          "column": 1
-        },
-        "evidence": "time::format_description::well_known",
-        "origin": "import"
-      },
-      {
-        "capability": "system_time",
-        "location": {
-          "file": "./src/fmt/time/time_crate.rs",
-          "line": 3,
-          "column": 1
-        },
-        "evidence": "time::formatting::Formattable",
-        "origin": "import"
-      },
-      {
-        "capability": "system_time",
-        "location": {
-          "file": "./src/fmt/time/time_crate.rs",
-          "line": 3,
-          "column": 1
-        },
-        "evidence": "time::OffsetDateTime",
-        "origin": "import"
-      },
-      {
-        "capability": "system_time",
-        "location": {
-          "file": "./src/fmt/time/time_crate.rs",
-          "line": 3,
-          "column": 1
-        },
-        "evidence": "time::UtcOffset",
-        "origin": "import"
-      },
       {
         "capability": "unsafe_code",
         "location": {
@@ -328,26 +148,6 @@
           "file": "./src/layer/mod.rs",
           "line": 1672,
           "column": 35
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/reload.rs",
-          "line": 188,
-          "column": 5
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/reload.rs",
-          "line": 200,
-          "column": 13
         },
         "evidence": "unsafe block",
         "origin": "code_site"

@@ -1,57 +1,17 @@
 {
   "spec_version": "0.1.0",
-  "source_hash": "404fd941a26321350f1c1d3c423a6a7601ad398055f732623c3150826e7363d6",
+  "source_hash": "bf5e2048d1d4f60b8117a98f8c24ff2537352f4f1437d5e0b1ee4a29606e9a80",
   "crate_name": "tokio-util",
   "crate_version": "0.7.18",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344443,
+  "timestamp": 1786296384,
   "analysis_completeness": {
-    "analyzed_files": 58,
+    "analyzed_files": 21,
     "skipped_files": 0
   },
   "rust_version": "1.71",
   "profile": {
     "findings": [
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/io/read_arc.rs",
-          "line": 33,
-          "column": 19
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/io/read_arc.rs",
-          "line": 43,
-          "column": 8
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/io/stream_reader.rs",
-          "line": 321,
-          "column": 18
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/io/stream_reader.rs",
-          "line": 323,
-          "column": 20
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
       {
         "capability": "unsafe_code",
         "location": {
@@ -167,76 +127,6 @@
         "location": {
           "file": "./src/sync/reusable_box.rs",
           "line": 154,
-          "column": 17
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/task/abort_on_drop.rs",
-          "line": 56,
-          "column": 9
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "network",
-        "location": {
-          "file": "./src/udp/frame.rs",
-          "line": 4,
-          "column": 1
-        },
-        "evidence": "tokio::net::UdpSocket",
-        "origin": "import"
-      },
-      {
-        "capability": "network",
-        "location": {
-          "file": "./src/udp/frame.rs",
-          "line": 11,
-          "column": 1
-        },
-        "evidence": "std::net::Ipv4Addr",
-        "origin": "import"
-      },
-      {
-        "capability": "network",
-        "location": {
-          "file": "./src/udp/frame.rs",
-          "line": 11,
-          "column": 1
-        },
-        "evidence": "std::net::SocketAddr",
-        "origin": "import"
-      },
-      {
-        "capability": "network",
-        "location": {
-          "file": "./src/udp/frame.rs",
-          "line": 11,
-          "column": 1
-        },
-        "evidence": "std::net::SocketAddrV4",
-        "origin": "import"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/udp/frame.rs",
-          "line": 86,
-          "column": 27
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/udp/frame.rs",
-          "line": 97,
           "column": 17
         },
         "evidence": "unsafe block",

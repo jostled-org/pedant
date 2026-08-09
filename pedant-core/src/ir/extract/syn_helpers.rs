@@ -18,21 +18,6 @@ pub(super) fn span_from(lc: proc_macro2::LineColumn) -> IrSpan {
     }
 }
 
-/// The rendered predicate of a `#[cfg(…)]` attribute (`unix`,
-/// `feature = "x"`, …), or `None` for any other attribute.
-///
-/// The text is the identity of a build alternative: impls under the same
-/// predicate compile together, impls under different ones may not. It is kept
-/// verbatim, so two predicates that differ only in spelling read as distinct
-/// alternatives — which can only cost a detection, never invent one.
-pub(super) fn cfg_predicate(attr: &syn::Attribute) -> Option<Rc<str>> {
-    if !attr.path().is_ident("cfg") {
-        return None;
-    }
-    let list = attr.meta.require_list().ok()?;
-    Some(Rc::from(list.tokens.to_string()))
-}
-
 /// Check if an attribute is `#[cfg(test)]` without allocating.
 pub(super) fn is_cfg_test_attr(attr: &syn::Attribute) -> bool {
     attr.path().is_ident("cfg")

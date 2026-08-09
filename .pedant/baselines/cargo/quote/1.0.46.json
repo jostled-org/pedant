@@ -1,12 +1,12 @@
 {
   "spec_version": "0.1.0",
-  "source_hash": "cf6b239cf9a543c65dfcbc9e97bed5230b48dd8d9f3cff4a6223a74d6c780f2d",
+  "source_hash": "27669ac7ac7a91885ab0266b0345e802229af928b2a09c8f0a528f64154a6cf7",
   "crate_name": "quote",
   "crate_version": "1.0.46",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344433,
+  "timestamp": 1786296236,
   "analysis_completeness": {
-    "analyzed_files": 7,
+    "analyzed_files": 8,
     "skipped_files": 0
   },
   "rust_version": "1.71",

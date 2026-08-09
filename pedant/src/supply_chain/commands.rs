@@ -63,7 +63,7 @@ fn report_failure(stderr: &mut impl Write, error: &SupplyChainError) -> ExitCode
 }
 
 /// Vendor the locked dependency set and write a baseline for every crate.
-fn refresh_baselines(baseline_root: &Path) -> Result<Vec<CrateAttestation>, SupplyChainError> {
+fn refresh_baselines(baseline_root: &Path) -> Result<Box<[CrateAttestation]>, SupplyChainError> {
     let attestations = attest_current_workspace()?;
     for attestation in &attestations {
         write_baseline_file(baseline_root, attestation)?;
@@ -82,7 +82,7 @@ fn update_current_baselines(baseline_root: &Path) -> Result<usize, SupplyChainEr
     Ok(attestations.len())
 }
 
-fn attest_current_workspace() -> Result<Vec<CrateAttestation>, SupplyChainError> {
+fn attest_current_workspace() -> Result<Box<[CrateAttestation]>, SupplyChainError> {
     let workspace_root = current_workspace_root()?;
     let vendor = vendor_cargo_deps(&workspace_root)?;
     collect_attestations(&vendor.vendor_root())

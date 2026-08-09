@@ -1,12 +1,12 @@
 {
   "spec_version": "0.1.0",
-  "source_hash": "99c20d98ce292c8017af44166841911a0c6c3e06c5f87691d9d4e8f6409d8b36",
+  "source_hash": "03d078f2696018887b3ee641fbd54a0401e588b538aeea8cb3059e0f0b067188",
   "crate_name": "serde_derive_internals",
   "crate_version": "0.29.1",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344441,
+  "timestamp": 1786296359,
   "analysis_completeness": {
-    "analyzed_files": 1,
+    "analyzed_files": 10,
     "skipped_files": 0
   },
   "rust_version": "1.56",

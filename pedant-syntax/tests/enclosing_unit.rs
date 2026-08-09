@@ -27,6 +27,10 @@ mod tree_sitter_support;
 #[path = "enclosing_unit_support/location.rs"]
 mod location;
 
+#[cfg(feature = "rust")]
+#[path = "enclosing_unit_support/shared_language.rs"]
+mod shared_language;
+
 mod model {
     use pedant_syntax::{LineSpan, Location, SourceUnit, SourceUnitKind, SyntaxLanguage};
     use serde_json::json;
@@ -461,3 +465,13 @@ mod bash;
 ))]
 #[path = "enclosing_unit_support/kind_coverage.rs"]
 mod kind_coverage;
+
+/// The shared `Language` enum gains Rust, and the exhaustive conversion sends
+/// it to the Rust backend, which extracts what the fixtures' Rust row already
+/// writes down. Path classification and detection exemption stay with
+/// `rust_is_syntax_only`, which states them for `.rs` itself.
+#[cfg(feature = "rust")]
+#[test]
+fn rust_language_conversion_preserves_existing_rust_extraction() {
+    shared_language::rust_conversion_preserves_extraction();
+}

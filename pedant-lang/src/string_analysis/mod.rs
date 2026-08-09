@@ -4,6 +4,7 @@ mod c_family;
 mod evidence;
 mod findings;
 mod quoted;
+mod validation;
 
 pub(crate) use c_family::{scan_go_string_literals, scan_js_string_literals};
 pub(crate) use findings::{

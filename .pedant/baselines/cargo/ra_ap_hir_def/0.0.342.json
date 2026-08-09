@@ -4,7 +4,7 @@
   "crate_name": "ra_ap_hir_def",
   "crate_version": "0.0.342",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344434,
+  "timestamp": 1786296256,
   "analysis_completeness": {
     "analyzed_files": 66,
     "skipped_files": 0
@@ -61,16 +61,6 @@
         },
         "evidence": "unsafe block",
         "origin": "code_site"
-      },
-      {
-        "capability": "network",
-        "location": {
-          "file": "./src/expr_store/lower/path/tests.rs",
-          "line": 64,
-          "column": 22
-        },
-        "evidence": "A::B::C::D::E::F",
-        "origin": "string_literal"
       },
       {
         "capability": "unsafe_code",

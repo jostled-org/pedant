@@ -1,12 +1,12 @@
 {
   "spec_version": "0.1.0",
-  "source_hash": "5e5de334c822a637ca3bbfe086722b9ea78a0a937f949c4abba7601856434cdd",
+  "source_hash": "ada01929fdead8898643c00379897ce74d2c564950aac98b563705d270fef2e7",
   "crate_name": "tempfile",
   "crate_version": "3.27.0",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344442,
+  "timestamp": 1786296377,
   "analysis_completeness": {
-    "analyzed_files": 11,
+    "analyzed_files": 14,
     "skipped_files": 0
   },
   "rust_version": "1.63",
@@ -41,6 +41,256 @@
         },
         "evidence": "std::fs::remove_dir_all",
         "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/file/imp/other.rs",
+          "line": 1,
+          "column": 1
+        },
+        "evidence": "std::fs::File",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/file/imp/other.rs",
+          "line": 1,
+          "column": 1
+        },
+        "evidence": "std::fs::OpenOptions",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/file/imp/unix.rs",
+          "line": 2,
+          "column": 1
+        },
+        "evidence": "std::fs::self",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/file/imp/unix.rs",
+          "line": 2,
+          "column": 1
+        },
+        "evidence": "std::fs::File",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/file/imp/unix.rs",
+          "line": 2,
+          "column": 1
+        },
+        "evidence": "std::fs::OpenOptions",
+        "origin": "import"
+      },
+      {
+        "capability": "file_write",
+        "location": {
+          "file": "./src/file/imp/unix.rs",
+          "line": 8,
+          "column": 1
+        },
+        "evidence": "std::fs::hard_link",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/file/imp/windows.rs",
+          "line": 2,
+          "column": 1
+        },
+        "evidence": "std::fs::File",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/file/imp/windows.rs",
+          "line": 2,
+          "column": 1
+        },
+        "evidence": "std::fs::OpenOptions",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file/imp/windows.rs",
+          "line": 9,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::HANDLE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file/imp/windows.rs",
+          "line": 9,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file/imp/windows.rs",
+          "line": 10,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::MoveFileExW",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file/imp/windows.rs",
+          "line": 10,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::ReOpenFile",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file/imp/windows.rs",
+          "line": 10,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::SetFileAttributesW",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file/imp/windows.rs",
+          "line": 10,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_NORMAL",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file/imp/windows.rs",
+          "line": 10,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_TEMPORARY",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file/imp/windows.rs",
+          "line": 10,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_FLAG_DELETE_ON_CLOSE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file/imp/windows.rs",
+          "line": 10,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_GENERIC_READ",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file/imp/windows.rs",
+          "line": 10,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_GENERIC_WRITE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file/imp/windows.rs",
+          "line": 10,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_SHARE_DELETE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file/imp/windows.rs",
+          "line": 10,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file/imp/windows.rs",
+          "line": 10,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::FILE_SHARE_WRITE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/file/imp/windows.rs",
+          "line": 10,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Storage::FileSystem::MOVEFILE_REPLACE_EXISTING",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/file/imp/windows.rs",
+          "line": 66,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/file/imp/windows.rs",
+          "line": 82,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/file/imp/windows.rs",
+          "line": 93,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
       },
       {
         "capability": "file_read",

@@ -1,3 +1,4 @@
+mod analyze_at;
 mod config;
 mod crate_index;
 mod error;

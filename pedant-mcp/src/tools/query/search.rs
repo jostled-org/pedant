@@ -60,8 +60,19 @@ pub fn search_by_capability(
     json_result(&results)
 }
 
+/// Parse a language filter token.
+///
+/// `rust` is refused rather than accepted. No producer tags a finding with
+/// [`Language::Rust`]: `pedant-core` builds every Rust finding with
+/// `language: None`, and `pedant-lang` answers Rust with an empty profile.
+/// Accepting the token would filter every finding out and report an empty
+/// result set, which a caller cannot tell from "no crate uses this
+/// capability". Refusing it says which answer is missing and why.
 fn parse_language(name: &str) -> Result<Language, String> {
     match name {
+        "rust" => Err(String::from(
+            "language filter `rust` is unavailable: Rust findings carry no language tag",
+        )),
         "python" => Ok(Language::Python),
         "javascript" => Ok(Language::JavaScript),
         "typescript" => Ok(Language::TypeScript),

@@ -1,1344 +1,393 @@
-use std::fs;
-use std::process::Command;
+//! Cargo supply-chain journeys through the spawned `pedant` binary.
+//!
+//! Every child here runs under the guard in `supply_chain_support`, because a
+//! `supply-chain` command runs Cargo and Cargo runs a tree of its own. This
+//! root states the claims; the support tree owns the fixtures, the tables, and
+//! the child lifecycle.
 
-use pedant_types::AttestationContent;
+#[path = "supply_chain_support/process_guard.rs"]
+mod process_guard;
 
-mod common;
+#[path = "supply_chain_support/fake_cargo.rs"]
+mod fake_cargo;
 
-fn write_test_crate(root: &std::path::Path) {
-    fs::create_dir_all(root.join("src")).unwrap();
-    fs::write(
-        root.join("Cargo.toml"),
-        "[package]\nname = \"supply-chain-test\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nserde = \"1\"\n",
-    )
-    .unwrap();
-    fs::write(
-        root.join("src/lib.rs"),
-        "pub fn demo() { let _ = serde::de::IgnoredAny; }\n",
-    )
-    .unwrap();
+#[path = "supply_chain_support/baseline_store.rs"]
+mod baseline_store;
+
+#[path = "supply_chain_support/fixtures.rs"]
+mod fixtures;
+
+#[path = "supply_chain_support/real_vendor.rs"]
+mod real_vendor;
+
+#[path = "supply_chain_support/journey.rs"]
+mod journey;
+
+#[path = "supply_chain_support/guard_cases.rs"]
+mod guard_cases;
+
+#[cfg(feature = "resolution-test-support")]
+#[path = "supply_chain_support/probe_receipt.rs"]
+mod probe_receipt;
+
+/// What an attestation persists and prunes. Same `#[path]` reason as the
+/// modules above.
+#[path = "supply_chain_support/baseline_cases.rs"]
+mod baseline_cases;
+
+/// Journeys through the real Cargo. Same `#[path]` reason.
+#[path = "supply_chain_support/real_cargo_cases.rs"]
+mod real_cargo_cases;
+
+use baseline_store::VendoredWorkspace;
+use fixtures::{VendorFixture, manifest, manifest_with_msrv, write, write_library_crate};
+use pedant_process_guard::run_fixture;
+use pedant_types::Capability;
+
+/// Every closure failure the specification calls security-fatal, counted here
+/// rather than read off the table. A loop over an emptied or truncated table
+/// runs no row and reports clean; counted against what the specification
+/// requires, a dropped row fails instead.
+const SECURITY_FATAL_FAILURES: usize = 8;
+
+/// The termination paths a guarded child must survive: a clean exit, a budget
+/// overrun, and an early Cargo failure. Counted for the same reason.
+const GUARDED_TERMINATION_PATHS: usize = 3;
+
+#[test]
+fn process_tree_fixture() {
+    run_fixture().expect("the process-tree fixture should run");
 }
 
-fn generate_lockfile(root: &std::path::Path) {
-    let output = Command::new("cargo")
-        .args(["generate-lockfile", "--offline"])
-        .current_dir(root)
-        .output()
-        .expect("failed to run cargo generate-lockfile");
-    assert!(
-        output.status.success(),
-        "failed to generate lockfile: {}",
-        String::from_utf8_lossy(&output.stderr)
+/// The union of a package's primary target closures is exactly what a
+/// supply-chain command hashes, and any selected-source failure aborts every
+/// command with the baseline store byte-for-byte unchanged.
+#[test]
+fn supply_chain_snapshot_journey_is_root_only_complete_and_failure_atomic() {
+    journey::primary_target_union_is_root_only_and_complete();
+    assert_eq!(
+        journey::FAILURE_ROWS.len(),
+        SECURITY_FATAL_FAILURES,
+        "every security-fatal closure failure must still have a row"
     );
-}
-
-fn write_workspace_dependency(root: &std::path::Path) {
-    fs::create_dir_all(root.join("member/src")).unwrap();
-    fs::create_dir_all(root.join("test_data/lexer/err")).unwrap();
-    fs::write(
-        root.join("Cargo.toml"),
-        "[workspace]\nmembers = [\"member\"]\n",
-    )
-    .unwrap();
-    fs::write(
-        root.join("member/Cargo.toml"),
-        "[package]\nname = \"workspace-dep\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )
-    .unwrap();
-    fs::write(root.join("member/src/lib.rs"), "pub fn real_code() {}\n").unwrap();
-    fs::write(
-        root.join("test_data/lexer/err/byte_char_literals.rs"),
-        "b'\n",
-    )
-    .unwrap();
-}
-
-fn write_parse_failing_dependency(root: &std::path::Path) {
-    fs::create_dir_all(root.join("src")).unwrap();
-    fs::write(
-        root.join("Cargo.toml"),
-        "[package]\nname = \"parse-failing-dep\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )
-    .unwrap();
-    fs::write(
-        root.join("src/lib.rs"),
-        "#[allow(unknown_lints, bare_trait_objects)]\ntype Action = Fn(&u8) + Send + Sync;\n\npub fn touch(_: &Action) {}\n",
-    )
-    .unwrap();
-}
-
-fn which_cargo() -> String {
-    Command::new("which")
-        .arg("cargo")
-        .output()
-        .ok()
-        .and_then(|output| String::from_utf8(output.stdout).ok())
-        .map(|value| value.trim().to_owned())
-        .unwrap_or_else(|| String::from("cargo"))
-}
-
-fn write_fake_cargo_script(
-    script_path: &std::path::Path,
-    vendor_source: &std::path::Path,
-    real_cargo: &str,
-) {
-    fs::write(
-        script_path,
-        format!(
-            "#!/bin/sh\nif [ \"$1\" = vendor ]; then\n  mkdir -p \"$2\"\n  cp -R \"{}\"/. \"$2\"\n  exit 0\nfi\nexec {} \"$@\"\n",
-            vendor_source.display(),
-            real_cargo
-        ),
-    )
-    .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(script_path).unwrap().permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(script_path, perms).unwrap();
+    for row in journey::FAILURE_ROWS {
+        journey::selected_failure_is_fatal_and_atomic(row);
     }
 }
 
-fn write_minimal_consumer(root: &std::path::Path) {
-    fs::create_dir_all(root.join("src")).unwrap();
-    fs::write(
-        root.join("Cargo.toml"),
-        "[package]\nname = \"consumer\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )
-    .unwrap();
-    fs::write(root.join("src/lib.rs"), "").unwrap();
-    generate_lockfile(root);
-}
-
-fn run_with_fake_vendor(
-    script_dir: &std::path::Path,
-    consumer_root: &std::path::Path,
-    vendor_source: &std::path::Path,
-    args: &[&str],
-) -> std::process::Output {
-    let real_cargo = which_cargo();
-    let cargo_script = script_dir.join("cargo");
-    write_fake_cargo_script(&cargo_script, vendor_source, &real_cargo);
-
-    Command::new(env!("CARGO_BIN_EXE_pedant"))
-        .current_dir(consumer_root)
-        // See common::run_pedant_in: keep the child off the CI GITHUB_OUTPUT file.
-        .env_remove("GITHUB_OUTPUT")
-        .env(
-            "PATH",
-            format!(
-                "{}:{}",
-                script_dir.display(),
-                std::env::var("PATH").unwrap_or_default()
-            ),
-        )
-        .args(args)
-        .output()
-        .unwrap()
-}
-
+/// A guarded child owns the whole tree Cargo starts, on every exit path.
 #[test]
-fn supply_chain_init_then_verify_is_clean() {
-    let dir = tempfile::tempdir().unwrap();
-    let root = dir.path();
-    write_test_crate(root);
-    generate_lockfile(root);
-
-    let baselines = root.join(".pedant/baselines");
-    let init = common::run_pedant_in(
-        root,
-        &[
-            "supply-chain",
-            "init",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-        ],
-        None,
-    );
-    assert!(
-        init.status.success(),
-        "init failed: {}",
-        String::from_utf8_lossy(&init.stderr)
-    );
-
-    let verify = common::run_pedant_in(
-        root,
-        &[
-            "supply-chain",
-            "verify",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-        ],
-        None,
-    );
-    assert!(
-        verify.status.success(),
-        "verify failed: stdout={} stderr={}",
-        String::from_utf8_lossy(&verify.stdout),
-        String::from_utf8_lossy(&verify.stderr)
-    );
-    assert!(String::from_utf8_lossy(&verify.stdout).contains("All dependencies match baselines."));
-}
-
-#[test]
-fn supply_chain_verify_reports_missing_baseline() {
-    let dir = tempfile::tempdir().unwrap();
-    let root = dir.path();
-    write_test_crate(root);
-    generate_lockfile(root);
-
-    let baselines = root.join(".pedant/baselines");
-    let verify = common::run_pedant_in(
-        root,
-        &[
-            "supply-chain",
-            "verify",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-            "--fail-on",
-            "new-dependency",
-        ],
-        None,
-    );
-    assert_eq!(verify.status.code(), Some(1));
-    let stdout = String::from_utf8_lossy(&verify.stdout);
-    assert!(stdout.contains("new-dependency") || stdout.contains("capabilities:"));
-}
-
-#[test]
-fn supply_chain_verify_fail_on_none_does_not_fail() {
-    let dir = tempfile::tempdir().unwrap();
-    let root = dir.path();
-    write_test_crate(root);
-    generate_lockfile(root);
-
-    let baselines = root.join(".pedant/baselines");
-    let verify = common::run_pedant_in(
-        root,
-        &[
-            "supply-chain",
-            "verify",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-            "--fail-on",
-            "none",
-        ],
-        None,
-    );
-
-    assert!(
-        verify.status.success(),
-        "verify failed: stdout={} stderr={}",
-        String::from_utf8_lossy(&verify.stdout),
-        String::from_utf8_lossy(&verify.stderr)
-    );
-
-    let stdout = String::from_utf8_lossy(&verify.stdout);
-    assert!(stdout.contains("new-dependency") || stdout.contains("capabilities:"));
-}
-
-#[test]
-fn supply_chain_verify_debug_package_emits_hashed_inputs() {
-    let dir = tempfile::tempdir().unwrap();
-    let root = dir.path();
-    write_test_crate(root);
-    generate_lockfile(root);
-
-    let baselines = root.join(".pedant/baselines");
-    let init = common::run_pedant_in(
-        root,
-        &[
-            "supply-chain",
-            "init",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-        ],
-        None,
-    );
-    assert!(init.status.success());
-
-    let verify = common::run_pedant_in(
-        root,
-        &[
-            "supply-chain",
-            "verify",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-            "--debug-package",
-            "serde",
-        ],
-        None,
-    );
-
-    assert!(verify.status.success());
-    let stderr = String::from_utf8_lossy(&verify.stderr);
-    assert!(
-        stderr.contains("debug-package: serde@"),
-        "stderr was: {stderr}"
-    );
-    assert!(stderr.contains("source_hash:"), "stderr was: {stderr}");
-    assert!(stderr.contains("file: ./"), "stderr was: {stderr}");
-    assert!(stderr.contains("sha256="), "stderr was: {stderr}");
-}
-
-#[test]
-fn supply_chain_update_prunes_stale_versions_and_removed_crates() {
-    let dir = tempfile::tempdir().unwrap();
-    let root = dir.path();
-    write_test_crate(root);
-    generate_lockfile(root);
-
-    let baselines = root.join(".pedant/baselines");
-    let init = common::run_pedant_in(
-        root,
-        &[
-            "supply-chain",
-            "init",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-        ],
-        None,
-    );
-    assert!(init.status.success());
-
-    let serde_dir = baselines.join("cargo/serde");
-    fs::write(serde_dir.join("0.0.0.json"), b"{}" as &[u8]).unwrap();
-    let removed_dir = baselines.join("cargo/removed-crate");
-    fs::create_dir_all(&removed_dir).unwrap();
-    fs::write(removed_dir.join("9.9.9.json"), b"{}" as &[u8]).unwrap();
-
-    let update = common::run_pedant_in(
-        root,
-        &[
-            "supply-chain",
-            "update",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-        ],
-        None,
-    );
-    assert!(
-        update.status.success(),
-        "update failed: {}",
-        String::from_utf8_lossy(&update.stderr)
-    );
-
-    assert!(serde_dir.is_dir(), "expected serde baseline dir to remain");
-    assert!(
-        !serde_dir.join("0.0.0.json").exists(),
-        "expected stale serde version to be pruned"
-    );
-    assert!(
-        !removed_dir.exists(),
-        "expected removed crate baseline dir to be pruned"
-    );
-}
-
-#[test]
-fn supply_chain_ignores_invalid_fixture_rust_outside_workspace_targets() {
-    let dir = tempfile::tempdir().unwrap();
-    let vendor_root = dir.path().join("vendor");
-    fs::create_dir_all(&vendor_root).unwrap();
-    write_workspace_dependency(&vendor_root.join("workspace-dep"));
-
-    let workspace = dir.path().join("consumer");
-    write_test_crate(&workspace);
-    generate_lockfile(&workspace);
-
-    let baselines = workspace.join(".pedant/baselines");
-    let output = run_with_fake_vendor(
-        dir.path(),
-        &workspace,
-        &vendor_root,
-        &[
-            "supply-chain",
-            "init",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-        ],
-    );
-
-    assert!(
-        output.status.success(),
-        "init failed: stdout={} stderr={}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-}
-
-#[test]
-fn supply_chain_init_and_verify_ignore_parse_failures_in_vendored_targets() {
-    let dir = tempfile::tempdir().unwrap();
-    let vendor_root = dir.path().join("vendor");
-    fs::create_dir_all(&vendor_root).unwrap();
-    write_parse_failing_dependency(&vendor_root.join("parse-failing-dep"));
-
-    let workspace = dir.path().join("consumer");
-    write_minimal_consumer(&workspace);
-
-    let baselines = workspace.join(".pedant/baselines");
-    let init = run_with_fake_vendor(
-        dir.path(),
-        &workspace,
-        &vendor_root,
-        &[
-            "supply-chain",
-            "init",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-        ],
-    );
-    assert!(
-        init.status.success(),
-        "init failed: stdout={} stderr={}",
-        String::from_utf8_lossy(&init.stdout),
-        String::from_utf8_lossy(&init.stderr)
-    );
-
-    let baseline_path = baselines.join("cargo/parse-failing-dep/0.1.0.json");
-    let baseline: AttestationContent =
-        serde_json::from_str(&fs::read_to_string(&baseline_path).unwrap()).unwrap();
-    let completeness = baseline.analysis_completeness.as_ref().unwrap();
-    assert_eq!(completeness.skipped_details.len(), 1);
+fn supply_chain_process_guard_reaps_descendants_on_success_timeout_and_early_error() {
     assert_eq!(
-        completeness.skipped_details[0].path.as_ref(),
-        "./src/lib.rs"
+        guard_cases::GUARD_ROWS.len(),
+        GUARDED_TERMINATION_PATHS,
+        "every termination path must still have a row"
     );
-    assert!(
-        completeness.skipped_details[0]
-            .error
-            .contains("expected `;`"),
-        "expected persisted parse failure reason, got {:?}",
-        completeness.skipped_details[0].error
-    );
-
-    let verify = run_with_fake_vendor(
-        dir.path(),
-        &workspace,
-        &vendor_root,
-        &[
-            "supply-chain",
-            "verify",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-        ],
-    );
-    assert!(
-        verify.status.success(),
-        "verify failed: stdout={} stderr={}",
-        String::from_utf8_lossy(&verify.stdout),
-        String::from_utf8_lossy(&verify.stderr)
-    );
-
-    let debug = run_with_fake_vendor(
-        dir.path(),
-        &workspace,
-        &vendor_root,
-        &[
-            "supply-chain",
-            "verify",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-            "--debug-package",
-            "parse-failing-dep",
-        ],
-    );
-    let stderr = String::from_utf8_lossy(&debug.stderr);
-    assert!(
-        stderr.contains("analysis: analyzed_files=0 skipped_files=1"),
-        "expected partial analysis summary, stderr={stderr}"
-    );
-    assert!(
-        stderr.contains("skipped: ./src/lib.rs"),
-        "expected skipped file path, stderr={stderr}"
-    );
-    assert!(
-        stderr.contains("error: expected `;`"),
-        "expected skipped file reason, stderr={stderr}"
-    );
+    for row in guard_cases::GUARD_ROWS {
+        guard_cases::guarded_run_leaves_no_descendant(row);
+    }
 }
 
+/// Capability projection reads the `FileIr` the snapshot already stored, so
+/// every selected source is parsed once and projected once.
+#[cfg(feature = "resolution-test-support")]
 #[test]
-fn supply_chain_upgrade_with_partial_analysis_reports_analysis_incomplete() {
-    let dir = tempfile::tempdir().unwrap();
-    let vendor_root = dir.path().join("vendor");
-    let crate_dir = vendor_root.join("partial-upgrade");
-    fs::create_dir_all(crate_dir.join("src")).unwrap();
-    fs::write(
-        crate_dir.join("Cargo.toml"),
-        "[package]\nname = \"partial-upgrade\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )
-    .unwrap();
-    fs::write(
-        crate_dir.join("src/lib.rs"),
-        "#[allow(unknown_lints, bare_trait_objects)]\ntype Action = Fn(&u8) + Send + Sync;\n",
-    )
-    .unwrap();
+fn snapshot_capability_projection_reuses_stored_file_ir() {
+    let fixture = VendorFixture::new();
+    let crate_dir = fixture.crate_dir("reused");
+    write_library_crate(
+        &crate_dir,
+        &manifest("reused", "0.4.0"),
+        "mod util;\npub fn api() {}\n",
+    );
+    write(
+        &crate_dir.join("src/main.rs"),
+        "mod util;\nfn main() { util::read(); }\n",
+    );
+    write(
+        &crate_dir.join("src/util.rs"),
+        "use std::fs;\npub fn read() { let _ = fs::metadata(\".\"); }\n",
+    );
+    write(&crate_dir.join("build.rs"), "fn main() {}\n");
+    let receipt = fixture.script_dir().join("probe-receipt.json");
 
-    let consumer = dir.path().join("consumer");
-    write_minimal_consumer(&consumer);
-    let baselines = consumer.join(".pedant/baselines");
-
-    let init = run_with_fake_vendor(
-        dir.path(),
-        &consumer,
-        &vendor_root,
+    let init = fixture.run_with_env(
         &[
             "supply-chain",
             "init",
             "--baseline-path",
-            baselines.to_str().unwrap(),
+            fixture.baselines().argument(),
         ],
+        &[(
+            probe_receipt::RECEIPT_ENV,
+            receipt.to_str().expect("a temporary path"),
+        )],
     );
+    assert!(init.success(), "init failed: {}", init.transcript());
+
+    let expected_files = [
+        ("./build.rs", crate_dir.join("build.rs")),
+        ("./src/lib.rs", crate_dir.join("src/lib.rs")),
+        ("./src/main.rs", crate_dir.join("src/main.rs")),
+        ("./src/util.rs", crate_dir.join("src/util.rs")),
+    ];
+    probe_receipt::consume(
+        &receipt,
+        &probe_receipt::Expected {
+            name: "reused",
+            version: "0.4.0",
+            files: &expected_files,
+        },
+    )
+    .unwrap_or_else(|reason| panic!("the child receipt is not acceptable: {reason}"));
     assert!(
-        init.status.success(),
-        "init failed: stdout={} stderr={}",
-        String::from_utf8_lossy(&init.stdout),
-        String::from_utf8_lossy(&init.stderr)
+        !receipt.exists(),
+        "the parent owns the receipt and removes it with the workspace"
     );
 
-    fs::write(
-        crate_dir.join("Cargo.toml"),
-        "[package]\nname = \"partial-upgrade\"\nversion = \"0.2.0\"\nedition = \"2024\"\n",
-    )
-    .unwrap();
-    fs::write(
-        crate_dir.join("src/lib.rs"),
-        "#[allow(unknown_lints, bare_trait_objects)]\ntype Action = Fn(&u8) + Send + Sync;\npub fn added() {}\n",
-    )
-    .unwrap();
+    let completeness = fixture
+        .baselines()
+        .read("reused", "0.4.0")
+        .analysis_completeness
+        .expect("a snapshot-backed attestation records its completeness");
+    assert_eq!(completeness.analyzed_files, 4);
+    assert_eq!(completeness.skipped_files, 0);
+}
 
-    let verify = run_with_fake_vendor(
-        dir.path(),
-        &consumer,
-        &vendor_root,
-        &[
-            "supply-chain",
-            "verify",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-            "--fail-on",
-            "new-capability",
-        ],
+/// Cargo-default Rust 2015 syntax remains analyzable through the spawned
+/// supply-chain command, and facts after the repaired alias keep their source
+/// coordinates in the persisted attestation.
+#[test]
+fn supply_chain_accepts_legacy_bare_callable_traits_without_moving_later_facts() {
+    let fixture = VendorFixture::new();
+    let crate_dir = fixture.crate_dir("legacy-callable");
+    write_library_crate(
+        &crate_dir,
+        "[package]\nname = \"legacy-callable\"\nversion = \"0.1.0\"\n",
+        "type Action = Fn(&u8) + Send + Sync;\n\
+         type MutableAction = FnMut(&u8);\n\
+         type OnceAction = FnOnce(&u8);\n\
+         use std::net::TcpStream;\n\n\
+         pub fn connect() {\n\
+             let _socket = TcpStream::connect(\"127.0.0.1:9\");\n\
+         }\n",
     );
-    let stdout = String::from_utf8_lossy(&verify.stdout);
-    assert!(
-        verify.status.success(),
-        "verify failed: stdout={stdout} stderr={}",
-        String::from_utf8_lossy(&verify.stderr)
-    );
-    assert!(
-        stdout.contains("capability comparison skipped"),
-        "expected incomplete-analysis message, stdout={stdout}"
-    );
-    assert!(
-        !stdout.contains("new-capability"),
-        "should not overclaim capability drift, stdout={stdout}"
+
+    let init = fixture.supply_chain("init");
+    assert!(init.success(), "init failed: {}", init.transcript());
+
+    let baseline = fixture.baselines().read("legacy-callable", "0.1.0");
+    let finding = baseline
+        .profile
+        .findings
+        .iter()
+        .find(|finding| finding.capability == Capability::Network)
+        .expect("the later network import remains detectable");
+    assert_eq!(finding.location.file.as_ref(), "./src/lib.rs");
+    assert_eq!(
+        (finding.location.line, finding.location.column),
+        (4, 1),
+        "compatibility parsing must retain the original source span"
     );
 }
 
+/// Workspace-inherited package fields reach the attestation, which a
+/// per-manifest reader could never resolve.
 #[test]
-fn debug_package_ignores_invalid_unreachable_src_file() {
-    let dir = tempfile::tempdir().unwrap();
-    let vendor_root = dir.path().join("vendor");
-    let crate_dir = vendor_root.join("test-lib");
-    fs::create_dir_all(crate_dir.join("src")).unwrap();
-    fs::write(
-        crate_dir.join("Cargo.toml"),
-        "[package]\nname = \"test-lib\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )
-    .unwrap();
-    fs::write(crate_dir.join("src/lib.rs"), "pub fn hello() {}\n").unwrap();
-    fs::write(crate_dir.join("src/minicore.rs"), "b'\n").unwrap();
-
-    let consumer = dir.path().join("consumer");
-    write_minimal_consumer(&consumer);
-    let baselines = consumer.join(".pedant/baselines");
-
-    let output = run_with_fake_vendor(
-        dir.path(),
-        &consumer,
-        &vendor_root,
-        &[
-            "supply-chain",
-            "verify",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-            "--debug-package",
-            "test-lib",
-        ],
+fn supply_chain_workspace_discovery_uses_project_members_and_validated_versions() {
+    let fixture = VendorFixture::new();
+    let root = fixture.crate_dir("inherited-dep");
+    write(
+        &root.join("Cargo.toml"),
+        "[workspace]\nmembers = [\"member\"]\n\n[workspace.package]\nversion = \"2.5.1\"\nrust-version = \"1.70\"\n",
+    );
+    write_library_crate(
+        &root.join("member"),
+        "[package]\nname = \"inherited-dep\"\nversion.workspace = true\nrust-version.workspace = true\nedition = \"2024\"\n",
+        "pub fn inherited() {}\n",
     );
 
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("debug-package: test-lib@"),
-        "expected debug output, stderr was: {stderr}"
-    );
-    assert!(
-        stderr.contains("file: ./src/lib.rs"),
-        "expected lib.rs in debug output, stderr was: {stderr}"
-    );
-    assert!(
-        !stderr.contains("minicore"),
-        "unreachable minicore.rs should not appear in debug output, stderr was: {stderr}"
-    );
-}
+    let init = fixture.supply_chain("init");
+    assert!(init.success(), "init failed: {}", init.transcript());
 
-#[test]
-fn debug_package_includes_reachable_nested_modules_from_entry_file() {
-    let dir = tempfile::tempdir().unwrap();
-    let vendor_root = dir.path().join("vendor");
-    let crate_dir = vendor_root.join("test-nested");
-    fs::create_dir_all(crate_dir.join("src/nested")).unwrap();
-    fs::write(
-        crate_dir.join("Cargo.toml"),
-        "[package]\nname = \"test-nested\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )
-    .unwrap();
-    fs::write(
-        crate_dir.join("src/lib.rs"),
-        "mod nested;\npub fn hello() {}\n",
-    )
-    .unwrap();
-    fs::write(
-        crate_dir.join("src/nested/mod.rs"),
-        "mod leaf;\npub fn mid() {}\n",
-    )
-    .unwrap();
-    fs::write(crate_dir.join("src/nested/leaf.rs"), "pub fn deep() {}\n").unwrap();
-
-    let consumer = dir.path().join("consumer");
-    write_minimal_consumer(&consumer);
-    let baselines = consumer.join(".pedant/baselines");
-
-    let output = run_with_fake_vendor(
-        dir.path(),
-        &consumer,
-        &vendor_root,
-        &[
-            "supply-chain",
-            "verify",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-            "--debug-package",
-            "test-nested",
-        ],
+    let baseline = fixture.baselines().read("inherited-dep", "2.5.1");
+    assert_eq!(baseline.crate_name.as_ref(), "inherited-dep");
+    assert_eq!(
+        baseline.crate_version.as_ref(),
+        "2.5.1",
+        "the workspace-inherited version must reach the attestation"
     );
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("debug-package: test-nested@"),
-        "expected debug output, stderr was: {stderr}"
-    );
-    assert!(
-        stderr.contains("file: ./src/lib.rs"),
-        "expected lib.rs, stderr was: {stderr}"
-    );
-    assert!(
-        stderr.contains("file: ./src/nested/mod.rs"),
-        "expected nested/mod.rs, stderr was: {stderr}"
-    );
-    assert!(
-        stderr.contains("file: ./src/nested/leaf.rs"),
-        "expected nested/leaf.rs, stderr was: {stderr}"
-    );
-}
-
-#[test]
-fn debug_package_includes_autobin_entrypoints_without_scanning_entire_src_tree() {
-    let dir = tempfile::tempdir().unwrap();
-    let vendor_root = dir.path().join("vendor");
-    let crate_dir = vendor_root.join("test-bins");
-    fs::create_dir_all(crate_dir.join("src/bin")).unwrap();
-    fs::write(
-        crate_dir.join("Cargo.toml"),
-        "[package]\nname = \"test-bins\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )
-    .unwrap();
-    fs::write(crate_dir.join("src/main.rs"), "fn main() {}\n").unwrap();
-    fs::write(crate_dir.join("src/bin/tool.rs"), "fn main() {}\n").unwrap();
-    fs::write(crate_dir.join("src/fixture.rs"), "b'\n").unwrap();
-
-    let consumer = dir.path().join("consumer");
-    write_minimal_consumer(&consumer);
-    let baselines = consumer.join(".pedant/baselines");
-
-    let output = run_with_fake_vendor(
-        dir.path(),
-        &consumer,
-        &vendor_root,
-        &[
-            "supply-chain",
-            "verify",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-            "--debug-package",
-            "test-bins",
-        ],
-    );
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("debug-package: test-bins@"),
-        "expected debug output, stderr was: {stderr}"
-    );
-    assert!(
-        stderr.contains("file: ./src/main.rs"),
-        "expected main.rs, stderr was: {stderr}"
-    );
-    assert!(
-        stderr.contains("file: ./src/bin/tool.rs"),
-        "expected bin/tool.rs, stderr was: {stderr}"
-    );
-    assert!(
-        !stderr.contains("fixture"),
-        "unreachable fixture.rs should not appear, stderr was: {stderr}"
-    );
-}
-
-#[test]
-fn verify_ignores_invalid_unreachable_src_file() {
-    let dir = tempfile::tempdir().unwrap();
-    let vendor_root = dir.path().join("vendor");
-    let crate_dir = vendor_root.join("test-verify");
-    fs::create_dir_all(crate_dir.join("src/inner")).unwrap();
-    fs::write(
-        crate_dir.join("Cargo.toml"),
-        "[package]\nname = \"test-verify\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )
-    .unwrap();
-    fs::write(
-        crate_dir.join("src/lib.rs"),
-        "mod inner;\npub fn api() {}\n",
-    )
-    .unwrap();
-    fs::write(crate_dir.join("src/inner/mod.rs"), "pub fn helper() {}\n").unwrap();
-    // Invalid Rust outside the module graph
-    fs::write(crate_dir.join("src/broken_fixture.rs"), "b'\n").unwrap();
-
-    let consumer = dir.path().join("consumer");
-    write_minimal_consumer(&consumer);
-    let baselines = consumer.join(".pedant/baselines");
-
-    // Init to create baselines
-    let init = run_with_fake_vendor(
-        dir.path(),
-        &consumer,
-        &vendor_root,
-        &[
-            "supply-chain",
-            "init",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-        ],
-    );
-    assert!(
-        init.status.success(),
-        "init failed: stdout={} stderr={}",
-        String::from_utf8_lossy(&init.stdout),
-        String::from_utf8_lossy(&init.stderr)
-    );
-
-    // Verify against the baseline
-    let verify = run_with_fake_vendor(
-        dir.path(),
-        &consumer,
-        &vendor_root,
-        &[
-            "supply-chain",
-            "verify",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-        ],
-    );
-    let stdout = String::from_utf8_lossy(&verify.stdout);
-    let stderr = String::from_utf8_lossy(&verify.stderr);
-    assert!(
-        verify.status.success(),
-        "verify failed: stdout={stdout} stderr={stderr}"
-    );
-    assert!(
-        stdout.contains("All dependencies match baselines."),
-        "expected clean verify, stdout={stdout}"
-    );
-    assert!(
-        !stderr.contains("broken_fixture"),
-        "invalid unreachable file should not appear, stderr={stderr}"
-    );
-}
-
-#[test]
-fn init_and_verify_round_trip_uses_only_reachable_files() {
-    let dir = tempfile::tempdir().unwrap();
-    let vendor_root = dir.path().join("vendor");
-    let crate_dir = vendor_root.join("round-trip");
-    fs::create_dir_all(crate_dir.join("src/sub")).unwrap();
-    fs::write(
-        crate_dir.join("Cargo.toml"),
-        "[package]\nname = \"round-trip\"\nversion = \"0.2.0\"\nedition = \"2024\"\n",
-    )
-    .unwrap();
-    fs::write(
-        crate_dir.join("src/lib.rs"),
-        "mod sub;\npub fn entry() {}\n",
-    )
-    .unwrap();
-    fs::write(crate_dir.join("src/sub/mod.rs"), "pub fn leaf() {}\n").unwrap();
-    // Unreachable invalid Rust file
-    fs::write(crate_dir.join("src/orphan.rs"), "b'\n").unwrap();
-
-    let consumer = dir.path().join("consumer");
-    write_minimal_consumer(&consumer);
-    let baselines = consumer.join(".pedant/baselines");
-
-    // Init
-    let init = run_with_fake_vendor(
-        dir.path(),
-        &consumer,
-        &vendor_root,
-        &[
-            "supply-chain",
-            "init",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-        ],
-    );
-    assert!(
-        init.status.success(),
-        "init failed: stderr={}",
-        String::from_utf8_lossy(&init.stderr)
-    );
-
-    // Read the baseline to confirm only reachable files were hashed
-    let baseline_path = baselines.join("cargo/round-trip/0.2.0.json");
-    assert!(
-        baseline_path.is_file(),
-        "expected baseline file at {baseline_path:?}"
-    );
-
-    // Verify round-trip
-    let verify = run_with_fake_vendor(
-        dir.path(),
-        &consumer,
-        &vendor_root,
-        &[
-            "supply-chain",
-            "verify",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-        ],
-    );
-    let stdout = String::from_utf8_lossy(&verify.stdout);
-    assert!(
-        verify.status.success(),
-        "verify failed: stdout={stdout} stderr={}",
-        String::from_utf8_lossy(&verify.stderr)
-    );
-    assert!(
-        stdout.contains("All dependencies match baselines."),
-        "expected clean verify, stdout={stdout}"
-    );
-
-    // Debug output should list only reachable files
-    let debug = run_with_fake_vendor(
-        dir.path(),
-        &consumer,
-        &vendor_root,
-        &[
-            "supply-chain",
-            "verify",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-            "--debug-package",
-            "round-trip",
-        ],
-    );
-    let stderr = String::from_utf8_lossy(&debug.stderr);
-    assert!(
-        stderr.contains("file: ./src/lib.rs"),
-        "expected lib.rs in debug output, stderr={stderr}"
-    );
-    assert!(
-        stderr.contains("file: ./src/sub/mod.rs"),
-        "expected sub/mod.rs in debug output, stderr={stderr}"
-    );
-    assert!(
-        !stderr.contains("orphan"),
-        "unreachable orphan.rs should not appear, stderr={stderr}"
-    );
-}
-
-#[test]
-fn supply_chain_init_persists_rust_version_in_baseline() {
-    let dir = tempfile::tempdir().unwrap();
-    let vendor_root = dir.path().join("vendor");
-    let crate_dir = vendor_root.join("with-msrv");
-    fs::create_dir_all(crate_dir.join("src")).unwrap();
-    fs::write(
-        crate_dir.join("Cargo.toml"),
-        "[package]\nname = \"with-msrv\"\nversion = \"0.1.0\"\nedition = \"2024\"\nrust-version = \"1.70\"\n",
-    )
-    .unwrap();
-    fs::write(crate_dir.join("src/lib.rs"), "pub fn api() {}\n").unwrap();
-
-    let consumer = dir.path().join("consumer");
-    write_minimal_consumer(&consumer);
-    let baselines = consumer.join(".pedant/baselines");
-
-    let init = run_with_fake_vendor(
-        dir.path(),
-        &consumer,
-        &vendor_root,
-        &[
-            "supply-chain",
-            "init",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-        ],
-    );
-    assert!(
-        init.status.success(),
-        "init failed: stdout={} stderr={}",
-        String::from_utf8_lossy(&init.stdout),
-        String::from_utf8_lossy(&init.stderr)
-    );
-
-    let baseline_path = baselines.join("cargo/with-msrv/0.1.0.json");
-    assert!(
-        baseline_path.is_file(),
-        "expected baseline file at {baseline_path:?}"
-    );
-    let raw = fs::read_to_string(&baseline_path).unwrap();
-    let baseline: AttestationContent =
-        serde_json::from_str(&raw).expect("baseline should parse as AttestationContent");
     assert_eq!(
         baseline.rust_version.as_deref(),
         Some("1.70"),
-        "expected rust_version=1.70 in baseline, got: {raw}"
+        "the workspace-inherited MSRV must reach the attestation"
     );
-    assert!(
-        !baseline.source_hash.is_empty(),
-        "source_hash must remain populated"
+}
+
+/// Invalid Rust that belongs to no Cargo target of a vendored workspace stays
+/// outside every closure.
+#[test]
+fn supply_chain_ignores_invalid_fixture_rust_outside_workspace_targets() {
+    let fixture = VendorFixture::new();
+    let root = fixture.crate_dir("workspace-dep");
+    write(
+        &root.join("Cargo.toml"),
+        "[workspace]\nmembers = [\"member\"]\n",
     );
-    assert!(
-        baseline.analysis_completeness.is_some(),
-        "analysis_completeness must remain populated"
+    write_library_crate(
+        &root.join("member"),
+        &manifest("workspace-dep", "0.1.0"),
+        "pub fn real_code() {}\n",
     );
-    let completeness = baseline.analysis_completeness.as_ref().unwrap();
+    write(
+        &root.join("test_data/lexer/err/byte_char_literals.rs"),
+        "b'\n",
+    );
+
+    let init = fixture.supply_chain("init");
+    assert!(init.success(), "init failed: {}", init.transcript());
+}
+
+/// Invalid Rust no primary target reaches stays outside the hash, and the
+/// attestation it produces is still complete.
+#[test]
+fn supply_chain_init_and_verify_ignore_unselected_vendored_parse_failures() {
+    let fixture = VendorFixture::new();
+    let crate_dir = fixture.crate_dir("unselected-failure-dep");
+    write_library_crate(
+        &crate_dir,
+        &manifest("unselected-failure-dep", "0.1.0"),
+        "pub fn api() {}\n",
+    );
+    write(
+        &crate_dir.join("src/fixture.rs"),
+        "#[allow(unknown_lints, bare_trait_objects)]\ntype Action = Fn(&u8) + Send + Sync;\n",
+    );
+
+    let init = fixture.supply_chain("init");
+    assert!(init.success(), "init failed: {}", init.transcript());
+
+    let completeness = fixture
+        .baselines()
+        .read("unselected-failure-dep", "0.1.0")
+        .analysis_completeness
+        .expect("a snapshot-backed attestation records its completeness");
+    assert_eq!(completeness.analyzed_files, 1);
     assert!(
         completeness.skipped_details.is_empty(),
-        "complete baseline should not record skipped_details"
+        "an unselected source is excluded, not skipped: {completeness:?}"
+    );
+
+    let verify = fixture.supply_chain("verify");
+    assert!(verify.success(), "verify failed: {}", verify.transcript());
+
+    let debug = fixture.debug_package("unselected-failure-dep");
+    assert!(
+        debug
+            .stderr
+            .contains("analysis: analyzed_files=1 skipped_files=0"),
+        "{}",
+        debug.transcript()
+    );
+    assert!(
+        !debug.stderr.contains("fixture"),
+        "an unselected source must never appear: {}",
+        debug.transcript()
     );
 }
 
+/// An upgrade whose new sources cannot be closed leaves the prior baseline
+/// exactly as it was.
 #[test]
-fn supply_chain_init_omits_rust_version_when_absent_from_manifest() {
-    let dir = tempfile::tempdir().unwrap();
-    let vendor_root = dir.path().join("vendor");
-    let crate_dir = vendor_root.join("no-msrv");
-    fs::create_dir_all(crate_dir.join("src")).unwrap();
-    fs::write(
-        crate_dir.join("Cargo.toml"),
-        "[package]\nname = \"no-msrv\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )
-    .unwrap();
-    fs::write(crate_dir.join("src/lib.rs"), "pub fn api() {}\n").unwrap();
-
-    let consumer = dir.path().join("consumer");
-    write_minimal_consumer(&consumer);
-    let baselines = consumer.join(".pedant/baselines");
-
-    let init = run_with_fake_vendor(
-        dir.path(),
-        &consumer,
-        &vendor_root,
-        &[
-            "supply-chain",
-            "init",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-        ],
-    );
-    assert!(
-        init.status.success(),
-        "init failed: stderr={}",
-        String::from_utf8_lossy(&init.stderr)
+fn supply_chain_upgrade_rejects_selected_parse_failure_without_baseline_mutation() {
+    let fixture = VendorFixture::new();
+    let crate_dir = fixture.crate_dir("upgrade-subject");
+    write_library_crate(
+        &crate_dir,
+        &manifest("upgrade-subject", "0.1.0"),
+        "pub fn api() {}\n",
     );
 
-    let baseline_path = baselines.join("cargo/no-msrv/0.1.0.json");
-    let raw = fs::read_to_string(&baseline_path).unwrap();
-    let baseline: AttestationContent = serde_json::from_str(&raw).unwrap();
-    assert!(baseline.rust_version.is_none());
+    let init = fixture.supply_chain("init");
+    assert!(init.success(), "init failed: {}", init.transcript());
+    let before = fixture.baselines().bytes();
+
+    write(
+        &crate_dir.join("Cargo.toml"),
+        manifest("upgrade-subject", "0.2.0"),
+    );
+    write(&crate_dir.join("src/lib.rs"), "pub fn api( {}\n");
+
+    let update = fixture.supply_chain("update");
+    assert_eq!(
+        update.code(),
+        Some(2),
+        "a selected parse failure must be fatal: {}",
+        update.transcript()
+    );
     assert!(
-        !raw.contains("rust_version"),
-        "baseline JSON should omit rust_version when manifest has none, got: {raw}"
+        update.stderr.contains("is not valid Rust"),
+        "{}",
+        update.transcript()
+    );
+    assert_eq!(
+        fixture.baselines().bytes(),
+        before,
+        "a failed update must leave every baseline byte unchanged"
+    );
+    assert!(
+        fixture
+            .baselines()
+            .path_for("upgrade-subject", "0.1.0")
+            .is_file(),
+        "the prior version's baseline must survive a failed update"
     );
 }
 
+/// The MSRV a prior baseline recorded survives an upgrade that cannot be
+/// analyzed, because nothing is rewritten.
 #[test]
-fn supply_chain_verify_debug_package_reports_rust_version() {
-    let dir = tempfile::tempdir().unwrap();
-    let vendor_root = dir.path().join("vendor");
-    let crate_dir = vendor_root.join("partial-msrv");
-    fs::create_dir_all(crate_dir.join("src")).unwrap();
-    fs::write(
-        crate_dir.join("Cargo.toml"),
-        "[package]\nname = \"partial-msrv\"\nversion = \"0.1.0\"\nedition = \"2024\"\nrust-version = \"1.70\"\n",
-    )
-    .unwrap();
-    fs::write(
-        crate_dir.join("src/lib.rs"),
-        "#[allow(unknown_lints, bare_trait_objects)]\ntype Action = Fn(&u8) + Send + Sync;\n",
-    )
-    .unwrap();
-
-    let consumer = dir.path().join("consumer");
-    write_minimal_consumer(&consumer);
-    let baselines = consumer.join(".pedant/baselines");
-
-    let debug = run_with_fake_vendor(
-        dir.path(),
-        &consumer,
-        &vendor_root,
-        &[
-            "supply-chain",
-            "verify",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-            "--debug-package",
-            "partial-msrv",
-        ],
+fn supply_chain_upgrade_preserves_msrv_context_on_selected_parse_failure() {
+    let fixture = VendorFixture::new();
+    let crate_dir = fixture.crate_dir("msrv-subject");
+    write_library_crate(
+        &crate_dir,
+        &manifest_with_msrv("msrv-subject", "0.1.0", "1.65"),
+        "pub fn api() {}\n",
     );
 
-    let stderr = String::from_utf8_lossy(&debug.stderr);
-    assert!(
-        stderr.contains("debug-package: partial-msrv@"),
-        "expected debug output, stderr was: {stderr}"
-    );
-    assert!(
-        stderr.contains("rust-version: 1.70"),
-        "expected rust-version line in debug output, stderr={stderr}"
-    );
-    assert!(
-        stderr.contains("analysis: analyzed_files=0 skipped_files=1"),
-        "expected partial analysis summary, stderr={stderr}"
-    );
-    assert!(
-        stderr.contains("skipped: ./src/lib.rs"),
-        "expected skipped file path, stderr={stderr}"
-    );
-    assert!(
-        stderr.contains("error: expected `;`"),
-        "expected skipped file reason, stderr={stderr}"
-    );
-}
+    let init = fixture.supply_chain("init");
+    assert!(init.success(), "init failed: {}", init.transcript());
+    let before = fixture.baselines().bytes();
 
-#[test]
-fn supply_chain_upgrade_with_partial_analysis_reports_msrv_context() {
-    let dir = tempfile::tempdir().unwrap();
-    let vendor_root = dir.path().join("vendor");
-    let crate_dir = vendor_root.join("msrv-partial");
-    fs::create_dir_all(crate_dir.join("src")).unwrap();
-    fs::write(
-        crate_dir.join("Cargo.toml"),
-        "[package]\nname = \"msrv-partial\"\nversion = \"0.1.0\"\nedition = \"2024\"\nrust-version = \"1.65\"\n",
-    )
-    .unwrap();
-    fs::write(
-        crate_dir.join("src/lib.rs"),
-        "#[allow(unknown_lints, bare_trait_objects)]\ntype Action = Fn(&u8) + Send + Sync;\n",
-    )
-    .unwrap();
+    write(
+        &crate_dir.join("Cargo.toml"),
+        manifest_with_msrv("msrv-subject", "0.2.0", "1.70"),
+    );
+    write(&crate_dir.join("src/lib.rs"), "mod ghost;\n");
 
-    let consumer = dir.path().join("consumer");
-    write_minimal_consumer(&consumer);
-    let baselines = consumer.join(".pedant/baselines");
-
-    let init = run_with_fake_vendor(
-        dir.path(),
-        &consumer,
-        &vendor_root,
-        &[
-            "supply-chain",
-            "init",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-        ],
-    );
-    assert!(
-        init.status.success(),
-        "init failed: stdout={} stderr={}",
-        String::from_utf8_lossy(&init.stdout),
-        String::from_utf8_lossy(&init.stderr)
-    );
-
-    fs::write(
-        crate_dir.join("Cargo.toml"),
-        "[package]\nname = \"msrv-partial\"\nversion = \"0.2.0\"\nedition = \"2024\"\nrust-version = \"1.70\"\n",
-    )
-    .unwrap();
-    fs::write(
-        crate_dir.join("src/lib.rs"),
-        "#[allow(unknown_lints, bare_trait_objects)]\ntype Action = Fn(&u8) + Send + Sync;\npub fn added() {}\n",
-    )
-    .unwrap();
-
-    let verify = run_with_fake_vendor(
-        dir.path(),
-        &consumer,
-        &vendor_root,
-        &[
-            "supply-chain",
-            "verify",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-            "--fail-on",
-            "new-capability",
-        ],
-    );
-    let stdout = String::from_utf8_lossy(&verify.stdout);
-    assert!(
-        verify.status.success(),
-        "verify failed: stdout={stdout} stderr={}",
-        String::from_utf8_lossy(&verify.stderr)
-    );
-    assert!(
-        stdout.contains("capability comparison skipped"),
-        "expected incomplete-analysis message, stdout={stdout}"
-    );
-    assert!(
-        stdout.contains("rust-version=1.65"),
-        "expected prior rust-version context, stdout={stdout}"
-    );
-    assert!(
-        stdout.contains("rust-version=1.70"),
-        "expected current rust-version context, stdout={stdout}"
-    );
-    assert!(
-        !stdout.contains("new-capability"),
-        "should not overclaim capability drift, stdout={stdout}"
-    );
-}
-
-#[test]
-fn supply_chain_verify_without_rust_version_keeps_generic_incomplete_message() {
-    let dir = tempfile::tempdir().unwrap();
-    let vendor_root = dir.path().join("vendor");
-    let crate_dir = vendor_root.join("no-msrv-partial");
-    fs::create_dir_all(crate_dir.join("src")).unwrap();
-    fs::write(
-        crate_dir.join("Cargo.toml"),
-        "[package]\nname = \"no-msrv-partial\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )
-    .unwrap();
-    fs::write(
-        crate_dir.join("src/lib.rs"),
-        "#[allow(unknown_lints, bare_trait_objects)]\ntype Action = Fn(&u8) + Send + Sync;\n",
-    )
-    .unwrap();
-
-    let consumer = dir.path().join("consumer");
-    write_minimal_consumer(&consumer);
-    let baselines = consumer.join(".pedant/baselines");
-
-    let verify = run_with_fake_vendor(
-        dir.path(),
-        &consumer,
-        &vendor_root,
-        &[
-            "supply-chain",
-            "verify",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-        ],
-    );
-    let stdout = String::from_utf8_lossy(&verify.stdout);
-    assert!(
-        stdout.contains("analyzed=0 skipped=1"),
-        "expected generic incomplete summary, stdout={stdout}"
-    );
-    assert!(
-        !stdout.contains("rust-version"),
-        "should not contain rust-version when absent, stdout={stdout}"
-    );
-}
-
-#[test]
-fn update_prunes_and_rehashes_using_reachable_file_set() {
-    let dir = tempfile::tempdir().unwrap();
-    let vendor_root = dir.path().join("vendor");
-    let crate_dir = vendor_root.join("evolving");
-    fs::create_dir_all(crate_dir.join("src")).unwrap();
-    fs::write(
-        crate_dir.join("Cargo.toml"),
-        "[package]\nname = \"evolving\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )
-    .unwrap();
-    fs::write(crate_dir.join("src/lib.rs"), "pub fn v1() {}\n").unwrap();
-    // Unreachable invalid file present in both versions
-    fs::write(crate_dir.join("src/junk.rs"), "b'\n").unwrap();
-
-    let consumer = dir.path().join("consumer");
-    write_minimal_consumer(&consumer);
-    let baselines = consumer.join(".pedant/baselines");
-
-    // Init v0.1.0
-    let init = run_with_fake_vendor(
-        dir.path(),
-        &consumer,
-        &vendor_root,
-        &[
-            "supply-chain",
-            "init",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-        ],
-    );
-    assert!(
-        init.status.success(),
-        "init failed: stderr={}",
-        String::from_utf8_lossy(&init.stderr)
-    );
-    assert!(baselines.join("cargo/evolving/0.1.0.json").is_file());
-
-    // Evolve to v0.2.0: change manifest version, add a reachable module, keep invalid file
-    fs::write(
-        crate_dir.join("Cargo.toml"),
-        "[package]\nname = \"evolving\"\nversion = \"0.2.0\"\nedition = \"2024\"\n",
-    )
-    .unwrap();
-    fs::create_dir_all(crate_dir.join("src/extra")).unwrap();
-    fs::write(crate_dir.join("src/lib.rs"), "mod extra;\npub fn v2() {}\n").unwrap();
-    fs::write(crate_dir.join("src/extra/mod.rs"), "pub fn added() {}\n").unwrap();
-    // junk.rs still present and invalid
-
-    // Update
-    let update = run_with_fake_vendor(
-        dir.path(),
-        &consumer,
-        &vendor_root,
-        &[
-            "supply-chain",
-            "update",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-        ],
-    );
-    assert!(
-        update.status.success(),
-        "update failed: stderr={}",
-        String::from_utf8_lossy(&update.stderr)
-    );
-
-    // Stale v0.1.0 baseline should be pruned
-    assert!(
-        !baselines.join("cargo/evolving/0.1.0.json").exists(),
-        "stale v0.1.0 baseline should be pruned"
-    );
-    // New v0.2.0 baseline should exist
-    assert!(
-        baselines.join("cargo/evolving/0.2.0.json").is_file(),
-        "expected v0.2.0 baseline"
-    );
-
-    // Verify the new baseline matches
-    let verify = run_with_fake_vendor(
-        dir.path(),
-        &consumer,
-        &vendor_root,
-        &[
-            "supply-chain",
-            "verify",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-        ],
-    );
-    let stdout = String::from_utf8_lossy(&verify.stdout);
-    assert!(
-        verify.status.success(),
-        "verify after update failed: stdout={stdout} stderr={}",
-        String::from_utf8_lossy(&verify.stderr)
-    );
-    assert!(
-        stdout.contains("All dependencies match baselines."),
-        "expected clean verify after update, stdout={stdout}"
-    );
-}
-
-/// A workspace that resolves several versions of one crate (common transitively,
-/// e.g. getrandom 0.2/0.3/0.4) must keep an exact baseline for every resolved
-/// version after `update`. Regression for the prune_stale_baselines map that
-/// keyed on crate name alone and so retained only one version. Closes #60.
-#[test]
-fn update_retains_concurrent_versions_of_one_crate() {
-    let dir = tempfile::tempdir().unwrap();
-    let vendor_root = dir.path().join("vendor");
-
-    // Two vendored crates share the package name `dup` at different versions —
-    // the shape cargo produces for a diamond dependency on incompatible semver.
-    for version in ["0.2.17", "0.4.3"] {
-        let crate_dir = vendor_root.join(format!("dup-{version}"));
-        fs::create_dir_all(crate_dir.join("src")).unwrap();
-        fs::write(
-            crate_dir.join("Cargo.toml"),
-            format!("[package]\nname = \"dup\"\nversion = \"{version}\"\nedition = \"2024\"\n"),
-        )
-        .unwrap();
-        fs::write(crate_dir.join("src/lib.rs"), "pub fn f() {}\n").unwrap();
+    for command in ["update", "verify"] {
+        let run = fixture.supply_chain(command);
+        assert_eq!(
+            run.code(),
+            Some(2),
+            "{command} must refuse an unclosable upgrade: {}",
+            run.transcript()
+        );
+        assert_eq!(
+            fixture.baselines().bytes(),
+            before,
+            "{command} mutated the baseline store"
+        );
     }
 
-    let consumer = dir.path().join("consumer");
-    write_minimal_consumer(&consumer);
-    let baselines = consumer.join(".pedant/baselines");
-
-    let init = run_with_fake_vendor(
-        dir.path(),
-        &consumer,
-        &vendor_root,
-        &[
-            "supply-chain",
-            "init",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-        ],
-    );
-    assert!(
-        init.status.success(),
-        "init failed: stderr={}",
-        String::from_utf8_lossy(&init.stderr)
-    );
-    let v2 = baselines.join("cargo/dup/0.2.17.json");
-    let v4 = baselines.join("cargo/dup/0.4.3.json");
-    assert!(
-        v2.is_file() && v4.is_file(),
-        "init must write both versions"
-    );
-
-    let update = run_with_fake_vendor(
-        dir.path(),
-        &consumer,
-        &vendor_root,
-        &[
-            "supply-chain",
-            "update",
-            "--baseline-path",
-            baselines.to_str().unwrap(),
-        ],
-    );
-    assert!(
-        update.status.success(),
-        "update failed: stderr={}",
-        String::from_utf8_lossy(&update.stderr)
-    );
-
-    // Both are still resolved by the workspace, so update must prune neither.
-    assert!(
-        v2.is_file(),
-        "update pruned the concurrent version dup@0.2.17, losing its exact-hash baseline"
-    );
-    assert!(
-        v4.is_file(),
-        "update pruned the concurrent version dup@0.4.3, losing its exact-hash baseline"
+    assert_eq!(
+        fixture
+            .baselines()
+            .read("msrv-subject", "0.1.0")
+            .rust_version
+            .as_deref(),
+        Some("1.65"),
+        "the prior MSRV context must survive the refused upgrade"
     );
 }

@@ -14,16 +14,19 @@ use ra_ap_load_cargo::{LoadCargoConfig, ProcMacroServerChoice, load_workspace_at
 #[cfg(feature = "semantic")]
 use ra_ap_project_model::{CargoConfig, RustLibSource};
 #[cfg(feature = "semantic")]
-use ra_ap_vfs::Vfs;
+use ra_ap_vfs::{AbsPathBuf, Vfs, VfsPath};
+
+#[cfg(feature = "semantic")]
+use crate::observe::{self, Observation};
 
 #[cfg(feature = "semantic")]
 use super::common::with_parsed_file;
 #[cfg(feature = "semantic")]
-use super::file_analysis::SemanticFileAnalysis;
-
-/// Function entry: (name, start_line, end_line, is_entry_point).
+use super::edges::{self, SemanticDefinitionTargets};
 #[cfg(feature = "semantic")]
-pub(super) type FnEntry = (Box<str>, usize, usize, bool);
+use super::file_analysis::SemanticFileAnalysis;
+#[cfg(feature = "semantic")]
+use super::snapshot::{self, SemanticSnapshotClaim, SemanticSnapshotMismatch, VerifiedSnapshot};
 
 /// Opaque handle to a loaded rust-analyzer database and VFS.
 ///
@@ -39,6 +42,8 @@ pub(super) type FnEntry = (Box<str>, usize, usize, bool);
 pub struct SemanticContext {
     pub(super) host: AnalysisHost,
     pub(super) vfs: Vfs,
+    /// The canonical workspace root this database was loaded at.
+    pub(super) root: Box<Path>,
     /// Per-file semantic analysis cache. Each entry is built once on first
     /// access via `analyze_file` and shared via `Arc`.
     file_cache: RwLock<BTreeMap<Box<str>, Arc<SemanticFileAnalysis>>>,
@@ -70,17 +75,106 @@ impl SemanticContext {
     ///
     /// Returns `None` on any loading failure (missing manifest, build errors, etc.).
     pub fn load(workspace_root: &Path) -> Option<Self> {
-        let cargo_config = cargo_config_minimal();
+        let root = workspace_root.canonicalize().ok()?;
+        let cargo_config = cargo_config_minimal(&root)?;
         let load_config = load_config_minimal();
         let (db, vfs, _proc_macro) =
-            load_workspace_at(workspace_root, &cargo_config, &load_config, &|_| {}).ok()?;
+            load_workspace_at(&root, &cargo_config, &load_config, &|_| {}).ok()?;
+        observe::record(Observation::SemanticWorkspaceLoad);
         let host = AnalysisHost::with_database(db);
         Some(Self {
             host,
             vfs,
+            root: root.into_boxed_path(),
             file_cache: RwLock::new(BTreeMap::new()),
             file_setup_count: Cell::new(0),
         })
+    }
+
+    /// The absolute path one repository-relative source has under this root.
+    pub(super) fn absolute(&self, relative: &str) -> Box<str> {
+        Box::from(self.root.join(relative).to_string_lossy().as_ref())
+    }
+
+    /// The repository-relative, `/`-separated path of one database file, when
+    /// the file sits beneath this root.
+    /// A component that is not UTF-8 answers `None` rather than being replaced
+    /// character by character. A lossy rendering names a path that exists
+    /// nowhere, and every claim comparison against it fails without saying
+    /// why; absence at least reports the file as one this root does not hold.
+    pub(super) fn relative_path(&self, file: ra_ap_ide::FileId) -> Option<Box<str>> {
+        let path = self.vfs.file_path(file).as_path()?;
+        crate::resolution::path_normalization::relative_text(
+            self.root.as_ref(),
+            Path::new(path.as_str()),
+        )
+        .ok()
+    }
+
+    /// The database file one absolute path names, when the database holds it.
+    pub(super) fn file_id(&self, absolute: &str) -> Option<ra_ap_ide::FileId> {
+        let path = VfsPath::from(AbsPathBuf::try_from(absolute).ok()?);
+        self.vfs.file_id(&path).map(|(file, _)| file)
+    }
+
+    /// Prove this database holds exactly what one resolution snapshot claims.
+    ///
+    /// No query runs after a refusal: the caller receives the difference and
+    /// nothing else.
+    pub(crate) fn verify_snapshot(
+        &self,
+        claim: &SemanticSnapshotClaim,
+    ) -> Result<VerifiedSnapshot, SemanticSnapshotMismatch> {
+        snapshot::verify(self, claim)
+    }
+
+    /// Every definition edge the sources of one verified snapshot state.
+    ///
+    /// A source the database cannot analyze, or a coordinate it cannot read, is
+    /// a difference between the database and the snapshot, so it refuses the
+    /// pairing rather than answering for a source it never read.
+    pub(crate) fn definition_targets(
+        &self,
+        verified: &VerifiedSnapshot,
+    ) -> Result<SemanticDefinitionTargets, SemanticSnapshotMismatch> {
+        edges::collect(self, verified)
+    }
+
+    /// The analysis of one verified snapshot source, observing the setup its
+    /// first analysis performs.
+    pub(super) fn analyze_snapshot_file(
+        &self,
+        relative: &str,
+        absolute: &str,
+    ) -> Option<Arc<SemanticFileAnalysis>> {
+        observe::record(Observation::SemanticQuery(relative));
+        match self.cached(absolute) {
+            Some(cached) => Some(cached),
+            None => self.set_up_snapshot_file(relative, absolute),
+        }
+    }
+
+    /// The first analysis of one verified snapshot source, observed once the
+    /// setup it performs has completed.
+    ///
+    /// A source that fails to analyze set nothing up, so it records nothing.
+    fn set_up_snapshot_file(
+        &self,
+        relative: &str,
+        absolute: &str,
+    ) -> Option<Arc<SemanticFileAnalysis>> {
+        let analysis = self.analyze_file(absolute)?;
+        observe::record(Observation::SemanticFileSetup(relative));
+        Some(analysis)
+    }
+
+    /// The cached analysis of one file, without building it.
+    fn cached(&self, file: &str) -> Option<Arc<SemanticFileAnalysis>> {
+        let cache = match self.file_cache.read() {
+            Ok(cache) => cache,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        cache.get(file).map(Arc::clone)
     }
 
     /// Number of times `with_parsed_file` has been invoked on this context.
@@ -99,16 +193,11 @@ impl SemanticContext {
     ///
     /// Returns `None` when the file is not in the VFS or cannot be parsed.
     pub fn analyze_file(&self, file: &str) -> Option<Arc<SemanticFileAnalysis>> {
-        let cache = match self.file_cache.read() {
-            Ok(cache) => cache,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        if let Some(cached) = cache.get(file) {
-            return Some(Arc::clone(cached));
+        let canonical = canonical_file_path(file)?;
+        match self.cached(&canonical) {
+            Some(cached) => Some(cached),
+            None => with_parsed_file(self, &canonical, |pf| self.cache_analysis(&canonical, pf)),
         }
-        drop(cache);
-
-        with_parsed_file(self, file, |pf| self.cache_analysis(file, pf))
     }
 
     fn cache_analysis(
@@ -116,14 +205,9 @@ impl SemanticContext {
         file: &str,
         pf: &super::common::ParsedFile<'_>,
     ) -> Arc<SemanticFileAnalysis> {
-        let cache = match self.file_cache.read() {
-            Ok(cache) => cache,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        if let Some(cached) = cache.get(file).cloned() {
+        if let Some(cached) = self.cached(file) {
             return cached;
         }
-        drop(cache);
         let arc = Arc::new(SemanticFileAnalysis::build(pf));
         let mut cache = match self.file_cache.write() {
             Ok(cache) => cache,
@@ -154,8 +238,11 @@ impl SemanticContext {
 
 /// Minimal `CargoConfig` — no build scripts, no proc macros.
 #[cfg(feature = "semantic")]
-fn cargo_config_minimal() -> CargoConfig {
-    CargoConfig {
+fn cargo_config_minimal(workspace_root: &Path) -> Option<CargoConfig> {
+    let target_path = workspace_root.join("target").join("pedant-semantic");
+    let workspace_target = target_path.to_str()?.to_owned();
+
+    Some(CargoConfig {
         all_targets: false,
         features: Default::default(),
         target: None,
@@ -167,14 +254,22 @@ fn cargo_config_minimal() -> CargoConfig {
         wrap_rustc_in_build_scripts: false,
         run_build_script_command: None,
         extra_args: Vec::new(),
-        extra_env: Default::default(),
+        extra_env: [(String::from("CARGO_TARGET_DIR"), Some(workspace_target))]
+            .into_iter()
+            .collect(),
         invocation_strategy: Default::default(),
         target_dir_config: Default::default(),
         set_test: false,
         no_deps: false,
         metadata_extra_args: Vec::new(),
         config_path: None,
-    }
+    })
+}
+
+#[cfg(feature = "semantic")]
+fn canonical_file_path(file: &str) -> Option<Box<str>> {
+    let path = Path::new(file).canonicalize().ok()?;
+    Some(Box::from(path.to_str()?))
 }
 
 /// Minimal `LoadCargoConfig` — no build scripts, no proc macros, no cache prefill.

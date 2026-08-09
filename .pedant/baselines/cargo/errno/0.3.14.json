@@ -1,16 +1,337 @@
 {
   "spec_version": "0.1.0",
-  "source_hash": "ddfce14d114328368d356b90a230ccc9788eb09cdec4307c3eb38e9f04dbfbee",
+  "source_hash": "0d18018e676a344c28ca82f94ede5ee9640426596ca8b7be74244c51a73839d4",
   "crate_name": "errno",
   "crate_version": "0.3.14",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344427,
+  "timestamp": 1786296073,
   "analysis_completeness": {
-    "analyzed_files": 2,
+    "analyzed_files": 5,
     "skipped_files": 0
   },
   "rust_version": "1.56",
   "profile": {
-    "findings": []
+    "findings": [
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/unix.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "libc::self",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/unix.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "libc::c_int",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/unix.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "libc::size_t",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/unix.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "libc::strerror_r",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/unix.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "libc::strlen",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/unix.rs",
+          "line": 40,
+          "column": 32
+        },
+        "evidence": "libc::ERANGE",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/unix.rs",
+          "line": 23,
+          "column": 23
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/unix.rs",
+          "line": 32,
+          "column": 17
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/unix.rs",
+          "line": 53,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/unix.rs",
+          "line": 57,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/unix.rs",
+          "line": 62,
+          "column": 1
+        },
+        "evidence": "extern block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/wasi.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "libc::self",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/wasi.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "libc::c_int",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/wasi.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "libc::size_t",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/wasi.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "libc::strerror_r",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/wasi.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "libc::strlen",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/wasi.rs",
+          "line": 36,
+          "column": 32
+        },
+        "evidence": "libc::ERANGE",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/wasi.rs",
+          "line": 23,
+          "column": 23
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/wasi.rs",
+          "line": 32,
+          "column": 17
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/wasi.rs",
+          "line": 49,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/wasi.rs",
+          "line": 53,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/wasi.rs",
+          "line": 58,
+          "column": 1
+        },
+        "evidence": "extern block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 18,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::GetLastError",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 18,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::SetLastError",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 18,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::Foundation::WIN32_ERROR",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 19,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Diagnostics::Debug::FormatMessageW",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 19,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Diagnostics::Debug::FORMAT_MESSAGE_FROM_SYSTEM",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 19,
+          "column": 1
+        },
+        "evidence": "windows_sys::Win32::System::Diagnostics::Debug::FORMAT_MESSAGE_IGNORE_INSERTS",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 37,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 50,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 76,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/windows.rs",
+          "line": 80,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      }
+    ]
   }
 }

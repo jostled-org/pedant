@@ -1,12 +1,12 @@
 {
   "spec_version": "0.1.0",
-  "source_hash": "030094b2f20187a50e3ee1b3885d026481b70d302817b247e8c180d96f03b980",
+  "source_hash": "fba2b1ef6e1ef719d8f3b21d10965be35d0c1e23439dcdf83c51af56722712c2",
   "crate_name": "windows-core",
   "crate_version": "0.62.2",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344445,
+  "timestamp": 1786296409,
   "analysis_completeness": {
-    "analyzed_files": 22,
+    "analyzed_files": 24,
     "skipped_files": 0
   },
   "rust_version": "1.82",
@@ -1065,11 +1065,201 @@
       {
         "capability": "unsafe_code",
         "location": {
+          "file": "./src/ref.rs",
+          "line": 25,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/ref.rs",
+          "line": 44,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/ref.rs",
+          "line": 45,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/ref.rs",
+          "line": 51,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/ref.rs",
+          "line": 58,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/ref.rs",
+          "line": 67,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/ref.rs",
+          "line": 77,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/ref.rs",
+          "line": 79,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/ref.rs",
+          "line": 86,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
           "file": "./src/scoped_interface.rs",
           "line": 37,
           "column": 9
         },
         "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/type.rs",
+          "line": 39,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/type.rs",
+          "line": 40,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/type.rs",
+          "line": 43,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/type.rs",
+          "line": 44,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/type.rs",
+          "line": 69,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/type.rs",
+          "line": 70,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/type.rs",
+          "line": 73,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/type.rs",
+          "line": 74,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/type.rs",
+          "line": 93,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/type.rs",
+          "line": 97,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
         "origin": "code_site"
       },
       {

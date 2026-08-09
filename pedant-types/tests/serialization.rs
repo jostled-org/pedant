@@ -1,579 +1,191 @@
-use std::sync::Arc;
+//! Contract tests for every `pedant-types` serialized shape.
+//!
+//! This root owns the wire format: capability findings, profiles, diffs,
+//! attestations, and the validated resolution report. It stays the crate's only
+//! integration executable — every case module reaches it through a `#[path]`
+//! support module, which Cargo links into this same binary instead of a second
+//! one.
+//!
+//! The `#[path]` is required rather than stylistic: default resolution would
+//! place the files in `tests/serialization/`, which pedant's
+//! `conflicting-module-root` rule rejects beside `serialization.rs`. A sibling
+//! directory satisfies both rules.
+//!
+//! The five resolution predicates below stay at this root, unlike every other
+//! case: Step 1.6 selects them by bare name and the Step 7 owner-registration
+//! table lists them unqualified, so a module path would rename them.
 
-use pedant_types::{
-    AnalysisCompleteness, AnalysisTier, AttestationContent, Capability, CapabilityDiff,
-    CapabilityFinding, CapabilityProfile, ExecutionContext, FindingOrigin, Language,
-    SkippedAnalysis, SourceLocation,
-};
+/// The one valid resolution report every resolution case starts from.
+#[path = "serialization_support/resolution_fixture.rs"]
+mod resolution_fixture;
 
-fn sample_finding(capability: Capability, file: &str, line: usize) -> CapabilityFinding {
-    CapabilityFinding {
-        capability,
-        location: SourceLocation {
-            file: Arc::from(file),
-            line,
-            column: 1,
-        },
-        evidence: Arc::from("test evidence"),
-        origin: None,
-        language: None,
-        execution_context: None,
-        reachable: None,
-    }
-}
+/// The one-of-each builder the handle and capacity cases need.
+#[path = "serialization_support/resolution_seed.rs"]
+mod resolution_seed;
 
+/// What a malformed wire case is, and how one reaches the validator.
+#[path = "serialization_support/resolution_case_model.rs"]
+mod resolution_case_model;
+
+/// Every malformed wire report and its exact refusal.
+#[path = "serialization_support/resolution_cases.rs"]
+mod resolution_cases;
+
+/// Every malformed report a writer can state, and the refusal `finish` owes.
+#[path = "serialization_support/resolution_builder_cases.rs"]
+mod resolution_builder_cases;
+
+/// What each resolution case proves.
+#[path = "serialization_support/resolution_asserts.rs"]
+mod resolution_asserts;
+
+/// External type-identity, ownership, and transparent-ID wire proofs.
+#[path = "serialization_support/resolution_identity.rs"]
+mod resolution_identity;
+
+/// Caller-bounded decoding and the report map's serde field contract.
+#[path = "serialization_support/resolution_decode_limits.rs"]
+mod resolution_decode_limits;
+
+/// A hostile serde size hint cannot influence bounded report allocation.
+#[path = "serialization_support/resolution_hostile_hint.rs"]
+mod resolution_hostile_hint;
+
+/// The one capability finding the non-resolution cases vary.
+#[path = "serialization_support/finding_fixture.rs"]
+mod finding_fixture;
+
+/// Every closed enum's text spelling, in both directions.
+#[path = "serialization_support/enum_spelling_cases.rs"]
+mod enum_spelling_cases;
+
+/// What a capability finding's optional fields do on the wire.
+#[path = "serialization_support/finding_cases.rs"]
+mod finding_cases;
+
+/// What a profile reports over its findings, and what a diff of two reports.
+#[path = "serialization_support/profile_cases.rs"]
+mod profile_cases;
+
+/// The attestation envelope and its completeness record.
+#[path = "serialization_support/attestation_cases.rs"]
+mod attestation_cases;
+
+/// The legacy `build_script` boolean and the enum that replaced it.
+#[path = "serialization_support/legacy_decode_cases.rs"]
+mod legacy_decode_cases;
+
+// --- Resolution contract: Invariants 1-4 and the Rust language spelling ---
+
+/// Two builders both issue local index zero, so a handle passed to the wrong
+/// builder names a valid local record. Every handle-consuming operation must
+/// refuse it on brand identity and leave the receiving builder untouched.
 #[test]
-fn capability_serializes_to_snake_case() {
-    let json = serde_json::to_string(&Capability::FileRead).unwrap();
-    assert_eq!(json, "\"file_read\"");
+fn resolution_builder_rejects_every_same_index_foreign_handle_without_mutation() {
+    use pedant_types::resolution::ResolutionReportLimits;
 
-    let json = serde_json::to_string(&Capability::ProcessExec).unwrap();
-    assert_eq!(json, "\"process_exec\"");
+    let mut local = resolution_seed::seeded_builder(ResolutionReportLimits::default());
+    let foreign = resolution_seed::seeded_builder(ResolutionReportLimits::default());
 
-    let json = serde_json::to_string(&Capability::UnsafeCode).unwrap();
-    assert_eq!(json, "\"unsafe_code\"");
-
-    let json = serde_json::to_string(&Capability::SystemTime).unwrap();
-    assert_eq!(json, "\"system_time\"");
-
-    let json = serde_json::to_string(&Capability::ProcMacro).unwrap();
-    assert_eq!(json, "\"proc_macro\"");
-}
-
-#[test]
-fn capability_round_trip() {
-    let variants = [
-        Capability::Network,
-        Capability::FileRead,
-        Capability::FileWrite,
-        Capability::ProcessExec,
-        Capability::EnvAccess,
-        Capability::UnsafeCode,
-        Capability::Ffi,
-        Capability::Crypto,
-        Capability::SystemTime,
-        Capability::ProcMacro,
-    ];
-    for cap in variants {
-        let json = serde_json::to_string(&cap).unwrap();
-        let back: Capability = serde_json::from_str(&json).unwrap();
-        assert_eq!(cap, back);
-    }
-}
-
-#[test]
-fn source_location_round_trip() {
-    let loc = SourceLocation {
-        file: Arc::from("src/main.rs"),
-        line: 42,
-        column: 5,
-    };
-    let json = serde_json::to_string(&loc).unwrap();
-    let back: SourceLocation = serde_json::from_str(&json).unwrap();
-    assert_eq!(loc, back);
-}
-
-#[test]
-fn capability_finding_round_trip() {
-    let finding = sample_finding(Capability::Network, "src/lib.rs", 10);
-    let json = serde_json::to_string(&finding).unwrap();
-    let back: CapabilityFinding = serde_json::from_str(&json).unwrap();
-    assert_eq!(finding, back);
-}
-
-#[test]
-fn profile_capabilities_deduplicates_and_sorts() {
-    let profile = CapabilityProfile {
-        findings: vec![
-            sample_finding(Capability::Network, "a.rs", 1),
-            sample_finding(Capability::FileRead, "b.rs", 2),
-            sample_finding(Capability::Network, "c.rs", 3),
-        ]
-        .into_boxed_slice(),
-    };
-    let caps = profile.capabilities();
-    assert_eq!(
-        caps,
-        vec![Capability::Network, Capability::FileRead].into_boxed_slice()
+    resolution_asserts::foreign_handles_are_refused(&mut local, &foreign);
+    resolution_asserts::seeded_builder_still_finishes(
+        local,
+        "no rejected operation mutated the builder",
     );
 }
 
 #[test]
-fn profile_findings_for_filters() {
-    let profile = CapabilityProfile {
-        findings: vec![
-            sample_finding(Capability::Network, "a.rs", 1),
-            sample_finding(Capability::FileRead, "b.rs", 2),
-            sample_finding(Capability::Network, "c.rs", 3),
-        ]
-        .into_boxed_slice(),
-    };
-    assert_eq!(profile.findings_for(Capability::Network).count(), 2);
-    assert_eq!(profile.findings_for(Capability::FileRead).count(), 1);
-    assert_eq!(profile.findings_for(Capability::Crypto).count(), 0);
+fn resolution_handle_and_identifier_kinds_remain_nominally_distinct() {
+    resolution_identity::assert_distinct_identity_families();
 }
 
 #[test]
-fn empty_profile_round_trip() {
-    let profile = CapabilityProfile::default();
-    let json = serde_json::to_string(&profile).unwrap();
-    let back: CapabilityProfile = serde_json::from_str(&json).unwrap();
-    assert_eq!(profile, back);
-    assert!(back.capabilities().is_empty());
+fn resolution_identifiers_keep_the_transparent_u32_wire_shape() {
+    resolution_identity::assert_transparent_identifier_wire_shape();
 }
 
 #[test]
-fn attestation_round_trip() {
-    let attestation = AttestationContent {
-        spec_version: Box::from("1.0"),
-        source_hash: Box::from("abc123"),
-        crate_name: Box::from("my-crate"),
-        crate_version: Box::from("0.1.0"),
-        analysis_tier: AnalysisTier::Syntactic,
-        timestamp: 1_700_000_000,
-        analysis_completeness: Some(AnalysisCompleteness {
-            analyzed_files: 1,
-            skipped_files: 0,
-            skipped_paths: Box::default(),
-            skipped_details: Box::default(),
-        }),
-        rust_version: None,
-        profile: CapabilityProfile {
-            findings: vec![sample_finding(Capability::Ffi, "src/lib.rs", 5)].into_boxed_slice(),
-        },
-    };
-    let json = serde_json::to_string(&attestation).unwrap();
-    let back: AttestationContent = serde_json::from_str(&json).unwrap();
-    assert_eq!(attestation, back);
-    assert!(
-        !json.contains("rust_version"),
-        "JSON should omit rust_version when None, got: {json}"
+fn resolution_report_decode_limits_bound_every_top_level_collection() {
+    resolution_decode_limits::assert_each_collection_is_bounded();
+}
+
+#[test]
+fn resolution_report_decode_limits_preserve_default_and_valid_behavior() {
+    resolution_decode_limits::assert_default_and_configured_valid_decoding();
+}
+
+#[test]
+fn resolution_report_bounded_decode_preserves_map_field_errors() {
+    resolution_decode_limits::assert_map_field_errors();
+}
+
+#[test]
+fn resolution_report_bounded_decode_ignores_hostile_sequence_size_hints() {
+    resolution_hostile_hint::assert_hostile_size_hint_is_not_observed();
+}
+
+/// The one insertion check answers both the configured capacity and the fixed
+/// width of the report's identifiers.
+#[test]
+fn resolution_builder_enforces_configured_and_id_ceiling_capacities_without_mutation() {
+    use pedant_types::resolution::ResolutionReportLimits;
+
+    let mut seeded = resolution_seed::seeded_builder(ResolutionReportLimits {
+        max_units: 1,
+        max_definitions: 1,
+        max_references: 1,
+    });
+    resolution_asserts::configured_capacity_is_enforced(&mut seeded);
+    resolution_asserts::seeded_builder_still_finishes(
+        seeded,
+        "no rejected insertion mutated the builder",
     );
+    resolution_asserts::id_ceiling_is_enforced();
 }
 
+/// Both construction boundaries — `finish` and custom deserialization — reach
+/// the same validator, and each malformed family produces its exact refusal.
+///
+/// The wire table carries every family; the builder table carries every family
+/// a writer can state, and the two are held together by label so neither
+/// boundary can grow a rule the other never proves. A rule the validator
+/// applies to more than one collection is stated once per call site, so no
+/// call site can be deleted while the table stays green.
 #[test]
-fn attestation_content_round_trips_optional_rust_version() {
-    let attestation = AttestationContent {
-        spec_version: Box::from("0.1.0"),
-        source_hash: Box::from("abc123"),
-        crate_name: Box::from("with-msrv"),
-        crate_version: Box::from("0.2.0"),
-        analysis_tier: AnalysisTier::Syntactic,
-        timestamp: 1_700_000_000,
-        analysis_completeness: Some(AnalysisCompleteness::default()),
-        rust_version: Some(Box::from("1.70")),
-        profile: CapabilityProfile::default(),
-    };
-    let json = serde_json::to_string(&attestation).unwrap();
-    assert!(
-        json.contains(r#""rust_version":"1.70""#),
-        "JSON should contain rust_version: 1.70, got: {json}"
+fn resolution_report_validation_rejects_every_malformed_invariant_family() {
+    let wire = resolution_cases::malformed_cases();
+    let builder = resolution_builder_cases::builder_cases();
+    resolution_asserts::every_case_produces_its_refusal(&wire, 32, "malformed family");
+    resolution_asserts::every_builder_case_produces_its_refusal(&builder, 13, "malformed family");
+    resolution_asserts::boundaries_cover_the_same_families(&wire, &builder);
+    resolution_asserts::one_record_per_reference();
+    resolution_asserts::valid_report_round_trips();
+}
+
+/// Unit containment, cross-unit candidates, and every legal and illegal record
+/// shape: the legal ones accepted at both boundaries, the illegal ones refused
+/// identically by `finish` and by deserialization.
+#[test]
+fn resolution_report_enforces_unit_parent_candidate_and_certainty_rules() {
+    use pedant_types::resolution::ResolutionGap;
+
+    resolution_asserts::unit_containment_and_cross_unit_candidate();
+    resolution_asserts::possible_candidates_are_accepted(&[]);
+    resolution_asserts::possible_candidates_are_accepted(&[ResolutionGap::ConditionalCompilation]);
+    let wire = resolution_cases::certainty_cases();
+    let builder = resolution_builder_cases::builder_certainty_cases();
+    resolution_asserts::every_case_produces_its_refusal(&wire, 4, "illegal record shape");
+    resolution_asserts::every_builder_case_produces_its_refusal(
+        &builder,
+        4,
+        "illegal record shape",
     );
-    let back: AttestationContent = serde_json::from_str(&json).unwrap();
-    assert_eq!(attestation, back);
-    assert_eq!(back.rust_version.as_deref(), Some("1.70"));
-
-    // Backward-compatible decode: baseline without rust_version still parses with None.
-    let legacy_json = r#"{
-        "spec_version": "0.1.0",
-        "source_hash": "abc123",
-        "crate_name": "legacy",
-        "crate_version": "0.1.0",
-        "analysis_tier": "syntactic",
-        "timestamp": 1700000000,
-        "profile": {"findings": []}
-    }"#;
-    let legacy: AttestationContent = serde_json::from_str(legacy_json).unwrap();
-    assert!(legacy.rust_version.is_none());
+    resolution_asserts::boundaries_cover_the_same_families(&wire, &builder);
 }
 
+/// Rust is a shared language with the wire spelling `rust`, and every emitted
+/// resolution record carries it.
 #[test]
-fn analysis_completeness_round_trip() {
-    let completeness = AnalysisCompleteness {
-        analyzed_files: 2,
-        skipped_files: 1,
-        skipped_paths: vec![Box::from("./src/lib.rs")].into_boxed_slice(),
-        skipped_details: vec![SkippedAnalysis {
-            path: Box::from("./src/lib.rs"),
-            error: Box::from("expected ';'"),
-        }]
-        .into_boxed_slice(),
-    };
-    let json = serde_json::to_string(&completeness).unwrap();
-    let back: AnalysisCompleteness = serde_json::from_str(&json).unwrap();
-    assert_eq!(completeness, back);
-    assert!(!back.is_complete());
-}
-
-#[test]
-fn analysis_tier_round_trip() {
-    for tier in [
-        AnalysisTier::Syntactic,
-        AnalysisTier::Semantic,
-        AnalysisTier::DataFlow,
-    ] {
-        let json = serde_json::to_string(&tier).unwrap();
-        let back: AnalysisTier = serde_json::from_str(&json).unwrap();
-        assert_eq!(tier, back);
-    }
-}
-
-#[test]
-fn diff_overlapping_profiles() {
-    let old = CapabilityProfile {
-        findings: vec![
-            sample_finding(Capability::Network, "a.rs", 1),
-            sample_finding(Capability::FileRead, "b.rs", 2),
-        ]
-        .into_boxed_slice(),
-    };
-    let new = CapabilityProfile {
-        findings: vec![
-            sample_finding(Capability::Network, "a.rs", 1),
-            sample_finding(Capability::Crypto, "c.rs", 3),
-        ]
-        .into_boxed_slice(),
-    };
-    let diff = CapabilityDiff::compute(&old, &new);
-    assert_eq!(diff.added.len(), 1);
-    assert_eq!(diff.added[0].capability, Capability::Crypto);
-    assert_eq!(diff.removed.len(), 1);
-    assert_eq!(diff.removed[0].capability, Capability::FileRead);
-    assert_eq!(&*diff.new_capabilities, &[Capability::Crypto]);
-    assert_eq!(&*diff.dropped_capabilities, &[Capability::FileRead]);
-}
-
-#[test]
-fn diff_disjoint_profiles() {
-    let old = CapabilityProfile {
-        findings: vec![sample_finding(Capability::Network, "a.rs", 1)].into_boxed_slice(),
-    };
-    let new = CapabilityProfile {
-        findings: vec![sample_finding(Capability::FileWrite, "b.rs", 2)].into_boxed_slice(),
-    };
-    let diff = CapabilityDiff::compute(&old, &new);
-    assert_eq!(diff.added.len(), 1);
-    assert_eq!(diff.removed.len(), 1);
-    assert_eq!(&*diff.new_capabilities, &[Capability::FileWrite]);
-    assert_eq!(&*diff.dropped_capabilities, &[Capability::Network]);
-}
-
-#[test]
-fn diff_empty_profiles() {
-    let empty = CapabilityProfile::default();
-    let diff = CapabilityDiff::compute(&empty, &empty);
-    assert!(diff.added.is_empty());
-    assert!(diff.removed.is_empty());
-    assert!(diff.new_capabilities.is_empty());
-    assert!(diff.dropped_capabilities.is_empty());
-}
-
-#[test]
-fn diff_round_trip() {
-    let old = CapabilityProfile {
-        findings: vec![sample_finding(Capability::Network, "a.rs", 1)].into_boxed_slice(),
-    };
-    let new = CapabilityProfile {
-        findings: vec![sample_finding(Capability::Crypto, "b.rs", 2)].into_boxed_slice(),
-    };
-    let diff = CapabilityDiff::compute(&old, &new);
-    let json = serde_json::to_string(&diff).unwrap();
-    let back: CapabilityDiff = serde_json::from_str(&json).unwrap();
-    assert_eq!(diff, back);
-}
-
-#[test]
-fn capability_finding_reachable_none_omitted() {
-    let finding = sample_finding(Capability::Network, "src/lib.rs", 10);
-    assert!(finding.reachable.is_none());
-
-    let json = serde_json::to_string(&finding).unwrap();
-    assert!(
-        !json.contains("reachable"),
-        "JSON should not contain 'reachable' when None, got: {json}"
-    );
-
-    // Round-trip: deserializing JSON without reachable yields None
-    let back: CapabilityFinding = serde_json::from_str(&json).unwrap();
-    assert!(back.reachable.is_none());
-}
-
-#[test]
-fn capability_finding_reachable_some_serialized() {
-    let finding = CapabilityFinding {
-        reachable: Some(true),
-        ..sample_finding(Capability::Network, "src/lib.rs", 10)
-    };
-    let json = serde_json::to_string(&finding).unwrap();
-    assert!(
-        json.contains(r#""reachable":true"#),
-        "JSON should contain reachable: true, got: {json}"
-    );
-
-    let back: CapabilityFinding = serde_json::from_str(&json).unwrap();
-    assert_eq!(back.reachable, Some(true));
-
-    // Also test Some(false)
-    let finding_false = CapabilityFinding {
-        reachable: Some(false),
-        ..sample_finding(Capability::FileRead, "src/lib.rs", 5)
-    };
-    let json_false = serde_json::to_string(&finding_false).unwrap();
-    assert!(
-        json_false.contains(r#""reachable":false"#),
-        "JSON should contain reachable: false, got: {json_false}"
-    );
-
-    let back_false: CapabilityFinding = serde_json::from_str(&json_false).unwrap();
-    assert_eq!(back_false.reachable, Some(false));
-}
-
-// --- Step 1 tests: Language, ExecutionContext, migration ---
-
-#[test]
-fn language_enum_round_trip() {
-    let variants = [
-        Language::Python,
-        Language::JavaScript,
-        Language::TypeScript,
-        Language::Go,
-        Language::Bash,
-    ];
-    for lang in variants {
-        let json = serde_json::to_string(&lang).unwrap();
-        let back: Language = serde_json::from_str(&json).unwrap();
-        assert_eq!(lang, back);
-    }
-}
-
-#[test]
-fn execution_context_round_trip() {
-    let variants = [
-        ExecutionContext::Runtime,
-        ExecutionContext::BuildHook,
-        ExecutionContext::InstallHook,
-        ExecutionContext::Generator,
-    ];
-    for ctx in variants {
-        let json = serde_json::to_string(&ctx).unwrap();
-        let back: ExecutionContext = serde_json::from_str(&json).unwrap();
-        assert_eq!(ctx, back);
-    }
-}
-
-#[test]
-fn capability_finding_language_none_omitted() {
-    let finding = sample_finding(Capability::Network, "src/lib.rs", 10);
-    assert!(finding.language.is_none());
-    assert!(finding.execution_context.is_none());
-
-    let json = serde_json::to_string(&finding).unwrap();
-    assert!(
-        !json.contains("language"),
-        "JSON should not contain 'language' when None, got: {json}"
-    );
-    assert!(
-        !json.contains("execution_context"),
-        "JSON should not contain 'execution_context' when None, got: {json}"
-    );
-    assert!(
-        !json.contains("build_script"),
-        "JSON should not contain 'build_script' (field removed), got: {json}"
-    );
-
-    let back: CapabilityFinding = serde_json::from_str(&json).unwrap();
-    assert_eq!(finding, back);
-}
-
-#[test]
-fn capability_finding_language_some_serialized() {
-    let finding = CapabilityFinding {
-        language: Some(Language::Python),
-        execution_context: Some(ExecutionContext::InstallHook),
-        ..sample_finding(Capability::ProcessExec, "setup.py", 5)
-    };
-    let json = serde_json::to_string(&finding).unwrap();
-    assert!(
-        json.contains(r#""language":"python""#),
-        "JSON should contain language: python, got: {json}"
-    );
-    assert!(
-        json.contains(r#""execution_context":"install_hook""#),
-        "JSON should contain execution_context: install_hook, got: {json}"
-    );
-
-    let back: CapabilityFinding = serde_json::from_str(&json).unwrap();
-    assert_eq!(finding, back);
-}
-
-#[test]
-fn capability_finding_origin_none_omitted() {
-    let finding = sample_finding(Capability::Network, "src/lib.rs", 10);
-    assert!(finding.origin.is_none());
-
-    let json = serde_json::to_string(&finding).unwrap();
-    assert!(
-        !json.contains("origin"),
-        "JSON should not contain 'origin' when None, got: {json}"
-    );
-
-    let back: CapabilityFinding = serde_json::from_str(&json).unwrap();
-    assert!(back.origin.is_none());
-}
-
-#[test]
-fn capability_finding_origin_round_trip() {
-    let variants = [
-        FindingOrigin::Import,
-        FindingOrigin::StringLiteral,
-        FindingOrigin::Attribute,
-        FindingOrigin::CodeSite,
-        FindingOrigin::ManifestHook,
-    ];
-    for origin in variants {
-        let json = serde_json::to_string(&origin).unwrap();
-        let back: FindingOrigin = serde_json::from_str(&json).unwrap();
-        assert_eq!(origin, back, "round-trip failed for {origin:?}");
-    }
-}
-
-#[test]
-fn capability_finding_with_origin_serialized() {
-    let finding = CapabilityFinding {
-        origin: Some(FindingOrigin::Import),
-        ..sample_finding(Capability::Crypto, "src/lib.rs", 5)
-    };
-    let json = serde_json::to_string(&finding).unwrap();
-    assert!(
-        json.contains(r#""origin":"import""#),
-        "JSON should contain origin: import, got: {json}"
-    );
-
-    let back: CapabilityFinding = serde_json::from_str(&json).unwrap();
-    assert_eq!(finding, back);
-}
-
-#[test]
-fn capability_finding_origin_all_variants_in_finding() {
-    let origins = [
-        (FindingOrigin::Import, "import"),
-        (FindingOrigin::StringLiteral, "string_literal"),
-        (FindingOrigin::Attribute, "attribute"),
-        (FindingOrigin::CodeSite, "code_site"),
-        (FindingOrigin::ManifestHook, "manifest_hook"),
-    ];
-    for (origin, expected_str) in origins {
-        let finding = CapabilityFinding {
-            origin: Some(origin),
-            ..sample_finding(Capability::Network, "src/lib.rs", 1)
-        };
-        let json = serde_json::to_string(&finding).unwrap();
-        let expected = format!(r#""origin":"{expected_str}""#);
-        assert!(
-            json.contains(&expected),
-            "expected {expected} in JSON, got: {json}"
-        );
-        let back: CapabilityFinding = serde_json::from_str(&json).unwrap();
-        assert_eq!(finding, back);
-    }
-}
-
-#[test]
-fn capability_display_matches_from_str() {
-    let variants = [
-        Capability::Network,
-        Capability::FileRead,
-        Capability::FileWrite,
-        Capability::ProcessExec,
-        Capability::EnvAccess,
-        Capability::UnsafeCode,
-        Capability::Ffi,
-        Capability::Crypto,
-        Capability::SystemTime,
-        Capability::ProcMacro,
-    ];
-    for cap in variants {
-        let display = cap.to_string();
-        let parsed: Capability = display.parse().unwrap();
-        assert_eq!(cap, parsed, "Display/FromStr mismatch for {cap:?}");
-    }
-}
-
-#[test]
-fn capability_finding_build_script_migration() {
-    // Legacy JSON with "build_script": true should deserialize to BuildHook
-    let legacy_json = r#"{
-        "capability": "network",
-        "location": {"file": "build.rs", "line": 10, "column": 1},
-        "evidence": "reqwest::get",
-        "build_script": true
-    }"#;
-    let finding: CapabilityFinding = serde_json::from_str(legacy_json).unwrap();
-    assert_eq!(
-        finding.execution_context,
-        Some(ExecutionContext::BuildHook),
-        "build_script: true should map to ExecutionContext::BuildHook"
-    );
-    assert!(finding.language.is_none());
-
-    // Legacy JSON with "build_script": false should deserialize to None
-    let legacy_false = r#"{
-        "capability": "file_read",
-        "location": {"file": "src/lib.rs", "line": 5, "column": 1},
-        "evidence": "std::fs::read",
-        "build_script": false
-    }"#;
-    let finding_false: CapabilityFinding = serde_json::from_str(legacy_false).unwrap();
-    assert_eq!(finding_false.execution_context, None);
-
-    // Consistent legacy and new fields may coexist.
-    let both_consistent_json = r#"{
-        "capability": "network",
-        "location": {"file": "build.rs", "line": 10, "column": 1},
-        "evidence": "reqwest::get",
-        "build_script": true,
-        "execution_context": "build_hook"
-    }"#;
-    let finding_both: CapabilityFinding = serde_json::from_str(both_consistent_json).unwrap();
-    assert_eq!(
-        finding_both.execution_context,
-        Some(ExecutionContext::BuildHook)
-    );
-
-    // Contradictory legacy and new fields are rejected.
-    let both_json = r#"{
-        "capability": "network",
-        "location": {"file": "build.rs", "line": 10, "column": 1},
-        "evidence": "reqwest::get",
-        "build_script": true,
-        "execution_context": "runtime"
-    }"#;
-    let error = serde_json::from_str::<CapabilityFinding>(both_json)
-        .expect_err("contradictory execution_context and build_script should fail");
-    assert!(
-        error
-            .to_string()
-            .contains("contradicts legacy build_script=true"),
-        "unexpected error: {error}"
-    );
-}
-
-#[test]
-fn capability_finding_rejects_build_hook_with_legacy_false() {
-    let contradictory_json = r#"{
-        "capability": "network",
-        "location": {"file": "build.rs", "line": 10, "column": 1},
-        "evidence": "reqwest::get",
-        "build_script": false,
-        "execution_context": "build_hook"
-    }"#;
-
-    let error = serde_json::from_str::<CapabilityFinding>(contradictory_json)
-        .expect_err("build_hook with build_script=false should fail");
-    assert!(
-        error
-            .to_string()
-            .contains("contradicts legacy build_script=false"),
-        "unexpected error: {error}"
-    );
+fn rust_language_serializes_as_rust_and_resolution_records_use_it() {
+    resolution_asserts::every_record_spells_its_language_rust();
 }

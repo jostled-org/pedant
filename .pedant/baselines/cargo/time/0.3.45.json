@@ -1,12 +1,12 @@
 {
   "spec_version": "0.1.0",
-  "source_hash": "3fd6a88c9882a1fa07d159b8dd9787f906f27807b8aca4ca3aee7e448ee448bb",
+  "source_hash": "04ca4659a032b2153b7352cdb02c3612b85711a583276612eff8194344e6da99",
   "crate_name": "time",
   "crate_version": "0.3.45",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344442,
+  "timestamp": 1786296382,
   "analysis_completeness": {
-    "analyzed_files": 81,
+    "analyzed_files": 87,
     "skipped_files": 0
   },
   "rust_version": "1.83.0",
@@ -633,14 +633,84 @@
         "origin": "code_site"
       },
       {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/local_offset_at/unix.rs",
+          "line": 21,
+          "column": 27
+        },
+        "evidence": "libc::localtime_r",
+        "origin": "import"
+      },
+      {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/sys/refresh_tz/imp.rs",
-          "line": 5,
-          "column": 12
+          "file": "./src/sys/local_offset_at/unix.rs",
+          "line": 21,
+          "column": 18
         },
-        "evidence": "unsafe fn",
+        "evidence": "unsafe block",
         "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/sys/local_offset_at/unix.rs",
+          "line": 27,
+          "column": 14
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/sys/local_offset_at/windows.rs",
+          "line": 53,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/sys/local_offset_at/windows.rs",
+          "line": 58,
+          "column": 14
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/sys/local_offset_at/windows.rs",
+          "line": 95,
+          "column": 25
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/local_offset_at/windows.rs",
+          "line": 35,
+          "column": 8
+        },
+        "evidence": "extern block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/local_offset_at/windows.rs",
+          "line": 34,
+          "column": 1
+        },
+        "evidence": "#[link]",
+        "origin": "attribute"
       },
       {
         "capability": "unsafe_code",
@@ -660,6 +730,46 @@
           "column": 5
         },
         "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/sys/refresh_tz/unix.rs",
+          "line": 23,
+          "column": 12
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/sys/refresh_tz/unix.rs",
+          "line": 30,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/sys/refresh_tz/unix.rs",
+          "line": 49,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/refresh_tz/unix.rs",
+          "line": 24,
+          "column": 12
+        },
+        "evidence": "extern block",
         "origin": "code_site"
       },
       {

@@ -1,19 +1,9 @@
-use std::path::Path;
+use pedant_types::{Capability, FindingOrigin};
 
-use pedant_lang::{analyze_file, detect_language};
-use pedant_types::{Capability, CapabilityFinding, FindingOrigin};
+use crate::language_probe::{analyze_detected, has_capability};
 
-fn analyze_detected(path: &str, source: &str) -> Box<[CapabilityFinding]> {
-    let language = detect_language(Path::new(path), source)
-        .unwrap_or_else(|| panic!("{path} must resolve to a supported language"));
-    analyze_file(Path::new(path), source, language).findings
-}
-
-fn has_capability(findings: &[CapabilityFinding], capability: Capability) -> bool {
-    findings
-        .iter()
-        .any(|finding| finding.capability == capability)
-}
+#[cfg(feature = "ts-javascript")]
+use crate::language_probe::findings_for;
 
 #[test]
 fn jsx_and_cts_extensions_reach_capability_analysis() {
@@ -84,12 +74,7 @@ fn javascript_module_findings_follow_source_order() {
         "const child = require('child_process');\n",
         "import axios from 'axios';\n",
     );
-    let findings = analyze_file(
-        Path::new("worker.js"),
-        source,
-        pedant_types::Language::JavaScript,
-    )
-    .findings;
+    let findings = findings_for(source, "worker.js", pedant_types::Language::JavaScript);
     let module_lines: Box<[usize]> = findings
         .iter()
         .filter(|finding| finding.origin == Some(FindingOrigin::Import))
@@ -106,23 +91,21 @@ fn javascript_module_findings_follow_source_order() {
 #[cfg(all(feature = "ts-javascript", not(feature = "ts-typescript")))]
 #[test]
 fn javascript_feature_boundary_ignores_unified_typescript_grammar() {
-    let javascript = analyze_file(
-        Path::new("worker.js"),
+    let javascript = findings_for(
         "const child = require(`child_process`);",
+        "worker.js",
         pedant_types::Language::JavaScript,
-    )
-    .findings;
+    );
     assert!(
         has_capability(&javascript, Capability::ProcessExec),
         "the enabled JavaScript grammar must recognize template require calls: {javascript:?}"
     );
 
-    let typescript = analyze_file(
-        Path::new("worker.ts"),
+    let typescript = findings_for(
         "const fs = require('fs');",
+        "worker.ts",
         pedant_types::Language::TypeScript,
-    )
-    .findings;
+    );
     let file_read = typescript
         .iter()
         .find(|finding| {

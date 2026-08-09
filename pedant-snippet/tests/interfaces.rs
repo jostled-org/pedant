@@ -150,3 +150,22 @@ mod library {
         );
     }
 }
+
+/// The shared `Language` enum gains Rust, and it names the grammar this crate
+/// already links.
+///
+/// The token is asserted here because `pedant-snippet` links the same syntax
+/// substrate every transport reads. Only the token is asserted: the extraction,
+/// the envelope, and the round trip are the table's own claims, which
+/// [`library::extract_path_contract`] and both transport journeys already run
+/// over every case.
+#[test]
+fn rust_snippet_interfaces_remain_unchanged() {
+    use pedant_syntax::{Language, SyntaxLanguage};
+
+    assert_eq!(
+        SyntaxLanguage::from(Language::Rust),
+        SyntaxLanguage::Rust,
+        "the shared Rust token selects the Rust grammar this crate already links"
+    );
+}

@@ -23,15 +23,17 @@ jobs:
           fetch-depth: 0
       # The cheapest gate in the job, and it needs no toolchain: shellcheck runs
       # in milliseconds against a checkout alone, so a broken script fails here
-      # rather than after twenty minutes of cargo. The five files this glob
-      # matches are the only committed shell in the repository, and each of the
-      # four checks carries a `# shellcheck source=` directive. A directive is
-      # an instruction to a lint; running the lint is what makes it mean
-      # anything. `-x` is the flag that follows those directives, so without it
-      # the four would be linted against an unresolved `check_lib.sh` and every
-      # helper it defines would read as an unknown command. The runner image
-      # ships shellcheck.
-      - run: shellcheck -x docs/scripts/check_*.sh
+      # rather than after twenty minutes of cargo. The `check_*.sh` glob plus
+      # the four named files are the committed shell this repository owns: the
+      # boundary checks, the shared cargo-output classifier, the two plan-loop
+      # verification runners that source it, and the resolution proof runner
+      # that sources both it and `check_lib.sh`. Each sourcing script carries a
+      # `# shellcheck source=` directive. A directive is an instruction to a
+      # lint; running the lint is what makes it mean anything. `-x` is the flag
+      # that follows those directives, so without it each would be linted
+      # against an unresolved helper file and every function it defines would
+      # read as an unknown command. The runner image ships shellcheck.
+      - run: shellcheck -x docs/scripts/check_*.sh docs/scripts/cargo_infrastructure.sh docs/scripts/verify_step.sh docs/scripts/verify_affected.sh docs/scripts/run_resolution_proof.sh
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           components: rustfmt, clippy
@@ -45,16 +47,45 @@ jobs:
       - run: docs/scripts/check_syntax_dependency_closure.sh
       - run: docs/scripts/check_lang_feature_forwarding.sh
       - run: docs/scripts/check_published_manifests.sh
+      # shellcheck above lints four scripts CI never ran, and a lint cannot see
+      # a vacuous proof. This mode is the cheapest of the runner's seven —
+      # `cargo tree` resolves and prints, it compiles nothing — and running it
+      # executes the parts every other mode shares: the runner's own dispatch
+      # and directory anchoring, both `source` lines, `require_tools`, and the
+      # whole `cargo_infrastructure.sh` contract that `verify_step.sh` and
+      # `verify_affected.sh` also depend on. What stays lint-only is the two
+      # plan-loop runners and the registration/guarded-set modes, which need a
+      # substrate build the plan loop already pays for locally. `PROOF_OUTPUT_DIR`
+      # must name an existing directory; `runner.temp` is one.
+      - run: docs/scripts/run_resolution_proof.sh resolution-tier1-dependency-closure
+        env:
+          PROOF_OUTPUT_DIR: ${{ runner.temp }}
       - run: cargo fmt --check
+      - run: cargo fmt --manifest-path test-support/process-guard/Cargo.toml --check
       - run: cargo clippy -- -D warnings
-      - run: cargo clippy --workspace --features semantic -- -D warnings
-      # Dogfooded: pedant checks itself through the same actions it ships.
+      - run: cargo clippy --locked --manifest-path test-support/process-guard/Cargo.toml --all-targets -- -D warnings
+      # `--all-targets` is what puts the `tests/` trees of pedant, pedant-core,
+      # pedant-types, and pedant-mcp under clippy at all: without it no job in
+      # this file lints them, and `cargo test` below compiles them under rustc
+      # alone. It rides on the semantic invocation rather than the default one
+      # because every `#[cfg(feature = ...)]` in those test roots gates
+      # positively on `semantic`, so this configuration compiles a superset of
+      # what the default one would.
+      - run: cargo clippy --workspace --features semantic --all-targets -- -D warnings
+      # The two proof-only feature families are default-off, so the broad
+      # semantic clippy invocation above cannot compile their gated adapters.
+      # Keep them explicit: ordinary production builds still select neither.
+      - run: cargo clippy -p pedant-core --no-default-features --features resolution-test-support --all-targets -- -D warnings
+      - run: cargo clippy -p pedant --features resolution-test-support --all-targets -- -D warnings
+      - run: cargo clippy -p pedant-mcp --features completion-proof-support --all-targets -- -D warnings
+      # Dogfooded with a blocking source-size ceiling. The project config's
+      # 500-line warning tier is advisory for consumers, but this repository's
+      # acceptance contract must not print those warnings and call itself clean.
+      # The explicit CLI ceiling is stable across local and GitHub verification.
       # `paths` names directories — pedant recurses them itself. The globs this
       # replaced ran through bash without globstar, so `**` degraded to `*`: they
       # reached 42 of 53 sources and never once covered pedant-core/src/ir/semantic/.
-      - uses: ./.github/actions/pedant-check
-        with:
-          paths: ${{ env.FIRST_PARTY_SOURCES }}
+      - run: cargo run --locked -p pedant -- check --format github --max-source-file-lines 500 $FIRST_PARTY_SOURCES
       # pedant-snippet and pedant-syntax are the two crates whose test helpers
       # are held to the same structural limits as production source. The other
       # five carry `tests/` directories that no step here checks. Test sources
@@ -62,11 +93,27 @@ jobs:
       - uses: ./.github/actions/pedant-check
         with:
           paths: pedant-snippet/tests pedant-syntax/tests
+      # The roots and `#[path]` support trees this resolution work owns. Each
+      # root is named on its own and each support tree whole, rather than the
+      # five crates' `tests/` directories, because the rest of those directories
+      # is older harnesses this list does not claim to have brought up to the
+      # structural bar. A support tree is never named child by child: the child
+      # it omitted would be the one nothing checks.
+      - uses: ./.github/actions/pedant-check
+        with:
+          paths: pedant-types/tests/serialization.rs pedant-types/tests/serialization_support pedant-syntax/tests/enclosing_unit.rs pedant-lang/tests/detection.rs pedant-lang/tests/capability.rs pedant-lang/tests/capability_support pedant-snippet/tests/interfaces.rs pedant-core/tests/substrate.rs pedant-core/tests/substrate_support pedant-core/tests/semantic.rs pedant-core/tests/semantic_support pedant/tests/supply_chain.rs pedant/tests/supply_chain_support pedant-mcp/tests/index.rs pedant-mcp/tests/index_support pedant-mcp/tests/watcher.rs pedant-mcp/tests/watcher_support pedant-mcp/tests/tools.rs pedant-mcp/tests/tools_support pedant-mcp/tests/integration.rs pedant-mcp/tests/integration_support pedant-mcp/tests/fixture_support test-support/process-guard/src
       - uses: ./.github/actions/pedant-gate
         with:
           paths: ${{ env.FIRST_PARTY_SOURCES }}
       - run: cargo test
-      - run: cargo test --workspace --features semantic
+      # A single workspace command exhausts the per-command acceptance budget:
+      # pedant's semantic process tests consume most of it before pedant-core
+      # starts. The split preserves the same package/feature coverage while
+      # giving each authoritative command its own budget.
+      - run: cargo test -p pedant --features semantic
+      - run: cargo test --workspace --exclude pedant --features semantic
+      - run: cargo test -p pedant --features resolution-test-support --test supply_chain snapshot_capability_projection_reuses_stored_file_ir -- --exact
+      - run: cargo test -p pedant-mcp --features completion-proof-support --test integration relative_completion_paths_are_anchored_to_workspace_root -- --exact
       - run: RUSTDOCFLAGS="-D missing_docs" cargo doc --no-deps
       - run: RUSTDOCFLAGS="-D missing_docs" cargo doc --no-deps --features semantic
       # The substrate configurations. Clippy rather than `cargo check`, because
@@ -91,6 +138,7 @@ jobs:
       # `pedant-syntax` gates parser dispatch on each backend feature, so every
       # configuration a consumer can enable is its own compile path and
       # `--all-features` proves nothing about the one that enables `rust` alone.
+
       # These carry `--all-targets` because the test root gates its modules on
       # the same features: without it no CI job ever compiles a single-feature
       # test configuration, and a module that vanishes under one feature reads
@@ -142,6 +190,29 @@ jobs:
       # does not compile.
       - run: cargo test -p pedant-syntax --no-default-features --features ts-python
       - run: cargo install cargo-deny && cargo deny check
+
+  windows-process-containment:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      - uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+      # Compile the shared helper's Windows Job Object branch under its own
+      # lockfile, then prove both consumer guards reap a real descendant on
+      # success, timeout, and early-error paths.
+      - run: cargo test --locked --manifest-path test-support/process-guard/Cargo.toml
+      - run: cargo test --locked -p pedant --test supply_chain supply_chain_process_guard_reaps_descendants_on_success_timeout_and_early_error -- --exact
+      - run: cargo test --locked -p pedant-mcp --test integration mcp_stdio_guard_reaps_descendants_on_success_timeout_and_early_error -- --exact
+
+  macos-watcher:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      - uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+      # The macOS Kqueue selection is behavioral, not compile-only: every
+      # create, degraded-write, and rename case must reach the shared index.
+      - run: cargo test --locked -p pedant-mcp --test watcher -- --nocapture
 
   supply-chain:
     runs-on: ubuntu-latest

@@ -9,18 +9,26 @@ docs/.codebase-snapshot.md
 .manifest.toml
 docs/specs/
 docs/plans/
-# The plan-loop machinery under docs/scripts/ is local tooling, but the four
-# repository boundary checks below are named by .github/workflows/ci.yml and must
-# exist in a fresh checkout. So must check_lib.sh: all four source it, and a
-# checkout without it fails every boundary check at line one. Ignoring the
-# directory itself would stop git descending into it, so the entries are ignored
-# and the five files re-included.
+# Most plan-loop machinery under docs/scripts/ is local tooling, but every file
+# named by .github/workflows/ci.yml must exist in a fresh checkout, or the job
+# fails on a clone that is missing them. That is the four repository boundary
+# checks, check_lib.sh, which all four source, and the five files the shellcheck
+# step lints: the shared cargo-output classifier, the two verification runners
+# that source it, and the resolution proof runner that sources it and
+# check_lib.sh. `shellcheck -x` follows those source directives, so a sourced
+# helper left untracked fails the lint as surely as a missing subject would.
+# Ignoring the directory itself would stop git descending into it, so the
+# entries are ignored and the nine files re-included.
 docs/scripts/*
+!docs/scripts/cargo_infrastructure.sh
 !docs/scripts/check_lang_feature_forwarding.sh
 !docs/scripts/check_lib.sh
 !docs/scripts/check_published_manifests.sh
 !docs/scripts/check_syntax_capabilities.sh
 !docs/scripts/check_syntax_dependency_closure.sh
+!docs/scripts/run_resolution_proof.sh
+!docs/scripts/verify_affected.sh
+!docs/scripts/verify_step.sh
 docs/internal/
 docs/planning_guidelines.md
 docs/introspection_guidelines.md

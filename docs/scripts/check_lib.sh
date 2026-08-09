@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
 #
-# Shared helpers for the four repository boundary checks in this directory.
+# Shared helpers for the four repository boundary checks in this directory and
+# for the resolution proof runner that reuses them.
 #
-# All four prove a claim about the workspace's shape, and all four prove it
-# the same way: confirm the tools resolve, capture cargo's output into a shell
-# variable, then read that capture with one `jq` predicate. Stated once, a fix
-# to the tool message or the failure report reaches every check instead of one.
+# All four checks prove a claim about the workspace's shape, and all four prove
+# it the same way: confirm the tools resolve, capture cargo's output into a
+# shell variable, then read that capture with one `jq` predicate. Stated once, a
+# fix to the tool message or the failure report reaches every check instead of
+# one.
 #
 # This file is sourced, never executed. It defines functions and runs nothing,
-# so the caller keeps `set -euo pipefail` and its own exit contract.
+# so the caller keeps its own shell options and its own exit contract: the four
+# `check_*.sh` run under `set -euo pipefail`, `run_resolution_proof.sh` under
+# `set -uo pipefail`. Nothing here depends on which. The failure paths below
+# call `exit` themselves rather than return a status, so a caller without `-e`
+# still stops.
 
 # Fail unless every named tool resolves on PATH.
 require_tools() {
@@ -33,7 +39,14 @@ require_tools() {
 # read "the trees are gone" only once the working directory is known.
 cd_repo_root() {
     local lib_dir
-    lib_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+    # Guarded on its own: an empty `lib_dir` would make the target below `/../..`,
+    # which resolves to `/` and enters it, and the check would then describe the
+    # filesystem root as this workspace.
+    lib_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || lib_dir=""
+    if [ -z "${lib_dir}" ]; then
+        echo "error: cannot resolve the directory holding ${BASH_SOURCE[0]}" >&2
+        exit 1
+    fi
     if ! cd -- "${lib_dir}/../.."; then
         echo "error: cannot enter the repository root above ${lib_dir}" >&2
         exit 1

@@ -1,6 +1,6 @@
 [package]
 name = "pedant-mcp"
-version = "0.12.0"
+version = "0.13.0"
 edition = "2024"
 rust-version = "1.96"
 description = "MCP server exposing pedant security and capability analysis"
@@ -13,25 +13,31 @@ name = "pedant-mcp"
 path = "src/main.rs"
 
 [dependencies]
-pedant-core = { version = "0.19.0", path = "../pedant-core", features = ["checks"] }
-pedant-lang = { version = "0.5.0", path = "../pedant-lang" }
-pedant-types = { version = "0.14.0", path = "../pedant-types" }
+pedant-core = { version = "0.20.0", path = "../pedant-core", features = ["checks"] }
+pedant-lang = { version = "0.6.0", path = "../pedant-lang" }
+pedant-types = { version = "0.15.0", path = "../pedant-types" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-toml = "1"
 walkdir = "2"
 thiserror = "2"
 rmcp = { version = "2", features = ["server", "transport-io"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-notify = "8"
+# notify's FSEvents backend registers these roots successfully but misses
+# ordinary create, modify, and rename events in macOS temporary workspaces.
+# Kqueue delivers the same watcher contract and remains platform-gated by
+# notify, so Linux and Windows keep their native recommended backends.
+notify = { version = "8", default-features = false, features = ["macos_kqueue"] }
 
 [dev-dependencies]
+pedant-process-guard = { version = "=0.1.0", path = "../test-support/process-guard" }
 tempfile = "3"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "io-util", "time"] }
 
 [features]
 default = []
 semantic = ["pedant-core/semantic"]
+# Compiles the final-tree completion adapter in tests/integration.rs. Nothing
+# else selects it, so an ordinary run cannot report that adapter as passed.
+completion-proof-support = []
 
 [package.metadata.docs.rs]
 targets = []

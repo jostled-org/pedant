@@ -11,13 +11,12 @@ pub enum IndexError {
         /// Underlying I/O error.
         source: std::io::Error,
     },
-    /// TOML syntax or schema error.
-    #[error("failed to parse {path}: {source}")]
-    TomlParse {
-        /// Path of the malformed TOML file.
-        path: Box<str>,
-        /// Underlying parse error.
-        source: toml::de::Error,
+    /// The shared Cargo project authority rejected the workspace.
+    #[error("failed to load the Cargo project: {source}")]
+    Project {
+        /// Underlying project-loading failure.
+        #[source]
+        source: pedant_core::resolution::rust::RustProjectError,
     },
     /// `syn` could not parse a Rust source file.
     #[error("failed to parse Rust source {path}: {source}")]
@@ -26,11 +25,5 @@ pub enum IndexError {
         path: Box<str>,
         /// Underlying parse error.
         source: pedant_core::ParseError,
-    },
-    /// Cargo.toml exists but has no `package.name` field.
-    #[error("{path} missing required package.name field")]
-    MissingPackageName {
-        /// Path of the Cargo.toml without a package name.
-        path: Box<str>,
     },
 }

@@ -14,11 +14,16 @@ pub(super) fn check_mixed_concerns(
     fp: &Arc<str>,
     violations: &mut Vec<Violation>,
 ) {
-    if !config.check_mixed_concerns || ir.type_defs.len() < 2 {
+    if !config.check_mixed_concerns || ir.type_defs.len() + ir.type_aliases.len() < 2 {
         return;
     }
 
-    let defined_types: BTreeSet<&str> = ir.type_defs.iter().map(|td| td.name.as_ref()).collect();
+    let defined_types: BTreeSet<&str> = ir
+        .type_defs
+        .iter()
+        .map(|definition| definition.name.as_ref())
+        .chain(ir.type_aliases.iter().map(|alias| alias.name.as_ref()))
+        .collect();
 
     let type_def_iter = ir
         .type_defs
@@ -29,6 +34,11 @@ pub(super) fn check_mixed_concerns(
         .impl_blocks
         .iter()
         .flat_map(|ib| ib.edges.iter().map(|(a, b)| (a.as_ref(), b.as_ref())));
+
+    let alias_iter = ir
+        .type_aliases
+        .iter()
+        .flat_map(|alias| alias.edges.iter().map(|(a, b)| (a.as_ref(), b.as_ref())));
 
     let mut fn_edges: Vec<(&str, &str)> = Vec::new();
     for func in &ir.functions {
@@ -45,7 +55,10 @@ pub(super) fn check_mixed_concerns(
         );
     }
 
-    let all_edges = type_def_iter.chain(impl_iter).chain(fn_edges);
+    let all_edges = type_def_iter
+        .chain(alias_iter)
+        .chain(impl_iter)
+        .chain(fn_edges);
 
     let Some(message) = find_disconnected_groups(&defined_types, all_edges) else {
         return;

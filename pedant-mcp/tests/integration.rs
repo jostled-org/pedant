@@ -1,162 +1,150 @@
-use std::path::Path;
-use std::process::Stdio;
-use std::time::Duration;
+//! Out-of-process MCP journeys: real stdio framing, real tool dispatch, and
+//! the completion receipt that binds a typed-query run to one tree.
+//!
+//! Every child here is owned by [`process_guard::Guard`]. A test collects what
+//! it needs while the server is live, tears the tree down, and only then
+//! asserts — an assertion that fired mid-conversation would unwind past the
+//! teardown and leave a process holding the pipes.
 
+/// Only the final-tree adapter names a path of its own; every fixture path
+/// comes from [`committed_fixture`].
+#[cfg(feature = "completion-proof-support")]
+use std::path::PathBuf;
+
+use pedant_process_guard::run_fixture;
 use serde_json::{Value, json};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{Child, Command};
 
-/// Spawns the pedant-mcp binary in the given directory.
-fn spawn_server(cwd: &Path) -> Child {
-    let binary = env!("CARGO_BIN_EXE_pedant-mcp");
-    Command::new(binary)
-        .current_dir(cwd)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("failed to spawn pedant-mcp")
+/// Bounded ownership of every child this root spawns.
+///
+/// The `#[path]` is required. Default resolution would place these files in
+/// `tests/integration/`, which pedant's `conflicting-module-root` rule rejects
+/// beside `integration.rs`, and its advice — fold the root into
+/// `integration/mod.rs` — does not apply to a cargo test root, since cargo
+/// builds a test executable per `tests/*.rs` and would stop building this one.
+/// A sibling directory satisfies both: cargo declares no target for it,
+/// because it holds no `main.rs`.
+#[path = "integration_support/process_guard.rs"]
+mod process_guard;
+
+/// JSON-RPC over that guard. Same `#[path]` reason as [`process_guard`].
+#[path = "integration_support/protocol.rs"]
+mod protocol;
+
+/// The completion receipt's inputs, writer, and validator. Same `#[path]`
+/// reason as [`process_guard`].
+#[path = "integration_support/receipt.rs"]
+mod receipt;
+
+/// The one stdio journey both completion proofs run. Same `#[path]` reason as
+/// [`process_guard`].
+#[path = "integration_support/journey.rs"]
+mod journey;
+
+/// The termination paths the guard must survive. Same `#[path]` reason as
+/// [`process_guard`].
+#[path = "integration_support/guard_cases.rs"]
+mod guard_cases;
+
+/// The one well-formed input set the contract rows start from. Same `#[path]`
+/// reason as [`process_guard`].
+#[path = "integration_support/receipt_fixture.rs"]
+mod receipt_fixture;
+
+/// Inputs the contract must refuse. Same `#[path]` reason as [`process_guard`].
+#[path = "integration_support/receipt_input_cases.rs"]
+mod receipt_input_cases;
+
+/// Written receipts the contract must refuse. Same `#[path]` reason as
+/// [`process_guard`].
+#[path = "integration_support/receipt_document_cases.rs"]
+mod receipt_document_cases;
+
+/// Where the committed fixture workspaces live, shared with every other root
+/// that reads one. Same `#[path]` reason as [`process_guard`].
+#[path = "fixture_support/committed_fixture.rs"]
+mod committed_fixture;
+
+use crate::committed_fixture::fixture_path;
+use crate::guard_cases::{GUARD_ROWS, guarded_run_leaves_no_descendant};
+use crate::process_guard::{BUDGET, Completed, Failure, Guard, Run, execute};
+use crate::protocol::{
+    INDEXED_REPLY, REPLY, call_tool, initialize, request_bare, tool_json, tool_text,
+};
+use crate::receipt::CompletionProofInputs;
+use crate::receipt_document_cases::{DOCUMENT_CASES, assert_document_case_is_rejected};
+use crate::receipt_fixture::{Fixture, assert_valid_inputs_and_receipt_pass, workspace_root};
+use crate::receipt_input_cases::{INPUT_CASES, assert_input_case_is_rejected};
+
+/// The package set this plan affects, which is what a completion receipt has
+/// to have answered typed queries for.
+const AFFECTED_PACKAGES: [&str; 7] = [
+    "pedant-types",
+    "pedant-syntax",
+    "pedant-lang",
+    "pedant-core",
+    "pedant-snippet",
+    "pedant-mcp",
+    "pedant",
+];
+
+#[test]
+fn process_tree_fixture() {
+    run_fixture().expect("the process-tree fixture should run");
 }
 
-/// Sends a JSON-RPC message via stdin (newline-delimited).
-async fn send(child: &mut Child, msg: &Value) {
-    let stdin = child.stdin.as_mut().expect("no stdin");
-    let line = serde_json::to_string(msg).expect("serialize failed");
-    stdin
-        .write_all(format!("{line}\n").as_bytes())
-        .await
-        .expect("write failed");
-    stdin.flush().await.expect("flush failed");
-}
-
-/// Reads a single JSON-RPC response line from stdout with a configurable timeout.
-async fn recv_with_timeout(
-    reader: &mut BufReader<tokio::process::ChildStdout>,
-    timeout_secs: u64,
-) -> Value {
-    let mut line = String::new();
-    tokio::time::timeout(
-        Duration::from_secs(timeout_secs),
-        reader.read_line(&mut line),
-    )
-    .await
-    .expect("timeout reading from server")
-    .expect("read failed");
-    serde_json::from_str(line.trim()).unwrap_or_else(|e| {
-        panic!("invalid JSON from server: {e}\nline: {line}");
-    })
-}
-
-/// Reads a single JSON-RPC response line from stdout.
-async fn recv(reader: &mut BufReader<tokio::process::ChildStdout>) -> Value {
-    recv_with_timeout(reader, 10).await
-}
-
-fn fixture_path(name: &str) -> std::path::PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures")
-        .join(name)
-}
-
-/// Sends initialize + initialized notification, returns the initialize response.
-async fn initialize_with_timeout(
-    child: &mut Child,
-    reader: &mut BufReader<tokio::process::ChildStdout>,
-    timeout_secs: u64,
-) -> Value {
-    let init_request = json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "protocolVersion": "2025-03-26",
-            "capabilities": {},
-            "clientInfo": {
-                "name": "test-client",
-                "version": "0.1.0"
-            }
-        }
-    });
-    send(child, &init_request).await;
-    let response = recv_with_timeout(reader, timeout_secs).await;
-
-    let initialized = json!({
-        "jsonrpc": "2.0",
-        "method": "notifications/initialized"
-    });
-    send(child, &initialized).await;
-
-    response
-}
-
-/// Sends initialize + initialized notification with default timeout.
-async fn initialize(
-    child: &mut Child,
-    reader: &mut BufReader<tokio::process::ChildStdout>,
-) -> Value {
-    initialize_with_timeout(child, reader, 10).await
+/// Start the server in a fixture, initialize, hold one conversation, and tear
+/// the tree down before anything is asserted.
+fn fixture_session<T>(
+    fixture: &str,
+    conversation: impl FnOnce(&mut Guard) -> Result<T, Failure>,
+) -> (Value, T, Completed) {
+    let cwd = fixture_path(fixture);
+    let mut guard = Guard::spawn(&Run::server(&cwd)).expect("the server should start");
+    let held = initialize(&mut guard, REPLY)
+        .and_then(|handshake| conversation(&mut guard).map(|answered| (handshake, answered)));
+    let completed = guard
+        .finish(BUDGET)
+        .expect("the server's tree should tear down");
+    let (handshake, answered) =
+        held.unwrap_or_else(|failure| panic!("the exchange failed: {failure}"));
+    (handshake, answered, completed)
 }
 
 // ---------------------------------------------------------------------------
-// 3.T1: stdio initialize handshake
+// stdio framing and tool dispatch
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
-async fn test_stdio_initialize_handshake() {
-    let fixture = fixture_path("multi_crate");
-    let mut child = spawn_server(&fixture);
-    let stdout = child.stdout.take().expect("no stdout");
-    let mut reader = BufReader::new(stdout);
+#[test]
+fn test_stdio_initialize_handshake() {
+    let (handshake, (), completed) = fixture_session("multi_crate", |_| Ok(()));
 
-    let response = initialize(&mut child, &mut reader).await;
-
-    assert_eq!(response["jsonrpc"], "2.0");
-    assert_eq!(response["id"], 1);
+    assert_eq!(handshake["jsonrpc"], "2.0");
+    assert_eq!(handshake["id"], 1);
     assert!(
-        response["result"]["capabilities"].is_object(),
-        "expected server capabilities: {response}"
+        handshake["result"]["capabilities"].is_object(),
+        "expected server capabilities: {handshake}"
     );
     assert!(
-        response["result"]["serverInfo"].is_object(),
-        "expected server info: {response}"
+        handshake["result"]["serverInfo"].is_object(),
+        "expected server info: {handshake}"
     );
-
-    drop(child.stdin.take());
-    let _ = child.wait().await;
+    assert!(completed.success(), "{}", completed.transcript());
 }
 
-// ---------------------------------------------------------------------------
-// 3.T2: tools/list returns all registered tools
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn test_stdio_tools_list() {
-    let fixture = fixture_path("multi_crate");
-    let mut child = spawn_server(&fixture);
-    let stdout = child.stdout.take().expect("no stdout");
-    let mut reader = BufReader::new(stdout);
-
-    initialize(&mut child, &mut reader).await;
-
-    let list_request = json!({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "tools/list"
+#[test]
+fn test_stdio_tools_list() {
+    let (_, response, completed) = fixture_session("multi_crate", |guard| {
+        request_bare(guard, 2, "tools/list", REPLY)
     });
-    send(&mut child, &list_request).await;
-    let response = recv(&mut reader).await;
 
     assert_eq!(response["id"], 2);
     let tools = response["result"]["tools"]
         .as_array()
         .expect("tools should be an array");
-    assert!(
-        tools.len() >= 6,
-        "expected at least 6 tools, got {}",
-        tools.len()
-    );
-
-    let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
+    let names: Vec<&str> = tools
+        .iter()
+        .filter_map(|tool| tool["name"].as_str())
+        .collect();
     for expected in [
         "query_capabilities",
         "query_gate_verdicts",
@@ -170,244 +158,218 @@ async fn test_stdio_tools_list() {
             "missing tool {expected}, found: {names:?}"
         );
     }
-
-    drop(child.stdin.take());
-    let _ = child.wait().await;
+    assert!(
+        tools.len() >= 6,
+        "expected at least 6 tools, got {}",
+        tools.len()
+    );
+    assert!(completed.success(), "{}", completed.transcript());
 }
 
-// ---------------------------------------------------------------------------
-// 3.T3: tools/call query_capabilities
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn test_stdio_tools_call_query_capabilities() {
-    let fixture = fixture_path("multi_crate");
-    let mut child = spawn_server(&fixture);
-    let stdout = child.stdout.take().expect("no stdout");
-    let mut reader = BufReader::new(stdout);
-
-    initialize(&mut child, &mut reader).await;
-
-    let call_request = json!({
-        "jsonrpc": "2.0",
-        "id": 3,
-        "method": "tools/call",
-        "params": {
-            "name": "query_capabilities",
-            "arguments": {
-                "scope": "lib-a"
-            }
-        }
+#[test]
+fn test_stdio_tools_call_query_capabilities() {
+    let (_, response, completed) = fixture_session("multi_crate", |guard| {
+        call_tool(
+            guard,
+            3,
+            "query_capabilities",
+            &json!({"scope": "lib-a"}),
+            REPLY,
+        )
     });
-    send(&mut child, &call_request).await;
-    let response = recv(&mut reader).await;
 
     assert_eq!(response["id"], 3);
-    let content = &response["result"]["content"];
-    assert!(content.is_array(), "expected content array: {response}");
-
-    let text = content[0]["text"].as_str().expect("expected text content");
+    let text = tool_text(&response).expect("expected text content");
     assert!(
         text.contains("network"),
         "expected network capability in response: {text}"
     );
-
-    drop(child.stdin.take());
-    let _ = child.wait().await;
+    assert!(completed.success(), "{}", completed.transcript());
 }
 
-// ---------------------------------------------------------------------------
-// 3.T4: tools/call audit_crate
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn test_stdio_tools_call_audit_crate() {
-    let fixture = fixture_path("multi_crate");
-    let mut child = spawn_server(&fixture);
-    let stdout = child.stdout.take().expect("no stdout");
-    let mut reader = BufReader::new(stdout);
-
-    initialize(&mut child, &mut reader).await;
-
-    let call_request = json!({
-        "jsonrpc": "2.0",
-        "id": 4,
-        "method": "tools/call",
-        "params": {
-            "name": "audit_crate",
-            "arguments": {
-                "scope": "lib-a"
-            }
-        }
+#[test]
+fn test_stdio_tools_call_audit_crate() {
+    let (_, response, completed) = fixture_session("multi_crate", |guard| {
+        call_tool(guard, 4, "audit_crate", &json!({"scope": "lib-a"}), REPLY)
     });
-    send(&mut child, &call_request).await;
-    let response = recv(&mut reader).await;
 
     assert_eq!(response["id"], 4);
-    let text = response["result"]["content"][0]["text"]
-        .as_str()
-        .expect("expected text content");
-    let audit: Value = serde_json::from_str(text).expect("expected JSON in text content");
-    assert!(
-        audit.get("capabilities").is_some(),
-        "expected capabilities in audit: {text}"
-    );
-    assert!(
-        audit.get("gate_verdicts").is_some(),
-        "expected gate_verdicts in audit: {text}"
-    );
-    assert!(
-        audit.get("tier").is_some(),
-        "expected tier in audit: {text}"
-    );
-
-    drop(child.stdin.take());
-    let _ = child.wait().await;
+    let audit = tool_json(&response).expect("expected JSON in text content");
+    for field in ["capabilities", "gate_verdicts", "tier"] {
+        assert!(
+            audit.get(field).is_some(),
+            "expected {field} in audit: {audit}"
+        );
+    }
+    assert!(completed.success(), "{}", completed.transcript());
 }
 
-// ---------------------------------------------------------------------------
-// 3.T5: unknown tool returns error
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn test_stdio_unknown_tool_returns_error() {
-    let fixture = fixture_path("multi_crate");
-    let mut child = spawn_server(&fixture);
-    let stdout = child.stdout.take().expect("no stdout");
-    let mut reader = BufReader::new(stdout);
-
-    initialize(&mut child, &mut reader).await;
-
-    let call_request = json!({
-        "jsonrpc": "2.0",
-        "id": 5,
-        "method": "tools/call",
-        "params": {
-            "name": "nonexistent_tool",
-            "arguments": {}
-        }
+#[test]
+fn test_stdio_unknown_tool_returns_error() {
+    let (_, response, completed) = fixture_session("multi_crate", |guard| {
+        call_tool(guard, 5, "nonexistent_tool", &json!({}), REPLY)
     });
-    send(&mut child, &call_request).await;
-    let response = recv(&mut reader).await;
 
     assert_eq!(response["id"], 5);
-    // Either an error response or a tool result with isError=true
+    // Either an error response or a tool result with isError=true.
     let has_error = response.get("error").is_some() || response["result"]["isError"] == json!(true);
     assert!(has_error, "expected error for unknown tool: {response}");
-
-    drop(child.stdin.take());
-    let _ = child.wait().await;
+    // An unknown tool is refused in a response, not by dying: the server still
+    // shuts down cleanly when stdin closes.
+    assert!(completed.success(), "{}", completed.transcript());
 }
 
-// ---------------------------------------------------------------------------
-// 5.T1: self-analysis via MCP (pedant analyzes its own workspace)
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn test_self_analysis_via_mcp() {
-    // Use pedant's own workspace root (parent of pedant-mcp)
-    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("pedant-mcp should be inside a workspace");
-
-    let mut child = spawn_server(workspace_root);
-    let stdout = child.stdout.take().expect("no stdout");
-    let mut reader = BufReader::new(stdout);
-
-    // Full workspace indexing takes longer than fixture tests
-    initialize_with_timeout(&mut child, &mut reader, 30).await;
-
-    // Query capabilities for pedant-core
-    let cap_request = json!({
-        "jsonrpc": "2.0",
-        "id": 10,
-        "method": "tools/call",
-        "params": {
-            "name": "query_capabilities",
-            "arguments": {
-                "scope": "pedant-core"
-            }
-        }
+#[test]
+fn test_self_analysis_via_mcp() {
+    let root = workspace_root();
+    let mut guard = Guard::spawn(&Run::server(&root)).expect("the server should start");
+    let held = initialize(&mut guard, INDEXED_REPLY).and_then(|_| {
+        call_tool(
+            &mut guard,
+            10,
+            "query_capabilities",
+            &json!({"scope": "pedant-core"}),
+            INDEXED_REPLY,
+        )
     });
-    send(&mut child, &cap_request).await;
-    let cap_response = recv(&mut reader).await;
+    let completed = guard
+        .finish(BUDGET)
+        .expect("the server's tree should tear down");
+    let response = held.unwrap_or_else(|failure| panic!("the self-analysis failed: {failure}"));
 
-    assert_eq!(cap_response["id"], 10);
-    let cap_text = cap_response["result"]["content"][0]["text"]
-        .as_str()
-        .expect("expected text content for capabilities");
-
-    // pedant-core uses std::fs (FileRead) and contains crypto detection string constants (Crypto)
+    assert_eq!(response["id"], 10);
+    let text = tool_text(&response).expect("expected text content for capabilities");
     assert!(
-        cap_text.contains("file_read"),
-        "expected file_read capability in pedant-core: {cap_text}"
+        text.contains("file_read"),
+        "expected file_read capability in pedant-core: {text}"
     );
-
-    // Audit pedant-core
-    let audit_request = json!({
-        "jsonrpc": "2.0",
-        "id": 11,
-        "method": "tools/call",
-        "params": {
-            "name": "audit_crate",
-            "arguments": {
-                "scope": "pedant-core"
-            }
-        }
-    });
-    send(&mut child, &audit_request).await;
-    let audit_response = recv(&mut reader).await;
-
-    assert_eq!(audit_response["id"], 11);
-    let audit_text = audit_response["result"]["content"][0]["text"]
-        .as_str()
-        .expect("expected text content for audit");
-    let audit: Value = serde_json::from_str(audit_text).expect("expected JSON in audit text");
-
-    assert!(
-        audit.get("capabilities").is_some(),
-        "expected capabilities in audit: {audit_text}"
-    );
-    assert!(
-        audit.get("gate_verdicts").is_some(),
-        "expected gate_verdicts in audit: {audit_text}"
-    );
-    assert!(
-        audit.get("tier").is_some(),
-        "expected tier in audit: {audit_text}"
-    );
-
-    drop(child.stdin.take());
-    let _ = child.wait().await;
+    assert!(completed.success(), "{}", completed.transcript());
 }
 
-// ---------------------------------------------------------------------------
-// 3.T6: binary exits with error when no workspace found
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn test_binary_no_workspace_exits_with_error() {
+#[test]
+fn test_binary_no_workspace_exits_with_error() {
     let temp = tempfile::tempdir().expect("failed to create temp dir");
-    let binary = env!("CARGO_BIN_EXE_pedant-mcp");
-
-    let output = Command::new(binary)
-        .current_dir(temp.path())
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .await
-        .expect("failed to run pedant-mcp");
+    let completed = execute(&Run::server(temp.path())).expect("the guard should report an ending");
 
     assert!(
-        !output.status.success(),
-        "expected non-zero exit code, got: {}",
-        output.status
+        !completed.success(),
+        "expected a non-zero exit: {}",
+        completed.transcript()
     );
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("workspace") || stderr.contains("Cargo.toml"),
-        "expected workspace error in stderr: {stderr}"
+        completed.stderr.contains("workspace") || completed.stderr.contains("Cargo.toml"),
+        "expected a workspace error in stderr: {}",
+        completed.stderr
     );
+}
+
+// ---------------------------------------------------------------------------
+// Process ownership
+// ---------------------------------------------------------------------------
+
+#[test]
+fn mcp_stdio_guard_reaps_descendants_on_success_timeout_and_early_error() {
+    for row in GUARD_ROWS {
+        guarded_run_leaves_no_descendant(row);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Completion receipt
+// ---------------------------------------------------------------------------
+
+#[test]
+fn completion_receipt_contract_rejects_missing_or_mismatched_fields() {
+    assert_valid_inputs_and_receipt_pass();
+    for case in INPUT_CASES {
+        assert_input_case_is_rejected(case);
+    }
+    for case in DOCUMENT_CASES {
+        assert_document_case_is_rejected(case);
+    }
+}
+
+#[test]
+fn mcp_stdio_receipt_round_trip_with_synthetic_identity() {
+    let fixture = Fixture::valid();
+    let inputs = CompletionProofInputs {
+        test_scope: AFFECTED_PACKAGES.iter().copied().map(Box::from).collect(),
+        ..fixture.inputs
+    };
+    journey::run(&inputs).expect("the synthetic completion journey should produce a valid receipt");
+}
+
+/// The final-tree adapter: the same journey, run against whatever the proof
+/// runner states rather than against synthetic values.
+///
+/// Compiled only by the default-off `completion-proof-support` feature, so an
+/// ordinary test run cannot report it as passed, and it cannot silently return
+/// when its evidence is absent — a missing variable is a failure here.
+#[cfg(feature = "completion-proof-support")]
+#[test]
+fn completion_receipt_binds_typed_queries_to_final_tree() {
+    let inputs = runner_inputs().expect("the proof runner must supply every completion input");
+    journey::run(&inputs).expect("the final-tree completion journey should validate");
+}
+
+#[cfg(feature = "completion-proof-support")]
+#[test]
+fn relative_completion_paths_are_anchored_to_workspace_root() {
+    let root = workspace_root();
+    let inputs = runner_inputs_from(root.clone(), |name| {
+        let value = match name {
+            "PROOF_OUTPUT_DIR" => "proof-output",
+            "PLAN_COMPLETION_RECEIPT" => "proof-output/receipt.json",
+            "PLAN_TEST_SCOPE" => "pedant-core pedant-mcp",
+            "PLAN_HEAD_SHA" => "0123456789abcdef0123456789abcdef01234567",
+            "PLAN_TERMINAL_SUMMARY" => "relative path regression",
+            _ => return Err(format!("unexpected environment request: {name}")),
+        };
+        Ok(String::from(value))
+    })
+    .expect("relative runner inputs should parse");
+
+    assert_eq!(inputs.proof_output_dir, root.join("proof-output"));
+    assert_eq!(inputs.receipt_path, root.join("proof-output/receipt.json"));
+}
+
+/// Read the runner's stated identity, refusing anything it did not supply.
+#[cfg(feature = "completion-proof-support")]
+fn runner_inputs() -> Result<CompletionProofInputs, String> {
+    runner_inputs_from(workspace_root(), required)
+}
+
+#[cfg(feature = "completion-proof-support")]
+fn runner_inputs_from(
+    root: PathBuf,
+    mut require: impl FnMut(&str) -> Result<String, String>,
+) -> Result<CompletionProofInputs, String> {
+    let proof_output_dir = runner_path(&root, &require("PROOF_OUTPUT_DIR")?);
+    let receipt_path = runner_path(&root, &require("PLAN_COMPLETION_RECEIPT")?);
+    let scope = require("PLAN_TEST_SCOPE")?;
+    Ok(CompletionProofInputs {
+        root,
+        head_sha: require("PLAN_HEAD_SHA")?.into(),
+        test_scope: scope.split_whitespace().map(Box::from).collect(),
+        terminal_summary: require("PLAN_TERMINAL_SUMMARY")?.into(),
+        proof_output_dir,
+        receipt_path,
+    })
+}
+
+#[cfg(feature = "completion-proof-support")]
+fn runner_path(root: &std::path::Path, value: &str) -> PathBuf {
+    let path = PathBuf::from(value);
+    match path.is_absolute() {
+        true => path,
+        false => root.join(path),
+    }
+}
+
+#[cfg(feature = "completion-proof-support")]
+fn required(name: &str) -> Result<String, String> {
+    match std::env::var(name) {
+        Ok(value) if !value.trim().is_empty() => Ok(value),
+        _ => Err(format!("{name} is not set, so the final tree is unproven")),
+    }
 }

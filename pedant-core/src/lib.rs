@@ -5,8 +5,9 @@
 //!
 //! The **substrate** is present in every configuration. It answers factual
 //! questions about source text: [`ir`] extracts facts, [`capabilities`] resolves
-//! them to capabilities, and [`hash`], [`pattern`], and [`workspace`] support
-//! them. No substrate entry point accepts policy input.
+//! them to capabilities, [`resolution`] models the Cargo project those files
+//! belong to, and [`hash`] and [`pattern`] support them. No substrate entry
+//! point accepts policy input.
 //!
 //! The **judgment** surface sits behind the `checks` feature, which is on by
 //! default. It answers acceptability questions and owns every type whose shape
@@ -65,19 +66,21 @@ pub mod json_format;
 /// ```
 #[cfg(feature = "checks")]
 pub mod lint;
+/// Observation hooks the proof feature reads; inert in ordinary builds.
+pub(crate) mod observe;
 /// Glob and wildcard matching for AST node text and file paths.
 pub mod pattern;
 /// Whole-workspace structural checks over the file tree and Cargo metadata.
 #[cfg(feature = "checks")]
 pub mod project;
+/// Language-scoped project and symbol-resolution models.
+pub mod resolution;
 /// Style checks that consume IR facts and produce violations.
 #[cfg(feature = "checks")]
 pub mod style;
 /// The `Violation` type, display formatting, and check rationale.
 #[cfg(feature = "checks")]
 pub mod violation;
-/// Cargo workspace member expansion helpers shared by CLI consumers.
-pub mod workspace;
 
 #[cfg(feature = "checks")]
 pub use analysis_result::AnalysisResult;
@@ -100,7 +103,6 @@ pub use lint::{
 };
 #[cfg(feature = "checks")]
 pub use violation::{CheckRationale, Violation, ViolationType, lookup_rationale};
-pub use workspace::{WorkspaceMemberError, resolve_workspace_members};
 
 /// Alias for `syn::Error`, used by consumers that parse source themselves.
 pub use syn::Error as ParseError;

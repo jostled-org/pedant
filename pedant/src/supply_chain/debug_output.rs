@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::io::Write;
 
 use pedant_types::AnalysisCompleteness;
@@ -24,36 +23,15 @@ pub(super) fn emit_debug_package(stderr: &mut impl Write, attestation: &CrateAtt
     emit_source_files(stderr, &attestation.source_files);
 }
 
+/// The attestation being dumped was just computed, and the snapshot it reads
+/// already parsed every selected source, so nothing is ever skipped: the count
+/// line is the whole completeness report.
 fn emit_completeness(stderr: &mut impl Write, completeness: &AnalysisCompleteness) {
     std::mem::drop(writeln!(
         stderr,
         "analysis: analyzed_files={} skipped_files={}",
         completeness.analyzed_files, completeness.skipped_files
     ));
-    for skipped in &completeness.skipped_details {
-        std::mem::drop(writeln!(
-            stderr,
-            "skipped: {} error: {}",
-            skipped.path, skipped.error
-        ));
-    }
-    emit_undetailed_skips(stderr, completeness);
-}
-
-/// Skipped paths without a matching detail entry still deserve a line.
-fn emit_undetailed_skips(stderr: &mut impl Write, completeness: &AnalysisCompleteness) {
-    let detailed: BTreeSet<&str> = completeness
-        .skipped_details
-        .iter()
-        .map(|detail| detail.path.as_ref())
-        .collect();
-    for skipped_path in completeness
-        .skipped_paths
-        .iter()
-        .filter(|path| !detailed.contains(path.as_ref()))
-    {
-        std::mem::drop(writeln!(stderr, "skipped: {skipped_path}"));
-    }
 }
 
 fn emit_source_files(stderr: &mut impl Write, source_files: &[SourceFileInput]) {

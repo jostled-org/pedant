@@ -1,12 +1,12 @@
 {
   "spec_version": "0.1.0",
-  "source_hash": "d3de9749dac47c4a29f13fd9d0298e1090b600fa32d46c9559ee31fe5e932ced",
+  "source_hash": "e91fde2146481ee6b2c2b320e44fab84e3ce51b59bb585777ab8c9a02f6fc552",
   "crate_name": "chrono",
   "crate_version": "0.4.45",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344426,
+  "timestamp": 1786296052,
   "analysis_completeness": {
-    "analyzed_files": 39,
+    "analyzed_files": 41,
     "skipped_files": 0
   },
   "rust_version": "1.62.0",
@@ -233,6 +233,26 @@
         "origin": "code_site"
       },
       {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/offset/local/unix.rs",
+          "line": 11,
+          "column": 1
+        },
+        "evidence": "std::fs",
+        "origin": "import"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/offset/local/unix.rs",
+          "line": 11,
+          "column": 1
+        },
+        "evidence": "std::time::SystemTime",
+        "origin": "import"
+      },
+      {
         "capability": "unsafe_code",
         "location": {
           "file": "./src/offset/local/win_bindings.rs",
@@ -248,6 +268,56 @@
           "file": "./src/offset/local/win_bindings.rs",
           "line": 57,
           "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/offset/local/windows.rs",
+          "line": 136,
+          "column": 23
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/offset/local/windows.rs",
+          "line": 263,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/offset/local/windows.rs",
+          "line": 266,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/offset/local/windows.rs",
+          "line": 272,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/offset/local/windows.rs",
+          "line": 277,
+          "column": 28
         },
         "evidence": "unsafe block",
         "origin": "code_site"

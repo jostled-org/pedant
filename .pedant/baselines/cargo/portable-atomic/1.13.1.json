@@ -1,12 +1,12 @@
 {
   "spec_version": "0.1.0",
-  "source_hash": "73554a4a1f8aace9d98cfa483a7b708be0b641d4834e052277580606dc45a43c",
+  "source_hash": "43552adb4675983d5a83938781cc407af7f36900cffc39eb11923aaf8e196c0b",
   "crate_name": "portable-atomic",
   "crate_version": "1.13.1",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344432,
+  "timestamp": 1786296231,
   "analysis_completeness": {
-    "analyzed_files": 28,
+    "analyzed_files": 37,
     "skipped_files": 0
   },
   "rust_version": "1.34",
@@ -15,8 +15,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 629,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 63,
           "column": 1
         },
         "evidence": "unsafe fn",
@@ -25,8 +25,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 637,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 66,
           "column": 5
         },
         "evidence": "unsafe block",
@@ -35,18 +35,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 696,
-          "column": 1
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 705,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 74,
           "column": 5
         },
         "evidence": "unsafe block",
@@ -55,8 +45,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 769,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 86,
           "column": 1
         },
         "evidence": "unsafe fn",
@@ -65,8 +55,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 775,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 89,
           "column": 5
         },
         "evidence": "unsafe block",
@@ -75,18 +65,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 807,
-          "column": 1
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 811,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 94,
           "column": 5
         },
         "evidence": "unsafe block",
@@ -95,8 +75,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 1042,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 106,
           "column": 1
         },
         "evidence": "unsafe fn",
@@ -105,19 +85,9 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 1050,
-          "column": 5
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 1117,
-          "column": 1
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 118,
+          "column": 9
         },
         "evidence": "unsafe fn",
         "origin": "code_site"
@@ -125,9 +95,9 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 1126,
-          "column": 5
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 133,
+          "column": 24
         },
         "evidence": "unsafe block",
         "origin": "code_site"
@@ -135,48 +105,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 1175,
-          "column": 1
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 1179,
-          "column": 5
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 1216,
-          "column": 1
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 1227,
-          "column": 16
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 1292,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 140,
           "column": 9
         },
         "evidence": "unsafe block",
@@ -185,9 +115,9 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 1397,
-          "column": 16
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 146,
+          "column": 9
         },
         "evidence": "unsafe block",
         "origin": "code_site"
@@ -195,8 +125,18 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 1406,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 160,
+          "column": 21
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 188,
           "column": 1
         },
         "evidence": "unsafe fn",
@@ -205,9 +145,9 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 1422,
-          "column": 5
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 196,
+          "column": 21
         },
         "evidence": "unsafe block",
         "origin": "code_site"
@@ -215,8 +155,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 1449,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 221,
           "column": 1
         },
         "evidence": "unsafe fn",
@@ -225,8 +165,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 1473,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 226,
           "column": 5
         },
         "evidence": "unsafe block",
@@ -235,8 +175,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 1569,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 251,
           "column": 1
         },
         "evidence": "unsafe fn",
@@ -245,8 +185,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 1578,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 253,
           "column": 5
         },
         "evidence": "unsafe block",
@@ -255,8 +195,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 1622,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 268,
           "column": 1
         },
         "evidence": "unsafe fn",
@@ -265,8 +205,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 1628,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 270,
           "column": 5
         },
         "evidence": "unsafe block",
@@ -275,8 +215,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 1676,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 285,
           "column": 1
         },
         "evidence": "unsafe fn",
@@ -285,8 +225,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 1680,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 287,
           "column": 5
         },
         "evidence": "unsafe block",
@@ -295,8 +235,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 1991,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 302,
           "column": 1
         },
         "evidence": "unsafe fn",
@@ -305,88 +245,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 1999,
-          "column": 5
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 2069,
-          "column": 1
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/aarch64.rs",
-          "line": 2077,
-          "column": 5
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/powerpc64.rs",
-          "line": 194,
-          "column": 1
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/powerpc64.rs",
-          "line": 206,
-          "column": 5
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/powerpc64.rs",
-          "line": 240,
-          "column": 1
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/powerpc64.rs",
-          "line": 248,
-          "column": 5
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/powerpc64.rs",
+          "file": "./src/imp/atomic128/intrinsics.rs",
           "line": 304,
-          "column": 1
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/powerpc64.rs",
-          "line": 316,
           "column": 5
         },
         "evidence": "unsafe block",
@@ -395,8 +255,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/powerpc64.rs",
-          "line": 350,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 319,
           "column": 1
         },
         "evidence": "unsafe fn",
@@ -405,8 +265,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/powerpc64.rs",
-          "line": 358,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 321,
           "column": 5
         },
         "evidence": "unsafe block",
@@ -415,8 +275,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/powerpc64.rs",
-          "line": 385,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 336,
           "column": 1
         },
         "evidence": "unsafe fn",
@@ -425,9 +285,9 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/powerpc64.rs",
-          "line": 398,
-          "column": 22
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 338,
+          "column": 5
         },
         "evidence": "unsafe block",
         "origin": "code_site"
@@ -435,18 +295,68 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/powerpc64.rs",
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 353,
+          "column": 1
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 355,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 374,
+          "column": 1
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 377,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 396,
+          "column": 1
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 399,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/atomic128/intrinsics.rs",
           "line": 418,
-          "column": 9
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/powerpc64.rs",
-          "line": 473,
           "column": 1
         },
         "evidence": "unsafe fn",
@@ -455,8 +365,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/powerpc64.rs",
-          "line": 490,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 420,
           "column": 5
         },
         "evidence": "unsafe block",
@@ -465,8 +375,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/powerpc64.rs",
-          "line": 542,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 439,
           "column": 1
         },
         "evidence": "unsafe fn",
@@ -475,28 +385,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/powerpc64.rs",
-          "line": 551,
-          "column": 22
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/powerpc64.rs",
-          "line": 559,
-          "column": 1
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/powerpc64.rs",
-          "line": 576,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 441,
           "column": 5
         },
         "evidence": "unsafe block",
@@ -505,8 +395,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/powerpc64.rs",
-          "line": 617,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 456,
           "column": 1
         },
         "evidence": "unsafe fn",
@@ -515,8 +405,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/powerpc64.rs",
-          "line": 624,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 458,
           "column": 5
         },
         "evidence": "unsafe block",
@@ -525,8 +415,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/powerpc64.rs",
-          "line": 822,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 464,
           "column": 1
         },
         "evidence": "unsafe fn",
@@ -535,8 +425,8 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/atomic128/powerpc64.rs",
-          "line": 824,
+          "file": "./src/imp/atomic128/intrinsics.rs",
+          "line": 466,
           "column": 5
         },
         "evidence": "unsafe block",
@@ -667,356 +557,6 @@
         "location": {
           "file": "./src/imp/atomic128/riscv64.rs",
           "line": 363,
-          "column": 5
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/s390x.rs",
-          "line": 107,
-          "column": 1
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/s390x.rs",
-          "line": 112,
-          "column": 5
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/s390x.rs",
-          "line": 127,
-          "column": 1
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/s390x.rs",
-          "line": 132,
-          "column": 5
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/s390x.rs",
-          "line": 156,
-          "column": 1
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/s390x.rs",
-          "line": 170,
-          "column": 16
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/s390x.rs",
-          "line": 199,
-          "column": 1
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/s390x.rs",
-          "line": 201,
-          "column": 5
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/s390x.rs",
-          "line": 220,
-          "column": 1
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/s390x.rs",
-          "line": 225,
-          "column": 5
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/s390x.rs",
-          "line": 245,
-          "column": 1
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/s390x.rs",
-          "line": 256,
-          "column": 5
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/x86_64.rs",
-          "line": 113,
-          "column": 1
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/x86_64.rs",
-          "line": 129,
-          "column": 5
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/x86_64.rs",
-          "line": 192,
-          "column": 1
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/x86_64.rs",
-          "line": 199,
-          "column": 5
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/x86_64.rs",
-          "line": 217,
-          "column": 1
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/x86_64.rs",
-          "line": 222,
-          "column": 5
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/x86_64.rs",
-          "line": 307,
-          "column": 1
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/x86_64.rs",
-          "line": 314,
-          "column": 5
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/x86_64.rs",
-          "line": 334,
-          "column": 9
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/x86_64.rs",
-          "line": 347,
-          "column": 9
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/x86_64.rs",
-          "line": 365,
-          "column": 1
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/x86_64.rs",
-          "line": 377,
-          "column": 5
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/x86_64.rs",
-          "line": 416,
-          "column": 1
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/x86_64.rs",
-          "line": 423,
-          "column": 5
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/x86_64.rs",
-          "line": 443,
-          "column": 9
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/x86_64.rs",
-          "line": 457,
-          "column": 9
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/x86_64.rs",
-          "line": 499,
-          "column": 1
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/x86_64.rs",
-          "line": 501,
-          "column": 5
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/x86_64.rs",
-          "line": 508,
-          "column": 1
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/x86_64.rs",
-          "line": 519,
-          "column": 22
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/x86_64.rs",
-          "line": 523,
-          "column": 22
-        },
-        "evidence": "unsafe block",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/x86_64.rs",
-          "line": 545,
-          "column": 1
-        },
-        "evidence": "unsafe fn",
-        "origin": "code_site"
-      },
-      {
-        "capability": "unsafe_code",
-        "location": {
-          "file": "./src/imp/atomic128/x86_64.rs",
-          "line": 559,
           "column": 5
         },
         "evidence": "unsafe block",
@@ -1273,10 +813,40 @@
         "origin": "code_site"
       },
       {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 979,
+          "column": 34
+        },
+        "evidence": "libc::prctl",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 1079,
+          "column": 32
+        },
+        "evidence": "libc::getpid",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 1093,
+          "column": 17
+        },
+        "evidence": "libc::sysctl",
+        "origin": "import"
+      },
+      {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/fallback/seq_lock.rs",
-          "line": 128,
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 324,
           "column": 9
         },
         "evidence": "unsafe block",
@@ -1285,9 +855,569 @@
       {
         "capability": "unsafe_code",
         "location": {
-          "file": "./src/imp/fallback/seq_lock.rs",
-          "line": 149,
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 476,
+          "column": 19
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 570,
+          "column": 23
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 746,
           "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 764,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 795,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 878,
+          "column": 13
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 885,
+          "column": 17
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 961,
+          "column": 24
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 967,
+          "column": 31
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 976,
+          "column": 13
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 979,
+          "column": 25
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 990,
+          "column": 24
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 996,
+          "column": 31
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 1002,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 1074,
+          "column": 72
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 1079,
+          "column": 23
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 1092,
+          "column": 23
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 1111,
+          "column": 31
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 1138,
+          "column": 17
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 1173,
+          "column": 13
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 1190,
+          "column": 17
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 1236,
+          "column": 72
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 1253,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/auxv.rs",
+          "line": 1269,
+          "column": 31
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/imp/detect/riscv_linux.rs",
+          "line": 226,
+          "column": 17
+        },
+        "evidence": "libc::syscall",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/riscv_linux.rs",
+          "line": 154,
+          "column": 16
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/riscv_linux.rs",
+          "line": 162,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/riscv_linux.rs",
+          "line": 172,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/riscv_linux.rs",
+          "line": 217,
+          "column": 9
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/riscv_linux.rs",
+          "line": 225,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/riscv_linux.rs",
+          "line": 231,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/x86_64.rs",
+          "line": 38,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/detect/x86_64.rs",
+          "line": 74,
+          "column": 28
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/fallback/outline_atomics.rs",
+          "line": 52,
+          "column": 12
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/fallback/outline_atomics.rs",
+          "line": 56,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/fallback/outline_atomics.rs",
+          "line": 71,
+          "column": 12
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/fallback/outline_atomics.rs",
+          "line": 75,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/fallback/outline_atomics.rs",
+          "line": 89,
+          "column": 12
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/fallback/outline_atomics.rs",
+          "line": 99,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/interrupt/armv4t.rs",
+          "line": 42,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/interrupt/armv4t.rs",
+          "line": 66,
+          "column": 12
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/interrupt/armv4t.rs",
+          "line": 73,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/interrupt/armv6m.rs",
+          "line": 33,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/interrupt/armv6m.rs",
+          "line": 51,
+          "column": 12
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/interrupt/armv6m.rs",
+          "line": 56,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/interrupt/avr.rs",
+          "line": 37,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/interrupt/avr.rs",
+          "line": 63,
+          "column": 12
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/interrupt/avr.rs",
+          "line": 67,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/interrupt/msp430.rs",
+          "line": 38,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/interrupt/msp430.rs",
+          "line": 63,
+          "column": 12
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/interrupt/msp430.rs",
+          "line": 74,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/interrupt/riscv.rs",
+          "line": 73,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/interrupt/riscv.rs",
+          "line": 90,
+          "column": 12
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/interrupt/riscv.rs",
+          "line": 94,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/interrupt/xtensa.rs",
+          "line": 35,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/interrupt/xtensa.rs",
+          "line": 52,
+          "column": 12
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/imp/interrupt/xtensa.rs",
+          "line": 58,
+          "column": 5
         },
         "evidence": "unsafe block",
         "origin": "code_site"
@@ -1411,6 +1541,16 @@
         },
         "evidence": "unsafe block",
         "origin": "code_site"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./version.rs",
+          "line": 3,
+          "column": 1
+        },
+        "evidence": "std::process::Command",
+        "origin": "import"
       }
     ]
   }

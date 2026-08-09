@@ -14,6 +14,9 @@ mod common;
 #[cfg(feature = "semantic")]
 mod concurrency;
 mod context;
+/// The definition edges a verified snapshot may consume.
+#[cfg(feature = "semantic")]
+mod edges;
 #[cfg(feature = "semantic")]
 mod file_analysis;
 #[cfg(feature = "semantic")]
@@ -24,13 +27,25 @@ mod perf;
 mod quality;
 #[cfg(feature = "semantic")]
 mod reachability;
+/// What a resolution snapshot claims, and the verification it must survive.
+#[cfg(feature = "semantic")]
+mod snapshot;
 #[cfg(feature = "semantic")]
 mod taint;
+/// The definition edges one parsed file states.
+#[cfg(feature = "semantic")]
+mod targets;
 
 pub use context::SemanticContext;
 #[cfg(not(feature = "semantic"))]
 pub use context::SemanticFileAnalysis;
 #[cfg(feature = "semantic")]
+pub(crate) use edges::{SemanticDefinitionEdge, SemanticDefinitionTargets, SemanticSite};
+#[cfg(feature = "semantic")]
 pub use file_analysis::SemanticFileAnalysis;
 #[cfg(feature = "semantic")]
 pub use function_summary::FunctionAnalysisSummary;
+#[cfg(feature = "semantic")]
+pub(crate) use snapshot::{
+    SemanticEdgeClaim, SemanticSnapshotClaim, SemanticSourceClaim, SemanticUnitClaim,
+};

@@ -1,12 +1,12 @@
 {
   "spec_version": "0.1.0",
-  "source_hash": "6f6a7b1785cda363d545b5a578cadadae309a7203529e70b2c07c91b29fdf850",
+  "source_hash": "041d9def8c1ed5ac8f94938ef135b4de9060238047cec4a1b58b4c9f503b411d",
   "crate_name": "windows-implement",
   "crate_version": "0.60.2",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344445,
+  "timestamp": 1786296409,
   "analysis_completeness": {
-    "analyzed_files": 2,
+    "analyzed_files": 3,
     "skipped_files": 0
   },
   "rust_version": "1.74",

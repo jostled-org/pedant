@@ -2,7 +2,9 @@ use std::fmt;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use pedant_types::Capability;
+use super::sites::{DefinitionSite, ModuleDeclarationSite, ModuleScope, ReferenceSite};
+
+pub use super::dataflow::{DataFlowFact, DataFlowKind};
 
 /// Normalized item visibility, for `item-visibility-policy`.
 ///
@@ -46,83 +48,6 @@ pub struct IrSpan {
     pub column: usize,
 }
 
-/// Discriminant for data flow findings.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum DataFlowKind {
-    /// Tainted data flows from a capability source to a capability sink.
-    TaintFlow,
-    /// Value assigned then overwritten before read.
-    DeadStore,
-    /// Function returning Result called without binding the return.
-    DiscardedResult,
-    /// Result handled on some paths, dropped on others.
-    PartialErrorHandling,
-    /// Same function called with identical arguments within a single scope.
-    RepeatedCall,
-    /// `.clone()` called but the original is never used afterward.
-    UnnecessaryClone,
-    /// `Vec::new()`, `String::new()`, or `format!()` inside a loop body.
-    AllocationInLoop,
-    /// `.collect()` followed immediately by `.iter()` or `.into_iter()`.
-    RedundantCollect,
-    /// Lock guard held across an `.await` point (potential deadlock or task starvation).
-    LockAcrossAwait,
-    /// Same locks acquired in different orders across functions (potential deadlock).
-    InconsistentLockOrder,
-    /// Vec or String binding never mutated after construction.
-    ImmutableGrowable,
-    /// `.ok()` called on Result where the resulting Option is discarded.
-    SwallowedOk,
-    /// Thread or task spawned with the JoinHandle dropped or unbound.
-    UnobservedSpawn,
-}
-
-impl DataFlowKind {
-    /// Kebab-case identifier for this data flow kind.
-    pub fn code(self) -> &'static str {
-        match self {
-            Self::TaintFlow => "taint-flow",
-            Self::DeadStore => "dead-store",
-            Self::DiscardedResult => "discarded-result",
-            Self::PartialErrorHandling => "partial-error-handling",
-            Self::RepeatedCall => "repeated-call",
-            Self::UnnecessaryClone => "unnecessary-clone",
-            Self::AllocationInLoop => "allocation-in-loop",
-            Self::RedundantCollect => "redundant-collect",
-            Self::LockAcrossAwait => "lock-across-await",
-            Self::InconsistentLockOrder => "inconsistent-lock-order",
-            Self::ImmutableGrowable => "immutable-growable",
-            Self::SwallowedOk => "swallowed-ok",
-            Self::UnobservedSpawn => "unobserved-spawn",
-        }
-    }
-}
-
-impl fmt::Display for DataFlowKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.code())
-    }
-}
-
-/// Data flow finding: taint edge, quality issue, or concurrency hazard.
-#[derive(Debug, Clone)]
-pub struct DataFlowFact {
-    /// What kind of data flow issue this represents.
-    pub kind: DataFlowKind,
-    /// Where the tainted data originates (taint flows only).
-    pub source_capability: Option<Capability>,
-    /// Location of the source expression.
-    pub source_span: IrSpan,
-    /// Where the tainted data is consumed (taint flows only).
-    pub sink_capability: Option<Capability>,
-    /// Location of the sink expression.
-    pub sink_span: IrSpan,
-    /// Intermediate function names the data passes through.
-    pub call_chain: Box<[Box<str>]>,
-    /// Human-readable description of the finding.
-    pub message: Box<str>,
-}
-
 /// All facts extracted from a single source file's AST in one pass.
 #[derive(Debug)]
 pub struct FileIr {
@@ -135,6 +60,8 @@ pub struct FileIr {
     pub functions: Box<[FnFact]>,
     /// Struct, enum, and trait definitions with type-relationship edges.
     pub type_defs: Box<[TypeDefFact]>,
+    /// Free type aliases with target and generic-argument relationships.
+    pub type_aliases: Box<[TypeAliasFact]>,
     /// Inherent and trait impl blocks.
     pub impl_blocks: Box<[ImplFact]>,
     /// Flattened `use` paths for capability detection.
@@ -163,6 +90,15 @@ pub struct FileIr {
     /// `Arc<[T]>` because semantic enrichment shares the cached analysis's
     /// flow slice — no deep copy. Non-semantic paths use an empty Arc.
     pub data_flows: std::sync::Arc<[DataFlowFact]>,
+    /// Lexical module scopes; index zero is the source itself.
+    pub module_scopes: Box<[ModuleScope]>,
+    /// Every `mod` item, which the module closure reads instead of walking the
+    /// syntax tree again.
+    pub module_declarations: Box<[ModuleDeclarationSite]>,
+    /// The authoritative definition sites a resolution report may name.
+    pub definition_sites: Box<[DefinitionSite]>,
+    /// The authoritative reference sites, one per source occurrence.
+    pub reference_sites: Box<[ReferenceSite]>,
 }
 
 /// Extracted metadata for a function or method definition.
@@ -355,6 +291,15 @@ pub struct TypeDefFact {
     /// Feature names of the `#[cfg(feature = "…")]` gates enclosing this type.
     pub cfg_feature_gates: Box<[Rc<str>]>,
     /// Pairwise type-relationship edges for mixed-concerns graph analysis.
+    pub edges: Box<[(Rc<str>, Rc<str>)]>,
+}
+
+/// A free type alias and the relationships its target states.
+#[derive(Debug)]
+pub struct TypeAliasFact {
+    /// Identifier of the declared alias.
+    pub name: Rc<str>,
+    /// Edges from the alias to its target and generic argument types.
     pub edges: Box<[(Rc<str>, Rc<str>)]>,
 }
 

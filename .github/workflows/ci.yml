@@ -21,6 +21,8 @@ jobs:
           # its exact release tag. A shallow checkout would silently omit the
           # evidence that makes an already-published version immutable.
           fetch-depth: 0
+      - run: sudo apt-get update
+      - run: sudo apt-get install --yes ripgrep
       # The cheapest gate in the job, and it needs no toolchain: shellcheck runs
       # in milliseconds against a checkout alone, so a broken script fails here
       # rather than after twenty minutes of cargo. The `check_*.sh` glob plus

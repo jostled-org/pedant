@@ -204,6 +204,58 @@ fn published_versions_and_requirements_form_releaseable_graph() {
     }
 }
 
+#[test]
+fn unpublished_dev_dependencies_never_become_registry_requirements() {
+    let consumers: Vec<&str> = PUBLISHED
+        .iter()
+        .filter_map(|package| {
+            let manifest = parse_toml(&format!("{}/Cargo.toml", package.name));
+            let requirement = manifest
+                .get("dev-dependencies")
+                .and_then(|dependencies| dependencies.get("pedant-process-guard"));
+            requirement.map(|requirement| {
+                assert_eq!(
+                    requirement.get("path").and_then(toml::Value::as_str),
+                    Some("../test-support/process-guard"),
+                    "{} uses the shared local process guard",
+                    package.name
+                );
+                assert!(
+                    requirement.get("version").is_none(),
+                    "{} must not turn the unpublished process guard into a registry requirement",
+                    package.name
+                );
+                package.name
+            })
+        })
+        .collect();
+
+    assert_eq!(
+        consumers,
+        ["pedant-mcp", "pedant"],
+        "the two process-spawning packages share the guard"
+    );
+}
+
+#[test]
+fn process_guard_windows_features_cover_job_creation_types() {
+    let manifest = parse_toml("test-support/process-guard/Cargo.toml");
+    let features = manifest
+        .get("target")
+        .and_then(|targets| targets.get("cfg(windows)"))
+        .and_then(|windows| windows.get("dependencies"))
+        .and_then(|dependencies| dependencies.get("windows-sys"))
+        .and_then(|dependency| dependency.get("features"))
+        .and_then(toml::Value::as_array)
+        .expect("the process guard declares Windows API features");
+    assert!(
+        features
+            .iter()
+            .any(|feature| feature.as_str() == Some("Win32_Security")),
+        "CreateJobObjectW is generated only when Win32_Security is enabled"
+    );
+}
+
 /// The verification identities, from the one configuration that can see them.
 ///
 /// `.manifest.toml` and the plan-loop scripts are local tooling that a clone of
@@ -258,4 +310,20 @@ fn verification_commands_are_build_lease_wrapped_and_classifier_backed() {
             "{runner} runs under the manifest command's lease; an inner one deadlocks"
         );
     }
+}
+
+#[cfg(feature = "resolution-test-support")]
+#[test]
+fn ci_installs_every_resolution_runner_tool_before_execution() {
+    let workflow = read(".github/workflows/ci.yml");
+    let install = workflow
+        .find("sudo apt-get install --yes ripgrep")
+        .expect("CI installs ripgrep for the resolution proof runner");
+    let proof = workflow
+        .find("docs/scripts/run_resolution_proof.sh resolution-tier1-dependency-closure")
+        .expect("CI runs the Tier 1 dependency-closure proof");
+    assert!(
+        install < proof,
+        "CI must install the proof runner's tools before invoking it"
+    );
 }

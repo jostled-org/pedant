@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.1](https://github.com/jostled-org/pedant/compare/pedant-core-v0.20.0...pedant-core-v0.20.1) - 2026-08-10
+
+### Fixed
+
+- *(ci)* allow private path dependencies
+- *(ci)* repair platform and release validation
+
 ## [0.19.0](https://github.com/jostled-org/pedant/compare/pedant-core-v0.18.0...pedant-core-v0.19.0) - 2026-08-02
 
 ### Added

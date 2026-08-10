@@ -1166,7 +1166,7 @@ checksum = "2ee67f1008b1ba2321834326597b8e186293b049a023cdef258527550b9935b4"
 
 [[package]]
 name = "pedant"
-version = "0.27.1"
+version = "0.27.2"
 dependencies = [
  "clap",
  "pedant-core",
@@ -1183,7 +1183,7 @@ dependencies = [
 
 [[package]]
 name = "pedant-core"
-version = "0.20.1"
+version = "0.20.2"
 dependencies = [
  "line-index",
  "pedant-types",
@@ -1215,7 +1215,7 @@ dependencies = [
 
 [[package]]
 name = "pedant-mcp"
-version = "0.13.1"
+version = "0.13.2"
 dependencies = [
  "notify",
  "pedant-core",

@@ -9,43 +9,30 @@
 //! The case is structural: it reads tracked files and asserts a written-down
 //! model. It neither builds, spawns, nor reads outside the repository.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 /// Every published package, in the order `release-plz.toml` must publish them.
 ///
-/// Written down rather than derived: a topological sort of the manifests would
-/// agree with any order the manifests happen to have, which is the fact under
-/// test.
-const PUBLISHED: [Package; 7] = [
-    Package {
-        name: "pedant-types",
-        version: "0.15.0",
-    },
-    Package {
-        name: "pedant-core",
-        version: "0.20.0",
-    },
-    Package {
-        name: "pedant-syntax",
-        version: "0.3.0",
-    },
-    Package {
-        name: "pedant-snippet",
-        version: "0.3.0",
-    },
-    Package {
-        name: "pedant-lang",
-        version: "0.6.0",
-    },
-    Package {
-        name: "pedant-mcp",
-        version: "0.13.0",
-    },
-    Package {
-        name: "pedant",
-        version: "0.27.0",
-    },
+/// The names and their order are written down rather than derived: a topological
+/// sort of the manifests would agree with any order the manifests happen to have,
+/// which is the fact under test.
+///
+/// The versions are not written down. release-plz owns every version in this
+/// workspace and bumps them in a `chore: release` commit that never consults
+/// this module, so a pinned version here asserts only that a copy of a manifest
+/// matches the manifest, and goes stale on the release after every edit. The
+/// load-bearing facts — a requirement equals the version its dependency
+/// declares, and a dependency is released first — hold against the versions this
+/// module reads.
+const PUBLISHED: [&str; 7] = [
+    "pedant-types",
+    "pedant-core",
+    "pedant-syntax",
+    "pedant-snippet",
+    "pedant-lang",
+    "pedant-mcp",
+    "pedant",
 ];
 
 /// The exact `[verification].step` command the plan loop must invoke.
@@ -73,12 +60,6 @@ const CLASSIFIER_RUNNERS: [&str; 3] = [
     "docs/scripts/verify_affected.sh",
     "docs/scripts/run_resolution_proof.sh",
 ];
-
-/// One published package and the version its manifest must carry.
-struct Package {
-    name: &'static str,
-    version: &'static str,
-}
 
 /// The repository root, one level above this package.
 fn repo_root() -> PathBuf {
@@ -114,7 +95,7 @@ fn first_party_requirements(manifest: &toml::Table, name: &str) -> Vec<(String, 
         .filter_map(|table| manifest.get(*table))
         .filter_map(toml::Value::as_table)
         .flat_map(|table| table.iter())
-        .filter(|(dependency, _)| PUBLISHED.iter().any(|it| it.name == dependency.as_str()))
+        .filter(|(dependency, _)| PUBLISHED.contains(&dependency.as_str()))
         .map(|(dependency, spec)| {
             let version = spec
                 .get("version")
@@ -127,36 +108,23 @@ fn first_party_requirements(manifest: &toml::Table, name: &str) -> Vec<(String, 
 
 #[test]
 fn published_versions_and_requirements_form_releaseable_graph() {
-    let expected: Vec<(&str, String)> = PUBLISHED
+    let declared: BTreeMap<&str, String> = PUBLISHED
         .iter()
         .map(|package| {
-            let manifest = parse_toml(&format!("{}/Cargo.toml", package.name));
-            (package.name, declared_version(&manifest, package.name))
+            let manifest = parse_toml(&format!("{package}/Cargo.toml"));
+            (*package, declared_version(&manifest, package))
         })
         .collect();
-    for (package, declared) in &expected {
-        let model = PUBLISHED
-            .iter()
-            .find(|it| it.name == *package)
-            .expect("every read package is in the model");
-        assert_eq!(
-            declared, model.version,
-            "{package} must publish {}",
-            model.version
-        );
-    }
 
-    for package in &PUBLISHED {
-        let manifest = parse_toml(&format!("{}/Cargo.toml", package.name));
-        for (dependency, requirement) in first_party_requirements(&manifest, package.name) {
-            let target = PUBLISHED
-                .iter()
-                .find(|it| it.name == dependency)
+    for package in PUBLISHED {
+        let manifest = parse_toml(&format!("{package}/Cargo.toml"));
+        for (dependency, requirement) in first_party_requirements(&manifest, package) {
+            let published = declared
+                .get(dependency.as_str())
                 .expect("a first-party dependency is a published package");
             assert_eq!(
-                requirement, target.version,
-                "{} requires {dependency} at the version {dependency} publishes",
-                package.name
+                &requirement, published,
+                "{package} requires {dependency} at the version {dependency} publishes"
             );
         }
     }
@@ -182,10 +150,7 @@ fn published_versions_and_requirements_form_releaseable_graph() {
     );
     assert_eq!(
         unique,
-        PUBLISHED
-            .iter()
-            .map(|package| package.name)
-            .collect::<BTreeSet<_>>(),
+        PUBLISHED.into_iter().collect::<BTreeSet<_>>(),
         "release-plz.toml covers exactly the published packages"
     );
 
@@ -207,9 +172,9 @@ fn published_versions_and_requirements_form_releaseable_graph() {
 #[test]
 fn unpublished_dev_dependencies_never_become_registry_requirements() {
     let consumers: Vec<&str> = PUBLISHED
-        .iter()
+        .into_iter()
         .filter_map(|package| {
-            let manifest = parse_toml(&format!("{}/Cargo.toml", package.name));
+            let manifest = parse_toml(&format!("{package}/Cargo.toml"));
             let requirement = manifest
                 .get("dev-dependencies")
                 .and_then(|dependencies| dependencies.get("pedant-process-guard"));
@@ -217,15 +182,13 @@ fn unpublished_dev_dependencies_never_become_registry_requirements() {
                 assert_eq!(
                     requirement.get("path").and_then(toml::Value::as_str),
                     Some("../test-support/process-guard"),
-                    "{} uses the shared local process guard",
-                    package.name
+                    "{package} uses the shared local process guard"
                 );
                 assert!(
                     requirement.get("version").is_none(),
-                    "{} must not turn the unpublished process guard into a registry requirement",
-                    package.name
+                    "{package} must not turn the unpublished process guard into a registry requirement"
                 );
-                package.name
+                package
             })
         })
         .collect();

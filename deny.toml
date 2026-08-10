@@ -13,6 +13,10 @@ allow = [
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# Cargo omits versionless dev path dependencies from published manifests. The
+# workspace-excluded process guard relies on that behavior so it never becomes
+# a crates.io requirement; registry wildcard dependencies remain denied above.
+allow-wildcard-paths = true
 
 [sources]
 unknown-registry = "deny"

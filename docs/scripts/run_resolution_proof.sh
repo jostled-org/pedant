@@ -142,6 +142,7 @@ SUBSTRATE_EXTRA_PREDICATES=(
     release_contract::published_versions_and_requirements_form_releaseable_graph
     release_contract::unpublished_dev_dependencies_never_become_registry_requirements
     release_contract::process_guard_windows_features_cover_job_creation_types
+    release_contract::dependency_policy_allows_only_path_wildcards
     release_contract::verification_commands_are_build_lease_wrapped_and_classifier_backed
     release_contract::ci_installs_every_resolution_runner_tool_before_execution
     "${TRACKED_AUTHORITY_PREDICATE}"

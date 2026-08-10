@@ -256,6 +256,26 @@ fn process_guard_windows_features_cover_job_creation_types() {
     );
 }
 
+#[test]
+fn dependency_policy_allows_only_path_wildcards() {
+    let policy = parse_toml("deny.toml");
+    let bans = policy
+        .get("bans")
+        .and_then(toml::Value::as_table)
+        .expect("deny.toml declares [bans]");
+    assert_eq!(
+        bans.get("wildcards").and_then(toml::Value::as_str),
+        Some("deny"),
+        "registry wildcard dependencies remain denied"
+    );
+    assert_eq!(
+        bans.get("allow-wildcard-paths")
+            .and_then(toml::Value::as_bool),
+        Some(true),
+        "unpublished path-only dependencies must remain packageable"
+    );
+}
+
 /// The verification identities, from the one configuration that can see them.
 ///
 /// `.manifest.toml` and the plan-loop scripts are local tooling that a clone of

@@ -90,7 +90,7 @@ pub const DOCUMENT_CLAUSES: &[DocumentClauses] = &[
             "`Id<K>` over `u32`",
             "`Handle<K>` over `Arc<BuilderBrand>`",
             "resolution/rust/fingerprint.rs",
-            "| 19 | Code structure graph | Rust symbol resolution | **Active**",
+            "| 19 | Code structure graph | Rust symbol resolution | **Implemented**",
             "Containment is logical ownership; location is a source artifact",
             "The graph depends on resolution, never the other way round",
             "| 18 | Rust symbol resolution | Syntax substrate and snippet tool | **Implemented**",

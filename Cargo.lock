@@ -1206,6 +1206,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "pedant-graph"
+version = "0.1.0"
+dependencies = [
+ "pedant-core",
+ "pedant-types",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "pedant-lang"
 version = "0.6.0"
 dependencies = [

@@ -25,7 +25,7 @@ pub const CI_KEYS: &[(&str, &str)] = &[
         "shellcheck",
         "shellcheck -x docs/scripts/check_*.sh docs/scripts/cargo_infrastructure.sh \
          docs/scripts/verify_step.sh docs/scripts/verify_affected.sh \
-         docs/scripts/run_resolution_proof.sh",
+         docs/scripts/run_resolution_proof.sh docs/scripts/run_graph_proof.sh",
     ),
 ];
 
@@ -61,6 +61,8 @@ pub const RESOLUTION_CHECK_PATHS: &[&str] = &[
     "pedant-snippet/tests/interfaces.rs",
     "pedant-core/tests/substrate.rs",
     "pedant-core/tests/substrate_support",
+    "pedant-graph/tests/graph.rs",
+    "pedant-graph/tests/graph_support",
     "pedant-core/tests/semantic.rs",
     "pedant-core/tests/semantic_support",
     "pedant/tests/supply_chain.rs",

@@ -9,11 +9,11 @@ jobs:
   check:
     runs-on: ubuntu-latest
     env:
-      # The seven first-party source trees, named once. `pedant-check` and
+      # The eight first-party source trees, named once. `pedant-check` and
       # `pedant-gate` both scan exactly this set, and a crate added to one list
       # and forgotten in the other drops gate coverage — capability attestation
       # — with nothing turning red.
-      FIRST_PARTY_SOURCES: pedant/src pedant-core/src pedant-lang/src pedant-mcp/src pedant-snippet/src pedant-syntax/src pedant-types/src
+      FIRST_PARTY_SOURCES: pedant/src pedant-core/src pedant-graph/src pedant-lang/src pedant-mcp/src pedant-snippet/src pedant-syntax/src pedant-types/src
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -26,16 +26,16 @@ jobs:
       # The cheapest gate in the job, and it needs no toolchain: shellcheck runs
       # in milliseconds against a checkout alone, so a broken script fails here
       # rather than after twenty minutes of cargo. The `check_*.sh` glob plus
-      # the four named files are the committed shell this repository owns: the
+      # the five named files are the committed shell this repository owns: the
       # boundary checks, the shared cargo-output classifier, the two plan-loop
-      # verification runners that source it, and the resolution proof runner
-      # that sources both it and `check_lib.sh`. Each sourcing script carries a
+      # verification runners that source it, and the resolution and graph proof
+      # runners that source both it and `check_lib.sh`. Each sourcing script carries a
       # `# shellcheck source=` directive. A directive is an instruction to a
       # lint; running the lint is what makes it mean anything. `-x` is the flag
       # that follows those directives, so without it each would be linted
       # against an unresolved helper file and every function it defines would
       # read as an unknown command. The runner image ships shellcheck.
-      - run: shellcheck -x docs/scripts/check_*.sh docs/scripts/cargo_infrastructure.sh docs/scripts/verify_step.sh docs/scripts/verify_affected.sh docs/scripts/run_resolution_proof.sh
+      - run: shellcheck -x docs/scripts/check_*.sh docs/scripts/cargo_infrastructure.sh docs/scripts/verify_step.sh docs/scripts/verify_affected.sh docs/scripts/run_resolution_proof.sh docs/scripts/run_graph_proof.sh
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           components: rustfmt, clippy
@@ -62,6 +62,12 @@ jobs:
       - run: docs/scripts/run_resolution_proof.sh resolution-tier1-dependency-closure
         env:
           PROOF_OUTPUT_DIR: ${{ runner.temp }}
+      # The graph's own closure, and the other `cargo tree` mode that compiles
+      # nothing. It captures the library's `normal,build,features` edges apart
+      # from the harness's `normal,build,dev,features` edges, because dev-only
+      # feature unification would otherwise let `resolution-test-support` read
+      # as the published library's shape.
+      - run: docs/scripts/run_graph_proof.sh graph-dependency-closure
       - run: cargo fmt --check
       - run: cargo fmt --manifest-path test-support/process-guard/Cargo.toml --check
       - run: cargo clippy -- -D warnings
@@ -103,7 +109,7 @@ jobs:
       # it omitted would be the one nothing checks.
       - uses: ./.github/actions/pedant-check
         with:
-          paths: pedant-types/tests/serialization.rs pedant-types/tests/serialization_support pedant-syntax/tests/enclosing_unit.rs pedant-lang/tests/detection.rs pedant-lang/tests/capability.rs pedant-lang/tests/capability_support pedant-snippet/tests/interfaces.rs pedant-core/tests/substrate.rs pedant-core/tests/substrate_support pedant-core/tests/semantic.rs pedant-core/tests/semantic_support pedant/tests/supply_chain.rs pedant/tests/supply_chain_support pedant-mcp/tests/index.rs pedant-mcp/tests/index_support pedant-mcp/tests/watcher.rs pedant-mcp/tests/watcher_support pedant-mcp/tests/tools.rs pedant-mcp/tests/tools_support pedant-mcp/tests/integration.rs pedant-mcp/tests/integration_support pedant-mcp/tests/fixture_support test-support/process-guard/src
+          paths: pedant-types/tests/serialization.rs pedant-types/tests/serialization_support pedant-syntax/tests/enclosing_unit.rs pedant-lang/tests/detection.rs pedant-lang/tests/capability.rs pedant-lang/tests/capability_support pedant-snippet/tests/interfaces.rs pedant-core/tests/substrate.rs pedant-core/tests/substrate_support pedant-graph/tests/graph.rs pedant-graph/tests/graph_support pedant-core/tests/semantic.rs pedant-core/tests/semantic_support pedant/tests/supply_chain.rs pedant/tests/supply_chain_support pedant-mcp/tests/index.rs pedant-mcp/tests/index_support pedant-mcp/tests/watcher.rs pedant-mcp/tests/watcher_support pedant-mcp/tests/tools.rs pedant-mcp/tests/tools_support pedant-mcp/tests/integration.rs pedant-mcp/tests/integration_support pedant-mcp/tests/fixture_support test-support/process-guard/src
       - uses: ./.github/actions/pedant-gate
         with:
           paths: ${{ env.FIRST_PARTY_SOURCES }}
@@ -135,6 +141,21 @@ jobs:
       # as a documented exception. Its two cargo-only siblings run near the top
       # of this job.
       - run: docs/scripts/check_syntax_capabilities.sh
+      # The graph's one build-backed mode here: pedant's own detection over
+      # `pedant-graph/src`, behind a sentinel mirror that proves the detectors
+      # are live.
+      #
+      # `graph-owner-registration` is not run. It lists and then runs the
+      # complete `pedant-core --features resolution-test-support` substrate
+      # target, whose owners read `.manifest.toml`, `docs/design-rationale.md`,
+      # and `docs/testing.md` — none of which this checkout carries — and their
+      # reader panics rather than skip on an absent path. It is local acceptance
+      # for the same reason `resolution-owner-registration` is. No graph
+      # predicate goes unrun here: the bare `cargo test` step above builds and
+      # runs the whole `pedant-graph` target.
+      - run: docs/scripts/run_graph_proof.sh graph-source-capabilities
+      - run: cargo clippy -p pedant-graph --all-targets -- -D warnings
+      - run: RUSTDOCFLAGS="-D missing_docs" cargo doc --no-deps -p pedant-graph
       - run: cargo clippy -p pedant-syntax -p pedant-snippet --all-targets --all-features -- -D warnings
       - run: RUSTDOCFLAGS="-D missing_docs" cargo doc --no-deps -p pedant-syntax -p pedant-snippet --all-features
       # `pedant-syntax` gates parser dispatch on each backend feature, so every

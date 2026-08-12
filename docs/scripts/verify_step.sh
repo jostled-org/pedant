@@ -88,6 +88,7 @@ done
 RUST_PATHS=(
     pedant/
     pedant-core/
+    pedant-graph/
     pedant-lang/
     pedant-mcp/
     pedant-snippet/

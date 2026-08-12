@@ -1,8 +1,16 @@
+[workspace]
+# Every published package is released whenever release-plz runs, so a
+# dependency requirement never advances ahead of the version it names.
+release_always = true
+
 [[package]]
 name = "pedant-types"
 
 [[package]]
 name = "pedant-core"
+
+[[package]]
+name = "pedant-graph"
 
 [[package]]
 name = "pedant-syntax"

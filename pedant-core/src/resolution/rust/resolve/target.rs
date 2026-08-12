@@ -15,6 +15,7 @@ use pedant_types::{
     SymbolReference,
 };
 
+use crate::resolution::rust::fingerprint::RustSnapshotFingerprint;
 use crate::resolution::rust::identity::{PackageId, TargetId, position};
 use crate::resolution::rust::snapshot::{
     RustResolutionSnapshot, RustResolutionUnit, RustSnapshotUnitId,
@@ -63,12 +64,25 @@ impl RustUnitBinding {
     pub fn target(&self) -> TargetId {
         self.target
     }
+
+    /// The same binding pointed at another snapshot unit.
+    ///
+    /// Proof-only: the validated boundary above binds each report unit by its
+    /// stable key, so no ordinary caller can state a binding at all.
+    #[cfg(feature = "resolution-test-support")]
+    pub(in crate::resolution::rust) fn rebound(&self, snapshot_unit: RustSnapshotUnitId) -> Self {
+        Self {
+            snapshot_unit,
+            ..*self
+        }
+    }
 }
 
 /// One resolution result, bound to the snapshot it describes.
 #[derive(Debug, Clone)]
 pub struct RustTargetResolution {
     root_target: TargetId,
+    snapshot_fingerprint: RustSnapshotFingerprint,
     units: Box<[RustUnitBinding]>,
     report: Arc<ResolutionReport>,
 }
@@ -83,6 +97,7 @@ impl RustTargetResolution {
         validate_sites(snapshot, &report)?;
         Ok(Self {
             root_target: snapshot.root_target(),
+            snapshot_fingerprint: snapshot.fingerprint(),
             units,
             report: Arc::new(report),
         })
@@ -91,6 +106,15 @@ impl RustTargetResolution {
     /// The target this resolution was requested for.
     pub fn root_target(&self) -> TargetId {
         self.root_target
+    }
+
+    /// The identity of the snapshot this report was validated against.
+    ///
+    /// A consumer that later pairs this result with a snapshot compares this
+    /// value first: equal root targets do not prove the sources are the ones
+    /// the report describes.
+    pub fn snapshot_fingerprint(&self) -> RustSnapshotFingerprint {
+        self.snapshot_fingerprint
     }
 
     /// Every report-local unit identifier and the Cargo target it names.
@@ -111,6 +135,24 @@ impl RustTargetResolution {
     /// A second handle on the same validated report.
     pub fn shared_report(&self) -> Arc<ResolutionReport> {
         Arc::clone(&self.report)
+    }
+
+    /// The same validated report carrying deliberately restated unit bindings.
+    ///
+    /// Proof-only: [`Self::try_new`] is the sole ordinary constructor and binds
+    /// every report unit by its stable key, so the join failures a downstream
+    /// consumer must still refuse have no other construction path.
+    #[cfg(feature = "resolution-test-support")]
+    pub(in crate::resolution::rust) fn with_unit_bindings(
+        &self,
+        units: Box<[RustUnitBinding]>,
+    ) -> Self {
+        Self {
+            root_target: self.root_target,
+            snapshot_fingerprint: self.snapshot_fingerprint,
+            units,
+            report: Arc::clone(&self.report),
+        }
     }
 }
 

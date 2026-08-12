@@ -49,8 +49,8 @@ use crate::resolution::root_inventory::assert_exact_integration_roots;
 fn first_party_authorities_removed_names_and_migrated_cases_are_exact() {
     let sources = first_party_sources();
 
-    assert_authorities(&sources);
-    assert_removed_authorities_are_absent(&sources);
+    assert_authorities(sources);
+    assert_removed_authorities_are_absent(sources);
     assert_migrated_predicates();
 }
 
@@ -59,8 +59,8 @@ fn first_party_authorities_removed_names_and_migrated_cases_are_exact() {
 fn resolution_authority_shape_and_root_inventory_are_exact() {
     let sources = first_party_sources();
 
-    assert_authorities(&sources);
-    assert_removed_authorities_are_absent(&sources);
+    assert_authorities(sources);
+    assert_removed_authorities_are_absent(sources);
     assert_migrated_predicates();
     assert_ci_keys();
     assert_committed_ci_scripts();

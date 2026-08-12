@@ -106,6 +106,7 @@ pub const FORBIDDEN_PATHS: &[&str] = &[
 /// The first-party source trees every forbidden-identifier scan covers.
 pub const FIRST_PARTY_SOURCES: &[&str] = &[
     "pedant-core/src",
+    "pedant-graph/src",
     "pedant-lang/src",
     "pedant-mcp/src",
     "pedant-snippet/src",
@@ -122,7 +123,7 @@ pub const MIGRATED_PREDICATE_SITE: &str =
 /// Predicates the substrate root must own after the migration.
 pub const MIGRATED_PREDICATES: &[&str] = &[
     "fn workspace_member_cases_run_from_substrate_root",
-    "fn testing_contract_tracks_exact_33_root_transition",
+    "fn testing_contract_tracks_exact_34_root_transition",
 ];
 
 // The acceptance-key model lives in `super::authority_keys` and the

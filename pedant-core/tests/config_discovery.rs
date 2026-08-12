@@ -1,10 +1,73 @@
 #![cfg(feature = "checks")]
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use pedant_core::check_config::{ConfigError, find_config_file};
 use pedant_core::{LintError, discover_workspace_root};
+
+/// Serializes the two cases that depend on the process-wide current directory.
+///
+/// libtest runs one binary's cases on threads of a single process, so the
+/// directory `find_config_file_returns_current_dir_error` deletes is deleted
+/// for every sibling as well. Every other case here works in absolute temporary
+/// paths; only these two read the working directory, and holding this lock
+/// across both keeps that window invisible to the relative-path case.
+static CURRENT_DIR: Mutex<()> = Mutex::new(());
+
+/// Holds the current-directory lock and puts the directory back on the way out.
+///
+/// The restore runs from `Drop`, so it also runs when a guarded case unwinds.
+struct CurrentDirGuard {
+    original_dir: PathBuf,
+    /// Holds `CURRENT_DIR`. `Drop` takes it to release the lock after the
+    /// restore, so it is `None` only while the guard is being dropped.
+    lock: Option<MutexGuard<'static, ()>>,
+}
+
+impl CurrentDirGuard {
+    /// Takes the current-directory lock, ignoring poisoning, and records the
+    /// directory to restore.
+    ///
+    /// A panic under the lock cannot leave the directory moved, because the
+    /// guard restores it during the unwind. The lock therefore hands no
+    /// half-written state to the next case, and honouring poisoning would only
+    /// turn one real failure into two.
+    fn acquire() -> Self {
+        let lock = CURRENT_DIR.lock().unwrap_or_else(PoisonError::into_inner);
+        let original_dir = std::env::current_dir().unwrap();
+        Self {
+            original_dir,
+            lock: Some(lock),
+        }
+    }
+
+    /// Returns the directory the process was in when the guard was taken.
+    fn original_dir(&self) -> &Path {
+        &self.original_dir
+    }
+}
+
+impl Drop for CurrentDirGuard {
+    fn drop(&mut self) {
+        let restored = std::env::set_current_dir(&self.original_dir);
+        // Release the lock only after the restore, so no sibling case sees the
+        // moved directory.
+        drop(self.lock.take());
+        let Err(error) = restored else {
+            return;
+        };
+        let original_dir = self.original_dir.display();
+        let report = format!("failed to restore the current directory to {original_dir}: {error}");
+        // Panicking through a panic aborts the process, which would hide the
+        // first failure. Report on stderr instead.
+        match std::thread::panicking() {
+            true => eprintln!("{report}"),
+            false => panic!("{report}"),
+        }
+    }
+}
 
 #[test]
 fn discover_workspace_root_follows_package_workspace_pointer() {
@@ -244,11 +307,13 @@ fn discover_workspace_root_normalizes_pointer_from_relative_start() {
     )
     .unwrap();
     fs::write(&src_file, "pub fn member() {}\n").unwrap();
-    let current_dir = std::env::current_dir().unwrap();
-    let relative_source = relative_path(&current_dir, &src_file);
-    let relative_workspace = relative_path(&current_dir, &workspace_root);
+    let cwd_guard = CurrentDirGuard::acquire();
+    let current_dir = cwd_guard.original_dir();
+    let relative_source = relative_path(current_dir, &src_file);
+    let relative_workspace = relative_path(current_dir, &workspace_root);
 
     let discovered = discover_workspace_root(&relative_source).unwrap();
+    drop(cwd_guard);
 
     assert_eq!(discovered, Some(relative_workspace));
     fs::remove_dir_all(temp_root).unwrap();
@@ -300,7 +365,7 @@ fn discover_workspace_root_returns_parse_error_for_invalid_manifest() {
 
 #[test]
 fn find_config_file_returns_current_dir_error() {
-    let original_dir = std::env::current_dir().unwrap();
+    let cwd_guard = CurrentDirGuard::acquire();
     let temp_root = create_temp_dir("config-discovery");
     let missing_dir = temp_root.join("missing-cwd");
     fs::create_dir_all(&missing_dir).unwrap();
@@ -309,7 +374,7 @@ fn find_config_file_returns_current_dir_error() {
 
     let result = find_config_file();
 
-    std::env::set_current_dir(&original_dir).unwrap();
+    drop(cwd_guard);
     fs::remove_dir_all(temp_root).unwrap();
 
     assert!(matches!(result, Err(ConfigError::Read(_))));

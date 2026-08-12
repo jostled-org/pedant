@@ -29,6 +29,8 @@ use crate::resolution::semantic_expectations::{
 };
 use crate::resolution::semantic_fixtures::{CROSS_UNIT_NAMES, SEMANTIC_CORPUS};
 #[cfg(feature = "resolution-test-support")]
+use crate::resolution::semantic_pairing::library_snapshot;
+#[cfg(feature = "resolution-test-support")]
 use crate::resolution::semantic_pairing::load_context;
 #[cfg(feature = "resolution-test-support")]
 use crate::resolution::semantic_pairing::matched_pairing;
@@ -237,5 +239,68 @@ fn semantic_resolution_reuses_verified_workspace_and_cached_file_setup() {
         observed(&probe.semantic_file_setups()),
         CORPUS_SEMANTIC_SETUPS,
         "each source is set up once and every later query reuses the cache"
+    );
+}
+
+/// The corpus source after a body-only edit. The manifests, the module layout,
+/// and every path are unchanged, so only the retained identity can tell the two
+/// repository states apart.
+#[cfg(feature = "resolution-test-support")]
+const REWRITTEN_ALPHA: &str = "pub struct Widget;\n\nimpl Widget {\n    /* \u{fc} */ pub fn render(&self) {\n        let _ = 1;\n    }\n}\n";
+
+/// The handshake compares the value the snapshot was completed with, so a
+/// source-only edit refuses before any query or promotion runs.
+///
+/// The positive counters come first: a zero-counter assertion that never had a
+/// non-zero counterpart proves only that nothing ran.
+#[cfg(all(feature = "semantic", feature = "resolution-test-support"))]
+#[test]
+fn semantic_handshake_reuses_retained_snapshot_fingerprint() {
+    let tmp = fixture::build_repository(SEMANTIC_CORPUS, false);
+    let context = load_context(&fixture::repository_root(&tmp));
+
+    let matched = ResolutionProbe::install();
+    let snapshot = library_snapshot(&tmp);
+    let resolution = RustResolver::resolve_semantic(&snapshot, &context)
+        .expect("the database describes this exact snapshot");
+    assert_eq!(
+        snapshot.fingerprint(),
+        resolution.snapshot_fingerprint(),
+        "the promoted result retains the identity the handshake verified"
+    );
+    assert!(
+        !matched.semantic_queries().is_empty(),
+        "a matching identity reaches the database"
+    );
+    assert!(
+        !matched.promotions().is_empty(),
+        "a matching identity promotes"
+    );
+    drop(matched);
+
+    fixture::write_file(tmp.path(), "repo/src/alpha.rs", REWRITTEN_ALPHA.as_bytes());
+    let refused = ResolutionProbe::install();
+    let edited = library_snapshot(&tmp);
+    assert_ne!(
+        edited.fingerprint(),
+        snapshot.fingerprint(),
+        "a source-only edit states another repository state"
+    );
+
+    let error = RustResolver::resolve_semantic(&edited, &context)
+        .expect_err("the database no longer describes this snapshot");
+    assert!(
+        matches!(error, RustResolutionError::SemanticContextMismatch { .. }),
+        "unexpected error {error:?}"
+    );
+    assert_eq!(
+        refused.semantic_queries().len(),
+        0,
+        "the refusal precedes every query"
+    );
+    assert_eq!(
+        refused.promotions().len(),
+        0,
+        "the refusal precedes every promotion"
     );
 }

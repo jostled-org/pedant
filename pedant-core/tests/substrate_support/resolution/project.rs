@@ -183,7 +183,7 @@ fn workspace_member_cases_run_from_substrate_root() {
     );
 }
 
-/// The 33-root transition, from the configuration a plain `cargo test` runs.
+/// The 34-root transition, from the configuration a plain `cargo test` runs.
 ///
 /// The indexed authority proof states the same contract, but it compiles only
 /// under `resolution-test-support`, because its manifest and document tables
@@ -191,6 +191,6 @@ fn workspace_member_cases_run_from_substrate_root() {
 /// tracked test directories alone, so it belongs in the default set too, and
 /// [`assert_exact_integration_roots`] is the one place either states it.
 #[test]
-fn testing_contract_tracks_exact_33_root_transition() {
+fn testing_contract_tracks_exact_34_root_transition() {
     assert_exact_integration_roots();
 }

@@ -21,7 +21,13 @@ pub const PROOF_MODES: &[&str] = &[
     "resolution-owner-registration",
 ];
 
-/// The refusals that keep a mode from passing on an empty or partial selection.
+/// The refusals this runner owns, beside the ones its shared library owns.
+///
+/// `cargo_capture`, `verify_registration`, `run_exact`, and
+/// `run_registered_target` moved into `check_lib.sh` when the graph runner
+/// began sharing them, and `graph_proof_model::PROOF_LIBRARY_REJECTIONS` states
+/// the refusals that went with them. What stays here is what only this runner
+/// does: the guarded set, the dependency capture, the receipt, and the dispatch.
 ///
 /// The guarded-set rows model equality, not a floor: `cargo test --list` prints
 /// an `#[ignore]`d test the same way it prints a live one, so a run that
@@ -30,10 +36,8 @@ pub const PROOF_MODES: &[&str] = &[
 /// summaries, passed/failed/ignored, and the graph's own content are what turn
 /// "at least this much ran" into "exactly this ran".
 pub const PROOF_REJECTIONS: &[&str] = &[
-    "registered no test at all",
-    "is registered ${count:-0} times, not once",
-    "selected no test",
     "fewer than the ${modelled} modelled",
+    "the registration list could not be counted, so nothing was proved",
     "the guarded set produced ${lines:-0} test summaries, not one",
     "${passed} passed, ${failed} failed and ${ignored} ignored",
     "names no pedant-core root, so nothing was inspected",
@@ -86,7 +90,7 @@ pub const TIER1_PREDICATES: &[&str] = &[
     "resolution::project::cargo_project_is_complete_unique_deterministic_and_versioned",
     "resolution::project::cargo_project_rejects_missing_inherited_and_invalid_versions",
     "resolution::project::workspace_member_cases_run_from_substrate_root",
-    "resolution::project::testing_contract_tracks_exact_33_root_transition",
+    "resolution::project::testing_contract_tracks_exact_34_root_transition",
     "resolution::snapshot::snapshots_reject_invalid_target_authority_before_source_reads",
     "resolution::snapshot::target_snapshot_contains_only_root_target_module_closure",
     "resolution::snapshot::package_primary_snapshots_reject_invalid_package_authority_before_source_reads",
@@ -118,6 +122,7 @@ pub const TIER2_PREDICATES: &[&str] = &[
     "resolution::semantic::semantic_resolution_returns_unit_qualified_definition_targets",
     "resolution::semantic::semantic_handshake_rejects_every_identity_mismatch_before_query",
     "resolution::semantic::semantic_resolution_reuses_verified_workspace_and_cached_file_setup",
+    "resolution::semantic::semantic_handshake_reuses_retained_snapshot_fingerprint",
 ];
 
 /// What the Tier 1 substrate configuration owns beside the resolution set.
@@ -131,7 +136,8 @@ pub const SUBSTRATE_EXTRA_PREDICATES: &[&str] = &[
     "release_contract::process_guard_windows_features_cover_job_creation_types",
     "release_contract::dependency_policy_allows_only_path_wildcards",
     "release_contract::verification_commands_are_build_lease_wrapped_and_classifier_backed",
-    "release_contract::ci_installs_every_resolution_runner_tool_before_execution",
+    "release_contract::ci_installs_every_proof_runner_tool_before_execution",
+    "release_contract::graph_release_and_verification_owners_are_exact",
     "resolution::authority::first_party_authorities_removed_names_and_migrated_cases_are_exact",
     "resolution::authority::resolution_authority_shape_and_root_inventory_are_exact",
 ];

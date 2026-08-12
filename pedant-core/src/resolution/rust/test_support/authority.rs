@@ -1,9 +1,10 @@
-//! Proof-only access to resolution invariants ordinary callers cannot reach.
+//! Lexical path authority and defensively invalid target identities.
 
 use std::path::Path;
 
-use super::identity::TargetId;
-use super::project::RustProject;
+use crate::resolution::path_normalization;
+use crate::resolution::rust::identity::TargetId;
+use crate::resolution::rust::project::RustProject;
 
 /// Proof-facing form of a lexical relative-path normalization failure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -20,13 +21,11 @@ pub fn normalize_relative_path(
     root: &Path,
     path: &Path,
 ) -> Result<Box<str>, RelativePathNormalizationError> {
-    super::super::path_normalization::relative_text(root, path).map_err(|error| match error {
-        super::super::path_normalization::RelativePathError::OutsideRoot => {
+    path_normalization::relative_text(root, path).map_err(|error| match error {
+        path_normalization::RelativePathError::OutsideRoot => {
             RelativePathNormalizationError::OutsideRoot
         }
-        super::super::path_normalization::RelativePathError::NonUtf8 => {
-            RelativePathNormalizationError::NonUtf8
-        }
+        path_normalization::RelativePathError::NonUtf8 => RelativePathNormalizationError::NonUtf8,
     })
 }
 

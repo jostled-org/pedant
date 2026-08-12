@@ -27,7 +27,12 @@
 # The build lease and `CARGO_TARGET_DIR` belong to the caller. Cargo-output
 # classification, the 75 infrastructure status, and the aggregate-exit priority
 # belong to cargo_infrastructure.sh, which verify_step.sh and verify_affected.sh
-# source too.
+# source too. The list-before-run machinery — `cargo_capture`,
+# `verify_registration`, `run_exact`, `run_registered_target`, and their match
+# counters — belongs to check_lib.sh, which run_graph_proof.sh reuses, and so do
+# the rendered-root test and the closure forbid checks both runners apply to a
+# `cargo tree` capture. Only the guarded-set and receipt rules below are this
+# runner's own.
 #
 # Exit code: 0 = proved, 75 = infrastructure unavailable, 64 = unknown mode,
 # other non-zero = the proof failed.
@@ -51,7 +56,10 @@ fi
 
 cd_repo_root
 REPO_ROOT="$(pwd)"
-require_tools cargo jq rg
+# `sort` is named because the shared rust-analyzer report pipes to it. A tool a
+# pipeline needs and the guard never demands yields an empty result on an image
+# that lacks it, which is the one answer a forbid check must never read as clean.
+require_tools cargo jq rg sort
 
 # ---------------------------------------------------------------------------
 # Fixed model
@@ -68,7 +76,7 @@ TIER1_PREDICATES=(
     resolution::project::cargo_project_is_complete_unique_deterministic_and_versioned
     resolution::project::cargo_project_rejects_missing_inherited_and_invalid_versions
     resolution::project::workspace_member_cases_run_from_substrate_root
-    resolution::project::testing_contract_tracks_exact_33_root_transition
+    resolution::project::testing_contract_tracks_exact_34_root_transition
     resolution::snapshot::snapshots_reject_invalid_target_authority_before_source_reads
     resolution::snapshot::target_snapshot_contains_only_root_target_module_closure
     resolution::snapshot::package_primary_snapshots_reject_invalid_package_authority_before_source_reads
@@ -100,6 +108,7 @@ TIER2_PREDICATES=(
     resolution::semantic::semantic_resolution_returns_unit_qualified_definition_targets
     resolution::semantic::semantic_handshake_rejects_every_identity_mismatch_before_query
     resolution::semantic::semantic_resolution_reuses_verified_workspace_and_cached_file_setup
+    resolution::semantic::semantic_handshake_reuses_retained_snapshot_fingerprint
 )
 
 # The indexed authority proof.
@@ -144,7 +153,8 @@ SUBSTRATE_EXTRA_PREDICATES=(
     release_contract::process_guard_windows_features_cover_job_creation_types
     release_contract::dependency_policy_allows_only_path_wildcards
     release_contract::verification_commands_are_build_lease_wrapped_and_classifier_backed
-    release_contract::ci_installs_every_resolution_runner_tool_before_execution
+    release_contract::ci_installs_every_proof_runner_tool_before_execution
+    release_contract::graph_release_and_verification_owners_are_exact
     "${TRACKED_AUTHORITY_PREDICATE}"
     "${AUTHORITY_PREDICATE}"
 )
@@ -162,18 +172,8 @@ PROOF_OUTPUT_DIR="$(cd -- "${PROOF_OUTPUT_DIR}" && pwd)" || {
     exit 75
 }
 export PROOF_OUTPUT_DIR
-WORK_DIR="${PROOF_OUTPUT_DIR}/resolution-proof"
-mkdir -p "${WORK_DIR}" || exit 75
-
-capture_index=0
-CAPTURE_PATH=""
-
-# Report a model violation and fold it into the aggregate exit.
-fail() {
-    echo "error: $*" >&2
-    cargo_record 1
-    return 1
-}
+PROOF_WORK_DIR="${PROOF_OUTPUT_DIR}/resolution-proof"
+mkdir -p "${PROOF_WORK_DIR}" || exit 75
 
 # Fail unless every named variable holds a non-empty value.
 require_env() {
@@ -181,100 +181,6 @@ require_env() {
     for name in "$@"; do
         if [ -z "${!name:-}" ]; then
             fail "${name} is not set, so the final tree is unproven" || return 1
-        fi
-    done
-}
-
-# Run one cargo invocation, keeping its output where this script can read it.
-#
-# The capture is this script's evidence as well as the operator's transcript,
-# so it is replayed and kept rather than discarded. Classification is not this
-# script's to make; cargo_infrastructure.sh owns the pattern set and the 75.
-cargo_capture() {
-    local label="$1"
-    shift
-    capture_index=$((capture_index + 1))
-    CAPTURE_PATH="${WORK_DIR}/${capture_index}-${label}.log"
-
-    "$@" > "${CAPTURE_PATH}" 2>&1
-    local code=$?
-    cat "${CAPTURE_PATH}"
-
-    local classified
-    classified=$(cargo_classify "${code}" "${CAPTURE_PATH}")
-    if [ "${classified}" != "${code}" ]; then
-        echo "[run_resolution_proof] ${label}: INFRASTRUCTURE (exit ${code} reclassified as ${classified})"
-    fi
-    cargo_record "${classified}"
-    return "${classified}"
-}
-
-# The `--list` capture the most recent registration proof read. A caller that
-# needs the registered population of a filter reads this file rather than a
-# number this script carries in its head.
-REGISTRATION_LIST_PATH=""
-
-# How many predicates a `--list` capture registered under an exact name.
-registered_count() {
-    rg --count --line-regexp --fixed-strings "$2: test" "$1" 2>/dev/null || true
-}
-
-# Require every modelled predicate exactly once, against a non-zero total.
-verify_registration() {
-    local label="$1" config="$2"
-    shift 2
-    local -a config_args
-    read -r -a config_args <<< "${config}"
-
-    cargo_capture "list-${label}" cargo test "${config_args[@]}" -- --list || return 1
-    REGISTRATION_LIST_PATH="${CAPTURE_PATH}"
-    local list="${CAPTURE_PATH}" total predicate count
-    total=$(rg --count ': test$' "${list}" 2>/dev/null || true)
-    if [ -z "${total}" ] || [ "${total}" -eq 0 ]; then
-        fail "${label}: cargo test ${config} registered no test at all"
-        return 1
-    fi
-    for predicate in "$@"; do
-        count=$(registered_count "${list}" "${predicate}")
-        if [ "${count:-0}" != "1" ]; then
-            fail "${label}: ${predicate} is registered ${count:-0} times, not once"
-            return 1
-        fi
-    done
-}
-
-# Execute one registered predicate by its exact name.
-run_exact() {
-    local label="$1" config="$2" predicate="$3"
-    local -a config_args
-    read -r -a config_args <<< "${config}"
-
-    cargo_capture "run-${label}" cargo test "${config_args[@]}" "${predicate}" -- --exact || return 1
-    if ! rg --quiet 'test result: ok\. 1 passed' "${CAPTURE_PATH}"; then
-        fail "${label}: ${predicate} selected no test"
-        return 1
-    fi
-}
-
-# Execute one complete registered target and prove that every modelled owner
-# reached `ok` exactly once. Running the target once matters for the semantic
-# rows: each exact Cargo invocation rebuilds the same rust-analyzer workspace,
-# while one libtest process can schedule the registered owners together. Cargo
-# success still cannot hide an ignored owner because its exact `test ... ok`
-# line is required below.
-run_registered_target() {
-    local label="$1" config="$2"
-    shift 2
-    local -a config_args
-    read -r -a config_args <<< "${config}"
-
-    cargo_capture "run-${label}" cargo test "${config_args[@]}" || return 1
-    local predicate count
-    for predicate in "$@"; do
-        count=$(rg --count "^test ${predicate} \\.\\.\\. ok$" "${CAPTURE_PATH}" 2>/dev/null || true)
-        if [ "${count:-0}" != "1" ]; then
-            fail "${label}: ${predicate} completed successfully ${count:-0} times, not once"
-            return 1
         fi
     done
 }
@@ -300,8 +206,11 @@ run_guarded_set() {
     # Unanchored, because cargo's filter is a substring match on the whole test
     # name: every line this counts is a line `resolution::` selects.
     local registered
-    registered=$(rg --count 'resolution::.*: test$' "${REGISTRATION_LIST_PATH}" 2>/dev/null || true)
-    registered="${registered:-0}"
+    registered=$(match_count 'resolution::.*: test$' "${REGISTRATION_LIST_PATH}")
+    if [ "${registered}" = "matcher-failed" ]; then
+        fail "${label}: the registration list could not be counted, so nothing was proved"
+        return 1
+    fi
     if [ "${registered}" -lt "${modelled}" ]; then
         fail "${label}: ${registered} resolution:: names are registered, fewer than the ${modelled} modelled"
         return 1
@@ -355,17 +264,18 @@ mode_dependency_closure() {
     # nothing; the forbid grep below would match a graph nobody printed and
     # report the absence as a result. Name the root instead: `--prefix none`
     # prints it as `pedant-core v<version> (<path>)`, and if that line is
-    # missing the graph was never rendered.
-    if ! rg --quiet --fixed-strings 'pedant-core v' "${tree}"; then
+    # missing the graph was never rendered. `check_lib.sh` owns the test, which
+    # `run_graph_proof.sh` makes about two roots of its own; the claim it proves
+    # is this runner's, so this runner writes the refusal.
+    if ! tree_names_root "${tree}" pedant-core; then
         fail "the Tier 1 dependency graph names no pedant-core root, so nothing was inspected"
         return 1
     fi
-    local forbidden
-    forbidden=$(rg --only-matching '^(ra_ap_[a-z_]+|line-index)' "${tree}" 2>/dev/null | sort -u)
-    if [ -n "${forbidden}" ]; then
-        fail "the Tier 1 normal graph names rust-analyzer crates: ${forbidden//$'\n'/ }"
-        return 1
-    fi
+    # `check_lib.sh` owns both forbid checks. Reading ripgrep's output without
+    # its status is what turned a broken matcher into a clean report here, and
+    # one owner of that distinction serves both runners.
+    assert_no_forbidden_packages tier1 "${tree}" line-index || return 1
+    assert_no_rust_analyzer_edges tier1 "${tree}" || return 1
     echo "[run_resolution_proof] tier1 dependency closure: no ra_ap_* or line-index edge"
 }
 
@@ -393,7 +303,7 @@ completion_journey() {
     local label="$1"
     require_env PLAN_HEAD_SHA PLAN_TEST_SCOPE PLAN_TERMINAL_SUMMARY || return 1
 
-    local receipt="${WORK_DIR}/completion-receipt-${label}-$$-${RANDOM}.json"
+    local receipt="${PROOF_WORK_DIR}/completion-receipt-${label}-$$-${RANDOM}.json"
     if [ -e "${receipt}" ]; then
         fail "${label}: ${receipt} already exists, so it is not unique to this run"
         return 1
@@ -467,13 +377,6 @@ mode_owner_registration() {
 
     verify_registration completion "${COMPLETION_CONFIG}" "${COMPLETION_PREDICATE}" \
         && completion_journey registration
-}
-
-registration_row() {
-    local label="$1" config="$2"
-    shift 2
-    verify_registration "${label}" "${config}" "$@" || return 1
-    run_registered_target "${label}" "${config}" "$@"
 }
 
 # ---------------------------------------------------------------------------

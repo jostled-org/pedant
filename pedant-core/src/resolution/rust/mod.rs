@@ -8,6 +8,7 @@
 mod dependency;
 mod edition;
 mod error;
+mod fingerprint;
 mod identity;
 mod limits;
 mod load;
@@ -28,6 +29,7 @@ mod warning;
 pub use dependency::{CargoDependencyKind, DependencyActivation, RustDependency};
 pub use edition::CargoEdition;
 pub use error::RustProjectError;
+pub use fingerprint::RustSnapshotFingerprint;
 pub use identity::{PackageId, TargetId};
 pub use limits::ResolutionLimits;
 pub use package::RustPackage;
@@ -47,5 +49,8 @@ pub use warning::RustResolutionWarning;
 pub use crate::observe::ResolutionProbe;
 #[cfg(feature = "resolution-test-support")]
 pub use test_support::{
-    RelativePathNormalizationError, normalize_relative_path, unknown_target_id,
+    EdgeFingerprintClaim, RelativePathNormalizationError, SnapshotFingerprintClaim,
+    SourceFingerprintClaim, UnitFingerprintClaim, normalize_relative_path,
+    resolution_with_shared_unit_binding, resolution_with_swapped_unit_sources,
+    resolution_without_unit_binding, unknown_target_id,
 };

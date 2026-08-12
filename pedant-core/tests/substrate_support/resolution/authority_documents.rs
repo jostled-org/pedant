@@ -22,16 +22,22 @@ pub struct DocumentClauses {
     pub clauses: &'static [&'static str],
 }
 
-/// The active spec, the two guides, and all eight implemented relation owners.
+/// The two guides, the active spec, and all eight implemented relation owners.
 ///
 /// A completion claim that no document records is a claim with no reader; each
 /// row is the specific contract phrase a later maintainer would need to find.
+///
+/// The graph rows name the final CI key names and proof modes rather than a
+/// paraphrase, so a mode renamed in `.manifest.toml` and left stale in prose
+/// fails here.
 pub const DOCUMENT_CLAUSES: &[DocumentClauses] = &[
     DocumentClauses {
         path: "docs/specs/implemented/rust-symbol-resolution.md",
         clauses: &[
             "RustTargetResolution",
             "RustResolutionSnapshot",
+            "RustSnapshotFingerprint",
+            "RustTargetResolution::snapshot_fingerprint()",
             "RustResolutionWarning::SharedSourceUnits",
             "SemanticSharedSourceMismatch",
             "ResolutionReport::deserialize_with_limits",
@@ -47,8 +53,16 @@ pub const DOCUMENT_CLAUSES: &[DocumentClauses] = &[
         path: "docs/testing.md",
         clauses: &[
             "run_resolution_proof.sh",
+            "run_graph_proof.sh",
+            "graph-dependency-closure",
+            "graph-source-capabilities",
+            "graph-owner-registration",
+            "graph_release_and_verification_owners_are_exact",
+            "ci_installs_every_proof_runner_tool_before_execution",
             "completion-proof-support",
-            "The workspace currently links **33** such executables",
+            "pedant-graph/tests/graph.rs",
+            "The Public Graph Boundary",
+            "The workspace currently links **34** such executables",
             "pedant-process-guard",
             "CARGO_TARGET_DIR",
             "SemanticSharedSourceMismatch",
@@ -75,8 +89,23 @@ pub const DOCUMENT_CLAUSES: &[DocumentClauses] = &[
             "ParseCompatibility",
             "`Id<K>` over `u32`",
             "`Handle<K>` over `Arc<BuilderBrand>`",
-            "| 18 | Rust symbol resolution | Syntax substrate and snippet tool | **Active**",
+            "resolution/rust/fingerprint.rs",
+            "| 19 | Code structure graph | Rust symbol resolution | **Active**",
+            "Containment is logical ownership; location is a source artifact",
+            "The graph depends on resolution, never the other way round",
+            "| 18 | Rust symbol resolution | Syntax substrate and snippet tool | **Implemented**",
             "Conflicting units from different packages need distinct physical sources",
+            "run_graph_proof.sh",
+        ],
+    },
+    DocumentClauses {
+        path: "docs/specs/implemented/code-structure-graph.md",
+        clauses: &[
+            "docs/scripts/run_graph_proof.sh",
+            "[ci].graph_dependency_closure",
+            "[ci].graph_source_capabilities",
+            "[ci].graph_owner_registration",
+            "exactly 34 top-level Cargo integration-test executables",
         ],
     },
     DocumentClauses {

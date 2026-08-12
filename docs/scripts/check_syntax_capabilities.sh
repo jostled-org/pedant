@@ -23,24 +23,18 @@
 # need the reach proved first, independently of the profile:
 #   * each tree must hold Rust source at all, counted here in bash;
 #   * every `.rs` file of both trees, mirrored under one temporary root, must
-#     come back as a finding. The mirror is per file, not per directory: three
-#     directories hold all 22 sources, so one sentinel per directory proves
-#     descent and says nothing about which files the scan then selects. A
-#     discovery rule that skips a file by name, extension case, or size loses
-#     real source, and only a per-file count says so.
+#     come back as a finding. Three directories hold all 22 sources, so the
+#     mirror is per file rather than per directory.
 #   * each sentinel names all four capabilities the profile rules on, and each
 #     one is counted on its own. The profile admits `file_read` and forbids
 #     write, spawn, and network, and that forbid half is an `all` over what is
 #     in practice a one-element list. A sentinel that only reads a file proves
-#     only that the `file_read` detector is live; with a regressed write,
-#     spawn, or network detector, a real `std::fs::write` in the syntax tree
-#     would report nothing and this check would print "clean". This repository
-#     is pedant, so those detectors are the source under change.
+#     only that the `file_read` detector is live.
 #
-# The network sentinel connects to a hostname rather than an address literal.
-# The literal-endpoint heuristic fires a second `network` finding on an
-# IPv4-with-port string, and the counts below are per distinct file for exactly
-# that reason: a detector that fires twice on one line still counts once.
+# `check_lib.sh` owns the source listing and its count, the mirror, the sentinel
+# bodies, the reach predicate, and the pedant command, because
+# `run_graph_proof.sh` makes the same argument about a third tree and a guard
+# with two spellings is a guard that can weaken in one.
 #
 # Exit 0 clean, exit 1 on violation.
 
@@ -58,102 +52,52 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # four read a workspace and none of them may read the caller's.
 cd_repo_root
 
-require_tools cargo jq find mktemp dirname wc tr
+require_tools cargo jq find mktemp dirname
 
 # The trees this check constrains. `.github/workflows/ci.yml` scans the same
-# two among all seven; here they are the whole subject.
+# two among all eight; here they are the whole subject.
 readonly SYNTAX_TREE="pedant-syntax/src"
 readonly SNIPPET_TREE="pedant-snippet/src"
 
-# The build-from-this-workspace decision the header states, in one spelling.
-# The reach guard and the profile both run pedant, and two call sites for one
-# decision are two places for it to drift.
-pedant_capabilities() {
-    cargo run --quiet -p pedant -- capabilities "$@"
-}
-
+# The listing the mirror reproduces, and the count it is held to, taken per tree
+# so an empty tree is named on its own. `check_lib.sh` owns both, because
+# `run_graph_proof.sh` mirrors a third tree from the same listing and derived
+# the count a second way — through a ripgrep matcher, which reports a broken
+# matcher the way this refusal reads as an empty tree.
+#
+# The listing is captured before the mirror reads it. Feeding the loop from a
+# process substitution puts `find` in a subshell whose exit status neither
+# `set -e` nor `pipefail` observes, so a `find` that died after emitting one
+# path would leave one sentinel and a count of one, and the equality inside
+# `mirror_sentinels` would compare that against itself and pass.
+sentinels=0
+tree_sources=""
 for tree in "${SYNTAX_TREE}" "${SNIPPET_TREE}"; do
     if [ ! -d "${tree}" ]; then
         echo "error: ${tree} is missing from the repository." >&2
         exit 1
     fi
-    sources="$(find "${tree}" -type f -name '*.rs' | wc -l | tr -d '[:space:]')"
-    if [ "${sources}" -eq 0 ]; then
+    read_rust_sources "${tree}"
+    if [ "${RUST_SOURCE_COUNT}" -eq 0 ]; then
         echo "error: ${tree} holds no Rust source." >&2
         echo "An empty tree has no capability to report, so the profile below would" >&2
         echo "pass without constraining anything." >&2
         exit 1
     fi
+    sentinels=$((sentinels + RUST_SOURCE_COUNT))
+    tree_sources="${tree_sources}${RUST_SOURCE_LISTING}"$'\n'
 done
 
 mirror="$(mktemp -d)"
 trap 'rm -rf "${mirror}"' EXIT
 
-# The listing is captured before the loop reads it. Feeding the loop from a
-# process substitution puts `find` in a subshell whose exit status neither
-# `set -e` nor `pipefail` observes, so a `find` that died after emitting one
-# path would leave one sentinel and a count of one, and the equality below would
-# compare that against itself and pass. A plain assignment propagates the
-# failure with find's own message.
-tree_sources="$(find "${SYNTAX_TREE}" "${SNIPPET_TREE}" -type f -name '*.rs')"
-
 # Each sentinel takes the mirrored path of one real source, so the file set the
-# reach guard ranges over is the file set the profile ranges over.
-sentinels=0
-while IFS= read -r source; do
-    [ -n "${source}" ] || continue
-    mkdir -p "$(dirname -- "${mirror}/${source}")"
-    printf '%s\n' \
-        'pub fn read(path: &str) -> std::io::Result<String> {' \
-        '    std::fs::read_to_string(path)' \
-        '}' \
-        'pub fn write(path: &str) -> std::io::Result<()> {' \
-        '    std::fs::write(path, "sentinel")' \
-        '}' \
-        'pub fn spawn() -> std::io::Result<std::process::Child> {' \
-        '    std::process::Command::new("ls").spawn()' \
-        '}' \
-        'pub fn connect() -> std::io::Result<std::net::TcpStream> {' \
-        '    std::net::TcpStream::connect("sentinel.invalid:80")' \
-        '}' \
-        >"${mirror}/${source}"
-    sentinels=$((sentinels + 1))
-done <<<"${tree_sources}"
-
-if [ "${sentinels}" -eq 0 ]; then
-    echo "error: no source was mirrored from ${SYNTAX_TREE} or ${SNIPPET_TREE}." >&2
-    echo "The reach assertion below would compare zero against zero and pass," >&2
-    echo "so the profile it guards would be vacuous." >&2
-    exit 1
-fi
+# reach guard ranges over is the file set the profile ranges over. A count that
+# disagrees with the one above returns 1, and `set -e` stops here.
+mirror_sentinels "${mirror}" "${tree_sources}" "${sentinels}"
 
 reach="$(pedant_capabilities "${mirror}/${SYNTAX_TREE}" "${mirror}/${SNIPPET_TREE}")"
-
-# The mirrored source count is bound with `--argjson`, not spliced into the
-# program text. Every other predicate in these checks is a fixed string, and
-# this one stays a fixed string too: a shell value reaches jq as an argument.
-# `$expected` is that binding — a jq variable, which jq spells the way the shell
-# does — so the single quotes are what keep the shell out of the program.
-# `$findings` is bound at the top because `all` rebinds `.` to the capability
-# under test, which puts the document itself out of reach inside the body.
-# shellcheck disable=SC2016
-reach_predicate='
-.findings as $findings
-| ["file_read", "file_write", "process_exec", "network"]
-| all(. as $capability
-      | ([$findings[]
-          | select(.capability == $capability)
-          | .location.file]
-         | unique
-         | length) == $expected)
-'
-
-assert_jq "${reach}" "${reach_predicate}" \
-    --argjson expected "${sentinels}" -- \
-    "error: pedant did not report every capability of every mirrored source." \
-    "Expected ${sentinels} distinct files for each of file_read, file_write," \
-    "process_exec, and network — one per source of ${SYNTAX_TREE} and ${SNIPPET_TREE}." \
-    "The clean profile below would be vacuous, so it is not trusted."
+assert_sentinel_reach "${reach}" "${sentinels}" "${SYNTAX_TREE} and ${SNIPPET_TREE}"
 
 predicate='
 all(.findings[];

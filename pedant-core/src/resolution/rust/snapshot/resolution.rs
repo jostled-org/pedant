@@ -8,6 +8,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::resolution::rust::fingerprint::{self, RustSnapshotFingerprint};
 use crate::resolution::rust::identity::{TargetId, index_of, position};
 use crate::resolution::rust::limits::ResolutionLimits;
 use crate::resolution::rust::project::RustProject;
@@ -33,6 +34,7 @@ pub struct RustResolutionSnapshot {
     edges: Box<[RustSnapshotEdge]>,
     sources: Box<[RustSource]>,
     warnings: Box<[RustResolutionWarning]>,
+    fingerprint: RustSnapshotFingerprint,
 }
 
 impl RustResolutionSnapshot {
@@ -88,6 +90,15 @@ impl RustResolutionSnapshot {
     pub fn source(&self, path: &str) -> Option<&RustSource> {
         source::find(&self.sources, path)
     }
+
+    /// The opaque identity computed when this snapshot was completed.
+    ///
+    /// Two snapshots taken over the same repository state share it; a
+    /// source-only edit that leaves every manifest and target identity
+    /// unchanged does not.
+    pub fn fingerprint(&self) -> RustSnapshotFingerprint {
+        self.fingerprint
+    }
 }
 
 /// Validate authority, select the units, then walk each unit's closure.
@@ -102,19 +113,45 @@ pub(in crate::resolution::rust) fn build(
     let units = build_units(&selection, &mut store, &mut failures);
     match failures.is_empty() {
         false => Err(refuse(&store, failures)),
-        true => {
-            let warnings = warning::shared_sources(&units);
-            Ok(RustResolutionSnapshot {
-                root: Box::from(project.root()),
-                root_target: id,
-                limits: project.limits(),
-                root_unit: RustSnapshotUnitId::new(selection.root),
-                edges: build_edges(&selection.edges),
-                sources: store.finish(),
-                units,
-                warnings,
-            })
-        }
+        true => Ok(complete(
+            project,
+            (id, RustSnapshotUnitId::new(selection.root)),
+            units,
+            (build_edges(&selection.edges), store.finish()),
+        )),
+    }
+}
+
+/// Publish one snapshot, fingerprinting its completed fields first.
+///
+/// Nothing else assembles this value. The identity covers the canonical root,
+/// the requested unit, every unit, every Cargo edge, and every source.
+///
+/// `limits` and `root_target` stay out of it, and both are derivable. A breached
+/// ceiling refuses the snapshot rather than publishing it, so a published
+/// snapshot states the same fields under every limit. The root target is the
+/// target the hashed requested unit compiles, and the graph consumer checks that
+/// pairing on its own.
+fn complete(
+    project: &RustProject,
+    requested: (TargetId, RustSnapshotUnitId),
+    units: Box<[RustResolutionUnit]>,
+    reached: (Box<[RustSnapshotEdge]>, Box<[RustSource]>),
+) -> RustResolutionSnapshot {
+    let (root_target, root_unit) = requested;
+    let (edges, sources) = reached;
+    let root = Box::from(project.root());
+    let fingerprint = fingerprint::of_completed(&root, root_unit.index(), &units, &edges, &sources);
+    RustResolutionSnapshot {
+        warnings: warning::shared_sources(&units),
+        root,
+        root_target,
+        limits: project.limits(),
+        root_unit,
+        units,
+        edges,
+        sources,
+        fingerprint,
     }
 }
 

@@ -14,11 +14,11 @@ docs/plans/
 # fails on a clone that is missing them. That is the four repository boundary
 # checks, check_lib.sh, which all four source, and the five files the shellcheck
 # step lints: the shared cargo-output classifier, the two verification runners
-# that source it, and the resolution proof runner that sources it and
+# that source it, and the resolution and graph proof runners that source it and
 # check_lib.sh. `shellcheck -x` follows those source directives, so a sourced
 # helper left untracked fails the lint as surely as a missing subject would.
 # Ignoring the directory itself would stop git descending into it, so the
-# entries are ignored and the nine files re-included.
+# entries are ignored and the ten files re-included.
 docs/scripts/*
 !docs/scripts/cargo_infrastructure.sh
 !docs/scripts/check_lang_feature_forwarding.sh
@@ -26,6 +26,7 @@ docs/scripts/*
 !docs/scripts/check_published_manifests.sh
 !docs/scripts/check_syntax_capabilities.sh
 !docs/scripts/check_syntax_dependency_closure.sh
+!docs/scripts/run_graph_proof.sh
 !docs/scripts/run_resolution_proof.sh
 !docs/scripts/verify_affected.sh
 !docs/scripts/verify_step.sh

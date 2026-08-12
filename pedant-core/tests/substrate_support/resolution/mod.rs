@@ -31,14 +31,26 @@ mod authority_documents;
 mod authority_invalidation;
 #[cfg(feature = "resolution-test-support")]
 mod authority_keys;
-mod authority_model;
+// `pub(crate)` for the same reason `authority_scan` is: `graph_owners` states
+// the same eight first-party trees for the check and gate commands, and two
+// inventories of one set with nothing comparing them is one of them going
+// stale. It reads this model rather than keeping a third copy.
+pub(crate) mod authority_model;
 #[cfg(feature = "resolution-test-support")]
 mod authority_proofs;
 #[cfg(feature = "resolution-test-support")]
 mod authority_runner;
-mod authority_scan;
+// `read_text` is the one reader that fails loudly on an absent subject, so
+// `release_contract` and `graph_owners` share it rather than each opening files
+// their own way.
+pub(crate) mod authority_scan;
 mod closure_asserts;
 mod closure_fixtures;
+mod fingerprint;
+// The claim table and the cases that read it are split for the source-file
+// budget alone, the way `closure_fixtures` sits beside `closure_asserts`.
+#[cfg(feature = "resolution-test-support")]
+mod fingerprint_claims;
 mod fixture;
 mod limits;
 mod project;

@@ -9,8 +9,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// The complete set of top-level cargo integration-test executables after
-/// `pedant-core/tests/workspace_members.rs` is removed. Each entry is
-/// `<crate>/tests/<root>.rs`.
+/// `pedant-core/tests/workspace_members.rs` was removed and the public graph
+/// boundary was added. Each entry is `<crate>/tests/<root>.rs`.
 pub const INTEGRATION_ROOTS: &[&str] = &[
     "pedant-core/tests/capability.rs",
     "pedant-core/tests/config_discovery.rs",
@@ -26,6 +26,7 @@ pub const INTEGRATION_ROOTS: &[&str] = &[
     "pedant-core/tests/smoke.rs",
     "pedant-core/tests/substrate.rs",
     "pedant-core/tests/type_footprint.rs",
+    "pedant-graph/tests/graph.rs",
     "pedant/tests/attestation.rs",
     "pedant/tests/common.rs",
     "pedant/tests/config_precedence.rs",
@@ -64,7 +65,7 @@ pub fn workspace_root() -> PathBuf {
 /// One implementation, two registered owners: the Step 2 transition predicate
 /// and the indexed authority proof both state this, and a second copy could
 /// pass one while the other drifted. A membership check would not do — it
-/// agrees with a tree that grew a thirty-fourth root — so the comparison is
+/// agrees with a tree that grew a thirty-fifth root — so the comparison is
 /// between the written-down set and the discovered one.
 pub fn assert_exact_integration_roots() {
     let root = workspace_root();
@@ -74,8 +75,8 @@ pub fn assert_exact_integration_roots() {
         .collect();
     assert_eq!(
         modelled.len(),
-        33,
-        "the model must name 33 distinct integration executables"
+        34,
+        "the model must name 34 distinct integration executables"
     );
     assert_eq!(
         discovered_integration_roots(&root),
@@ -93,7 +94,7 @@ pub fn assert_exact_integration_roots() {
 ///
 /// The universe is the workspace, not the model. Enumerating the `tests/`
 /// directories the model already names would make the search set a function of
-/// the answer: a thirty-fourth root inside a crate the model knows would fail,
+/// the answer: a thirty-fifth root inside a crate the model knows would fail,
 /// but the same root inside a newly added member would be invisible to a check
 /// whose claim is about the whole workspace.
 fn discovered_integration_roots(root: &Path) -> BTreeSet<String> {
@@ -152,7 +153,7 @@ fn workspace_members(root: &Path) -> Vec<String> {
         "the root inventory enumerates literal members, and these are patterns: {globbed:?}"
     );
     assert!(
-        members.len() >= 7,
+        members.len() >= 8,
         "the workspace declares {} members, so the scan is not reading it",
         members.len()
     );

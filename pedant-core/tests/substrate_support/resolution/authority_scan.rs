@@ -14,6 +14,7 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
+use std::sync::OnceLock;
 
 use crate::resolution::authority_model::{
     AUTHORITIES, Authority, FIRST_PARTY_SOURCES, FORBIDDEN_IDENTIFIERS, FORBIDDEN_PATHS,
@@ -38,11 +39,17 @@ pub fn read_text(relative: &str) -> String {
     fs::read_to_string(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()))
 }
 
-/// Every `.rs` file beneath the seven first-party source trees, in path order.
+/// Every `.rs` file beneath the eight first-party source trees, in path order.
 ///
-/// Each is read once here rather than once per question. Ten scans over the
-/// same hundred files answer no more than one does.
-pub fn first_party_sources() -> Box<[Source]> {
+/// The scan runs once per process and every caller borrows that one reading.
+/// Three cases ask questions of the same hundred files, and three walks answer
+/// no more than one does.
+pub fn first_party_sources() -> &'static [Source] {
+    static SOURCES: OnceLock<Box<[Source]>> = OnceLock::new();
+    SOURCES.get_or_init(scan_first_party_sources)
+}
+
+fn scan_first_party_sources() -> Box<[Source]> {
     let root = workspace_root();
     let mut found: BTreeSet<Box<str>> = BTreeSet::new();
     for tree in FIRST_PARTY_SOURCES {

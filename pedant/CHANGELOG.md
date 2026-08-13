@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.4](https://github.com/jostled-org/pedant/compare/pedant-v0.27.3...pedant-v0.27.4) - 2026-08-13
+
+### Fixed
+
+- *(resolution)* resolve children beside path overrides
+
 ## [0.27.3](https://github.com/jostled-org/pedant/compare/pedant-v0.27.2...pedant-v0.27.3) - 2026-08-13
 
 ### Other

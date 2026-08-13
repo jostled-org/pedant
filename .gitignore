@@ -9,27 +9,7 @@ docs/.codebase-snapshot.md
 .manifest.toml
 docs/specs/
 docs/plans/
-# Scripts are ignored by default. The local orchestration files remain tracked
-# developer tooling, while repository checks are the separate scripts invoked
-# by GitHub workflows. `shellcheck -x` follows source directives, so every
-# repository-check helper must be tracked with its callers.
-docs/scripts/*
-!docs/scripts/cargo_infrastructure.sh
-!docs/scripts/check_lang_feature_forwarding.sh
-!docs/scripts/check_lib.sh
-!docs/scripts/check_graph_capabilities.sh
-!docs/scripts/check_graph_dependency_closure.sh
-!docs/scripts/check_published_manifests.sh
-!docs/scripts/check_release_readiness.sh
-!docs/scripts/check_resolution_dependency_closure.sh
-!docs/scripts/check_syntax_capabilities.sh
-!docs/scripts/check_syntax_dependency_closure.sh
-!docs/scripts/run_graph_proof.sh
-!docs/scripts/run_resolution_proof.sh
-!docs/scripts/run_shellcheck.sh
-!docs/scripts/repository_check_lib.sh
-!docs/scripts/verify_affected.sh
-!docs/scripts/verify_step.sh
+docs/scripts/
 docs/internal/
 docs/planning_guidelines.md
 docs/introspection_guidelines.md

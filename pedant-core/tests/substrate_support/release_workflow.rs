@@ -6,6 +6,7 @@ use std::process::{Command, Output};
 
 const SHELLCHECK_VERSION: &str = "0.11.0";
 const SHELLCHECK_DIGEST: &str = "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198";
+const CARGO_DENY_REVISION: &str = "bca0dde53651ee946720e4540b5ce2610bec8f06";
 
 fn repository_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -49,7 +50,7 @@ fn commit_all(root: &Path, message: &str) {
 }
 
 fn release_readiness(root: &Path) -> Output {
-    Command::new(repository_root().join("docs/scripts/check_release_readiness.sh"))
+    Command::new(repository_root().join(".github/scripts/check_release_readiness.sh"))
         .current_dir(root)
         .output()
         .expect("release-readiness script is executable")
@@ -112,7 +113,7 @@ fn release_readiness_requires_new_versions_for_changed_published_sources() {
 #[test]
 fn ci_uses_one_pinned_shellcheck_release() {
     let workflow = read_repository_file(".github/workflows/ci.yml");
-    let wrapper = read_repository_file("docs/scripts/run_shellcheck.sh");
+    let wrapper = read_repository_file(".github/scripts/run_shellcheck.sh");
 
     assert!(wrapper.contains(&format!("SHELLCHECK_VERSION=\"{SHELLCHECK_VERSION}\"")));
     assert!(workflow.contains(&format!("SHELLCHECK_VERSION: {SHELLCHECK_VERSION}")));
@@ -122,9 +123,28 @@ fn ci_uses_one_pinned_shellcheck_release() {
         .find("Install pinned ShellCheck")
         .expect("CI installs the pinned release");
     let lint = workflow
-        .find("docs/scripts/run_shellcheck.sh")
+        .find(".github/scripts/run_shellcheck.sh")
         .expect("CI runs the version-checking wrapper");
     assert!(install < lint, "CI installs ShellCheck before linting");
+}
+
+#[test]
+fn ci_pins_cargo_deny_to_a_locked_source_revision() {
+    let workflow = read_repository_file(".github/workflows/ci.yml");
+    let install = workflow
+        .find("Install pinned cargo-deny")
+        .expect("CI names the pinned cargo-deny installation");
+    let check = workflow[install..]
+        .find("- run: cargo deny check")
+        .map(|offset| install + offset)
+        .expect("CI runs cargo-deny after installation");
+    let installation = &workflow[install..check];
+
+    assert!(installation.contains(&format!("CARGO_DENY_REVISION: {CARGO_DENY_REVISION}")));
+    assert!(installation.contains("--git https://github.com/EmbarkStudios/cargo-deny"));
+    assert!(installation.contains("--rev \"${CARGO_DENY_REVISION}\""));
+    assert!(installation.contains("--locked"));
+    assert!(!workflow.contains("cargo install cargo-deny"));
 }
 
 #[test]

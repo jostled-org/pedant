@@ -42,17 +42,17 @@ jobs:
       # Lint every repository check before the Rust build. `-x` follows each
       # check's shared-library directive, and the wrapper rejects any
       # ShellCheck version other than the pinned release installed above.
-      - run: docs/scripts/run_shellcheck.sh
+      - run: .github/scripts/run_shellcheck.sh
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
       # Resolver-only boundary checks run before anything that builds.
-      - run: docs/scripts/check_syntax_dependency_closure.sh
-      - run: docs/scripts/check_lang_feature_forwarding.sh
-      - run: docs/scripts/check_published_manifests.sh
-      - run: docs/scripts/check_resolution_dependency_closure.sh
-      - run: docs/scripts/check_graph_dependency_closure.sh
+      - run: .github/scripts/check_syntax_dependency_closure.sh
+      - run: .github/scripts/check_lang_feature_forwarding.sh
+      - run: .github/scripts/check_published_manifests.sh
+      - run: .github/scripts/check_resolution_dependency_closure.sh
+      - run: .github/scripts/check_graph_dependency_closure.sh
       - run: cargo fmt --check
       - run: cargo fmt --manifest-path test-support/process-guard/Cargo.toml --check
       - run: cargo clippy -- -D warnings
@@ -125,10 +125,10 @@ jobs:
       # new write, spawn, or network call there fails here rather than arriving
       # as a documented exception. Its two cargo-only siblings run near the top
       # of this job.
-      - run: docs/scripts/check_syntax_capabilities.sh
+      - run: .github/scripts/check_syntax_capabilities.sh
       # Pedant scans graph source behind a sentinel mirror that proves all four
       # capability detectors are live before an empty profile is accepted.
-      - run: docs/scripts/check_graph_capabilities.sh
+      - run: .github/scripts/check_graph_capabilities.sh
       - run: cargo clippy -p pedant-graph --all-targets -- -D warnings
       - run: RUSTDOCFLAGS="-D missing_docs" cargo doc --no-deps -p pedant-graph
       - run: cargo clippy -p pedant-syntax -p pedant-snippet --all-targets --all-features -- -D warnings
@@ -187,7 +187,17 @@ jobs:
       # their loops run zero bodies, and under the two runs above the module
       # does not compile.
       - run: cargo test -p pedant-syntax --no-default-features --features ts-python
-      - run: cargo install cargo-deny && cargo deny check
+      - name: Install pinned cargo-deny
+        env:
+          # cargo-deny 0.20.2. A full source revision cannot move like a tag.
+          CARGO_DENY_REVISION: bca0dde53651ee946720e4540b5ce2610bec8f06
+        run: |
+          cargo install \
+            --git https://github.com/EmbarkStudios/cargo-deny \
+            --rev "${CARGO_DENY_REVISION}" \
+            --locked \
+            cargo-deny
+      - run: cargo deny check
 
   windows-process-containment:
     runs-on: windows-latest

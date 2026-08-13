@@ -52,7 +52,7 @@ jobs:
         shell: bash
         run: |
           status=0
-          docs/scripts/check_release_readiness.sh || status=$?
+          .github/scripts/check_release_readiness.sh || status=$?
           case "${status}" in
             0) echo "ready=true" >> "${GITHUB_OUTPUT}" ;;
             1) echo "ready=false" >> "${GITHUB_OUTPUT}" ;;
@@ -61,7 +61,7 @@ jobs:
 
       - name: Check published manifests
         if: steps.release_readiness.outputs.ready == 'true'
-        run: docs/scripts/check_published_manifests.sh
+        run: .github/scripts/check_published_manifests.sh
 
       - name: Run release-plz
         if: steps.release_readiness.outputs.ready == 'true'

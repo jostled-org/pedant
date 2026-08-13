@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0](https://github.com/jostled-org/pedant/compare/pedant-core-v0.20.2...pedant-core-v0.21.0) - 2026-08-13
+
+### Added
+
+- [**breaking**] implement code-structure-graph
+
+### Fixed
+
+- *(ci)* relocate checks and pin cargo-deny
+- *(ci)* isolate lifecycle tooling from repository checks
+- *(ci)* pin shellcheck and defer unsafe releases
+
+### Other
+
+- *(lifecycle)* enforce implemented graph status
+
 ## [0.20.2](https://github.com/jostled-org/pedant/compare/pedant-core-v0.20.1...pedant-core-v0.20.2) - 2026-08-10
 
 ### Other

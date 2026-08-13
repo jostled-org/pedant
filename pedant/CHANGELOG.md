@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.3](https://github.com/jostled-org/pedant/compare/pedant-v0.27.2...pedant-v0.27.3) - 2026-08-13
+
+### Other
+
+- updated the following local packages: pedant-core
+
 ## [0.27.2](https://github.com/jostled-org/pedant/compare/pedant-v0.27.1...pedant-v0.27.2) - 2026-08-10
 
 ### Other

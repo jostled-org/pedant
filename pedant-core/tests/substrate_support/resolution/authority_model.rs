@@ -6,9 +6,7 @@
 //! proof mode that quietly stopped running anything.
 //!
 //! Every subject below is committed, so this model and [`super::authority_scan`]
-//! compile in every configuration. The acceptance keys live in
-//! [`super::authority_keys`], which indexes local tooling and carries the
-//! `resolution-test-support` feature with its reader.
+//! compile and run in every configuration.
 
 /// One authority: what it is, where it lives, the text that proves it lives
 /// there, and the complete set of first-party sources allowed to name that text.
@@ -125,8 +123,3 @@ pub const MIGRATED_PREDICATES: &[&str] = &[
     "fn workspace_member_cases_run_from_substrate_root",
     "fn testing_contract_tracks_exact_34_root_transition",
 ];
-
-// The acceptance-key model lives in `super::authority_keys` and the
-// proof-runner model in `super::authority_proofs`. Both describe local tooling
-// rather than the tracked source tree this file names, and both have to be
-// complete rather than indicative to be worth anything.

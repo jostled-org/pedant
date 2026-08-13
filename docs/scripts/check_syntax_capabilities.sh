@@ -31,10 +31,9 @@
 #     in practice a one-element list. A sentinel that only reads a file proves
 #     only that the `file_read` detector is live.
 #
-# `check_lib.sh` owns the source listing and its count, the mirror, the sentinel
-# bodies, the reach predicate, and the pedant command, because
-# `run_graph_proof.sh` makes the same argument about a third tree and a guard
-# with two spellings is a guard that can weaken in one.
+# `repository_check_lib.sh` owns the source listing and its count, the mirror,
+# the sentinel bodies, the reach predicate, and the pedant command because the
+# graph capability check makes the same argument about a third tree.
 #
 # Exit 0 clean, exit 1 on violation.
 
@@ -42,14 +41,14 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source-path=SCRIPTDIR
-# shellcheck source=check_lib.sh
-. "${script_dir}/check_lib.sh"
+# shellcheck source=repository_check_lib.sh
+. "${script_dir}/repository_check_lib.sh"
 
 # Every path below is repository-relative, and the mirror reproduces those
 # relative paths under one temporary root. `cd_repo_root` is what makes the `-d`
 # guards below mean "the trees are gone" instead of "you stood in the wrong
-# directory". All four checks call it; it lives in `check_lib.sh` because all
-# four read a workspace and none of them may read the caller's.
+# directory". Repository checks share it because each reads a workspace and
+# none may read the caller's.
 cd_repo_root
 
 require_tools cargo jq find mktemp dirname
@@ -60,10 +59,8 @@ readonly SYNTAX_TREE="pedant-syntax/src"
 readonly SNIPPET_TREE="pedant-snippet/src"
 
 # The listing the mirror reproduces, and the count it is held to, taken per tree
-# so an empty tree is named on its own. `check_lib.sh` owns both, because
-# `run_graph_proof.sh` mirrors a third tree from the same listing and derived
-# the count a second way — through a ripgrep matcher, which reports a broken
-# matcher the way this refusal reads as an empty tree.
+# so an empty tree is named on its own. `repository_check_lib.sh` owns both
+# because the graph check mirrors a third tree from the same listing.
 #
 # The listing is captured before the mirror reads it. Feeding the loop from a
 # process substitution puts `find` in a subshell whose exit status neither

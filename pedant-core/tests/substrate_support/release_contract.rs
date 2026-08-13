@@ -6,22 +6,11 @@
 //! manifests plus `release-plz.toml`, and nothing in a workspace build compares
 //! them. This module is that comparison.
 //!
-//! The graph crate is the eighth of those manifests and the newest verification
-//! subject, so this module also owns the case that holds it to
-//! [`crate::graph_owners`] and [`crate::graph_proof_model`].
-//!
 //! The cases are structural: they read tracked files and assert a written-down
 //! model. None builds, spawns, or reads outside the repository.
 
 use std::collections::{BTreeMap, BTreeSet};
 
-#[cfg(feature = "resolution-test-support")]
-use crate::graph_owners::{
-    GRAPH_PACKAGE, assert_graph_check_and_gate_coverage, assert_graph_ci_identities,
-    assert_graph_manifest, assert_graph_release_position,
-};
-#[cfg(feature = "resolution-test-support")]
-use crate::graph_proof_model::{assert_graph_proof_runner, assert_graph_verification_routing};
 use crate::resolution::authority_scan::read_text;
 
 /// Every published package, in the order `release-plz.toml` must publish them.
@@ -46,38 +35,6 @@ const PUBLISHED: [&str; 8] = [
     "pedant-lang",
     "pedant-mcp",
     "pedant",
-];
-
-/// The exact `[verification].step` command the plan loop must invoke.
-///
-/// This module is the sole owner of the manifest-command clause. The indexed
-/// authority proof runs in the same executable and configuration and states the
-/// `[ci]` keys instead, because two readers of one clause can only agree or
-/// drift, never corroborate.
-#[cfg(feature = "resolution-test-support")]
-const STEP_COMMAND: &str = "docs/scripts/with_build_lease.sh docs/scripts/verify_step.sh";
-
-/// The exact `[verification].affected` command.
-#[cfg(feature = "resolution-test-support")]
-const AFFECTED_COMMAND: &str = "docs/scripts/with_build_lease.sh docs/scripts/verify_affected.sh";
-
-/// The one owner of Cargo-output classification, the 75 status, and the
-/// aggregate-exit priority.
-#[cfg(feature = "resolution-test-support")]
-const CLASSIFIER: &str = "docs/scripts/cargo_infrastructure.sh";
-
-/// Every runner that must source that owner rather than restate its patterns.
-///
-/// `check_lib.sh` is not a runner and is not listed: it calls `cargo_record`
-/// and `cargo_classify` without sourcing their owner, because each of the four
-/// scripts below already does, and a library that sourced it too would give the
-/// boundary checks a classifier they never use.
-#[cfg(feature = "resolution-test-support")]
-const CLASSIFIER_RUNNERS: [&str; 4] = [
-    "docs/scripts/verify_step.sh",
-    "docs/scripts/verify_affected.sh",
-    "docs/scripts/run_resolution_proof.sh",
-    "docs/scripts/run_graph_proof.sh",
 ];
 
 fn parse_toml(relative: &str) -> toml::Table {
@@ -256,134 +213,4 @@ fn dependency_policy_allows_only_path_wildcards() {
         Some(true),
         "unpublished path-only dependencies must remain packageable"
     );
-}
-
-/// The verification identities, from the one configuration that can see them.
-///
-/// `.manifest.toml` and the plan-loop scripts are local tooling that a clone of
-/// this repository does not receive, and [`read`] panics on an unreadable path
-/// rather than let an absent file read as a satisfied clause. Gating the case
-/// on `resolution-test-support` keeps that panic out of the `[ci]` matrix,
-/// which selects the feature nowhere; `run_resolution_proof.sh` selects it for
-/// the Tier 1 and owner-registration modes, which is where this predicate is
-/// required to be registered exactly once.
-#[cfg(feature = "resolution-test-support")]
-#[test]
-fn verification_commands_are_build_lease_wrapped_and_classifier_backed() {
-    let manifest = parse_toml(".manifest.toml");
-    let verification = manifest
-        .get("verification")
-        .and_then(toml::Value::as_table)
-        .expect(".manifest.toml declares [verification]");
-    for (key, expected) in [("step", STEP_COMMAND), ("affected", AFFECTED_COMMAND)] {
-        let declared = verification
-            .get(key)
-            .and_then(toml::Value::as_str)
-            .unwrap_or_else(|| panic!("[verification].{key} is declared"));
-        assert_eq!(
-            declared, expected,
-            "[verification].{key} must run under the outer build lease"
-        );
-    }
-
-    let classifier = read_text(CLASSIFIER);
-    for owned in [
-        "CARGO_INFRASTRUCTURE_PATTERNS=",
-        "CARGO_INFRASTRUCTURE_STATUS=75",
-    ] {
-        assert!(
-            classifier.contains(owned),
-            "{CLASSIFIER} owns {owned}, and it is missing"
-        );
-    }
-
-    for runner in CLASSIFIER_RUNNERS {
-        let source = read_text(runner);
-        assert!(
-            source.contains("cargo_infrastructure.sh"),
-            "{runner} must source the shared classifier"
-        );
-        assert!(
-            !source.contains("CARGO_INFRASTRUCTURE_PATTERNS="),
-            "{runner} must not restate the classifier's pattern set"
-        );
-        assert!(
-            !source.contains("with_build_lease.sh"),
-            "{runner} runs under the manifest command's lease; an inner one deadlocks"
-        );
-    }
-}
-
-/// Every proof runner's tools reach the job before its first invocation.
-///
-/// Both runners read their captures with ripgrep, and the runner image ships
-/// neither. A mode invoked before the install does not fail on the claim it
-/// tests; it fails on `rg: command not found`, which the classifier reads as a
-/// code failure and blames on the plan.
-///
-/// The two owner-registration modes are not listed, because CI does not run
-/// them. Each lists and then runs a complete `resolution-test-support` target
-/// whose owners read `.manifest.toml` and the untracked guides, and their reader
-/// panics rather than skip on an absent path. `graph_owners::GRAPH_CI_IDENTITIES`
-/// is where the graph mode's absence from the workflow is asserted.
-#[cfg(feature = "resolution-test-support")]
-#[test]
-fn ci_installs_every_proof_runner_tool_before_execution() {
-    let workflow = read_text(".github/workflows/ci.yml");
-    let install = workflow
-        .find("sudo apt-get install --yes ripgrep")
-        .expect("CI installs ripgrep for the proof runners");
-    for invocation in [
-        "docs/scripts/run_resolution_proof.sh resolution-tier1-dependency-closure",
-        "docs/scripts/run_graph_proof.sh graph-dependency-closure",
-        "docs/scripts/run_graph_proof.sh graph-source-capabilities",
-    ] {
-        let proof = workflow
-            .find(invocation)
-            .unwrap_or_else(|| panic!("CI runs {invocation}"));
-        assert!(
-            install < proof,
-            "CI must install the proof runners' tools before invoking {invocation}"
-        );
-    }
-}
-
-/// The graph crate's release and verification owners, as this plan states them.
-///
-/// One case, because the claim is one claim: the eighth published package is
-/// registered everywhere a released, scanned, gated, and proved workspace member
-/// has to be registered, and a half-registered member is exactly the failure the
-/// case exists to reject. Each helper it calls answers one of those questions.
-///
-/// The generic release graph — every first-party requirement equals its
-/// dependency's declared version, and every dependency is released first — is
-/// [`published_versions_and_requirements_form_releaseable_graph`]'s, and is not
-/// restated here. Nor are the pre-existing `[ci]` keys, which
-/// `resolution::authority_keys` owns.
-///
-/// `.manifest.toml` and the plan-loop scripts are local tooling a published
-/// checkout does not carry, and [`read_text`] panics rather than skip on an
-/// absent one. `resolution-test-support` keeps that panic out of the `[ci]` test
-/// matrix, which selects the feature nowhere; `run_graph_proof.sh` selects it
-/// for the configuration this predicate is required to be registered under.
-#[cfg(feature = "resolution-test-support")]
-#[test]
-fn graph_release_and_verification_owners_are_exact() {
-    assert_graph_manifest(&parse_toml(&format!("{GRAPH_PACKAGE}/Cargo.toml")));
-    assert_graph_release_position(&release_entries(&parse_toml("release-plz.toml")));
-
-    let manifest = parse_toml(".manifest.toml");
-    let ci = manifest
-        .get("ci")
-        .and_then(toml::Value::as_table)
-        .expect(".manifest.toml declares [ci]");
-    let verification = manifest
-        .get("verification")
-        .and_then(toml::Value::as_table)
-        .expect(".manifest.toml declares [verification]");
-
-    assert_graph_ci_identities(ci, &read_text(".github/workflows/ci.yml"));
-    assert_graph_check_and_gate_coverage(ci, verification);
-    assert_graph_verification_routing();
-    assert_graph_proof_runner();
 }

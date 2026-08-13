@@ -4,45 +4,17 @@
 //! `#[path]` from the root for the reason stated there: cargo builds one test
 //! executable per `tests/*.rs`, so a support tree must not become a root.
 
-// The `authority*` modules are the indexed tree-shape proof, split by what a
-// clone can read. `authority`, `authority_model`, and `authority_scan` index
-// committed sources alone, so they compile everywhere and their case runs in
-// the ordinary `[ci]` matrix — the only place a reintroduced identifier or a
-// returned test root can fail before the freeze.
-//
-// `authority_acceptance`, `authority_documents`, `authority_keys`,
-// `authority_proofs`, and `authority_runner` read `.manifest.toml`, the
-// plan-loop scripts, and the spec/guide set — none of which a published
-// checkout carries — and they panic rather than skip when one is missing.
-// `resolution-test-support` is what keeps that panic out of the `[ci]` test
-// matrix: no configuration there selects the feature, and
-// `run_resolution_proof.sh` selects it for every mode that names them.
-//
-// `authority_asserts` is a different subject — refused target identities — and
-// carries the feature because only the probe can construct one.
+// The `authority*` modules hold the committed source tree to its declared
+// ownership model. `authority_asserts` is a different subject — refused target
+// identities — and carries the feature because only the probe can construct
+// one.
 mod authority;
-#[cfg(feature = "resolution-test-support")]
-mod authority_acceptance;
 #[cfg(feature = "resolution-test-support")]
 mod authority_asserts;
 #[cfg(feature = "resolution-test-support")]
-mod authority_documents;
-#[cfg(feature = "resolution-test-support")]
 mod authority_invalidation;
-#[cfg(feature = "resolution-test-support")]
-mod authority_keys;
-// `pub(crate)` for the same reason `authority_scan` is: `graph_owners` states
-// the same eight first-party trees for the check and gate commands, and two
-// inventories of one set with nothing comparing them is one of them going
-// stale. It reads this model rather than keeping a third copy.
-pub(crate) mod authority_model;
-#[cfg(feature = "resolution-test-support")]
-mod authority_proofs;
-#[cfg(feature = "resolution-test-support")]
-mod authority_runner;
-// `read_text` is the one reader that fails loudly on an absent subject, so
-// `release_contract` and `graph_owners` share it rather than each opening files
-// their own way.
+mod authority_model;
+// `read_text` is shared by the committed-tree authority and release checks.
 pub(crate) mod authority_scan;
 mod closure_asserts;
 mod closure_fixtures;

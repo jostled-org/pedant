@@ -39,52 +39,20 @@ jobs:
           sudo install --mode 0755 \
             "${RUNNER_TEMP}/${release}/shellcheck" \
             /usr/local/bin/shellcheck
-      # The cheapest gate in the job, and it needs no toolchain: shellcheck runs
-      # in milliseconds against a checkout alone, so a broken script fails here
-      # rather than after twenty minutes of cargo. The wrapper's subject list
-      # covers the committed shell this repository owns: the
-      # boundary checks, the shared cargo-output classifier, the two plan-loop
-      # verification runners that source it, and the resolution and graph proof
-      # runners that source both it and `check_lib.sh`. Each sourcing script carries a
-      # `# shellcheck source=` directive. A directive is an instruction to a
-      # lint; running the lint is what makes it mean anything. `-x` is the flag
-      # that follows those directives, so without it each would be linted
-      # against an unresolved helper file and every function it defines would
-      # read as an unknown command. The wrapper rejects any ShellCheck version
-      # other than the pinned release installed above.
+      # Lint every repository check before the Rust build. `-x` follows each
+      # check's shared-library directive, and the wrapper rejects any
+      # ShellCheck version other than the pinned release installed above.
       - run: docs/scripts/run_shellcheck.sh
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
-      # Two of the three boundary checks need only cargo's resolver — about a
-      # second between them, no compile — so they run ahead of everything that
-      # builds. A forbidden crate edge or a dropped feature forwarding fails in
-      # seconds instead of behind the whole build.
-      # `check_syntax_capabilities.sh` stays below, because it builds and runs
-      # `pedant` itself: its claim is about what pedant's own detection reports.
+      # Resolver-only boundary checks run before anything that builds.
       - run: docs/scripts/check_syntax_dependency_closure.sh
       - run: docs/scripts/check_lang_feature_forwarding.sh
       - run: docs/scripts/check_published_manifests.sh
-      # shellcheck above lints four scripts CI never ran, and a lint cannot see
-      # a vacuous proof. This mode is the cheapest of the runner's seven —
-      # `cargo tree` resolves and prints, it compiles nothing — and running it
-      # executes the parts every other mode shares: the runner's own dispatch
-      # and directory anchoring, both `source` lines, `require_tools`, and the
-      # whole `cargo_infrastructure.sh` contract that `verify_step.sh` and
-      # `verify_affected.sh` also depend on. What stays lint-only is the two
-      # plan-loop runners and the registration/guarded-set modes, which need a
-      # substrate build the plan loop already pays for locally. `PROOF_OUTPUT_DIR`
-      # must name an existing directory; `runner.temp` is one.
-      - run: docs/scripts/run_resolution_proof.sh resolution-tier1-dependency-closure
-        env:
-          PROOF_OUTPUT_DIR: ${{ runner.temp }}
-      # The graph's own closure, and the other `cargo tree` mode that compiles
-      # nothing. It captures the library's `normal,build,features` edges apart
-      # from the harness's `normal,build,dev,features` edges, because dev-only
-      # feature unification would otherwise let `resolution-test-support` read
-      # as the published library's shape.
-      - run: docs/scripts/run_graph_proof.sh graph-dependency-closure
+      - run: docs/scripts/check_resolution_dependency_closure.sh
+      - run: docs/scripts/check_graph_dependency_closure.sh
       - run: cargo fmt --check
       - run: cargo fmt --manifest-path test-support/process-guard/Cargo.toml --check
       - run: cargo clippy -- -D warnings
@@ -158,19 +126,9 @@ jobs:
       # as a documented exception. Its two cargo-only siblings run near the top
       # of this job.
       - run: docs/scripts/check_syntax_capabilities.sh
-      # The graph's one build-backed mode here: pedant's own detection over
-      # `pedant-graph/src`, behind a sentinel mirror that proves the detectors
-      # are live.
-      #
-      # `graph-owner-registration` is not run. It lists and then runs the
-      # complete `pedant-core --features resolution-test-support` substrate
-      # target, whose owners read `.manifest.toml`, `docs/design-rationale.md`,
-      # and `docs/testing.md` — none of which this checkout carries — and their
-      # reader panics rather than skip on an absent path. It is local acceptance
-      # for the same reason `resolution-owner-registration` is. No graph
-      # predicate goes unrun here: the bare `cargo test` step above builds and
-      # runs the whole `pedant-graph` target.
-      - run: docs/scripts/run_graph_proof.sh graph-source-capabilities
+      # Pedant scans graph source behind a sentinel mirror that proves all four
+      # capability detectors are live before an empty profile is accepted.
+      - run: docs/scripts/check_graph_capabilities.sh
       - run: cargo clippy -p pedant-graph --all-targets -- -D warnings
       - run: RUSTDOCFLAGS="-D missing_docs" cargo doc --no-deps -p pedant-graph
       - run: cargo clippy -p pedant-syntax -p pedant-snippet --all-targets --all-features -- -D warnings

@@ -2,11 +2,8 @@
 //!
 //! Each function below answers one question the model asks. None builds,
 //! spawns, or reads outside the repository, and every file it opens is
-//! committed — so this half of the proof compiles in every configuration and
-//! runs in the ordinary `[ci]` matrix, where a reintroduced identifier is a
-//! regression a normal `cargo test` must catch. The scans that index local
-//! tooling live in [`super::authority_acceptance`] and
-//! [`super::authority_documents`], which carry `resolution-test-support`.
+//! committed — so the proof compiles in every configuration and a reintroduced
+//! identifier is a regression a normal `cargo test` catches.
 //!
 //! [`read_text`] states what happens when a subject is absent, and it is never
 //! "pass".

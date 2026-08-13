@@ -9,25 +9,25 @@ docs/.codebase-snapshot.md
 .manifest.toml
 docs/specs/
 docs/plans/
-# Most plan-loop machinery under docs/scripts/ is local tooling, but every file
-# named by .github/workflows/ci.yml must exist in a fresh checkout, or the job
-# fails on a clone that is missing them. That includes the repository boundary
-# checks, their shared helpers, the version-pinned shellcheck runner, and the
-# release-readiness gate. `shellcheck -x` follows source directives, so a
-# sourced helper left untracked fails the lint as surely as a missing subject.
-# Ignoring the directory itself would stop git descending into it, so the
-# entries are ignored and every CI-owned file is re-included.
+# Scripts are ignored by default. The local orchestration files remain tracked
+# developer tooling, while repository checks are the separate scripts invoked
+# by GitHub workflows. `shellcheck -x` follows source directives, so every
+# repository-check helper must be tracked with its callers.
 docs/scripts/*
 !docs/scripts/cargo_infrastructure.sh
 !docs/scripts/check_lang_feature_forwarding.sh
 !docs/scripts/check_lib.sh
+!docs/scripts/check_graph_capabilities.sh
+!docs/scripts/check_graph_dependency_closure.sh
 !docs/scripts/check_published_manifests.sh
 !docs/scripts/check_release_readiness.sh
+!docs/scripts/check_resolution_dependency_closure.sh
 !docs/scripts/check_syntax_capabilities.sh
 !docs/scripts/check_syntax_dependency_closure.sh
 !docs/scripts/run_graph_proof.sh
 !docs/scripts/run_resolution_proof.sh
 !docs/scripts/run_shellcheck.sh
+!docs/scripts/repository_check_lib.sh
 !docs/scripts/verify_affected.sh
 !docs/scripts/verify_step.sh
 docs/internal/

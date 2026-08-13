@@ -3,7 +3,7 @@
 # run_resolution_proof.sh — the closed owner of the rust-symbol-resolution
 # plan's final-tree proofs.
 #
-# Seven modes, no more. Each names a fixed inventory of fully qualified test
+# Six modes, no more. Each names a fixed inventory of fully qualified test
 # predicates, obtains the registered list for its exact cargo configuration,
 # requires every modelled predicate exactly once against a non-zero total, and
 # only then executes them. The order matters: cargo reports success for a
@@ -15,7 +15,6 @@
 #   resolution-tier1-dependency-closure  no rust-analyzer in the Tier 1 graph
 #   supply-chain-snapshot-reuse          the child-written projection receipt
 #   mcp-resolution-receipt               the final-tree completion receipt
-#   resolution-authority-shape           the indexed authority/root proof
 #   resolution-owner-registration        every owner, every configuration
 #
 # Environment: `PROOF_OUTPUT_DIR` is required and is the only directory this
@@ -111,11 +110,7 @@ TIER2_PREDICATES=(
     resolution::semantic::semantic_handshake_reuses_retained_snapshot_fingerprint
 )
 
-# The indexed authority proof.
-AUTHORITY_PREDICATE="resolution::authority::resolution_authority_shape_and_root_inventory_are_exact"
-
-# Its committed-tree half, which every ordinary configuration compiles and the
-# `[ci]` matrix therefore runs.
+# The committed-tree authority predicate.
 TRACKED_AUTHORITY_PREDICATE="resolution::authority::first_party_authorities_removed_names_and_migrated_cases_are_exact"
 
 # The child-written projection receipt.
@@ -152,11 +147,7 @@ SUBSTRATE_EXTRA_PREDICATES=(
     release_contract::unpublished_dev_dependencies_never_become_registry_requirements
     release_contract::process_guard_windows_features_cover_job_creation_types
     release_contract::dependency_policy_allows_only_path_wildcards
-    release_contract::verification_commands_are_build_lease_wrapped_and_classifier_backed
-    release_contract::ci_installs_every_proof_runner_tool_before_execution
-    release_contract::graph_release_and_verification_owners_are_exact
     "${TRACKED_AUTHORITY_PREDICATE}"
-    "${AUTHORITY_PREDICATE}"
 )
 
 # ---------------------------------------------------------------------------
@@ -256,37 +247,13 @@ mode_tier2() {
 # surface, and excluding them is what keeps the claim about Tier 1 rather than
 # about the test harness around it.
 mode_dependency_closure() {
-    cargo_capture tier1-tree cargo tree -p pedant-core --no-default-features \
-        --features resolution-test-support --edges normal --prefix none || return 1
-    local tree="${CAPTURE_PATH}"
-    # The capture holds cargo's stderr as well, so `Updating` and `Blocking`
-    # progress lines alone make it non-empty. Emptiness therefore proves
-    # nothing; the forbid grep below would match a graph nobody printed and
-    # report the absence as a result. Name the root instead: `--prefix none`
-    # prints it as `pedant-core v<version> (<path>)`, and if that line is
-    # missing the graph was never rendered. `check_lib.sh` owns the test, which
-    # `run_graph_proof.sh` makes about two roots of its own; the claim it proves
-    # is this runner's, so this runner writes the refusal.
-    if ! tree_names_root "${tree}" pedant-core; then
-        fail "the Tier 1 dependency graph names no pedant-core root, so nothing was inspected"
-        return 1
-    fi
-    # `check_lib.sh` owns both forbid checks. Reading ripgrep's output without
-    # its status is what turned a broken matcher into a clean report here, and
-    # one owner of that distinction serves both runners.
-    assert_no_forbidden_packages tier1 "${tree}" line-index || return 1
-    assert_no_rust_analyzer_edges tier1 "${tree}" || return 1
-    echo "[run_resolution_proof] tier1 dependency closure: no ra_ap_* or line-index edge"
+    cargo_capture tier1-dependency-closure \
+        "${script_dir}/check_resolution_dependency_closure.sh"
 }
 
 mode_supply_chain() {
     verify_registration supply-chain "${SUPPLY_CHAIN_CONFIG}" "${SUPPLY_CHAIN_PREDICATE}" || return 1
     run_exact supply-chain "${SUPPLY_CHAIN_CONFIG}" "${SUPPLY_CHAIN_PREDICATE}"
-}
-
-mode_authority() {
-    verify_registration authority "${TIER1_CONFIG}" "${AUTHORITY_PREDICATE}" || return 1
-    run_exact authority "${TIER1_CONFIG}" "${AUTHORITY_PREDICATE}"
 }
 
 mode_mcp() {
@@ -389,13 +356,12 @@ case "${1:-}" in
     resolution-tier1-dependency-closure) mode_dependency_closure ;;
     supply-chain-snapshot-reuse) mode_supply_chain ;;
     mcp-resolution-receipt) mode_mcp ;;
-    resolution-authority-shape) mode_authority ;;
     resolution-owner-registration) mode_owner_registration ;;
     *)
-        echo "error: '${1:-}' is not one of the seven accepted modes:" >&2
+        echo "error: '${1:-}' is not one of the six accepted modes:" >&2
         echo "  resolution-tier1 resolution-tier2 resolution-tier1-dependency-closure" >&2
         echo "  supply-chain-snapshot-reuse mcp-resolution-receipt" >&2
-        echo "  resolution-authority-shape resolution-owner-registration" >&2
+        echo "  resolution-owner-registration" >&2
         exit 64
         ;;
 esac

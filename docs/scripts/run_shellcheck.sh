@@ -15,10 +15,13 @@ case "${actual_version}" in
 esac
 
 exec shellcheck -x \
-    docs/scripts/check_*.sh \
-    docs/scripts/cargo_infrastructure.sh \
-    docs/scripts/verify_step.sh \
-    docs/scripts/verify_affected.sh \
-    docs/scripts/run_resolution_proof.sh \
-    docs/scripts/run_graph_proof.sh \
+    docs/scripts/repository_check_lib.sh \
+    docs/scripts/check_graph_capabilities.sh \
+    docs/scripts/check_graph_dependency_closure.sh \
+    docs/scripts/check_lang_feature_forwarding.sh \
+    docs/scripts/check_published_manifests.sh \
+    docs/scripts/check_release_readiness.sh \
+    docs/scripts/check_resolution_dependency_closure.sh \
+    docs/scripts/check_syntax_capabilities.sh \
+    docs/scripts/check_syntax_dependency_closure.sh \
     docs/scripts/run_shellcheck.sh

@@ -18,7 +18,7 @@
 #[path = "substrate_support/declaration_scan.rs"]
 mod declaration_scan;
 
-/// Published-package release order and the plan loop's verification commands.
+/// Published-package release order and registry compatibility.
 /// Same `#[path]` reason as [`declaration_scan`].
 #[path = "substrate_support/release_contract.rs"]
 mod release_contract;
@@ -27,28 +27,6 @@ mod release_contract;
 /// reason as [`declaration_scan`].
 #[path = "substrate_support/release_workflow.rs"]
 mod release_workflow;
-
-/// The written-down release and verification owners of the graph crate, read by
-/// the release-contract case above. It indexes `.manifest.toml` and the
-/// plan-loop scripts, which a published checkout does not carry, so it carries
-/// the proof feature with its reader. Same `#[path]` reason as
-/// [`declaration_scan`].
-#[cfg(feature = "resolution-test-support")]
-#[path = "substrate_support/graph_owners.rs"]
-mod graph_owners;
-
-/// The written-down model of the graph proof runner, which the same case holds
-/// its committed text to. Same `#[path]` reason as [`declaration_scan`].
-#[cfg(feature = "resolution-test-support")]
-#[path = "substrate_support/graph_proof_model.rs"]
-mod graph_proof_model;
-
-/// The shared reader that parses a proof runner's declarations back out of its
-/// text. Both runner models use it, and both index local tooling. Same
-/// `#[path]` reason as [`declaration_scan`].
-#[cfg(feature = "resolution-test-support")]
-#[path = "substrate_support/shell_script.rs"]
-mod shell_script;
 
 /// Focused lexical-path authority and production-wiring proofs. The test-only
 /// adapter exists only under the proof feature, so ordinary builds expose no

@@ -40,8 +40,8 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source-path=SCRIPTDIR
-# shellcheck source=check_lib.sh
-. "${script_dir}/check_lib.sh"
+# shellcheck source=repository_check_lib.sh
+. "${script_dir}/repository_check_lib.sh"
 
 cd_repo_root
 

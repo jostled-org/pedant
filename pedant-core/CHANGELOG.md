@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.2](https://github.com/jostled-org/pedant/compare/pedant-core-v0.21.1...pedant-core-v0.21.2) - 2026-08-13
+
+### Fixed
+
+- *(resolution)* anchor inline paths to declaring sources
+
 ## [0.21.1](https://github.com/jostled-org/pedant/compare/pedant-core-v0.21.0...pedant-core-v0.21.1) - 2026-08-13
 
 ### Fixed

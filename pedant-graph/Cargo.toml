@@ -13,7 +13,7 @@ keywords = ["graph", "static-analysis", "code-structure", "rust", "topology"]
 # The graph consumes already validated resolution facts. `default-features =
 # false` keeps the judgment surface, the semantic tier, and every rust-analyzer
 # package out of the library closure.
-pedant-core = { version = "0.20.2", path = "../pedant-core", default-features = false }
+pedant-core = { version = "0.21.0", path = "../pedant-core", default-features = false }
 pedant-types = { version = "0.15.0", path = "../pedant-types" }
 # `rc` is what implements `Serialize` for the `Arc<str>` payloads every node,
 # reference, and dependency evidence record carries. It is declared here rather
@@ -24,7 +24,7 @@ thiserror = "2"
 [dev-dependencies]
 # The malformed-input proofs need resolution states the validated public
 # boundary cannot express. No normal or build edge selects this feature.
-pedant-core = { version = "0.20.2", path = "../pedant-core", default-features = false, features = [
+pedant-core = { version = "0.21.0", path = "../pedant-core", default-features = false, features = [
     "resolution-test-support",
 ] }
 serde_json = "1"

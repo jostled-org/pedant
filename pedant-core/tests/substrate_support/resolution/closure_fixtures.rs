@@ -223,6 +223,68 @@ pub const EXPECTED_LIBRARY_MODULES: &[&str] = &[
     "RustModuleId(9)|sibling|src/sibling.rs|2|false|Some(RustModuleId(1))",
 ];
 
+/// An explicitly pathed module whose ordinary child lives beside the file.
+/// The same child beneath the file stem is a decoy for the standard-module
+/// lookup rule, which does not apply to a source selected by `#[path]`.
+pub const PATH_LOADED_SIBLING: &[FixtureFile] = &[
+    (
+        "repo/Cargo.toml",
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    ),
+    ("repo/src/lib.rs", "#[path = \"platform.rs\"]\nmod sys;\n"),
+    ("repo/src/platform.rs", "pub mod sibling;\n"),
+    ("repo/src/sibling.rs", "pub fn selected() {}\n"),
+    ("repo/src/platform/sibling.rs", "pub fn stem_decoy() {}\n"),
+];
+
+pub const EXPECTED_PATH_LOADED_SOURCES: &[&str] =
+    &["src/lib.rs", "src/platform.rs", "src/sibling.rs"];
+
+/// Mutually exclusive path alternatives whose loaded sources each declare an
+/// ordinary child. Every alternative and its sibling child belongs to the
+/// closure; each `<stem>/sibling.rs` is the wrong lookup-directory decoy.
+pub const CFG_ATTR_PATH_LOADED_SIBLINGS: &[FixtureFile] = &[
+    (
+        "repo/Cargo.toml",
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    ),
+    (
+        "repo/src/lib.rs",
+        r#"#[cfg_attr(unix, path = "unix/platform.rs")]
+#[cfg_attr(windows, path = "windows/platform.rs")]
+pub mod sys;
+"#,
+    ),
+    ("repo/src/unix/platform.rs", "pub mod sibling;\n"),
+    ("repo/src/unix/sibling.rs", "pub fn unix() {}\n"),
+    (
+        "repo/src/unix/platform/sibling.rs",
+        "pub fn unix_stem_decoy() {}\n",
+    ),
+    ("repo/src/windows/platform.rs", "pub mod sibling;\n"),
+    ("repo/src/windows/sibling.rs", "pub fn windows() {}\n"),
+    (
+        "repo/src/windows/platform/sibling.rs",
+        "pub fn windows_stem_decoy() {}\n",
+    ),
+];
+
+pub const EXPECTED_CFG_ATTR_PATH_LOADED_SOURCES: &[&str] = &[
+    "src/lib.rs",
+    "src/unix/platform.rs",
+    "src/unix/sibling.rs",
+    "src/windows/platform.rs",
+    "src/windows/sibling.rs",
+];
+
+pub const EXPECTED_CFG_ATTR_PATH_LOADED_MODULES: &[&str] = &[
+    "RustModuleId(0)|crate|src/lib.rs|0|false|None",
+    "RustModuleId(1)|sys|src/unix/platform.rs|1|false|Some(RustModuleId(0))",
+    "RustModuleId(2)|sys|src/windows/platform.rs|1|false|Some(RustModuleId(0))",
+    "RustModuleId(3)|sibling|src/windows/sibling.rs|2|false|Some(RustModuleId(2))",
+    "RustModuleId(4)|sibling|src/unix/sibling.rs|2|false|Some(RustModuleId(1))",
+];
+
 /// A library whose module graph repeats sources on purpose.
 ///
 /// `nest` includes its own `mod.rs`, which keeps the same lookup directory and
@@ -250,7 +312,7 @@ pub mod nest;
 "#,
     ),
     ("repo/src/shared.rs", "pub mod tail;\n"),
-    ("repo/src/shared/tail.rs", "pub fn tail() {}\n"),
+    ("repo/src/tail.rs", "pub fn tail() {}\n"),
     (
         "repo/src/nest/mod.rs",
         "#[path = \"mod.rs\"]\npub mod recurse;\n",
@@ -262,7 +324,7 @@ pub const EXPECTED_REPETITION_SOURCES: &[&str] = &[
     "src/lib.rs",
     "src/nest/mod.rs",
     "src/shared.rs",
-    "src/shared/tail.rs",
+    "src/tail.rs",
 ];
 
 /// Every module instance the repetition closure creates. `again` and `recurse`
@@ -276,8 +338,8 @@ pub const EXPECTED_REPETITION_MODULES: &[&str] = &[
     "RustModuleId(3)|second|src/shared.rs|1|false|Some(RustModuleId(0))",
     "RustModuleId(4)|nest|src/nest/mod.rs|1|false|Some(RustModuleId(0))",
     "RustModuleId(5)|recurse|src/nest/mod.rs|2|false|Some(RustModuleId(4))",
-    "RustModuleId(6)|tail|src/shared/tail.rs|2|false|Some(RustModuleId(3))",
-    "RustModuleId(7)|tail|src/shared/tail.rs|2|false|Some(RustModuleId(2))",
+    "RustModuleId(6)|tail|src/tail.rs|2|false|Some(RustModuleId(3))",
+    "RustModuleId(7)|tail|src/tail.rs|2|false|Some(RustModuleId(2))",
 ];
 
 /// The only source a root-confinement case may read: its own entry point. The

@@ -13,6 +13,22 @@ use crate::baseline_store::{BaselineStore, VendoredWorkspace};
 use crate::fake_cargo::{copying_vendor_body, generate_lockfile, run_with_fake_cargo};
 use crate::process_guard::Completed;
 
+/// Debug-package inputs expected from the path-override fixture. `false`
+/// entries are valid sources placed at the incorrect stem-derived lookup base.
+pub(crate) const PATH_OVERRIDE_DEBUG_FILES: &[(&str, bool)] = &[
+    ("src/lib.rs", true),
+    ("src/direct.rs", true),
+    ("src/direct_bindings.rs", true),
+    ("src/stack/mod.rs", true),
+    ("src/stack/unix.rs", true),
+    ("src/stack/unix_bindings.rs", true),
+    ("src/stack/windows.rs", true),
+    ("src/stack/windows_bindings.rs", true),
+    ("src/direct/direct_bindings.rs", false),
+    ("src/stack/unix/unix_bindings.rs", false),
+    ("src/stack/windows/windows_bindings.rs", false),
+];
+
 /// A vendored tree, a consumer workspace, and the baseline store between them.
 pub(crate) struct VendorFixture {
     root: TempDir,
@@ -96,6 +112,45 @@ pub(crate) fn write_library_crate(dir: &Path, manifest: &str, library: &str) {
     write(&dir.join("Cargo.toml"), manifest);
     write(&dir.join("src/lib.rs"), library);
 }
+
+/// A library using a bare path override and two conditional path alternatives.
+/// Every loaded source declares a child beside itself. Valid files beneath
+/// stem-derived directories make an incorrect closure observable in debug
+/// output without making initialization fail first.
+pub(crate) fn write_path_override_crate(root: &Path) {
+    write_library_crate(
+        root,
+        &manifest("path-children", "0.1.0"),
+        "#[path = \"direct.rs\"]\nmod direct;\nmod stack;\n",
+    );
+    for (path, source) in PATH_OVERRIDE_SOURCES {
+        write(&root.join(path), source);
+    }
+}
+
+const PATH_OVERRIDE_SOURCES: &[(&str, &str)] = &[
+    ("src/direct.rs", "mod direct_bindings;\n"),
+    ("src/direct_bindings.rs", "pub fn sibling() {}\n"),
+    ("src/direct/direct_bindings.rs", "pub fn stem_decoy() {}\n"),
+    (
+        "src/stack/mod.rs",
+        "#[cfg_attr(unix, path = \"unix.rs\")]\n\
+         #[cfg_attr(windows, path = \"windows.rs\")]\n\
+         mod sys;\n",
+    ),
+    ("src/stack/unix.rs", "mod unix_bindings;\n"),
+    ("src/stack/unix_bindings.rs", "pub fn sibling() {}\n"),
+    (
+        "src/stack/unix/unix_bindings.rs",
+        "pub fn stem_decoy() {}\n",
+    ),
+    ("src/stack/windows.rs", "mod windows_bindings;\n"),
+    ("src/stack/windows_bindings.rs", "pub fn sibling() {}\n"),
+    (
+        "src/stack/windows/windows_bindings.rs",
+        "pub fn stem_decoy() {}\n",
+    ),
+];
 
 /// The simplest manifest that declares one package.
 pub(crate) fn manifest(name: &str, version: &str) -> String {

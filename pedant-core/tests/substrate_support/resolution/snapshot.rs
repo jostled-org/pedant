@@ -22,8 +22,9 @@ use crate::resolution::authority_asserts::{
 #[cfg(feature = "resolution-test-support")]
 use crate::resolution::authority_invalidation::invalidated;
 use crate::resolution::closure_asserts::{
-    assert_closure_failure_families, assert_invalid_utf8_is_partial_evidence,
-    assert_library_closure, assert_module_repetition_is_bounded,
+    assert_cfg_attr_path_loaded_sources_use_sibling_directories, assert_closure_failure_families,
+    assert_invalid_utf8_is_partial_evidence, assert_library_closure,
+    assert_module_repetition_is_bounded, assert_path_loaded_source_uses_sibling_directory,
     assert_root_confinement_never_reads_outside, assert_source_evidence,
 };
 #[cfg(feature = "resolution-test-support")]
@@ -154,6 +155,16 @@ fn target_snapshot_contains_only_root_target_module_closure() {
     assert_closure_failure_families();
     assert_invalid_utf8_is_partial_evidence();
     assert_root_confinement_never_reads_outside();
+}
+
+#[test]
+fn path_loaded_source_resolves_ordinary_children_beside_its_file() {
+    assert_path_loaded_source_uses_sibling_directory();
+}
+
+#[test]
+fn path_loaded_cfg_attr_alternatives_retain_each_sibling_child() {
+    assert_cfg_attr_path_loaded_sources_use_sibling_directories();
 }
 
 #[test]

@@ -2,7 +2,10 @@
 //! older persisted document must still mean.
 
 use crate::baseline_store::VendoredWorkspace;
-use crate::fixtures::{VendorFixture, manifest, manifest_with_msrv, write, write_library_crate};
+use crate::fixtures::{
+    PATH_OVERRIDE_DEBUG_FILES, VendorFixture, manifest, manifest_with_msrv, write,
+    write_library_crate, write_path_override_crate,
+};
 use crate::process_guard::Completed;
 
 /// A baseline persisted before snapshot-backed attestation recorded a partial
@@ -309,6 +312,30 @@ fn init_and_verify_round_trip_uses_only_reachable_files() {
     assert!(stderr.contains("file: ./src/lib.rs"), "{stderr}");
     assert!(stderr.contains("file: ./src/sub/mod.rs"), "{stderr}");
     assert!(!stderr.contains("orphan"), "{stderr}");
+}
+
+/// Path overrides resolve children beside every loaded source, including all
+/// conditional alternatives; stem-derived files remain outside the hash.
+#[test]
+fn init_and_verify_hash_children_beside_path_overridden_sources() {
+    let fixture = VendorFixture::new();
+    write_path_override_crate(&fixture.crate_dir("path-children"));
+    let init = fixture.supply_chain("init");
+    assert!(init.success(), "init failed: {}", init.transcript());
+    let verify = fixture.supply_chain("verify");
+    assert!(verify.success(), "verify failed: {}", verify.transcript());
+    assert!(
+        verify.stdout.contains("All dependencies match baselines."),
+        "{}",
+        verify.transcript()
+    );
+    let debug = fixture.debug_package("path-children");
+    assert!(debug.success(), "debug failed: {}", debug.transcript());
+    let stderr = debug.stderr.as_ref();
+    for (path, expected) in PATH_OVERRIDE_DEBUG_FILES {
+        let label = format!("file: ./{path}").into_boxed_str();
+        assert_eq!(stderr.contains(&*label), *expected, "{label}: {stderr}");
+    }
 }
 
 #[test]

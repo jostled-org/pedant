@@ -138,6 +138,14 @@ pub(super) fn child_directory(file: &Path, crate_root: bool) -> PathBuf {
     }
 }
 
+/// The directory an external module's own external children resolve from.
+pub(super) fn external_child_directory(file: &Path, context: &ChildContext<'_>) -> PathBuf {
+    match context.declaration.declared_paths.is_empty() {
+        true => child_directory(file, false),
+        false => file_directory(file),
+    }
+}
+
 /// Strip the raw-identifier prefix that is syntax rather than a file name.
 fn module_file_name(name: &str) -> &str {
     name.strip_prefix("r#").unwrap_or(name)

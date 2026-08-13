@@ -5,15 +5,7 @@
 .claude/
 project_docs/
 logs/
-docs/.codebase-snapshot.md
 .manifest.toml
-docs/specs/
-docs/plans/
-docs/scripts/
-docs/internal/
-docs/planning_guidelines.md
-docs/introspection_guidelines.md
-docs/rust_profile.md
-docs/design-rationale.md
-docs/testing.md
+docs/**
+!docs/migrating-from-flat-cli.md
 .mcp.json

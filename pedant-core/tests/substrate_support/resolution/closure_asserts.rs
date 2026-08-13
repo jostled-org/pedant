@@ -6,9 +6,11 @@ use pedant_core::resolution::rust::{RustTargetSnapshot, SourceClosureFailureKind
 #[cfg(feature = "resolution-test-support")]
 use crate::resolution::closure_fixtures::ENTRY_ONLY_READS;
 use crate::resolution::closure_fixtures::{
-    CLOSURE_CASES, EXCLUDED_FROM_LIBRARY_CLOSURE, EXPECTED_LIBRARY_CLOSURE,
-    EXPECTED_REPETITION_MODULES, EXPECTED_REPETITION_SOURCES, MISSING_MODULE, MODULE_REPETITION,
-    PATH_ESCAPE,
+    CFG_ATTR_PATH_LOADED_SIBLINGS, CLOSURE_CASES, EXCLUDED_FROM_LIBRARY_CLOSURE,
+    EXPECTED_CFG_ATTR_PATH_LOADED_MODULES, EXPECTED_CFG_ATTR_PATH_LOADED_SOURCES,
+    EXPECTED_LIBRARY_CLOSURE, EXPECTED_PATH_LOADED_SOURCES, EXPECTED_REPETITION_MODULES,
+    EXPECTED_REPETITION_SOURCES, MISSING_MODULE, MODULE_REPETITION, PATH_ESCAPE,
+    PATH_LOADED_SIBLING,
 };
 use crate::resolution::fixture;
 #[cfg(feature = "resolution-test-support")]
@@ -62,6 +64,55 @@ pub fn assert_source_evidence(snapshot: &RustTargetSnapshot) {
         standard.digest(),
         leaf.digest(),
         "distinct source bytes hash distinctly"
+    );
+}
+
+/// A source selected by `#[path]` resolves its ordinary child beside itself,
+/// not beneath a directory derived from its file stem.
+pub fn assert_path_loaded_source_uses_sibling_directory() {
+    let tmp = fixture::build_repository(PATH_LOADED_SIBLING, false);
+    let project = fixture::load_default(&tmp);
+    let snapshot = project
+        .snapshot_target(app_library(&project))
+        .expect("the explicitly pathed module closes");
+    assert_eq!(
+        source_paths(&snapshot),
+        EXPECTED_PATH_LOADED_SOURCES,
+        "#[path] makes platform.rs children relative to the directory that contains platform.rs"
+    );
+    assert!(
+        snapshot.source("src/platform/sibling.rs").is_none(),
+        "the platform stem directory is not the lookup base for an explicitly pathed source"
+    );
+}
+
+/// Every conditional path alternative keeps its own sibling-child lookup
+/// directory, and no alternative is discarded by the closure walk.
+pub fn assert_cfg_attr_path_loaded_sources_use_sibling_directories() {
+    let tmp = fixture::build_repository(CFG_ATTR_PATH_LOADED_SIBLINGS, false);
+    let project = fixture::load_default(&tmp);
+    let library = app_library(&project);
+    let snapshot = project
+        .snapshot_target(library)
+        .expect("every conditional path alternative closes");
+    assert_eq!(
+        source_paths(&snapshot),
+        EXPECTED_CFG_ATTR_PATH_LOADED_SOURCES,
+        "every cfg_attr path source resolves children beside its loaded file"
+    );
+    for decoy in [
+        "src/unix/platform/sibling.rs",
+        "src/windows/platform/sibling.rs",
+    ] {
+        assert!(
+            snapshot.source(decoy).is_none(),
+            "stem-derived decoy {decoy} is outside the closure"
+        );
+    }
+    assert_eq!(
+        root_modules(&project, library),
+        EXPECTED_CFG_ATTR_PATH_LOADED_MODULES,
+        "both cfg_attr path alternatives and both sibling children remain distinct module instances"
     );
 }
 

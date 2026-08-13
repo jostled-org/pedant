@@ -9,7 +9,9 @@ use super::super::failure::limit_failure;
 use super::super::module::{RustModuleId, RustModuleInstance};
 use super::super::store::SourceStore;
 use super::entry::ClosureEntry;
-use super::path::{candidate_paths, child_directory, file_directory, inline_directories};
+use super::path::{
+    candidate_paths, child_directory, external_child_directory, file_directory, inline_directories,
+};
 use super::state::{UnitClosure, Walk};
 use crate::resolution::rust::edition::CargoEdition;
 
@@ -249,7 +251,7 @@ fn external_frame(
             module,
             declarations: store.declarations((&*path, 0), site)?,
             source: path,
-            directory: child_directory(&canonical, false),
+            directory: external_child_directory(&canonical, context),
             declared_directory: file_directory(&canonical),
             depth: context.depth,
             edition: context.frame.edition,

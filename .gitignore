@@ -11,23 +11,23 @@ docs/specs/
 docs/plans/
 # Most plan-loop machinery under docs/scripts/ is local tooling, but every file
 # named by .github/workflows/ci.yml must exist in a fresh checkout, or the job
-# fails on a clone that is missing them. That is the four repository boundary
-# checks, check_lib.sh, which all four source, and the five files the shellcheck
-# step lints: the shared cargo-output classifier, the two verification runners
-# that source it, and the resolution and graph proof runners that source it and
-# check_lib.sh. `shellcheck -x` follows those source directives, so a sourced
-# helper left untracked fails the lint as surely as a missing subject would.
+# fails on a clone that is missing them. That includes the repository boundary
+# checks, their shared helpers, the version-pinned shellcheck runner, and the
+# release-readiness gate. `shellcheck -x` follows source directives, so a
+# sourced helper left untracked fails the lint as surely as a missing subject.
 # Ignoring the directory itself would stop git descending into it, so the
-# entries are ignored and the ten files re-included.
+# entries are ignored and every CI-owned file is re-included.
 docs/scripts/*
 !docs/scripts/cargo_infrastructure.sh
 !docs/scripts/check_lang_feature_forwarding.sh
 !docs/scripts/check_lib.sh
 !docs/scripts/check_published_manifests.sh
+!docs/scripts/check_release_readiness.sh
 !docs/scripts/check_syntax_capabilities.sh
 !docs/scripts/check_syntax_dependency_closure.sh
 !docs/scripts/run_graph_proof.sh
 !docs/scripts/run_resolution_proof.sh
+!docs/scripts/run_shellcheck.sh
 !docs/scripts/verify_affected.sh
 !docs/scripts/verify_step.sh
 docs/internal/

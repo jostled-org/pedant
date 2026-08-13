@@ -23,10 +23,26 @@ jobs:
           fetch-depth: 0
       - run: sudo apt-get update
       - run: sudo apt-get install --yes ripgrep
+      - name: Install pinned ShellCheck
+        env:
+          SHELLCHECK_VERSION: 0.11.0
+          SHELLCHECK_SHA256: 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+        run: |
+          set -euo pipefail
+          archive="${RUNNER_TEMP}/shellcheck.tar.xz"
+          release="shellcheck-v${SHELLCHECK_VERSION}"
+          curl --fail --location --silent --show-error \
+            "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/${release}.linux.x86_64.tar.xz" \
+            --output "${archive}"
+          echo "${SHELLCHECK_SHA256}  ${archive}" | sha256sum --check
+          tar --extract --xz --file "${archive}" --directory "${RUNNER_TEMP}"
+          sudo install --mode 0755 \
+            "${RUNNER_TEMP}/${release}/shellcheck" \
+            /usr/local/bin/shellcheck
       # The cheapest gate in the job, and it needs no toolchain: shellcheck runs
       # in milliseconds against a checkout alone, so a broken script fails here
-      # rather than after twenty minutes of cargo. The `check_*.sh` glob plus
-      # the five named files are the committed shell this repository owns: the
+      # rather than after twenty minutes of cargo. The wrapper's subject list
+      # covers the committed shell this repository owns: the
       # boundary checks, the shared cargo-output classifier, the two plan-loop
       # verification runners that source it, and the resolution and graph proof
       # runners that source both it and `check_lib.sh`. Each sourcing script carries a
@@ -34,8 +50,9 @@ jobs:
       # lint; running the lint is what makes it mean anything. `-x` is the flag
       # that follows those directives, so without it each would be linted
       # against an unresolved helper file and every function it defines would
-      # read as an unknown command. The runner image ships shellcheck.
-      - run: shellcheck -x docs/scripts/check_*.sh docs/scripts/cargo_infrastructure.sh docs/scripts/verify_step.sh docs/scripts/verify_affected.sh docs/scripts/run_resolution_proof.sh docs/scripts/run_graph_proof.sh
+      # read as an unknown command. The wrapper rejects any ShellCheck version
+      # other than the pinned release installed above.
+      - run: docs/scripts/run_shellcheck.sh
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           components: rustfmt, clippy

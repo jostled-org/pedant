@@ -23,6 +23,11 @@ mod declaration_scan;
 #[path = "substrate_support/release_contract.rs"]
 mod release_contract;
 
+/// Publication workflow behavior at the registry boundary. Same `#[path]`
+/// reason as [`declaration_scan`].
+#[path = "substrate_support/release_workflow.rs"]
+mod release_workflow;
+
 /// The written-down release and verification owners of the graph crate, read by
 /// the release-contract case above. It indexes `.manifest.toml` and the
 /// plan-loop scripts, which a published checkout does not carry, so it carries

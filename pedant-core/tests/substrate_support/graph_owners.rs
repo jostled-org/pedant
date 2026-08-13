@@ -267,8 +267,13 @@ pub fn assert_graph_check_and_gate_coverage(ci: &toml::Table, verification: &tom
         );
     }
 
+    let shellcheck_runner = ci_value(ci, "shellcheck");
+    assert_eq!(
+        shellcheck_runner, "docs/scripts/run_shellcheck.sh",
+        "[ci].shellcheck must use the version-pinned runner"
+    );
     assert!(
-        ci_value(ci, "shellcheck").contains(GRAPH_PROOF_RUNNER),
+        read_text(&shellcheck_runner).contains(GRAPH_PROOF_RUNNER),
         "[ci].shellcheck must lint {GRAPH_PROOF_RUNNER}"
     );
     assert!(

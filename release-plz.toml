@@ -1,6 +1,7 @@
 [workspace]
-# Every published package is released whenever release-plz runs, so a
-# dependency requirement never advances ahead of the version it names.
+# Release every package together after the generated release PR has supplied
+# new versions. The workflow's readiness gate prevents publication from an
+# implementation commit whose tagged dependencies still contain older source.
 release_always = true
 
 [[package]]

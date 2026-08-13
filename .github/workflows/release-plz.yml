@@ -42,10 +42,29 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
 
+      - name: Install release metadata reader
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes jq
+
+      - name: Check release readiness
+        id: release_readiness
+        shell: bash
+        run: |
+          status=0
+          docs/scripts/check_release_readiness.sh || status=$?
+          case "${status}" in
+            0) echo "ready=true" >> "${GITHUB_OUTPUT}" ;;
+            1) echo "ready=false" >> "${GITHUB_OUTPUT}" ;;
+            *) exit "${status}" ;;
+          esac
+
       - name: Check published manifests
+        if: steps.release_readiness.outputs.ready == 'true'
         run: docs/scripts/check_published_manifests.sh
 
       - name: Run release-plz
+        if: steps.release_readiness.outputs.ready == 'true'
         uses: release-plz/action@2eb1d8bcb770b4c48ccfaad919734b38b51958c9 # v0.5
         with:
           command: release

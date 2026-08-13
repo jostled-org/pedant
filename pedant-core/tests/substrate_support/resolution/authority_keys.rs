@@ -21,12 +21,7 @@ pub const CI_KEYS: &[(&str, &str)] = &[
         "published_manifests",
         "docs/scripts/check_published_manifests.sh",
     ),
-    (
-        "shellcheck",
-        "shellcheck -x docs/scripts/check_*.sh docs/scripts/cargo_infrastructure.sh \
-         docs/scripts/verify_step.sh docs/scripts/verify_affected.sh \
-         docs/scripts/run_resolution_proof.sh docs/scripts/run_graph_proof.sh",
-    ),
+    ("shellcheck", "docs/scripts/run_shellcheck.sh"),
 ];
 
 /// The `pedant check` prefix the resolution test-coverage key must carry.

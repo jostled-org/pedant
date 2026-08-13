@@ -56,25 +56,24 @@ fn observe_reindex_and_removal<W>(guard: &WatcherGuard<W>) -> Result<(), Box<str
 
     let extra = guard.root().join("src/extra.rs");
     let key = extra.to_string_lossy().into_owned();
+    fs::write(&extra, "")
+        .map_err(|source| Box::<str>::from(format!("failed to create {key}: {source}")))?;
+
+    guard.wait_for("the empty root-package source is indexed", |index| {
+        index.file_result(&key).is_some()
+    })?;
+
     fs::write(
         &extra,
         "use std::net::TcpStream;\npub fn dial() -> std::io::Result<TcpStream> { TcpStream::connect(\"127.0.0.1:0\") }\n",
     )
-    .map_err(|source| Box::<str>::from(format!("failed to add {key}: {source}")))?;
-
-    guard.wait_for("the added root-package source is indexed", |index| {
-        index.file_result(&key).is_some()
-    })?;
+    .map_err(|source| Box::<str>::from(format!("failed to fill {key}: {source}")))?;
     guard.wait_for("the added source reaches the crate profile", |index| {
         index
             .crate_profile("root-app")
             .is_some_and(|profile| profile.capabilities().contains(&Capability::Network))
     })?;
 
-    // The watcher debounces repeated events for one path. Removing the file
-    // inside that window would drop the removal event, which would test the
-    // debounce rather than the cutover.
-    thread::sleep(Duration::from_millis(250));
     fs::remove_file(&extra)
         .map_err(|source| Box::<str>::from(format!("failed to remove {key}: {source}")))?;
     guard.wait_for("the removed source is dropped from the index", |index| {

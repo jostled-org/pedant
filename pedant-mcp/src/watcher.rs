@@ -1,16 +1,12 @@
 use std::io::Write;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
-use std::time::Instant;
 
 use notify::event::ModifyKind;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use thiserror::Error;
 
 use crate::index::{IndexError, WorkspaceIndex};
-
-/// Minimum interval between reindex operations for the same file.
-const DEBOUNCE_INTERVAL_MS: u128 = 100;
 
 /// Failure modes for the file watcher subsystem.
 #[derive(Debug, Error)]
@@ -43,8 +39,6 @@ pub fn start_watcher(
     };
 
     let index = Arc::clone(index);
-    let last_reindex: Arc<RwLock<std::collections::BTreeMap<std::path::PathBuf, Instant>>> =
-        Arc::new(RwLock::new(std::collections::BTreeMap::new()));
     let mut watcher = notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
         let event = match res {
             Ok(e) => e,
@@ -53,7 +47,7 @@ pub fn start_watcher(
                 return;
             }
         };
-        handle_fs_event(&event, &index, &last_reindex);
+        handle_fs_event(&event, &index);
     })?;
 
     for root in &watch_roots {
@@ -72,36 +66,15 @@ pub fn start_watcher(
 
 /// Process a single filesystem event, updating the index as needed.
 ///
-/// Events within `DEBOUNCE_INTERVAL_MS` of the last reindex for the same file
-/// are skipped to avoid redundant work from rapid successive writes.
-fn handle_fs_event(
-    event: &Event,
-    index: &Arc<RwLock<WorkspaceIndex>>,
-    last_reindex: &Arc<RwLock<std::collections::BTreeMap<std::path::PathBuf, Instant>>>,
-) {
-    let now = Instant::now();
-
-    // Check debounce timestamps before acquiring the expensive index write lock.
-    let actionable: Vec<&std::path::Path> = {
-        let timestamps = match last_reindex.read() {
-            Ok(guard) => guard,
-            Err(_) => {
-                report_watcher_error(&WatcherError::LockPoisoned);
-                return;
-            }
-        };
-        event
-            .paths
-            .iter()
-            .filter(|p| p.extension().is_some_and(|ext| ext == "rs"))
-            .filter(|p| {
-                timestamps.get(p.as_path()).is_none_or(|last| {
-                    now.duration_since(*last).as_millis() >= DEBOUNCE_INTERVAL_MS
-                })
-            })
-            .map(|p| p.as_path())
-            .collect()
-    };
+/// Every Rust-source event is applied in delivery order. Skipping a later event
+/// can leave the index at an intermediate state from a multi-event write.
+fn handle_fs_event(event: &Event, index: &Arc<RwLock<WorkspaceIndex>>) {
+    let actionable: Box<[&std::path::Path]> = event
+        .paths
+        .iter()
+        .filter(|path| path.extension().is_some_and(|extension| extension == "rs"))
+        .map(|path| path.as_path())
+        .collect();
 
     if actionable.is_empty() {
         return;
@@ -115,56 +88,34 @@ fn handle_fs_event(
         }
     };
 
-    let mut timestamps = match last_reindex.write() {
-        Ok(guard) => guard,
-        Err(_) => {
-            report_watcher_error(&WatcherError::LockPoisoned);
-            return;
-        }
-    };
-
     for path in actionable {
         match event.kind {
             EventKind::Remove(_) => {
                 idx.remove_file(path);
-                timestamps.remove(path);
             }
             EventKind::Modify(ModifyKind::Name(_)) => {
-                handle_rename_like_modify(path, &mut idx, &mut timestamps, now);
+                handle_rename_like_modify(path, &mut idx);
             }
             EventKind::Create(_) | EventKind::Modify(_) => {
-                reindex_changed_file(path, &mut idx, &mut timestamps, now);
+                reindex_changed_file(path, &mut idx);
             }
             _ => {}
         }
     }
 }
 
-fn handle_rename_like_modify(
-    path: &Path,
-    index: &mut WorkspaceIndex,
-    timestamps: &mut std::collections::BTreeMap<std::path::PathBuf, Instant>,
-    now: Instant,
-) {
+fn handle_rename_like_modify(path: &Path, index: &mut WorkspaceIndex) {
     match path.exists() {
-        true => reindex_changed_file(path, index, timestamps, now),
+        true => reindex_changed_file(path, index),
         false => {
             index.remove_file(path);
-            timestamps.remove(path);
         }
     }
 }
 
-fn reindex_changed_file(
-    path: &Path,
-    index: &mut WorkspaceIndex,
-    timestamps: &mut std::collections::BTreeMap<std::path::PathBuf, Instant>,
-    now: Instant,
-) {
+fn reindex_changed_file(path: &Path, index: &mut WorkspaceIndex) {
     match index.reindex_file(path) {
-        Ok(()) => {
-            timestamps.insert(path.to_path_buf(), now);
-        }
+        Ok(()) => {}
         Err(source) => {
             index.mark_file_degraded(path, &source);
             report_watcher_error(&WatcherError::Reindex {

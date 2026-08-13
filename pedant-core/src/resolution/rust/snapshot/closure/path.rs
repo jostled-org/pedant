@@ -29,11 +29,11 @@ fn declared_directories(
     let (first, rest) = declared;
     let shipped: Box<[PathBuf]> = std::iter::once(first)
         .chain(rest.iter().map(|path| &**path))
-        .map(|path| context.frame.directory.join(path))
+        .map(|path| context.frame.declared_directory.join(path))
         .filter(|directory| directory.is_dir())
         .collect();
     match shipped.is_empty() {
-        true => Box::from([context.frame.directory.join(first)]),
+        true => Box::from([context.frame.declared_directory.join(first)]),
         false => shipped,
     }
 }

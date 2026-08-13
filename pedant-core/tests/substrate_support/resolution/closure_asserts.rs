@@ -13,6 +13,9 @@ use crate::resolution::closure_fixtures::{
     PATH_LOADED_SIBLING,
 };
 use crate::resolution::fixture;
+use crate::resolution::inline_path_fixtures::{
+    EXCLUDED_DECOYS, EXPECTED_MODULES, EXPECTED_SOURCES, EXTERNAL_SOURCE_INLINE_PATHS,
+};
 #[cfg(feature = "resolution-test-support")]
 use crate::resolution::views::observed_paths;
 use crate::resolution::views::{
@@ -113,6 +116,33 @@ pub fn assert_cfg_attr_path_loaded_sources_use_sibling_directories() {
         root_modules(&project, library),
         EXPECTED_CFG_ATTR_PATH_LOADED_MODULES,
         "both cfg_attr path alternatives and both sibling children remain distinct module instances"
+    );
+}
+
+/// Inline modules with explicit paths resolve those paths from the directory
+/// containing the external source that declares them.
+pub fn assert_external_source_inline_paths_use_declaring_directory() {
+    let tmp = fixture::build_repository(EXTERNAL_SOURCE_INLINE_PATHS, false);
+    let project = fixture::load_default(&tmp);
+    let library = app_library(&project);
+    let snapshot = project
+        .snapshot_target(library)
+        .expect("external-source inline path modules close");
+    assert_eq!(
+        source_paths(&snapshot),
+        EXPECTED_SOURCES,
+        "inline path directories are relative to the external declaring source"
+    );
+    for decoy in EXCLUDED_DECOYS {
+        assert!(
+            snapshot.source(decoy).is_none(),
+            "wrong-base decoy {decoy} is outside the closure"
+        );
+    }
+    assert_eq!(
+        root_modules(&project, library),
+        EXPECTED_MODULES,
+        "the empty nested path and every cfg_attr path retain distinct module instances"
     );
 }
 

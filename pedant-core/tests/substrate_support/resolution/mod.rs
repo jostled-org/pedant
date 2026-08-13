@@ -24,6 +24,8 @@ mod fingerprint;
 #[cfg(feature = "resolution-test-support")]
 mod fingerprint_claims;
 mod fixture;
+mod inline_path_cases;
+mod inline_path_fixtures;
 mod limits;
 mod project;
 mod project_fixtures;

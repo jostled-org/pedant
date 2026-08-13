@@ -35,6 +35,9 @@ mod probe_receipt;
 #[path = "supply_chain_support/baseline_cases.rs"]
 mod baseline_cases;
 
+#[path = "supply_chain_support/inline_path_cases.rs"]
+mod inline_path_cases;
+
 /// Journeys through the real Cargo. Same `#[path]` reason.
 #[path = "supply_chain_support/real_cargo_cases.rs"]
 mod real_cargo_cases;

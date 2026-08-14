@@ -95,6 +95,7 @@ pub fn assert_cache_source_boundary_is_exact() {
     assert_every_registered_wrapper_is_modelled();
     assert_reads_no_lifecycle_file();
     assert_states_no_capability();
+    assert_states_no_trait_object();
     assert_functions_are_declared_once(PRODUCTION_SOURCES, 200, "this crate");
     assert_functions_are_declared_once(&cache_family(), 18, "the cache family");
 }
@@ -237,5 +238,28 @@ fn assert_states_no_capability() {
     assert!(
         offenders.is_empty(),
         "graph production sources state no file, process, or network site: {offenders:?}"
+    );
+}
+
+/// No production source or compiled crate documentation states a trait object.
+fn assert_states_no_trait_object() {
+    let spellings = ["Box", "Arc", "Rc"]
+        .into_iter()
+        .map(|owner| format!("{owner}<{}", "dyn"))
+        .chain(std::iter::once(format!("&{}", "dyn")))
+        .collect::<Vec<String>>();
+    let offenders: Vec<String> = SOURCES
+        .iter()
+        .flat_map(|entry| {
+            let code = compact(entry.text);
+            spellings
+                .iter()
+                .filter(move |spelling| code.contains(spelling.as_str()))
+                .map(move |spelling| format!("{} names {spelling}", entry.path))
+        })
+        .collect();
+    assert!(
+        offenders.is_empty(),
+        "graph production sources state no trait object: {offenders:?}"
     );
 }

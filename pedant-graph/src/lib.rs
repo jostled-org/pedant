@@ -98,12 +98,24 @@
 //! ```no_run
 //! # use pedant_core::resolution::rust::{RustResolutionSnapshot, RustTargetResolution};
 //! # use pedant_graph::{
-//! #     GraphAnalysisLimits, GraphCache, GraphCacheLimits, GraphEdgeSelection, GraphLimits,
+//! #     GraphAnalysisError, GraphAnalysisLimits, GraphBuildError, GraphCache, GraphCacheLimits,
+//! #     GraphEdgeSelection, GraphLimits,
 //! # };
+//! # #[derive(Debug)]
+//! # enum ReuseError {
+//! #     Build(GraphBuildError),
+//! #     Analysis(GraphAnalysisError),
+//! # }
+//! # impl From<GraphBuildError> for ReuseError {
+//! #     fn from(error: GraphBuildError) -> Self { Self::Build(error) }
+//! # }
+//! # impl From<GraphAnalysisError> for ReuseError {
+//! #     fn from(error: GraphAnalysisError) -> Self { Self::Analysis(error) }
+//! # }
 //! # fn reused(
 //! #     snapshot: &RustResolutionSnapshot,
 //! #     resolution: &RustTargetResolution,
-//! # ) -> Result<(), Box<dyn std::error::Error>> {
+//! # ) -> Result<(), ReuseError> {
 //! let mut cache = GraphCache::new(GraphCacheLimits::new(4_096, 8, 4, 256));
 //! let held = cache.build_rust_graph(snapshot, resolution, GraphLimits::default())?;
 //! let analysis = held.analyze(

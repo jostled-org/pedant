@@ -56,6 +56,15 @@ pub enum GraphBuildError {
         /// The normalized repository-relative path the site named.
         path: Box<str>,
     },
+    /// One report unit instantiates one normalized path twice, so a second file
+    /// node would be minted for a source that already holds one.
+    #[error("unit {unit} instantiates the source at {path} more than once")]
+    RepeatedUnitSource {
+        /// The report-local unit identifier that instantiates it twice.
+        unit: u32,
+        /// The normalized repository-relative path stated more than once.
+        path: Box<str>,
+    },
     /// The report states a different number of references and resolution
     /// records, so no pairing between them is stated at all.
     #[error("the report states {references} references and {records} resolution records")]

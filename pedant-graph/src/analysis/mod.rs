@@ -5,19 +5,19 @@
 //! version-1 wire contract.
 
 /// Directed betweenness over the selected topology.
-mod betweenness;
+pub(crate) mod betweenness;
 /// Strongly connected components and the acyclic view they produce.
-mod components;
+pub(crate) mod components;
 /// How many selected edges each node states at each of its ends.
-mod degree;
+pub(crate) mod degree;
 /// Where the declared module tree and the selected topology disagree.
-mod divergence;
+pub(crate) mod divergence;
 /// Why an analysis or one of its queries refused.
 mod error;
 /// The borrowed analysis view and the indexes every query reads.
-mod index;
+pub(crate) mod index;
 /// What something drawing or ranking a graph would otherwise derive itself.
-mod layout;
+pub(crate) mod layout;
 /// The ceilings one caller states before an analysis is built.
 mod limits;
 /// The declared module partition, derived from logical containment alone.
@@ -25,7 +25,7 @@ mod partition;
 /// Which edges one analysis admits.
 mod selection;
 /// Bounded neighborhoods, shortest paths, and induced subgraph selections.
-mod traversal;
+pub(crate) mod traversal;
 
 pub use betweenness::BetweennessCentrality;
 pub use components::{

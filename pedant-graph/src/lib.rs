@@ -86,11 +86,46 @@
 //! analysis.layout_assist()
 //! # }
 //! ```
+//!
+//! # Optional bounded reuse
+//!
+//! A caller that inspects successive repository states may keep a cache of the
+//! work it already admitted. The cache builds nothing of its own: it takes the
+//! same snapshot and validated resolution the direct builder takes, returns the
+//! same graph, and states how many values it may retain. Zero disables a
+//! category without disabling the computation behind it.
+//!
+//! ```no_run
+//! # use pedant_core::resolution::rust::{RustResolutionSnapshot, RustTargetResolution};
+//! # use pedant_graph::{
+//! #     GraphAnalysisLimits, GraphCache, GraphCacheLimits, GraphEdgeSelection, GraphLimits,
+//! # };
+//! # fn reused(
+//! #     snapshot: &RustResolutionSnapshot,
+//! #     resolution: &RustTargetResolution,
+//! # ) -> Result<(), Box<dyn std::error::Error>> {
+//! let mut cache = GraphCache::new(GraphCacheLimits::new(4_096, 8, 4, 256));
+//! let held = cache.build_rust_graph(snapshot, resolution, GraphLimits::default())?;
+//! let analysis = held.analyze(
+//!     GraphEdgeSelection::code_relations(),
+//!     GraphAnalysisLimits::new(100_000, 400_000, 8, 50_000_000),
+//! )?;
+//! let _ = (analysis.divergence(), cache.stats().exact_graph_hits());
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! The returned handles are the caller's: a graph, an analysis, and every
+//! product they answer with stay valid and immutable after eviction, after
+//! `clear`, and after the cache itself is dropped. Nothing about the version-1
+//! object above changes, and no cache value is serialized.
 
 #![deny(missing_docs)]
 
 /// Derived analysis over one borrowed graph.
 mod analysis;
+/// Optional caller-owned reuse of already admitted graph work.
+mod cache;
 /// The logical hierarchy relation.
 mod containment;
 /// Graph edges, their certainty, and their evidence.
@@ -118,6 +153,7 @@ pub use analysis::{
     LayoutAssistMetadata, LayoutEdgeMetadata, LayoutNodeMetadata, MisplacementCandidate,
     ModuleCohesion,
 };
+pub use cache::{CachedCodeGraph, CachedGraphAnalysis, GraphCacheLimits, GraphCacheStats};
 pub use containment::ContainmentEdge;
 pub use edge::{
     DependencyEvidence, GraphCertainty, GraphDependencyKind, GraphEdge, GraphEdgeKind,
@@ -131,4 +167,4 @@ pub use id::{
 pub use limits::{GraphCollection, GraphLimits};
 pub use node::{GraphNode, GraphNodeKind, GraphNodeLocation};
 pub use reference::{GraphReference, GraphReferenceKind};
-pub use rust::{build_rust_graph, build_rust_graph_with_limits};
+pub use rust::{GraphCache, build_rust_graph, build_rust_graph_with_limits};

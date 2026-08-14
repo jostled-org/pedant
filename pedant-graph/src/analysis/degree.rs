@@ -5,7 +5,7 @@
 
 use crate::id::{GraphNodeId, position};
 
-use super::index::{GraphAnalysis, SelectedIndexes};
+use super::index::{AnalysisContext, SelectedIndexes};
 
 /// How many selected edges arrive at and leave one node.
 ///
@@ -36,7 +36,7 @@ impl DegreeCentrality {
 }
 
 /// Every node's selected degrees, in raw node-id order.
-pub(crate) fn degree(analysis: &GraphAnalysis<'_>) -> Box<[DegreeCentrality]> {
+pub(crate) fn degree(analysis: &AnalysisContext<'_>) -> Box<[DegreeCentrality]> {
     let indexes = analysis.indexes();
     (0..indexes.node_count())
         .map(|at| counted(indexes, GraphNodeId::new(position(at))))

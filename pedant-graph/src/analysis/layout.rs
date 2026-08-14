@@ -17,7 +17,7 @@ use crate::id::{GraphEdgeId, GraphNodeId, index_of, position};
 use super::betweenness::{self, BetweennessCentrality};
 use super::degree::{self, DegreeCentrality};
 use super::error::GraphAnalysisError;
-use super::index::{GraphAnalysis, SelectedAdjacency, SelectedIndexes};
+use super::index::{AnalysisContext, SelectedAdjacency, SelectedIndexes};
 
 /// What one node is, is inside, and measures as.
 #[derive(Clone, Copy, Debug)]
@@ -127,7 +127,7 @@ impl LayoutAssistMetadata {
 /// Describe every admitted node and selected edge, once the bounded pass admits
 /// the work.
 pub(crate) fn layout_assist(
-    analysis: &GraphAnalysis<'_>,
+    analysis: &AnalysisContext<'_>,
 ) -> Result<LayoutAssistMetadata, GraphAnalysisError> {
     let weights = betweenness::betweenness(analysis)?;
     let degrees = degree::degree(analysis);
@@ -139,7 +139,7 @@ pub(crate) fn layout_assist(
 
 /// Every node's metadata, in raw node-id order.
 fn described(
-    analysis: &GraphAnalysis<'_>,
+    analysis: &AnalysisContext<'_>,
     measured: (&[DegreeCentrality], &[BetweennessCentrality]),
 ) -> Box<[LayoutNodeMetadata]> {
     let (degrees, weights) = measured;
@@ -174,7 +174,7 @@ fn node_metadata(
 ///
 /// The shared adjacency lists hold the selection, so the walk is over what was
 /// indexed; each entry's raw record is read back for the evidence it carries.
-fn connections(analysis: &GraphAnalysis<'_>) -> Box<[LayoutEdgeMetadata]> {
+fn connections(analysis: &AnalysisContext<'_>) -> Box<[LayoutEdgeMetadata]> {
     let indexes = analysis.indexes();
     let graph = analysis.graph();
     let mut found: Vec<LayoutEdgeMetadata> = Vec::with_capacity(index_of(indexes.selected_edges()));

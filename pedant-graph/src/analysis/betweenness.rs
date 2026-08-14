@@ -15,7 +15,7 @@ use std::collections::VecDeque;
 use crate::id::{GraphNodeId, index_of, position};
 
 use super::error::GraphAnalysisError;
-use super::index::{GraphAnalysis, SelectedIndexes};
+use super::index::{AnalysisContext, SelectedIndexes};
 use super::limits::GraphAnalysisLimits;
 
 /// How much of the selected topology's shortest routing passes through one
@@ -210,7 +210,7 @@ impl Brandes {
 /// The work bound is proved first, so a graph beyond the caller's budget costs
 /// two counts rather than a table for every node.
 pub(crate) fn betweenness(
-    analysis: &GraphAnalysis<'_>,
+    analysis: &AnalysisContext<'_>,
 ) -> Result<Box<[BetweennessCentrality]>, GraphAnalysisError> {
     let indexes = analysis.indexes();
     admitted_work(indexes, analysis.limits())?;
@@ -225,7 +225,7 @@ pub(crate) fn betweenness(
 /// together. Both are admitted fixed-width counts, so their product can still
 /// overshoot the width it is counted in; the arithmetic is checked and refuses
 /// rather than wrapping into a bound that would pass.
-fn admitted_work(
+pub(crate) fn admitted_work(
     indexes: &SelectedIndexes,
     limits: GraphAnalysisLimits,
 ) -> Result<(), GraphAnalysisError> {

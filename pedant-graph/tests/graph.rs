@@ -16,10 +16,121 @@ mod graph_support;
 use graph_support::{
     analysis_centrality, analysis_components, analysis_derived_bounds,
     analysis_derived_determinism, analysis_determinism, analysis_divergence, analysis_layout,
-    analysis_ownership, analysis_ownership_bounds, analysis_partition, analysis_selection,
-    analysis_source_boundary, analysis_traversal, contract, defensive, evidence, isolation,
-    ownership, topology, wire,
+    analysis_ownership, analysis_ownership_bounds, analysis_ownership_sharing, analysis_partition,
+    analysis_selection, analysis_source_boundary, analysis_traversal, cache_analysis,
+    cache_analysis_lifetime, cache_analysis_retention, cache_analysis_sharing, cache_exact,
+    cache_ownership, cache_ownership_path, cache_ownership_state, cache_projection,
+    cache_remapping, cache_revision, cache_source_boundary, contract, defensive, evidence,
+    isolation, ownership, topology, wire,
 };
+
+#[test]
+fn cached_graph_analysis_matches_every_direct_operation() {
+    cache_analysis::assert_cached_analysis_matches_every_direct_operation();
+}
+
+#[test]
+fn cached_graph_analysis_rechecks_every_limit_before_hits() {
+    cache_analysis::assert_cached_analysis_rechecks_every_limit_before_hits();
+}
+
+#[test]
+fn cached_graph_analysis_reuses_exact_arc_products_and_none() {
+    cache_analysis_sharing::assert_cached_analysis_reuses_exact_arc_products_and_none();
+}
+
+#[test]
+fn cached_graph_analysis_retention_is_bounded_lru() {
+    cache_analysis_retention::assert_cached_analysis_retention_is_bounded_lru();
+}
+
+#[test]
+fn graph_cache_clear_eviction_and_drop_keep_live_handles_valid() {
+    cache_analysis_lifetime::assert_clear_eviction_and_drop_keep_live_handles_valid();
+}
+
+#[test]
+fn cached_graph_analysis_is_thread_shareable_and_deterministic() {
+    cache_analysis_lifetime::assert_cached_analysis_is_thread_shareable_and_deterministic();
+}
+
+#[test]
+fn graph_cache_poison_recovery_is_explicit_and_total() {
+    cache_ownership_state::assert_poison_recovery_is_explicit_and_total();
+}
+
+#[test]
+fn graph_cache_counter_updates_are_saturating_and_single_owned() {
+    cache_analysis_retention::assert_derived_counter_deltas_are_exact();
+    cache_ownership_state::assert_counter_updates_are_saturating_and_single_owned();
+}
+
+#[test]
+fn graph_cache_source_boundary_is_exact() {
+    cache_source_boundary::assert_cache_source_boundary_is_exact();
+}
+
+#[test]
+fn graph_cache_public_boundary_is_exact() {
+    cache_ownership::assert_cache_public_boundary_is_exact();
+}
+
+#[test]
+fn graph_cache_projection_has_one_planner_and_assembler() {
+    cache_ownership_path::assert_projection_has_one_planner_and_assembler();
+}
+
+#[test]
+fn graph_cache_rejects_invalid_pairs_before_observation() {
+    cache_exact::assert_invalid_pairs_are_refused_before_observation();
+}
+
+#[test]
+fn graph_cache_exact_identity_guards_the_complete_resolution_claim() {
+    cache_exact::assert_exact_identity_guards_the_claim();
+}
+
+#[test]
+fn graph_cache_exact_hits_share_graph_and_short_circuit_work() {
+    cache_exact::assert_exact_hits_share_graph_and_short_circuit();
+}
+
+#[test]
+fn graph_cache_hits_reapply_graph_limits_in_direct_order() {
+    cache_exact::assert_hits_reapply_graph_limits();
+}
+
+#[test]
+fn graph_cache_exact_retention_is_bounded_lru() {
+    cache_exact::assert_exact_retention_is_bounded_lru();
+}
+
+#[test]
+fn graph_cache_exact_build_matches_direct_graph_and_json() {
+    cache_exact::assert_exact_build_matches_direct();
+}
+
+#[test]
+fn graph_cache_reuses_only_exact_source_unit_claims() {
+    cache_projection::assert_reuses_only_exact_source_unit_claims();
+    cache_projection::assert_reuse_is_decided_before_derivation();
+}
+
+#[test]
+fn graph_cache_revision_matrix_matches_direct_graph_and_json() {
+    cache_revision::assert_revision_matrix_matches_direct();
+}
+
+#[test]
+fn graph_cache_tied_definition_identities_survive_dense_remapping() {
+    cache_remapping::assert_tied_definitions_survive_remapping();
+    cache_remapping::assert_retained_projections_hold_no_dense_identity();
+}
+
+#[test]
+fn graph_cache_source_projection_retention_is_bounded_lru() {
+    cache_projection::assert_source_projection_retention_is_bounded_lru();
+}
 
 #[test]
 fn graph_analysis_selection_is_explicit_and_shared() {
@@ -59,7 +170,7 @@ fn graph_declared_partition_follows_nearest_container() {
 
 #[test]
 fn graph_traversal_consumes_shared_analysis_indexes() {
-    analysis_ownership_bounds::assert_traversal_consumes_shared_indexes();
+    analysis_ownership_sharing::assert_traversal_consumes_shared_indexes();
 }
 
 #[test]
@@ -102,7 +213,7 @@ fn graph_traversal_and_components_are_iterative() {
 
 #[test]
 fn graph_metrics_and_components_consume_shared_indexes() {
-    analysis_ownership_bounds::assert_metrics_and_components_consume_shared_indexes();
+    analysis_ownership_sharing::assert_metrics_and_components_consume_shared_indexes();
 }
 
 #[test]

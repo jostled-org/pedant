@@ -1,15 +1,16 @@
-//! The tables one Rust projection resolves its joins through.
+//! The tables one assembly resolves its symbolic joins through.
 //!
-//! Containers are per report unit; file nodes are qualified by the snapshot
-//! unit that instantiates them, because a source's graph identity is the pair
-//! of the path and the unit reading it. Definition nodes are dense in report
-//! order. Nothing here reads a repository: every table is built from the two
-//! supplied values.
+//! Containers are per planned unit; file nodes are qualified by the unit that
+//! instantiates them, because a source's graph identity is the pair of the path
+//! and the unit reading it. Definition nodes are keyed by the stable identity
+//! the plan states, so a join made before any identity was minted still names
+//! exactly one node. Nothing here reads a repository: every table is filled
+//! from one plan.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
+use std::hash::{BuildHasherDefault, DefaultHasher};
 use std::sync::Arc;
 
-use pedant_core::resolution::rust::RustSnapshotUnitId;
 use pedant_types::ResolutionTier;
 
 use crate::containment::ContainmentEdge;
@@ -21,25 +22,32 @@ use crate::limits::{GraphCollection, GraphLimits};
 use crate::node::NodeDraft;
 use crate::reference::ReferenceDraft;
 
-/// One snapshot unit's container, the report unit that bound it, and the file
-/// nodes it instantiates.
-struct UnitScope {
-    owner: u32,
-    container: GraphNodeId,
-    files: BTreeMap<Arc<str>, GraphNodeId>,
-}
+use super::identity::DefinitionIdentity;
+use super::validation;
 
-/// What one report unit resolved to.
-struct BoundUnit {
-    container: GraphNodeId,
-    snapshot_unit: RustSnapshotUnitId,
-}
+/// Every file node one planned unit reads, by normalized path.
+///
+/// Ordered, because a unit's sources are minted in the snapshot's own order and
+/// the scope is what proves a path was minted at all.
+pub(crate) type SourceScope = BTreeMap<Arc<str>, GraphNodeId>;
+
+/// Every node one stable definition identity produced, by that identity.
+///
+/// Hashed rather than ordered: a probe reads the key once instead of walking
+/// levels of comparison over four strings and a span. The hasher is named
+/// because this crate states no dependency of its own, so the standard
+/// fixed-key one is what it has, and because the seeded default would vary a
+/// table two equal plans must fill identically. Order reaches nothing either
+/// way — the table is inserted into and probed, never iterated.
+type DefinitionScope =
+    HashMap<Arc<DefinitionIdentity>, GraphNodeId, BuildHasherDefault<DefaultHasher>>;
 
 /// How many records the supplied inputs state before the first pass runs.
 ///
 /// File nodes are not counted: which sources a bound unit instantiates is known
-/// only once the sources pass has read them, so the node reservation covers the
+/// only once the planner has read them, so the node reservation covers the
 /// containers and the definitions alone.
+#[derive(Clone, Copy)]
 pub(crate) struct ProjectionCapacity {
     /// The report units, one container node each.
     pub(crate) units: usize,
@@ -62,26 +70,31 @@ impl ProjectionCapacity {
     }
 }
 
-/// Every table one projection fills, beside the record store it fills them from.
+/// Every table one assembly fills, beside the record store it fills them from.
 pub(crate) struct ProjectionState {
     records: GraphRecords,
-    scopes: BTreeMap<RustSnapshotUnitId, UnitScope>,
-    units: Vec<BoundUnit>,
-    definitions: Vec<GraphNodeId>,
+    containers: Vec<GraphNodeId>,
+    files: Vec<SourceScope>,
+    definitions: DefinitionScope,
 }
 
 impl ProjectionState {
-    /// An empty projection bounded by `limits` and sized for `capacity`.
+    /// An empty assembly bounded by `limits` and sized for `capacity`.
     ///
-    /// The sole constructor, reached only after both identity checks pass, so
+    /// The sole constructor, reached only after the plan proved every join, so
     /// no record is allocated for a pairing this crate is going to refuse.
     pub(crate) fn new(limits: GraphLimits, capacity: ProjectionCapacity) -> Self {
         let ceiling = limits.ceiling(GraphCollection::Node);
+        let units = reserved(capacity.units, ceiling);
+        let definitions = reserved(capacity.definitions, ceiling);
         Self {
             records: GraphRecords::new(limits, capacity.records()),
-            scopes: BTreeMap::new(),
-            units: Vec::with_capacity(reserved(capacity.units, ceiling)),
-            definitions: Vec::with_capacity(reserved(capacity.definitions, ceiling)),
+            containers: Vec::with_capacity(units),
+            files: Vec::with_capacity(units),
+            definitions: DefinitionScope::with_capacity_and_hasher(
+                definitions,
+                BuildHasherDefault::default(),
+            ),
         }
     }
 
@@ -108,111 +121,60 @@ impl ProjectionState {
         self.records.contain(parent, child);
     }
 
-    /// Bind one report unit to its container and its snapshot unit.
+    /// Record the container node one planned unit took.
     ///
-    /// A snapshot unit is bound by one report unit. The report unit already
-    /// holding the scope is answered rather than merged, because two report
-    /// units sharing one build unit would give every source of that unit two
-    /// owners, and the collision must be named where it happens.
-    pub(crate) fn bind_unit(
-        &mut self,
-        container: GraphNodeId,
-        unit: (RustSnapshotUnitId, u32),
-    ) -> Option<u32> {
-        let (snapshot_unit, reported) = unit;
-        match self.scopes.get(&snapshot_unit) {
-            Some(held) => Some(held.owner),
-            None => {
-                self.scopes.insert(
-                    snapshot_unit,
-                    UnitScope {
-                        owner: reported,
-                        container,
-                        files: BTreeMap::new(),
-                    },
-                );
-                self.units.push(BoundUnit {
-                    container,
-                    snapshot_unit,
-                });
-                None
-            }
-        }
+    /// Units are bound in plan order, so a container's position in this table
+    /// is the unit's own position and no separate key is needed.
+    pub(crate) fn bind_container(&mut self, container: GraphNodeId) {
+        self.containers.push(container);
+        self.files.push(SourceScope::new());
     }
 
-    /// The container node one report unit owns.
+    /// The container node one planned unit owns.
     pub(crate) fn container(&self, unit: u32) -> Option<GraphNodeId> {
-        self.units.get(index_of(unit)).map(|bound| bound.container)
+        self.containers.get(index_of(unit)).copied()
     }
 
-    /// The container node one snapshot unit owns.
-    pub(crate) fn snapshot_container(&self, unit: RustSnapshotUnitId) -> Option<GraphNodeId> {
-        self.scopes.get(&unit).map(|scope| scope.container)
+    /// Record the file node one unit reads one normalized path through.
+    ///
+    /// The scope the binding belongs in is proved rather than assumed, so a
+    /// unit position this assembly bound no container for is refused where the
+    /// binding is made instead of leaving the file node unreachable.
+    pub(crate) fn bind_file(
+        &mut self,
+        unit: u32,
+        path: &Arc<str>,
+        node: GraphNodeId,
+    ) -> Result<(), GraphBuildError> {
+        let scope = validation::unit_scope(self.files.get_mut(index_of(unit)), unit)?;
+        scope.insert(Arc::clone(path), node);
+        Ok(())
     }
 
-    /// The snapshot unit one report unit is bound to.
-    pub(crate) fn snapshot_unit(&self, unit: u32) -> Option<RustSnapshotUnitId> {
-        self.units
+    /// The file node one unit reads `path` through.
+    pub(crate) fn file(&self, unit: u32, path: &str) -> Option<GraphNodeId> {
+        self.files
             .get(index_of(unit))
-            .map(|bound| bound.snapshot_unit)
-    }
-
-    /// Qualify one normalized path with the snapshot unit reading it, inserting
-    /// the file node the first time that pair is seen.
-    ///
-    /// `None` names a snapshot unit this projection bound no scope for. The
-    /// refusal belongs to the validation owner that states it, so no table here
-    /// builds a [`GraphBuildError`] of its own.
-    pub(crate) fn qualify_source(
-        &mut self,
-        snapshot_unit: RustSnapshotUnitId,
-        path: &Arc<str>,
-        draft: NodeDraft,
-    ) -> Result<Option<GraphNodeId>, GraphBuildError> {
-        match self.file_node(snapshot_unit, path) {
-            Some(found) => Ok(Some(found)),
-            None => self.instantiate_source(snapshot_unit, path, draft),
-        }
-    }
-
-    /// Mint the file node one unit-and-path pair takes the first time it is
-    /// seen.
-    ///
-    /// The scope is proved before the node exists, because a node whose pair
-    /// nothing recorded would be looked up again, reported as a missing source,
-    /// and minted a second time for every further site at that path.
-    fn instantiate_source(
-        &mut self,
-        snapshot_unit: RustSnapshotUnitId,
-        path: &Arc<str>,
-        draft: NodeDraft,
-    ) -> Result<Option<GraphNodeId>, GraphBuildError> {
-        match self.scopes.get_mut(&snapshot_unit) {
-            Some(scope) => {
-                let node = self.records.insert_node(draft)?;
-                scope.files.insert(Arc::clone(path), node);
-                Ok(Some(node))
-            }
-            None => Ok(None),
-        }
-    }
-
-    /// The file node one snapshot unit reads `path` through.
-    pub(crate) fn file_node(&self, unit: RustSnapshotUnitId, path: &str) -> Option<GraphNodeId> {
-        self.scopes
-            .get(&unit)
-            .and_then(|scope| scope.files.get(path))
+            .and_then(|scope| scope.get(path))
             .copied()
     }
 
-    /// Record the node one report definition produced.
-    pub(crate) fn bind_definition(&mut self, node: GraphNodeId) {
-        self.definitions.push(node);
+    /// Record the node one stable definition identity produced.
+    ///
+    /// The handle the plan already holds is shared into the table rather than
+    /// copied, so one identity is retained per definition however many joins
+    /// name it.
+    pub(crate) fn bind_definition(
+        &mut self,
+        identity: &Arc<DefinitionIdentity>,
+        node: GraphNodeId,
+    ) {
+        self.definitions.insert(Arc::clone(identity), node);
     }
 
-    /// The node one report definition produced.
-    pub(crate) fn definition_node(&self, definition: u32) -> Option<GraphNodeId> {
-        self.definitions.get(index_of(definition)).copied()
+    /// The node one stable definition identity produced.
+    pub(crate) fn definition(&self, identity: &DefinitionIdentity) -> Option<GraphNodeId> {
+        self.definitions.get(identity).copied()
     }
 
     /// Every containment edge stated so far.
@@ -220,12 +182,12 @@ impl ProjectionState {
         self.records.containment()
     }
 
-    /// How many nodes this projection has produced.
+    /// How many nodes this assembly has produced.
     pub(crate) fn node_count(&self) -> usize {
         self.records.node_count()
     }
 
-    /// Seal this projection into one immutable graph.
+    /// Seal this assembly into one immutable graph.
     pub(crate) fn finish(self, tier: ResolutionTier) -> CodeGraph {
         self.records.finish(tier)
     }

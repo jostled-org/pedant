@@ -1,243 +1,18 @@
-//! Readers over this crate's own production sources.
+//! Readers over the sources [`super::inventory`] holds.
 //!
-//! The structural predicates compare a written-down model with the tree, so the
-//! discovered set is checked against a fixed inventory before anything is
-//! scanned: a discovered-only set would agree with whatever the crate happens
-//! to contain and could never reject a module that appeared.
+//! One responsibility: turning a written-down source into the text, the parsed
+//! items, or the single body a structural case reads. What may be read is the
+//! inventory's to state; nothing here adds to it.
 //!
-//! `include_str!` reads at compile time, so no case here performs a runtime
-//! file read or gives the graph crate a feature.
+//! The tree is listed at runtime in exactly one place, so a discovered set can
+//! be compared with the inventory and reject a module that appeared without an
+//! entry.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-/// Every production source of this crate, repository-relative to its manifest.
-///
-/// Written down, never discovered. `graph_projection_uses_only_supplied_resolution_facts`
-/// compares it with the tree and fails on a missing or an extra entry.
-pub const PRODUCTION_SOURCES: &[&str] = &[
-    "src/analysis/betweenness.rs",
-    "src/analysis/components.rs",
-    "src/analysis/degree.rs",
-    "src/analysis/divergence.rs",
-    "src/analysis/error.rs",
-    "src/analysis/index.rs",
-    "src/analysis/layout.rs",
-    "src/analysis/limits.rs",
-    "src/analysis/mod.rs",
-    "src/analysis/partition.rs",
-    "src/analysis/selection.rs",
-    "src/analysis/traversal.rs",
-    "src/containment.rs",
-    "src/edge.rs",
-    "src/error.rs",
-    "src/graph.rs",
-    "src/id.rs",
-    "src/lib.rs",
-    "src/limits.rs",
-    "src/node.rs",
-    "src/reference.rs",
-    "src/rust/entry.rs",
-    "src/rust/index.rs",
-    "src/rust/mapping.rs",
-    "src/rust/mod.rs",
-    "src/rust/projection.rs",
-    "src/rust/validation.rs",
-];
-
-/// One production source and its exact text.
-pub struct Source {
-    /// The manifest-relative path.
-    pub path: &'static str,
-    /// The exact file contents.
-    pub text: &'static str,
-}
-
-/// Every production source with its compile-time contents.
-///
-/// The array and [`PRODUCTION_SOURCES`] are compared against each other and
-/// against the tree, so a file that stopped being scanned fails rather than
-/// silently narrows the search set.
-pub const SOURCES: &[Source] = &[
-    Source {
-        path: "src/analysis/betweenness.rs",
-        text: include_str!("../../src/analysis/betweenness.rs"),
-    },
-    Source {
-        path: "src/analysis/components.rs",
-        text: include_str!("../../src/analysis/components.rs"),
-    },
-    Source {
-        path: "src/analysis/degree.rs",
-        text: include_str!("../../src/analysis/degree.rs"),
-    },
-    Source {
-        path: "src/analysis/divergence.rs",
-        text: include_str!("../../src/analysis/divergence.rs"),
-    },
-    Source {
-        path: "src/analysis/error.rs",
-        text: include_str!("../../src/analysis/error.rs"),
-    },
-    Source {
-        path: "src/analysis/index.rs",
-        text: include_str!("../../src/analysis/index.rs"),
-    },
-    Source {
-        path: "src/analysis/layout.rs",
-        text: include_str!("../../src/analysis/layout.rs"),
-    },
-    Source {
-        path: "src/analysis/limits.rs",
-        text: include_str!("../../src/analysis/limits.rs"),
-    },
-    Source {
-        path: "src/analysis/mod.rs",
-        text: include_str!("../../src/analysis/mod.rs"),
-    },
-    Source {
-        path: "src/analysis/partition.rs",
-        text: include_str!("../../src/analysis/partition.rs"),
-    },
-    Source {
-        path: "src/analysis/selection.rs",
-        text: include_str!("../../src/analysis/selection.rs"),
-    },
-    Source {
-        path: "src/analysis/traversal.rs",
-        text: include_str!("../../src/analysis/traversal.rs"),
-    },
-    Source {
-        path: "src/containment.rs",
-        text: include_str!("../../src/containment.rs"),
-    },
-    Source {
-        path: "src/edge.rs",
-        text: include_str!("../../src/edge.rs"),
-    },
-    Source {
-        path: "src/error.rs",
-        text: include_str!("../../src/error.rs"),
-    },
-    Source {
-        path: "src/graph.rs",
-        text: include_str!("../../src/graph.rs"),
-    },
-    Source {
-        path: "src/id.rs",
-        text: include_str!("../../src/id.rs"),
-    },
-    Source {
-        path: "src/lib.rs",
-        text: include_str!("../../src/lib.rs"),
-    },
-    Source {
-        path: "src/limits.rs",
-        text: include_str!("../../src/limits.rs"),
-    },
-    Source {
-        path: "src/node.rs",
-        text: include_str!("../../src/node.rs"),
-    },
-    Source {
-        path: "src/reference.rs",
-        text: include_str!("../../src/reference.rs"),
-    },
-    Source {
-        path: "src/rust/entry.rs",
-        text: include_str!("../../src/rust/entry.rs"),
-    },
-    Source {
-        path: "src/rust/index.rs",
-        text: include_str!("../../src/rust/index.rs"),
-    },
-    Source {
-        path: "src/rust/mapping.rs",
-        text: include_str!("../../src/rust/mapping.rs"),
-    },
-    Source {
-        path: "src/rust/mod.rs",
-        text: include_str!("../../src/rust/mod.rs"),
-    },
-    Source {
-        path: "src/rust/projection.rs",
-        text: include_str!("../../src/rust/projection.rs"),
-    },
-    Source {
-        path: "src/rust/validation.rs",
-        text: include_str!("../../src/rust/validation.rs"),
-    },
-];
-
-/// The registered test root, read at compile time.
-///
-/// Every `#[test]` wrapper this crate registers is declared there, so the
-/// structural cases can hold each production module to a predicate that names
-/// it without reading a file at run time.
-pub const TEST_ROOT: &str = include_str!("../graph.rs");
-
-/// This crate's tracked manifest, read at compile time.
-///
-/// The dependency and feature boundary is a property of the published package,
-/// so the case that holds it to a model reads the manifest itself rather than a
-/// lifecycle file describing it.
-pub const MANIFEST: &str = include_str!("../../Cargo.toml");
-
-/// One support module beside its compile-time contents.
-///
-/// Written as a list of module names: the path a case reports and the text it
-/// reads are one entry, so a module cannot be scanned under a name the tree does
-/// not hold.
-macro_rules! support_sources {
-    ($($name:literal),* $(,)?) => {
-        &[$(Source {
-            path: concat!("tests/graph_support/", $name, ".rs"),
-            text: include_str!(concat!($name, ".rs")),
-        }),*]
-    };
-}
-
-/// Every support module beneath the one registered root.
-///
-/// The root owns every libtest identity this crate registers; these declare
-/// fixtures, cases, and scanners. The inventory is compared with the tree, so a
-/// module that appeared without an entry fails rather than escaping the scan.
-pub const TEST_SUPPORT_SOURCES: &[Source] = support_sources![
-    "analysis_centrality",
-    "analysis_components",
-    "analysis_derived_bounds",
-    "analysis_derived_determinism",
-    "analysis_determinism",
-    "analysis_divergence",
-    "analysis_divergence_model",
-    "analysis_fixture",
-    "analysis_layout",
-    "analysis_oracle",
-    "analysis_ownership",
-    "analysis_ownership_bounds",
-    "analysis_ownership_model",
-    "analysis_partition",
-    "analysis_perturbation",
-    "analysis_selection",
-    "analysis_source_boundary",
-    "analysis_traversal",
-    "contract",
-    "corpus",
-    "corpus_analysis",
-    "corpus_generated",
-    "defensive",
-    "evidence",
-    "fixture",
-    "isolation",
-    "mod",
-    "ownership",
-    "promotion",
-    "render",
-    "scan",
-    "surface",
-    "topology",
-    "wire",
-];
+use super::inventory::SOURCES;
 
 /// This crate's directory.
 pub fn crate_path(relative: &str) -> PathBuf {
@@ -346,23 +121,100 @@ pub fn function_body(path: &str, name: &str) -> String {
     token_text(&found.block)
 }
 
-/// The exact body text of one method declared in an inherent or trait `impl`.
-pub fn method_body(path: &str, name: &str) -> String {
+/// One method as the file declares it: on which subject, under which
+/// visibility, with which body.
+pub struct DeclaredMethod {
+    /// The type the `impl` block states, shared by every method declared on it.
+    pub subject: Arc<str>,
+    /// The method's own name.
+    pub name: String,
+    /// The visibility token the declaration carries, empty when private.
+    pub visibility: String,
+    /// The exact body text.
+    pub body: String,
+}
+
+/// Every method one source declares, in declaration order.
+///
+/// Inherent and trait `impl` blocks alike, each entry carrying the subject it
+/// was declared on: a name alone does not identify a method, because one file
+/// may state the same name on two types.
+pub fn declared_methods(path: &str) -> Vec<DeclaredMethod> {
     let file = parsed(path);
-    let found = file
-        .items
-        .iter()
-        .filter_map(|item| match item {
-            syn::Item::Impl(block) => Some(block),
-            _ => None,
-        })
-        .flat_map(|block| &block.items)
-        .find_map(|item| match item {
-            syn::ImplItem::Fn(function) if function.sig.ident == name => Some(function),
-            _ => None,
-        })
-        .unwrap_or_else(|| panic!("{path} declares no method {name}"));
-    token_text(&found.block)
+    let mut found = Vec::new();
+    for item in &file.items {
+        let syn::Item::Impl(block) = item else {
+            continue;
+        };
+        let subject: Arc<str> = Arc::from(token_text(&block.self_ty));
+        for member in &block.items {
+            if let syn::ImplItem::Fn(function) = member {
+                found.push(DeclaredMethod {
+                    subject: Arc::clone(&subject),
+                    name: function.sig.ident.to_string(),
+                    visibility: token_text(&function.vis),
+                    body: token_text(&function.block),
+                });
+            }
+        }
+    }
+    found
+}
+
+/// Every method one subject of one source declares, in declaration order.
+pub fn subject_methods(path: &str, subject: &str) -> Vec<DeclaredMethod> {
+    let found: Vec<DeclaredMethod> = declared_methods(path)
+        .into_iter()
+        .filter(|method| method.subject.as_ref() == subject)
+        .collect();
+    assert!(
+        !found.is_empty(),
+        "{path} declares no impl block for {subject}"
+    );
+    found
+}
+
+/// The exact body text of the one method one file declares under `name`.
+///
+/// A name that two subjects of one file both state is refused rather than
+/// resolved. Binding to whichever `impl` was written first would let a case
+/// examine a method it did not name, and leave the one it meant unread.
+pub fn method_body(path: &str, name: &str) -> String {
+    let found: Vec<DeclaredMethod> = declared_methods(path)
+        .into_iter()
+        .filter(|method| method.name == name)
+        .collect();
+    match found.len() {
+        1 => single_body(found, path, name),
+        0 => panic!("{path} declares no method {name}"),
+        _ => {
+            let subjects: Vec<Arc<str>> = found.into_iter().map(|method| method.subject).collect();
+            panic!("{path} declares {name} on {subjects:?}: name the subject that owns it")
+        }
+    }
+}
+
+/// The exact body text of one method one named subject declares.
+pub fn method_body_of(path: &str, subject: &str, name: &str) -> String {
+    let found: Vec<DeclaredMethod> = subject_methods(path, subject)
+        .into_iter()
+        .filter(|method| method.name == name)
+        .collect();
+    assert_eq!(
+        found.len(),
+        1,
+        "{path} declares {subject}::{name} exactly once"
+    );
+    single_body(found, path, name)
+}
+
+/// The body of the one method a resolved lookup found.
+fn single_body(found: Vec<DeclaredMethod>, path: &str, name: &str) -> String {
+    found
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| panic!("{path} declares no method {name}"))
+        .body
 }
 
 /// One parsed item as the exact tokens it is written with.

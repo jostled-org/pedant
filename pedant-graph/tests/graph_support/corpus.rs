@@ -295,6 +295,13 @@ pub fn work() {}
     ),
 ];
 
+/// The minimal corpus library after a source-only edit.
+///
+/// Every manifest, path, and target identity is unchanged; only the bytes
+/// differ, so the reloaded project issues the same identities and only the
+/// snapshot fingerprint moves.
+pub const EDITED_MINIMAL_SOURCE: &str = "pub fn run() { work(); }\npub fn work() { let _ = 1; }\n";
+
 /// A second single-package repository whose root target is named differently,
 /// so a pairing with the first fails on root-target identity alone.
 pub const OTHER_ROOT_CORPUS: &[FixtureFile] = &[

@@ -4,19 +4,25 @@
 //! malformed cases use the core proof adapter, because the validated public
 //! boundary binds every report unit by its stable key and cannot state a
 //! resolution whose joins disagree with the snapshot it is handed.
+//!
+//! The cache states the same refusals. Its binding rows live here because they
+//! read the same adapters over the same corpora: what they add is that a cache
+//! holding a graph for the bound resolution still refuses the unbound one.
 
 use pedant_core::resolution::rust::{
-    CargoTargetKind, resolution_with_shared_unit_binding, resolution_with_swapped_unit_sources,
-    resolution_without_unit_binding,
+    CargoTargetKind, RustTargetResolution, resolution_with_shared_unit_binding,
+    resolution_with_swapped_unit_sources, resolution_without_unit_binding,
 };
-use pedant_graph::{GraphBuildError, GraphLimits, build_rust_graph, build_rust_graph_with_limits};
+use pedant_graph::{
+    GraphBuildError, GraphCache, GraphLimits, build_rust_graph, build_rust_graph_with_limits,
+};
 
-use super::corpus::{GRAPH_CORPUS, IDENTICAL_SOURCE_CORPUS, MINIMAL_CORPUS, OTHER_ROOT_CORPUS};
+use super::cache_counting::{EXACT_GRAPH_MISSES, assert_delta};
+use super::cache_fixture::{admitted, build, generous, pair};
+use super::corpus::{
+    EDITED_MINIMAL_SOURCE, GRAPH_CORPUS, IDENTICAL_SOURCE_CORPUS, MINIMAL_CORPUS, OTHER_ROOT_CORPUS,
+};
 use super::fixture::{self, Fixture};
-
-/// The minimal corpus library after a source-only edit. Every manifest, path,
-/// and target identity is unchanged; only the bytes differ.
-const EDITED_SOURCE: &str = "pub fn run() { work(); }\npub fn work() { let _ = 1; }\n";
 
 /// Both identity refusals precede every capacity check and every allocation.
 ///
@@ -36,7 +42,7 @@ pub fn assert_identity_refusals_dominate() {
 
     let mut edited = Fixture::build(MINIMAL_CORPUS);
     let before = edited.resolve_library();
-    edited.rewrite("repo/src/lib.rs", EDITED_SOURCE);
+    edited.rewrite("repo/src/lib.rs", EDITED_MINIMAL_SOURCE);
     let after = edited.resolve_library();
     assert_eq!(
         after.snapshot.root_target(),
@@ -104,4 +110,94 @@ pub fn assert_malformed_joins_refuse() {
         ),
         other => panic!("a doubled unit binding must be refused, got {other:?}"),
     }
+}
+
+/// The unit bindings a caller cannot restate through the public builder.
+///
+/// `RustTargetResolution::try_new` binds every report unit by its stable key, so
+/// no restated report varies the bindings, and this is the one claim dimension
+/// public validation cannot state. The core proof adapters restate the bindings
+/// alone: each perturbed value carries the fingerprint, the root target, and the
+/// very report handle the warmed entry holds, so a lookup that did not compare
+/// bindings would answer it from that entry.
+pub fn assert_cached_bindings_take_their_own_entry() {
+    let (_corpus, base) = fixture::resolve_corpus_library();
+    assert_bindings_miss_a_warmed_cache(
+        &base,
+        resolution_without_unit_binding(&base.resolution),
+        "a report unit that lost its binding",
+    );
+    assert_bindings_miss_a_warmed_cache(
+        &base,
+        resolution_with_swapped_unit_sources(&base.resolution),
+        "two unit bindings pointed at each other's sources",
+    );
+
+    let identical = Fixture::build(IDENTICAL_SOURCE_CORPUS);
+    let shared = identical.resolve(identical.target("app", CargoTargetKind::Binary, "tool"));
+    assert_bindings_miss_a_warmed_cache(
+        &shared,
+        resolution_with_shared_unit_binding(&shared.resolution),
+        "two report units bound to one snapshot unit",
+    );
+}
+
+/// One binding perturbation over a warmed entry is never answered from it.
+///
+/// The perturbed pairing is the one the direct builder refuses, so a lookup that
+/// ignored the bindings would hand a caller a valid graph for a claim no builder
+/// admits. The row requires the miss, the exact direct refusal, and the warmed
+/// entry still in place afterwards.
+fn assert_bindings_miss_a_warmed_cache(
+    base: &fixture::Resolved,
+    perturbed: Option<RustTargetResolution>,
+    subject: &str,
+) {
+    let perturbed =
+        perturbed.unwrap_or_else(|| panic!("{subject}: the corpus binds enough units to restate"));
+    assert_eq!(
+        perturbed.root_target(),
+        base.resolution.root_target(),
+        "{subject}: the bindings are the only difference, so the root target is the base one"
+    );
+    assert_eq!(
+        perturbed.snapshot_fingerprint(),
+        base.resolution.snapshot_fingerprint(),
+        "{subject}: the bindings are the only difference, so the snapshot identity is the base one"
+    );
+    assert_eq!(
+        perturbed.report(),
+        base.resolution.report(),
+        "{subject}: the bindings are the only difference, so the report is the base one"
+    );
+    assert_ne!(
+        perturbed.units(),
+        base.resolution.units(),
+        "{subject}: the restated bindings must differ, or this row proves nothing"
+    );
+
+    let mut cache = GraphCache::new(generous());
+    let warmed = admitted(&mut cache, pair(base), subject);
+    let before = cache.stats();
+    let refused = build(
+        &mut cache,
+        (&base.snapshot, &perturbed),
+        GraphLimits::default(),
+    )
+    .err()
+    .unwrap_or_else(|| panic!("{subject}: a retained graph must not answer for other bindings"));
+    let directly = build_rust_graph(&base.snapshot, &perturbed)
+        .expect_err("the direct builder refuses the same bindings");
+    assert_eq!(
+        format!("{refused:?}"),
+        format!("{directly:?}"),
+        "{subject}: the cached and direct refusals agree"
+    );
+    assert_delta(before, cache.stats(), &[(EXACT_GRAPH_MISSES, 1)], subject);
+
+    let repeated = admitted(&mut cache, pair(base), subject);
+    assert!(
+        std::ptr::eq(warmed.graph(), repeated.graph()),
+        "{subject}: the refused claim retained nothing and left the warmed entry in place"
+    );
 }

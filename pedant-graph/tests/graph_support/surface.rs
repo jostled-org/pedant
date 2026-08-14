@@ -52,6 +52,48 @@ pub fn declared_items(items: &[syn::Item]) -> Vec<&syn::Item> {
     found
 }
 
+/// Whether one item names a module or a re-export and nothing else.
+///
+/// Read as parsed items rather than as forbidden spellings. A list of keywords
+/// has to name every way Rust states a definition, and whatever it misses — a
+/// trait, a static, a union, a `macro_rules!` — passes. Two item kinds are
+/// admitted here, so everything else fails whether or not the case that calls
+/// this has heard of it. A module with a body is a definition site too, so only
+/// the file declarations are admitted.
+pub fn declares_only(item: &syn::Item) -> bool {
+    match item {
+        syn::Item::Mod(module) => module.content.is_none(),
+        syn::Item::Use(_) => true,
+        _ => false,
+    }
+}
+
+/// One declared item, named by the kind and the name it states.
+///
+/// The kinds are spelled out so a failure names the offender rather than
+/// printing its tokens. `syn::Item` grows, so an unnamed kind still answers,
+/// with the source it was written as.
+pub fn item_label(item: &syn::Item) -> String {
+    match item {
+        syn::Item::Const(entry) => format!("const {}", entry.ident),
+        syn::Item::Enum(entry) => format!("enum {}", entry.ident),
+        syn::Item::ExternCrate(entry) => format!("extern crate {}", entry.ident),
+        syn::Item::Fn(entry) => format!("fn {}", entry.sig.ident),
+        syn::Item::ForeignMod(entry) => format!("extern block {}", scan::token_text(&entry.abi)),
+        syn::Item::Impl(entry) => format!("impl {}", scan::token_text(&entry.self_ty)),
+        syn::Item::Macro(entry) => format!("macro {}", scan::token_text(&entry.mac.path)),
+        syn::Item::Mod(entry) => format!("inline mod {}", entry.ident),
+        syn::Item::Static(entry) => format!("static {}", entry.ident),
+        syn::Item::Struct(entry) => format!("struct {}", entry.ident),
+        syn::Item::Trait(entry) => format!("trait {}", entry.ident),
+        syn::Item::TraitAlias(entry) => format!("trait alias {}", entry.ident),
+        syn::Item::Type(entry) => format!("type {}", entry.ident),
+        syn::Item::Union(entry) => format!("union {}", entry.ident),
+        syn::Item::Use(entry) => format!("use {}", scan::token_text(&entry.tree)),
+        other => scan::token_text(other),
+    }
+}
+
 /// Every variant `GraphBuildError` declares.
 ///
 /// Read from the enum rather than written down twice, so a refusal added
@@ -288,13 +330,16 @@ fn subject_name(subject: &syn::Type) -> String {
 
 /// The types a caller is deliberately allowed to state.
 ///
-/// Ceilings, an edge selection, and the analysis view over a graph it already
-/// holds are all caller policy. Every other type is a record or a result whose
+/// Ceilings, an edge selection, a retention budget, the cache that budget
+/// bounds, and the analysis view over a graph a caller already holds are all
+/// caller policy. Every other type is a record or a result whose
 /// invariants this crate establishes, so a public constructor for one would be
 /// a second way to state it.
 const CALLER_CONSTRUCTED: &[&str] = &[
     "GraphAnalysis",
     "GraphAnalysisLimits",
+    "GraphCache",
+    "GraphCacheLimits",
     "GraphEdgeSelection",
     "GraphLimits",
     "GraphRecords",

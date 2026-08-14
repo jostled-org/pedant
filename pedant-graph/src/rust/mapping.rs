@@ -85,41 +85,82 @@ impl Vocabulary {
     }
 
     /// The node kind one Rust definition takes.
+    pub(crate) fn definition(&self, kind: SymbolKind) -> GraphNodeKind {
+        let (category, declaration) = self.declared(kind);
+        category.node(Arc::clone(declaration))
+    }
+
+    /// Whether one held node kind is the kind this vocabulary states for
+    /// `kind`.
+    ///
+    /// Read by borrow. The reuse guard asks this of every definition of every
+    /// examined fragment, and minting the kind to compare it would share a
+    /// token and drop it again for every answer, on the one path whose purpose
+    /// is to cost less than deriving the projection would.
+    pub(crate) fn states_definition(&self, held: &GraphNodeKind, kind: SymbolKind) -> bool {
+        DefinitionCategory::stated(held) == Some(self.declared(kind))
+    }
+
+    /// The category and declaration token one Rust definition kind takes.
     ///
     /// Every `SymbolKind` a Rust report emits is named, so a new one is a
-    /// compile error here rather than a silent fallback category.
-    pub(crate) fn definition(&self, kind: SymbolKind) -> GraphNodeKind {
+    /// compile error here rather than a silent fallback category. This is the
+    /// one statement of the vocabulary: minting a kind and comparing one both
+    /// read it.
+    fn declared(&self, kind: SymbolKind) -> (DefinitionCategory, &Arc<str>) {
         match kind {
-            SymbolKind::Module => GraphNodeKind::Container {
-                level: Arc::clone(&self.module_level),
-            },
-            SymbolKind::Function => GraphNodeKind::Function {
-                declaration: Arc::clone(&self.function),
-            },
-            SymbolKind::Method => GraphNodeKind::Function {
-                declaration: Arc::clone(&self.method),
-            },
-            SymbolKind::Struct => GraphNodeKind::Type {
-                declaration: Arc::clone(&self.structure),
-            },
-            SymbolKind::Enum => GraphNodeKind::Type {
-                declaration: Arc::clone(&self.enumeration),
-            },
-            SymbolKind::Union => GraphNodeKind::Type {
-                declaration: Arc::clone(&self.union),
-            },
-            SymbolKind::Trait => GraphNodeKind::Type {
-                declaration: Arc::clone(&self.trait_declaration),
-            },
-            SymbolKind::TypeAlias => GraphNodeKind::Type {
-                declaration: Arc::clone(&self.type_alias),
-            },
-            SymbolKind::Constant => GraphNodeKind::Value {
-                declaration: Arc::clone(&self.constant),
-            },
-            SymbolKind::Static => GraphNodeKind::Value {
-                declaration: Arc::clone(&self.static_declaration),
-            },
+            SymbolKind::Module => (DefinitionCategory::Container, &self.module_level),
+            SymbolKind::Function => (DefinitionCategory::Function, &self.function),
+            SymbolKind::Method => (DefinitionCategory::Function, &self.method),
+            SymbolKind::Struct => (DefinitionCategory::Type, &self.structure),
+            SymbolKind::Enum => (DefinitionCategory::Type, &self.enumeration),
+            SymbolKind::Union => (DefinitionCategory::Type, &self.union),
+            SymbolKind::Trait => (DefinitionCategory::Type, &self.trait_declaration),
+            SymbolKind::TypeAlias => (DefinitionCategory::Type, &self.type_alias),
+            SymbolKind::Constant => (DefinitionCategory::Value, &self.constant),
+            SymbolKind::Static => (DefinitionCategory::Value, &self.static_declaration),
+        }
+    }
+}
+
+/// Which graph node category one Rust definition lands in.
+///
+/// The category and the declaration token together are the whole node kind, so
+/// a comparison reads both without minting one.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DefinitionCategory {
+    /// A namespace that owns other entities.
+    Container,
+    /// A callable entity.
+    Function,
+    /// A type entity.
+    Type,
+    /// A named value entity.
+    Value,
+}
+
+impl DefinitionCategory {
+    /// The node kind this category takes under one declaration token.
+    fn node(self, declaration: Arc<str>) -> GraphNodeKind {
+        match self {
+            Self::Container => GraphNodeKind::Container { level: declaration },
+            Self::Function => GraphNodeKind::Function { declaration },
+            Self::Type => GraphNodeKind::Type { declaration },
+            Self::Value => GraphNodeKind::Value { declaration },
+        }
+    }
+
+    /// The category and declaration token one held node kind states.
+    ///
+    /// A file node states neither: it is minted from a path rather than from a
+    /// definition, so no definition kind can equal it.
+    fn stated(held: &GraphNodeKind) -> Option<(Self, &Arc<str>)> {
+        match held {
+            GraphNodeKind::File => None,
+            GraphNodeKind::Container { level } => Some((Self::Container, level)),
+            GraphNodeKind::Function { declaration } => Some((Self::Function, declaration)),
+            GraphNodeKind::Type { declaration } => Some((Self::Type, declaration)),
+            GraphNodeKind::Value { declaration } => Some((Self::Value, declaration)),
         }
     }
 }

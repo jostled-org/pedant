@@ -6,10 +6,12 @@
 //! them, so neither file has to be read to know what the other holds.
 
 use super::analysis_ownership::ANALYSIS_SOURCES;
+use super::analysis_ownership::SELECTION_OWNER;
 use super::analysis_ownership_bounds::{
-    ALLOCATION_SPELLINGS, SELECTION_OWNER, analysis_sources_naming, assert_ordered,
+    ALLOCATION_SPELLINGS, analysis_sources_naming, assert_ordered, assert_reaches,
+    assert_reads_indexes_not_graph,
 };
-use super::scan::{code_only, compact, function_body, position_of, source};
+use super::scan::{code_only, function_body, position_of, source};
 
 /// The one analysis module that derives declared-partition divergence.
 const DIVERGENCE_OWNER: &str = "src/analysis/divergence.rs";
@@ -67,25 +69,8 @@ const DERIVED_CONSUMERS: &[(&str, &[&str])] = &[
 /// already holds, and the layout bounds itself through the one Brandes owner
 /// before it describes anything.
 pub fn assert_derived_consumers_reuse_analysis_results() {
-    for path in [DIVERGENCE_OWNER, LAYOUT_OWNER] {
-        let code = compact(source(path));
-        for spelling in [".edges()", ".allows(", "GraphEdgeSelection"] {
-            assert!(
-                !code.contains(spelling),
-                "{path} must read the shared indexes rather than the graph or \
-                 the selection: {spelling}"
-            );
-        }
-    }
-    for (path, accessors) in DERIVED_ACCESSORS {
-        let code = compact(source(path));
-        for accessor in *accessors {
-            assert!(
-                code.contains(accessor),
-                "{path} must reach its inputs through {accessor}"
-            );
-        }
-    }
+    assert_reads_indexes_not_graph(&[DIVERGENCE_OWNER, LAYOUT_OWNER]);
+    assert_reaches(DERIVED_ACCESSORS);
     for (operation, consumers) in DERIVED_CONSUMERS {
         assert_eq!(
             analysis_sources_naming(operation),

@@ -21,7 +21,7 @@ use super::corpus::{BUILD_SCRIPT_CORPUS, GRAPH_CORPUS};
 pub type DeclaredTarget = (&'static str, CargoTargetKind, &'static str);
 
 /// The corpus library root every general case reads.
-const CORPUS_LIBRARY: DeclaredTarget = ("app", CargoTargetKind::Library, "app");
+pub const CORPUS_LIBRARY: DeclaredTarget = ("app", CargoTargetKind::Library, "app");
 
 /// The build-script root, the one target kind whose namespace exposes a build
 /// dependency.
@@ -111,15 +111,39 @@ impl Fixture {
         self.resolve(self.sole_library())
     }
 
+    /// Snapshot and resolve one declared target.
+    ///
+    /// A repository stating more than one library names the one it means, so a
+    /// corpus that gains a dependency package keeps the root it is read at.
+    pub fn resolve_declared(&self, declared: DeclaredTarget) -> Resolved {
+        let (package, kind, name) = declared;
+        self.resolve(self.target(package, kind, name))
+    }
+
     /// Rewrite one source in place and reload the project from the same root.
     ///
     /// The manifests, the root path, and every target identity are unchanged,
     /// so the reloaded project issues the same identities and only the snapshot
     /// this fixture produces next differs.
     pub fn rewrite(&mut self, relative: &str, contents: &str) {
-        write_file(self.directory.path(), relative, contents.as_bytes());
+        self.revise(&[(relative, contents)], &[]);
+    }
+
+    /// Write every stated file, remove every stated path, and reload once.
+    ///
+    /// One revision is one repository state: a rename is a written source, a
+    /// removed source, and the declaration that names it, and reloading between
+    /// those three would load a repository no case states.
+    pub fn revise(&mut self, written: &[(&str, &str)], removed: &[&str]) {
+        for (relative, contents) in written {
+            write_file(self.directory.path(), relative, contents.as_bytes());
+        }
+        for relative in removed {
+            let path = self.directory.path().join(relative);
+            fs::remove_file(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+        }
         self.project = RustProject::load(&self.root(), ResolutionLimits::default())
-            .unwrap_or_else(|error| panic!("the edited fixture project should load: {error}"));
+            .unwrap_or_else(|error| panic!("the revised fixture project should load: {error}"));
     }
 
     /// Release the repository, returning its root so a caller can prove the
@@ -145,10 +169,9 @@ pub fn resolve_library(files: &[(&str, &str)]) -> (Fixture, Resolved) {
 ///
 /// The fixture travels with the resolution so the repository outlives every
 /// case that reads it, exactly as [`resolve_library`] does.
-fn resolve_target(files: &[(&str, &str)], declared: DeclaredTarget) -> (Fixture, Resolved) {
-    let (package, kind, name) = declared;
+pub fn resolve_target(files: &[(&str, &str)], declared: DeclaredTarget) -> (Fixture, Resolved) {
     let fixture = Fixture::build(files);
-    let resolved = fixture.resolve(fixture.target(package, kind, name));
+    let resolved = fixture.resolve_declared(declared);
     (fixture, resolved)
 }
 

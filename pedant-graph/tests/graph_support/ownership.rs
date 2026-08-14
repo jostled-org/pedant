@@ -7,9 +7,9 @@
 
 use std::collections::BTreeSet;
 
+use super::inventory::{PRODUCTION_SOURCES, SOURCES};
 use super::scan::{
-    PRODUCTION_SOURCES, SOURCES, code_only, discovered_sources, function_body, method_body, parsed,
-    position_of, source,
+    code_only, discovered_sources, function_body, method_body, parsed, position_of, source,
 };
 use super::surface::{
     declared_error_variants, declared_items, derived_paths, public_constructors, public_fields,
@@ -42,7 +42,7 @@ const FORBIDDEN_ENTRY_POINTS: &[&str] = &[
 /// three files would miss the fourth.
 const PANIC_SPELLINGS: &[&str] = &["unwrap(", "expect(", "panic!", "unreachable!", "todo!"];
 
-/// The sole projection-state construction site, in source spelling.
+/// The sole assembly-state construction site, in source spelling.
 ///
 /// The parsed body renders `::` with spaces around it, so the token form is
 /// derived from this one constant rather than written a second time.
@@ -93,6 +93,10 @@ const ERROR_OWNERS: &[(&str, &[&str])] = &[
         &["src/rust/validation.rs"],
     ),
     (
+        "GraphBuildError::RepeatedUnitSource",
+        &["src/rust/validation.rs"],
+    ),
+    (
         "GraphBuildError::ReferenceRecordMismatch",
         &["src/rust/validation.rs"],
     ),
@@ -100,7 +104,14 @@ const ERROR_OWNERS: &[(&str, &[&str])] = &[
         "GraphBuildError::MissingDefinitionNode",
         &["src/rust/validation.rs"],
     ),
-    ("GraphBuildError::MissingReferenceRecord", &["src/graph.rs"]),
+    (
+        "GraphBuildError::MissingReferenceRecord",
+        // The store refuses an edge whose record it does not hold; the
+        // validation owner refuses a plan whose report-order slot names no
+        // reference at all. Both are the same claim about a record that answers
+        // for nothing, one made at the store and one made before it.
+        &["src/graph.rs", "src/rust/validation.rs"],
+    ),
     (
         "GraphBuildError::UnknownContainmentNode",
         &["src/rust/validation.rs"],
@@ -124,21 +135,49 @@ const ERROR_OWNERS: &[(&str, &[&str])] = &[
     ("GraphBuildError::CapacityExceeded", &["src/graph.rs"]),
 ];
 
-/// The validators the shared projection entry must reach before it finishes,
-/// in the order the projection reaches them.
-const REACHED_VALIDATORS: &[&str] = &[
+/// The validators the planner must reach, in the order it reaches them.
+const PLANNED_VALIDATORS: &[&str] = &[
     "check_root_target",
     "check_snapshot_identity",
     "resolved_references",
     "stated_binding",
     "snapshot_instance",
-    "bind_unit",
-    "bound_snapshot_unit",
+    "distinct_binding",
+    "definition_identity",
+    "definition_fragment",
+    "placed_slot",
+    "dependency_unit",
+];
+
+/// The validators the planner reaches through the identity table it derives.
+const IDENTIFIED_VALIDATORS: &[&str] = &["instantiated_source"];
+
+/// The validator the source placement must reach before it states a source.
+///
+/// A unit that instantiates one path twice would mint a second file node for a
+/// source the placement then holds no records for, so the repeat is refused
+/// where the unit's own sources are read.
+const PLACED_VALIDATORS: &[&str] = &["distinct_source"];
+
+/// The validator the assembly tables must reach before a binding is dropped.
+const BOUND_VALIDATORS: &[&str] = &["unit_scope"];
+
+/// The validators the claim owner must reach before it states a key.
+///
+/// A claim names a fragment, the unit that placed it, and the bytes it was
+/// derived from. Each of those is a join, and a claim that read one without
+/// proving it could answer a later build for a source this snapshot never had.
+const CLAIMED_VALIDATORS: &[&str] = &["planned_unit", "source_digest"];
+
+/// The validators the assembler must reach before it seals a graph.
+const ASSEMBLED_VALIDATORS: &[&str] = &[
+    "planned_definition",
+    "planned_reference",
+    "fragment_source",
+    "fragment_unit",
     "unit_container",
-    "qualified_source",
     "source_node",
     "definition_node",
-    "snapshot_container",
     "check_containment_forest",
 ];
 
@@ -213,48 +252,58 @@ pub fn assert_public_builders_delegate() {
     );
 }
 
-/// Both identity checks precede the sole projection-state constructor and every
-/// record-producing pass.
+/// Both identity checks precede planning, and the sole assembly-state
+/// constructor precedes every record-producing pass.
 pub fn assert_identity_checks_dominate() {
-    let body = function_body("src/rust/projection.rs", "project");
-    let root = position_of(&body, "check_root_target", "the projection entry");
-    let identity = position_of(&body, "check_snapshot_identity", "the projection entry");
-    let construction = position_of(
-        &body,
-        &token_form(STATE_CONSTRUCTOR),
-        "the projection entry",
-    );
+    let entry = function_body("src/rust/projection.rs", "project");
+    let validated = position_of(&entry, "validate", "the projection entry");
+    let planned = position_of(&entry, "plan", "the projection entry");
+    let assembled = position_of(&entry, "assembly :: assemble", "the projection entry");
     assert!(
-        root < construction && identity < construction,
-        "both identity checks must precede ProjectionState::new"
+        validated < planned && planned < assembled,
+        "the projection entry validates, then plans, then assembles"
     );
+    let checks = function_body("src/rust/projection.rs", "validate");
+    let root = position_of(&checks, "check_root_target", "the identity checks");
+    let identity = position_of(&checks, "check_snapshot_identity", "the identity checks");
+    assert!(
+        root < identity,
+        "the root target is proved before the snapshot identity"
+    );
+
+    let assembly = function_body("src/rust/assembly.rs", "assemble");
+    let construction = position_of(&assembly, &token_form(STATE_CONSTRUCTOR), "the assembler");
     for pass in [
-        "project_units",
-        "project_sources",
-        "project_definitions",
-        "project_references",
-        "project_dependencies",
-        "project_candidates",
+        "assemble_containers",
+        "assemble_sources",
+        "assemble_definitions",
+        "assemble_containment",
+        "assemble_references",
+        "assemble_dependencies",
+        "assemble_candidates",
     ] {
-        let at = position_of(&body, pass, "the projection entry");
+        let at = position_of(&assembly, pass, "the assembler");
         assert!(
             construction < at,
-            "{pass} must run after the projection state exists"
+            "{pass} must run after the assembly state exists"
         );
     }
+    let sites: Vec<&str> = SOURCES
+        .iter()
+        .filter(|entry| code_only(entry.text).contains(STATE_CONSTRUCTOR))
+        .map(|entry| entry.path)
+        .collect();
     assert_eq!(
-        code_only(source("src/rust/projection.rs"))
-            .matches(STATE_CONSTRUCTOR)
-            .count(),
-        1,
-        "the projection state has exactly one construction site"
+        sites,
+        vec!["src/rust/assembly.rs"],
+        "the assembly state has exactly one construction site"
     );
     assert_eq!(
         code_only(source("src/rust/index.rs"))
             .matches(STATE_CONSTRUCTOR_SIGNATURE)
             .count(),
         1,
-        "the projection state has exactly one constructor, spelled {STATE_CONSTRUCTOR_SIGNATURE}"
+        "the assembly state has exactly one constructor, spelled {STATE_CONSTRUCTOR_SIGNATURE}"
     );
 }
 
@@ -304,21 +353,19 @@ pub fn assert_one_checked_insertion_owner() {
 /// every error variant is built only by the source that owns it, and no
 /// production source can abort instead of refusing.
 pub fn assert_defensive_paths_are_wired() {
-    let projection = source("src/rust/projection.rs");
-    let validation = source("src/rust/validation.rs");
-    for validator in REACHED_VALIDATORS {
-        assert!(
-            validation.contains(&format!("pub(crate) fn {validator}")),
-            "{validator} is not declared by the validation owner"
-        );
-        assert!(
-            projection.contains(validator),
-            "{validator} is not reached from the projection path"
-        );
+    for (reader, validators) in [
+        ("src/rust/projection.rs", PLANNED_VALIDATORS),
+        ("src/rust/identity.rs", IDENTIFIED_VALIDATORS),
+        ("src/rust/fragment.rs", PLACED_VALIDATORS),
+        ("src/rust/index.rs", BOUND_VALIDATORS),
+        ("src/rust/claim.rs", CLAIMED_VALIDATORS),
+        ("src/rust/assembly.rs", ASSEMBLED_VALIDATORS),
+    ] {
+        assert_validators_are_reached(reader, validators);
     }
-    let entry = function_body("src/rust/projection.rs", "project");
-    let finish = position_of(&entry, "state . finish", "the projection entry");
-    let forest = position_of(&entry, "check_containment_forest", "the projection entry");
+    let entry = function_body("src/rust/assembly.rs", "assemble");
+    let finish = position_of(&entry, "state . finish", "the assembler");
+    let forest = position_of(&entry, "check_containment_forest", "the assembler");
     assert!(
         forest < finish,
         "containment must be validated before the graph is constructed"
@@ -351,6 +398,35 @@ pub fn assert_defensive_paths_are_wired() {
         aborting.is_empty(),
         "a production source may refuse but never abort: {aborting:?}"
     );
+}
+
+/// Every named validator is declared by the validation owner and reached by the
+/// source the model says reaches it.
+///
+/// A validator answering a borrow of what it was handed states its own
+/// lifetime, so both spellings the declaration can take are admitted. The name
+/// is still bound on both sides — by the opening parenthesis or by the opening
+/// angle bracket — so a longer name that merely starts with a modelled one
+/// answers for neither.
+fn assert_validators_are_reached(reader: &str, validators: &[&str]) {
+    let validation = source("src/rust/validation.rs");
+    let text = source(reader);
+    for validator in validators {
+        let declarations = [
+            format!("pub(crate) fn {validator}("),
+            format!("pub(crate) fn {validator}<"),
+        ];
+        assert!(
+            declarations
+                .iter()
+                .any(|declaration| validation.contains(declaration)),
+            "{validator} is not declared by the validation owner"
+        );
+        assert!(
+            text.contains(validator),
+            "{validator} is not reached from {reader}"
+        );
+    }
 }
 
 /// Public records keep private fields and private constructors, and the graph

@@ -7,7 +7,7 @@ use serde::Serialize;
 use crate::containment::ContainmentEdge;
 use crate::edge::{EdgeDraft, GraphEdge, GraphEdgeOrigin};
 use crate::error::GraphBuildError;
-use crate::id::{GraphEdgeId, GraphNodeId, GraphReferenceId, index_of};
+use crate::id::{GraphEdgeId, GraphNodeId, GraphReferenceId, index_of, position};
 use crate::limits::{GraphCollection, GraphLimits};
 use crate::node::{GraphNode, NodeDraft};
 use crate::reference::{GraphReference, ReferenceDraft};
@@ -75,6 +75,29 @@ impl CodeGraph {
     /// The edge one identity selects.
     pub fn edge(&self, id: GraphEdgeId) -> Option<&GraphEdge> {
         self.edges.get(index_of(id.index()))
+    }
+
+    /// Whether this graph is still admissible under one set of ceilings.
+    ///
+    /// A graph is reused rather than rebuilt only when the caller's current
+    /// ceilings would have admitted it. The collections are compared in the
+    /// order a build fills them — nodes, then reference records, then edges —
+    /// so the refusal a lowered ceiling produces names the collection direct
+    /// construction would have reached first.
+    pub(crate) fn admissible(&self, limits: GraphLimits) -> Result<(), GraphBuildError> {
+        [
+            (GraphCollection::Node, self.nodes.len()),
+            (GraphCollection::Reference, self.references.len()),
+            (GraphCollection::Edge, self.edges.len()),
+        ]
+        .into_iter()
+        .find(|(collection, held)| position(*held) > limits.ceiling(*collection))
+        .map_or(Ok(()), |(collection, _)| {
+            Err(GraphBuildError::CapacityExceeded {
+                collection,
+                limit: limits.ceiling(collection),
+            })
+        })
     }
 }
 

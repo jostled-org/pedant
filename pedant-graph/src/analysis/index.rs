@@ -10,6 +10,14 @@
 //! the algorithms that answer them: a type's inherent API belongs in one file,
 //! and each entry point here is one delegation to the module that owns the
 //! work.
+//!
+//! The indexes and the partition are shared immutable values, and every
+//! algorithm reads them through one borrowed [`AnalysisContext`]. A borrowed
+//! view and an owned cached handle therefore hand the same concrete state to
+//! the same owners: neither is a second analysis, and neither can apply a
+//! selection the other did not.
+
+use std::sync::Arc;
 
 use crate::edge::GraphEdge;
 use crate::graph::CodeGraph;
@@ -124,14 +132,116 @@ impl SelectedIndexes {
     }
 }
 
+/// The immutable state one admitted selection produces, held by shared
+/// ownership.
+///
+/// A borrowed analysis and a cached handle both hold this value, so requesting
+/// a second view of one selection clones two pointers rather than reading the
+/// edge slice again. Nothing here is mutable once built, which is what makes
+/// the sharing safe to hand across threads.
+#[derive(Clone)]
+pub(crate) struct SharedAnalysis {
+    indexes: Arc<SelectedIndexes>,
+    partition: Arc<DeclaredModulePartition>,
+}
+
+impl SharedAnalysis {
+    /// Index `graph` under `selection`, proving both stated ceilings first.
+    pub(crate) fn indexed(
+        graph: &CodeGraph,
+        selection: GraphEdgeSelection,
+        limits: GraphAnalysisLimits,
+    ) -> Result<Self, GraphAnalysisError> {
+        let counts = admitted_counts(graph, selection, limits)?;
+        Self::from_admitted(graph, selection, counts)
+    }
+
+    /// Index `graph` for node and selected-edge counts a ceiling already
+    /// admitted.
+    ///
+    /// The counts travel in rather than being taken again, so a cached lookup
+    /// proves the caller's current ceilings once and the miss behind it indexes
+    /// exactly what those ceilings admitted.
+    pub(crate) fn from_admitted(
+        graph: &CodeGraph,
+        selection: GraphEdgeSelection,
+        admitted: (u32, u32),
+    ) -> Result<Self, GraphAnalysisError> {
+        let indexes = SelectedIndexes::build(graph, selection, admitted);
+        let partition = partition::derive(graph, &indexes)?;
+        Ok(Self {
+            indexes: Arc::new(indexes),
+            partition: Arc::new(partition),
+        })
+    }
+
+    /// The adjacency and containment tables this selection produced.
+    pub(crate) fn indexes(&self) -> &SelectedIndexes {
+        &self.indexes
+    }
+
+    /// The declared module partition this selection settled.
+    pub(crate) fn partition(&self) -> &DeclaredModulePartition {
+        &self.partition
+    }
+
+    /// One borrowed reading of this state, beside the graph and the ceilings a
+    /// query is answered under.
+    pub(crate) fn context<'analysis>(
+        &'analysis self,
+        graph: &'analysis CodeGraph,
+        limits: GraphAnalysisLimits,
+    ) -> AnalysisContext<'analysis> {
+        AnalysisContext {
+            graph,
+            limits,
+            indexes: &self.indexes,
+            partition: &self.partition,
+        }
+    }
+}
+
+/// Everything one derived algorithm reads, gathered once.
+///
+/// The one concrete value every algorithm consumes. A borrowed
+/// [`GraphAnalysis`] and an owned cached handle each produce one, so neither
+/// owns an algorithm, a selection predicate, or a second set of indexes.
+pub(crate) struct AnalysisContext<'analysis> {
+    graph: &'analysis CodeGraph,
+    limits: GraphAnalysisLimits,
+    indexes: &'analysis SelectedIndexes,
+    partition: &'analysis DeclaredModulePartition,
+}
+
+impl<'analysis> AnalysisContext<'analysis> {
+    /// The graph every identity an answer states indexes back into.
+    pub(crate) fn graph(&self) -> &'analysis CodeGraph {
+        self.graph
+    }
+
+    /// The ceilings this answer is admitted under.
+    pub(crate) fn limits(&self) -> GraphAnalysisLimits {
+        self.limits
+    }
+
+    /// The shared indexes every query reads.
+    pub(crate) fn indexes(&self) -> &'analysis SelectedIndexes {
+        self.indexes
+    }
+
+    /// The declared module partition, derived once with the indexes.
+    pub(crate) fn declared_partition(&self) -> &'analysis DeclaredModulePartition {
+        self.partition
+    }
+}
+
 /// One borrowed graph, the selection applied to it, and the indexes that
 /// selection produced.
 pub struct GraphAnalysis<'graph> {
     graph: &'graph CodeGraph,
     selection: GraphEdgeSelection,
     limits: GraphAnalysisLimits,
-    indexes: SelectedIndexes,
-    partition: DeclaredModulePartition,
+    shared: SharedAnalysis,
 }
 
 impl<'graph> GraphAnalysis<'graph> {
@@ -146,16 +256,11 @@ impl<'graph> GraphAnalysis<'graph> {
         selection: GraphEdgeSelection,
         limits: GraphAnalysisLimits,
     ) -> Result<GraphAnalysis<'graph>, GraphAnalysisError> {
-        let nodes = admitted_nodes(graph, limits)?;
-        let edges = admitted_edges(graph, selection, limits)?;
-        let indexes = SelectedIndexes::build(graph, selection, (nodes, edges));
-        let partition = partition::derive(graph, &indexes)?;
         Ok(Self {
             graph,
             selection,
             limits,
-            indexes,
-            partition,
+            shared: SharedAnalysis::indexed(graph, selection, limits)?,
         })
     }
 
@@ -177,7 +282,7 @@ impl<'graph> GraphAnalysis<'graph> {
 
     /// The declared module partition, derived once from logical containment.
     pub fn declared_partition(&self) -> &DeclaredModulePartition {
-        &self.partition
+        self.shared.partition()
     }
 
     /// Every node connected to `node` within `depth` selected steps in
@@ -188,7 +293,7 @@ impl<'graph> GraphAnalysis<'graph> {
         depth: u32,
         direction: GraphDirection,
     ) -> Result<Box<[GraphNeighbor]>, GraphAnalysisError> {
-        traversal::neighbors(self, node, depth, direction)
+        traversal::neighbors(&self.context(), node, depth, direction)
     }
 
     /// The shortest route from `source` to `target` over selected outgoing
@@ -198,7 +303,7 @@ impl<'graph> GraphAnalysis<'graph> {
         source: GraphNodeId,
         target: GraphNodeId,
     ) -> Result<Option<GraphPath>, GraphAnalysisError> {
-        traversal::path(self, (source, target))
+        traversal::path(&self.context(), (source, target))
     }
 
     /// The selection into this graph induced by the nodes `seed` reaches
@@ -209,13 +314,13 @@ impl<'graph> GraphAnalysis<'graph> {
         depth: u32,
         direction: GraphDirection,
     ) -> Result<GraphSubgraph, GraphAnalysisError> {
-        traversal::subgraph(self, seed, depth, direction)
+        traversal::subgraph(&self.context(), seed, depth, direction)
     }
 
     /// How many selected edges arrive at and leave each node, in raw node-id
     /// order.
     pub fn degree_centrality(&self) -> Box<[DegreeCentrality]> {
-        degree::degree(self)
+        degree::degree(&self.context())
     }
 
     /// How much of the selected topology's shortest routing passes through each
@@ -223,36 +328,52 @@ impl<'graph> GraphAnalysis<'graph> {
     pub fn betweenness_centrality(
         &self,
     ) -> Result<Box<[BetweennessCentrality]>, GraphAnalysisError> {
-        betweenness::betweenness(self)
+        betweenness::betweenness(&self.context())
     }
 
     /// Which nodes reach each other over selected edges.
     pub fn strongly_connected_components(&self) -> GraphComponents {
-        components::discover(self)
+        components::discover(&self.context())
     }
 
     /// The same selected topology with every component contracted, ordered, and
     /// still carrying every raw edge it coalesced.
     pub fn condensation(&self) -> CondensationGraph {
-        components::condense(self)
+        components::condense(&self.context())
     }
 
     /// What the selected topology says about the module partition this graph
     /// declares.
     pub fn divergence(&self) -> GraphDivergence {
-        divergence::divergence(self)
+        divergence::divergence(&self.context())
     }
 
     /// Every admitted node and selected edge, described for a consumer that
     /// ranks or draws them.
     pub fn layout_assist(&self) -> Result<LayoutAssistMetadata, GraphAnalysisError> {
-        layout::layout_assist(self)
+        layout::layout_assist(&self.context())
     }
 
-    /// The shared indexes every query reads.
-    pub(crate) fn indexes(&self) -> &SelectedIndexes {
-        &self.indexes
+    /// What every algorithm this view delegates to reads.
+    fn context(&self) -> AnalysisContext<'_> {
+        self.shared.context(self.graph, self.limits)
     }
+}
+
+/// The node and selected-edge counts one graph states, both proved against the
+/// stated ceilings.
+///
+/// The one admission owner. A borrowed analysis proves the pair before it
+/// indexes anything, and a cached lookup proves the same pair before it can
+/// answer with indexes admitted under an earlier, looser ceiling.
+pub(crate) fn admitted_counts(
+    graph: &CodeGraph,
+    selection: GraphEdgeSelection,
+    limits: GraphAnalysisLimits,
+) -> Result<(u32, u32), GraphAnalysisError> {
+    let nodes = admitted_nodes(graph, limits)?;
+    let edges = admitted_edges(graph, selection, limits)?;
+    Ok((nodes, edges))
 }
 
 /// Every edge one selection admits, in raw edge-id order.

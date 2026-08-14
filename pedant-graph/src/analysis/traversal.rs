@@ -15,7 +15,7 @@ use crate::containment::ContainmentEdge;
 use crate::id::{GraphEdgeId, GraphNodeId, index_of, position};
 
 use super::error::GraphAnalysisError;
-use super::index::{GraphAnalysis, SelectedAdjacency, SelectedIndexes};
+use super::index::{AnalysisContext, SelectedAdjacency, SelectedIndexes};
 use super::limits::GraphAnalysisLimits;
 
 /// The adjacency list a one-sided walk does not read.
@@ -157,14 +157,13 @@ fn beyond_seed(at: usize, distance: Option<u32>) -> Option<GraphNeighbor> {
 /// Every node connected to `node` within `depth` selected steps in `direction`,
 /// at its minimum distance.
 pub(crate) fn neighbors(
-    analysis: &GraphAnalysis<'_>,
+    analysis: &AnalysisContext<'_>,
     node: GraphNodeId,
     depth: u32,
     direction: GraphDirection,
 ) -> Result<Box<[GraphNeighbor]>, GraphAnalysisError> {
     let indexes = analysis.indexes();
-    known_node(indexes, node)?;
-    admitted_depth(analysis.limits(), depth)?;
+    admitted_walk(indexes, analysis.limits(), node, depth)?;
     Ok(walk(indexes, node, depth, direction).ordered())
 }
 
@@ -178,13 +177,12 @@ pub(crate) fn neighbors(
 /// makes it, so this walk is bounded by the admitted node and selected-edge
 /// counts rather than by the depth ceiling a neighborhood or subgraph states.
 pub(crate) fn path(
-    analysis: &GraphAnalysis<'_>,
+    analysis: &AnalysisContext<'_>,
     route: (GraphNodeId, GraphNodeId),
 ) -> Result<Option<GraphPath>, GraphAnalysisError> {
-    let (source, target) = route;
+    let (_, target) = route;
     let indexes = analysis.indexes();
-    known_node(indexes, source)?;
-    known_node(indexes, target)?;
+    admitted_route(indexes, route)?;
     let remaining = walk(indexes, target, u32::MAX, GraphDirection::Incoming);
     Ok(least_route(indexes, &remaining, route))
 }
@@ -192,14 +190,13 @@ pub(crate) fn path(
 /// The selection induced by the nodes `seed` reaches within `depth` selected
 /// steps.
 pub(crate) fn subgraph(
-    analysis: &GraphAnalysis<'_>,
+    analysis: &AnalysisContext<'_>,
     seed: GraphNodeId,
     depth: u32,
     direction: GraphDirection,
 ) -> Result<GraphSubgraph, GraphAnalysisError> {
     let indexes = analysis.indexes();
-    known_node(indexes, seed)?;
-    admitted_depth(analysis.limits(), depth)?;
+    admitted_walk(indexes, analysis.limits(), seed, depth)?;
     Ok(induced(indexes, &walk(indexes, seed, depth, direction)))
 }
 
@@ -209,6 +206,41 @@ fn known_node(indexes: &SelectedIndexes, node: GraphNodeId) -> Result<(), GraphA
         true => Ok(()),
         false => Err(GraphAnalysisError::UnknownNode { node }),
     }
+}
+
+/// One seed and one requested depth, proved in the order a bounded walk
+/// refuses them.
+///
+/// The one owner of that order. A borrowed walk proves it on the way in, and a
+/// cached handle proves it before it examines anything it retained, so the two
+/// cannot answer one pair of arguments with two different refusals. The seed is
+/// proved first: a node this analysis holds no record for is not a question a
+/// ceiling has anything to say about.
+pub(crate) fn admitted_walk(
+    indexes: &SelectedIndexes,
+    limits: GraphAnalysisLimits,
+    node: GraphNodeId,
+    depth: u32,
+) -> Result<(), GraphAnalysisError> {
+    known_node(indexes, node)?;
+    admitted_depth(limits, depth)
+}
+
+/// One ordered node pair, proved in the order a route refuses them.
+///
+/// The one owner of that order, beside [`admitted_walk`]. A route requests no
+/// depth and no ceiling has anything to say about how long the topology makes
+/// it, so the pair is the whole admission. The borrowed route proves it on the
+/// way in, and a cached handle proves it before it examines anything it
+/// retained, so the two cannot answer one pair with two different refusals and
+/// a refused pair is never counted as a product nothing derived.
+pub(crate) fn admitted_route(
+    indexes: &SelectedIndexes,
+    route: (GraphNodeId, GraphNodeId),
+) -> Result<(), GraphAnalysisError> {
+    let (source, target) = route;
+    known_node(indexes, source)?;
+    known_node(indexes, target)
 }
 
 /// One requested depth, proved against the stated ceiling before any walk

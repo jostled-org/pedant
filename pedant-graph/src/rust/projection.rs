@@ -1,43 +1,45 @@
-//! The one Rust projection path both public entry points delegate to.
+//! The one Rust planner both the direct and the cached path delegate to.
 //!
 //! It consumes the supplied snapshot and resolution and nothing else: no
 //! project is loaded, no snapshot is constructed, no source is parsed, no
-//! semantic context is built, and neither resolver tier is run. Identifiers are
-//! assigned in fixed passes — unit containers, each unit's sorted sources,
-//! report definitions, report references, snapshot dependency edges, then
-//! reference candidate edges — so equal inputs produce byte-identical output.
+//! semantic context is built, and neither resolver tier is run. The plan it
+//! produces holds no graph identity at all — every join travels as a stable
+//! unit, source, or definition identity — so the same plan is what a later
+//! build reuses and what [`super::assembly`] mints a complete graph from.
+//!
+//! Every source is decided before it is derived. The planner places the report's
+//! records, states each source's key, and asks the store whether the projection
+//! it retained still states what this report states. Derivation is the answer to
+//! a miss, so a source whose claim still holds costs one key and one comparison.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use pedant_core::resolution::rust::{RustResolutionSnapshot, RustTargetResolution};
-use pedant_types::{
-    ResolutionRecord, ResolutionReport, ResolutionUnit, SymbolDefinition, SymbolReference,
+use pedant_core::resolution::rust::{
+    RustResolutionSnapshot, RustSnapshotUnitId, RustTargetResolution,
 };
+use pedant_types::{ResolutionRecord, ResolutionReport, SymbolReference};
 
-use crate::edge::{DependencyEvidence, EdgeDraft, GraphEdgeKind, GraphEdgeOrigin};
+use crate::edge::DependencyEvidence;
 use crate::error::GraphBuildError;
 use crate::graph::CodeGraph;
-use crate::id::{GraphNodeId, GraphReferenceId, position};
+use crate::id::{index_of, position};
 use crate::limits::GraphLimits;
-use crate::node::{GraphNodeKind, GraphNodeLocation, NodeDraft};
-use crate::reference::{GraphReferenceKind, ReferenceDraft};
 
-use super::index::{ProjectionCapacity, ProjectionState};
+use super::assembly;
+use super::claim::SourceKey;
+use super::fragment::{
+    DependencyProjection, FragmentSlot, PlacedFragment, ProjectionPlan, SourceFragment, SourceSet,
+    UnitPlan,
+};
+use super::identity::DefinitionTable;
+use super::index::ProjectionCapacity;
 use super::mapping::{self, Vocabulary};
+use super::reuse::ProjectionStore;
+use super::source::{self, SourceRecords, StatedSource};
 use super::validation;
 
-/// What one projected reference record needs from its candidates pass.
-///
-/// The record travels with the identity it produced, so the pairing between a
-/// reference and its answer is proved once and never derived a second time.
-struct ProjectedReference<'a> {
-    id: GraphReferenceId,
-    source: GraphNodeId,
-    kind: GraphReferenceKind,
-    record: &'a ResolutionRecord,
-}
-
-/// The values every pass reads, gathered once.
+/// The values every planning pass reads, gathered once.
 struct Inputs<'a> {
     snapshot: &'a RustResolutionSnapshot,
     report: &'a ResolutionReport,
@@ -47,14 +49,45 @@ struct Inputs<'a> {
     resolved: Box<[(&'a SymbolReference, &'a ResolutionRecord)]>,
 }
 
+/// Every planned unit beside the build units they were bound to.
+struct PlannedUnits {
+    units: Vec<UnitPlan>,
+    bound: BTreeMap<RustSnapshotUnitId, u32>,
+}
+
+/// Where every report record sits, and what each source therefore states.
+struct Placement<'a> {
+    definitions: Box<[FragmentSlot]>,
+    references: Box<[FragmentSlot]>,
+    stated: Box<[SourceRecords<'a>]>,
+}
+
 /// Project one snapshot-bound resolution into a code graph.
 pub(crate) fn project(
     snapshot: &RustResolutionSnapshot,
     resolution: &RustTargetResolution,
     limits: GraphLimits,
 ) -> Result<CodeGraph, GraphBuildError> {
+    validate(snapshot, resolution)?;
+    let planned = plan(snapshot, resolution, &mut ProjectionStore::unretained())?;
+    assembly::assemble(&planned, limits)
+}
+
+/// Both identity checks, taken before anything is planned or observed.
+pub(crate) fn validate(
+    snapshot: &RustResolutionSnapshot,
+    resolution: &RustTargetResolution,
+) -> Result<(), GraphBuildError> {
     validation::check_root_target(snapshot, resolution)?;
-    validation::check_snapshot_identity(snapshot, resolution)?;
+    validation::check_snapshot_identity(snapshot, resolution)
+}
+
+/// The complete graph-neutral projection one validated pairing states.
+pub(crate) fn plan(
+    snapshot: &RustResolutionSnapshot,
+    resolution: &RustTargetResolution,
+    reuse: &mut ProjectionStore,
+) -> Result<ProjectionPlan, GraphBuildError> {
     let report = resolution.report();
     let inputs = Inputs {
         snapshot,
@@ -62,16 +95,22 @@ pub(crate) fn project(
         vocabulary: Vocabulary::new(),
         resolved: validation::resolved_references(report)?,
     };
-    let mut state = ProjectionState::new(limits, capacity(&inputs));
-    let units = project_units(&mut state, &inputs, resolution)?;
-    project_sources(&mut state, &inputs)?;
-    project_definitions(&mut state, &inputs)?;
-    project_containment(&mut state, &inputs)?;
-    validation::check_containment_forest(&state, units)?;
-    let references = project_references(&mut state, &inputs)?;
-    project_dependencies(&mut state, &inputs)?;
-    project_candidates(&mut state, &references)?;
-    Ok(state.finish(inputs.report.tier()))
+    let planned = plan_units(&inputs, resolution)?;
+    let sources = SourceSet::new(planned.units.into_boxed_slice())?;
+    let table = DefinitionTable::new(report, &sources)?;
+    let placement = Placement::stated(&inputs, (&sources, &table))?;
+    let fragments = plan_fragments(&inputs, (&sources, &table, &placement), reuse)?;
+    let dependencies = plan_dependencies(&inputs, &planned.bound)?;
+    let capacity = capacity(&inputs);
+    Ok(ProjectionPlan {
+        tier: report.tier(),
+        units: sources.finish(),
+        fragments,
+        definitions: placement.definitions,
+        references: placement.references,
+        dependencies,
+        capacity,
+    })
 }
 
 /// How many records the supplied inputs state, counted before one is allocated.
@@ -93,226 +132,207 @@ fn capacity(inputs: &Inputs<'_>) -> ProjectionCapacity {
     }
 }
 
-/// One root container per report unit, in report order.
+/// One container plan per report unit, in report order.
 ///
-/// This is the first pass, so the containers take the first identities the
-/// graph mints and the store's own node count is what later passes read
-/// rootness from.
-fn project_units(
-    state: &mut ProjectionState,
+/// One build unit is bound by one report unit: two report units naming it would
+/// give every source of that unit two owners, and the collision is named where
+/// it is made.
+fn plan_units(
     inputs: &Inputs<'_>,
     resolution: &RustTargetResolution,
-) -> Result<usize, GraphBuildError> {
+) -> Result<PlannedUnits, GraphBuildError> {
+    let mut planned = PlannedUnits {
+        units: Vec::with_capacity(inputs.report.units().len()),
+        bound: BTreeMap::new(),
+    };
     for unit in inputs.report.units() {
         let reported = unit.id().index();
         let snapshot_unit = validation::stated_binding(resolution, unit)?;
         let instance = validation::snapshot_instance(inputs.snapshot, (snapshot_unit, reported))?;
-        let container = state.insert_node(NodeDraft {
+        validation::distinct_binding(planned.bound.get(&snapshot_unit).copied(), reported)?;
+        planned.bound.insert(snapshot_unit, reported);
+        planned.units.push(UnitPlan {
+            key: Arc::from(unit.key()),
             language: unit.language(),
             name: Arc::from(unit.name()),
             kind: inputs.vocabulary.unit_root(instance.kind()),
-            location: None,
-        })?;
-        validation::bind_unit(state, container, (snapshot_unit, reported))?;
-    }
-    Ok(state.node_count())
-}
-
-/// One file node per source the bound unit instantiates, in sorted path order.
-fn project_sources(
-    state: &mut ProjectionState,
-    inputs: &Inputs<'_>,
-) -> Result<(), GraphBuildError> {
-    for unit in inputs.report.units() {
-        let reported = unit.id().index();
-        let snapshot_unit = validation::bound_snapshot_unit(state, reported)?;
-        let container = validation::unit_container(state, reported)?;
-        let instance = validation::snapshot_instance(inputs.snapshot, (snapshot_unit, reported))?;
-        for path in instance.sources() {
-            let node = validation::qualified_source(
-                state,
-                (snapshot_unit, reported),
-                path,
-                file_draft(unit, path),
-            )?;
-            state.contain(container, node);
-        }
-    }
-    Ok(())
-}
-
-fn file_draft(unit: &ResolutionUnit, path: &Arc<str>) -> NodeDraft {
-    NodeDraft {
-        language: unit.language(),
-        name: Arc::clone(path),
-        kind: GraphNodeKind::File,
-        location: Some(GraphNodeLocation::File {
-            path: Arc::clone(path),
-        }),
-    }
-}
-
-/// One node per report definition, in report order.
-fn project_definitions(
-    state: &mut ProjectionState,
-    inputs: &Inputs<'_>,
-) -> Result<(), GraphBuildError> {
-    for definition in inputs.report.definitions() {
-        let reported = definition.unit().index();
-        let snapshot_unit = validation::bound_snapshot_unit(state, reported)?;
-        let file = validation::source_node(
-            state,
-            (snapshot_unit, reported),
-            SymbolDefinition::span(definition).file(),
-        )?;
-        let node = state.insert_node(definition_draft(&inputs.vocabulary, definition, file))?;
-        state.bind_definition(node);
-    }
-    Ok(())
-}
-
-fn definition_draft(
-    vocabulary: &Vocabulary,
-    definition: &SymbolDefinition,
-    file: GraphNodeId,
-) -> NodeDraft {
-    NodeDraft {
-        language: definition.language(),
-        name: Arc::from(definition.name()),
-        kind: vocabulary.definition(definition.kind()),
-        location: Some(GraphNodeLocation::Span {
-            file,
-            span: SymbolDefinition::span(definition).clone(),
-        }),
-    }
-}
-
-/// Logical ownership: a report parent when there is one, the unit root
-/// otherwise. Source location never becomes a containment parent.
-fn project_containment(
-    state: &mut ProjectionState,
-    inputs: &Inputs<'_>,
-) -> Result<(), GraphBuildError> {
-    for definition in inputs.report.definitions() {
-        let child = validation::definition_node(state, definition.id().index())?;
-        let parent = match definition.parent() {
-            Some(parent) => validation::definition_node(state, parent.index())?,
-            None => validation::unit_container(state, definition.unit().index())?,
-        };
-        state.contain(parent, child);
-    }
-    Ok(())
-}
-
-/// One reference record per report reference, in report order.
-fn project_references<'a>(
-    state: &mut ProjectionState,
-    inputs: &Inputs<'a>,
-) -> Result<Box<[ProjectedReference<'a>]>, GraphBuildError> {
-    let mut projected = Vec::with_capacity(inputs.resolved.len());
-    for (reference, record) in inputs.resolved.iter().copied() {
-        let source = reference_source(state, reference)?;
-        let kind = mapping::reference_kind(reference.kind());
-        let id = state.insert_reference(reference_draft((source, kind), reference, record))?;
-        projected.push(ProjectedReference {
-            id,
-            source,
-            kind,
-            record,
+            sources: instance.sources().into(),
         });
     }
-    Ok(projected.into_boxed_slice())
+    Ok(planned)
 }
 
-fn reference_draft(
-    site: (GraphNodeId, GraphReferenceKind),
-    reference: &SymbolReference,
-    record: &ResolutionRecord,
-) -> ReferenceDraft {
-    let (source, kind) = site;
-    ReferenceDraft {
-        source,
-        language: reference.language(),
-        kind,
-        text: Arc::from(reference.text()),
-        span: SymbolReference::span(reference).clone(),
-        gaps: record.gaps().into(),
+impl<'a> Placement<'a> {
+    /// Where every record the report states sits, and which records each source
+    /// therefore states.
+    ///
+    /// Placing a record costs its position and nothing else, so this pass runs
+    /// for every source, reused or not, and the slots the assembler reads are
+    /// the report's own order either way.
+    fn stated(
+        inputs: &Inputs<'a>,
+        placed: (&SourceSet, &DefinitionTable),
+    ) -> Result<Self, GraphBuildError> {
+        let (sources, table) = placed;
+        let mut stated: Box<[SourceRecords<'a>]> = sources
+            .placed()
+            .iter()
+            .map(|_| SourceRecords::default())
+            .collect();
+        let definitions = place_definitions(inputs, table, &mut stated)?;
+        let references = place_references(inputs, sources, &mut stated)?;
+        Ok(Self {
+            definitions,
+            references,
+            stated,
+        })
     }
 }
 
-/// The enclosing definition when the producer supplies one, otherwise the
-/// unit-qualified file node the site sits in.
+/// One slot per report definition, in the source the identity table placed it
+/// in.
+fn place_definitions<'a>(
+    inputs: &Inputs<'a>,
+    table: &DefinitionTable,
+    stated: &mut [SourceRecords<'a>],
+) -> Result<Box<[FragmentSlot]>, GraphBuildError> {
+    let mut placed = Vec::with_capacity(inputs.report.definitions().len());
+    for (index, definition) in inputs.report.definitions().iter().enumerate() {
+        let at = position(index);
+        let fragment = validation::definition_fragment(table, at)?;
+        let identity = validation::definition_identity(table, at)?;
+        let held = stated
+            .get_mut(index_of(fragment))
+            .map(|records| &mut records.definitions);
+        placed.push(validation::placed_slot(
+            placed_record(held, fragment, (at, definition)),
+            definition.unit().index(),
+            identity.source().path(),
+        )?);
+    }
+    Ok(placed.into_boxed_slice())
+}
+
+/// One slot per report reference, in the source its site sits in.
+fn place_references<'a>(
+    inputs: &Inputs<'a>,
+    sources: &SourceSet,
+    stated: &mut [SourceRecords<'a>],
+) -> Result<Box<[FragmentSlot]>, GraphBuildError> {
+    let mut placed = Vec::with_capacity(inputs.resolved.len());
+    for (reference, record) in inputs.resolved.iter().copied() {
+        let reported = reference.unit().index();
+        let file = SymbolReference::span(reference).file();
+        let (fragment, source) = validation::instantiated_source(sources, reported, file)?;
+        let held = stated
+            .get_mut(index_of(fragment))
+            .map(|records| &mut records.references);
+        placed.push(validation::placed_slot(
+            placed_record(held, fragment, (reference, record)),
+            reported,
+            source.path(),
+        )?);
+    }
+    Ok(placed.into_boxed_slice())
+}
+
+/// Place one record in the source that states it, answering with its slot.
 ///
-/// The span is joined to its unit-qualified file node either way. A site whose
-/// span names a source only another unit instantiates is refused with the same
-/// variant a definition in that state is, rather than admitted because it also
-/// carries an enclosing definition.
-fn reference_source(
-    state: &ProjectionState,
-    reference: &SymbolReference,
-) -> Result<GraphNodeId, GraphBuildError> {
-    let reported = reference.unit().index();
-    let snapshot_unit = validation::bound_snapshot_unit(state, reported)?;
-    let file = validation::source_node(
-        state,
-        (snapshot_unit, reported),
-        SymbolReference::span(reference).file(),
+/// The slot is the record's position among that source's own records, which is
+/// the order the report states them in, so a retained projection and a freshly
+/// derived one are read through the same positions.
+fn placed_record<T>(stated: Option<&mut Vec<T>>, fragment: u32, record: T) -> Option<FragmentSlot> {
+    let held = stated?;
+    let slot = position(held.len());
+    held.push(record);
+    Some(FragmentSlot { fragment, slot })
+}
+
+/// One projection per source, each decided before it is derived.
+fn plan_fragments<'a>(
+    inputs: &Inputs<'a>,
+    placed: (&SourceSet, &DefinitionTable, &Placement<'a>),
+    reuse: &mut ProjectionStore,
+) -> Result<Box<[PlacedFragment]>, GraphBuildError> {
+    let (sources, table, placement) = placed;
+    let mut fragments = Vec::with_capacity(sources.placed().len());
+    for (source, records) in sources.placed().iter().zip(placement.stated.iter()) {
+        let stated = StatedSource {
+            table,
+            vocabulary: &inputs.vocabulary,
+            placed: source,
+            records,
+        };
+        fragments.push(placed_fragment(&stated, (inputs, sources.units()), reuse)?);
+    }
+    Ok(fragments.into_boxed_slice())
+}
+
+/// One source's projection, beside the unit that placed it.
+///
+/// The key is stated from the snapshot, the planned unit, and the source
+/// identity alone, so it is known before anything has been derived for this
+/// source.
+fn placed_fragment(
+    stated: &StatedSource<'_>,
+    planned: (&Inputs<'_>, &[UnitPlan]),
+    reuse: &mut ProjectionStore,
+) -> Result<PlacedFragment, GraphBuildError> {
+    let (inputs, units) = planned;
+    let placed = stated.placed;
+    let key = SourceKey::stated(
+        inputs.snapshot,
+        (units, placed.unit),
+        (&placed.source, inputs.report.tier()),
     )?;
-    match reference.enclosing_definition() {
-        Some(enclosing) => validation::definition_node(state, enclosing.index()),
-        None => Ok(file),
+    Ok(PlacedFragment {
+        unit: placed.unit,
+        fragment: stated_projection(stated, key, reuse)?,
+    })
+}
+
+/// The projection one source answers with.
+///
+/// The store is asked first and derivation is the answer to a miss, so a source
+/// whose retained projection still states the current claim reaches no
+/// derivation at all: the reused value is the one the assembler goes on to mint
+/// dense identities from.
+fn stated_projection(
+    stated: &StatedSource<'_>,
+    key: SourceKey,
+    reuse: &mut ProjectionStore,
+) -> Result<Arc<SourceFragment>, GraphBuildError> {
+    match reuse.reused(&key, |held| source::states_current_claim(held, stated)) {
+        Some(retained) => Ok(retained),
+        None => Ok(reuse.retain(key, source::derived_projection(stated)?)),
     }
 }
 
-/// One `DependsOn` edge per snapshot Cargo edge, in snapshot order.
-fn project_dependencies(
-    state: &mut ProjectionState,
+/// One dependency projection per snapshot Cargo edge, in snapshot order.
+fn plan_dependencies(
     inputs: &Inputs<'_>,
-) -> Result<(), GraphBuildError> {
-    for (index, edge) in inputs.snapshot.edges().iter().enumerate() {
-        let stated = (position(index), edge);
-        let source = validation::snapshot_container(state, edge.source(), stated)?;
-        let target = validation::snapshot_container(state, edge.target(), stated)?;
-        let (certainty, predicate) = mapping::activation(edge.activation());
-        state.insert_edge(EdgeDraft {
-            source,
-            target,
-            kind: GraphEdgeKind::DependsOn,
-            certainty,
-            origin: GraphEdgeOrigin::Dependency {
+    bound: &BTreeMap<RustSnapshotUnitId, u32>,
+) -> Result<Box<[DependencyProjection]>, GraphBuildError> {
+    inputs
+        .snapshot
+        .edges()
+        .iter()
+        .enumerate()
+        .map(|(index, edge)| {
+            let stated = (position(index), edge);
+            let source = validation::dependency_unit(bound.get(&edge.source()).copied(), stated)?;
+            let target = validation::dependency_unit(bound.get(&edge.target()).copied(), stated)?;
+            let (certainty, predicate) = mapping::activation(edge.activation());
+            Ok(DependencyProjection {
+                source,
+                target,
+                certainty,
                 evidence: DependencyEvidence::new(
                     Arc::from(edge.name()),
                     mapping::dependency_kind(edge.kind()),
                     predicate,
                 ),
-            },
-        })?;
-    }
-    Ok(())
-}
-
-/// One edge per resolution candidate, in reference then candidate order.
-///
-/// Each edge names the record that produced it, and the store links the two in
-/// the same step it mints the identity, so no record can claim an edge the
-/// graph does not hold.
-fn project_candidates(
-    state: &mut ProjectionState,
-    references: &[ProjectedReference<'_>],
-) -> Result<(), GraphBuildError> {
-    for projected in references {
-        for candidate in projected.record.candidates() {
-            let target = validation::definition_node(state, candidate.definition().index())?;
-            state.insert_edge(EdgeDraft {
-                source: projected.source,
-                target,
-                kind: mapping::candidate_edge_kind(projected.kind),
-                certainty: mapping::certainty(candidate.certainty()),
-                origin: GraphEdgeOrigin::Reference {
-                    reference: projected.id,
-                },
-            })?;
-        }
-    }
-    Ok(())
+            })
+        })
+        .collect()
 }

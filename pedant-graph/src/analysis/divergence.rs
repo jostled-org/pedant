@@ -19,7 +19,7 @@ use crate::node::GraphNodeKind;
 
 use super::components::{self, GraphComponent, GraphComponentId, GraphComponents};
 use super::degree::{self, DegreeCentrality};
-use super::index::{GraphAnalysis, SelectedAdjacency, SelectedIndexes};
+use super::index::{AnalysisContext, SelectedAdjacency, SelectedIndexes};
 use super::partition::DeclaredModulePartition;
 
 /// How much of one partition's outgoing traffic stays inside it.
@@ -161,7 +161,7 @@ impl GraphDivergence {
 /// Infallible for an admitted analysis: every count is bounded by the admitted
 /// edge count, and the modularity converts those bounded counts to `f64` before
 /// it multiplies them.
-pub(crate) fn divergence(analysis: &GraphAnalysis<'_>) -> GraphDivergence {
+pub(crate) fn divergence(analysis: &AnalysisContext<'_>) -> GraphDivergence {
     let indexes = analysis.indexes();
     let partition = analysis.declared_partition();
     let cohesion = measured(indexes, partition);

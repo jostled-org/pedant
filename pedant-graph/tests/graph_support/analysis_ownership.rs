@@ -13,10 +13,11 @@ use pedant_graph::CodeGraph;
 use super::analysis_ownership_model::{
     ANALYSIS_EXPORTS, ANALYSIS_SIGNATURES, LAYOUT_FIELDS, RENDERER_STATE, WIRE_KEYS,
 };
-use super::scan::{PRODUCTION_SOURCES, TEST_ROOT, code_only, parsed, source, token_text};
+use super::inventory::{PRODUCTION_SOURCES, TEST_ROOT};
+use super::scan::{code_only, parsed, source};
 use super::surface::{
-    declared_fields, declared_items, public_constructors, public_fields, public_signatures,
-    public_use_leaves,
+    declared_fields, declared_items, declares_only, item_label, public_constructors, public_fields,
+    public_signatures, public_use_leaves,
 };
 
 /// Every analysis module, and the source-relative path it is scanned at.
@@ -34,6 +35,25 @@ pub const ANALYSIS_SOURCES: &[&str] = &[
     "src/analysis/selection.rs",
     "src/analysis/traversal.rs",
 ];
+
+/// The one analysis module allowed to read the raw edge slice and to apply the
+/// selection to it.
+pub const SELECTION_OWNER: &str = "src/analysis/index.rs";
+
+/// The one analysis module allowed to state a selection.
+pub const SELECTION_DECLARER: &str = "src/analysis/selection.rs";
+
+/// The one analysis module that derives the declared partition.
+pub const PARTITION_OWNER: &str = "src/analysis/partition.rs";
+
+/// The one analysis module that measures degree.
+pub const DEGREE_OWNER: &str = "src/analysis/degree.rs";
+
+/// The one analysis module that measures betweenness.
+pub const BETWEENNESS_OWNER: &str = "src/analysis/betweenness.rs";
+
+/// The one analysis module that discovers components and condenses them.
+pub const COMPONENT_OWNER: &str = "src/analysis/components.rs";
 
 /// Every analysis module beside the registered predicate that owns it.
 const ANALYSIS_OWNERS: &[(&str, &str)] = &[
@@ -191,7 +211,7 @@ fn assert_module_root_only_declares() {
     let defined: Vec<String> = root
         .items
         .iter()
-        .filter(|item| !only_declares(item))
+        .filter(|item| !declares_only(item))
         .map(item_label)
         .collect();
     assert!(
@@ -218,41 +238,6 @@ fn assert_module_root_only_declares() {
             .collect::<BTreeSet<String>>(),
         "the module root declares exactly the analysis modules"
     );
-}
-
-/// Whether one item names a module or a re-export and nothing else.
-fn only_declares(item: &syn::Item) -> bool {
-    match item {
-        syn::Item::Mod(module) => module.content.is_none(),
-        syn::Item::Use(_) => true,
-        _ => false,
-    }
-}
-
-/// One declared item, named by the kind and the name it states.
-///
-/// The kinds are spelled out so a failure names the offender rather than
-/// printing its tokens. `syn::Item` grows, so an unnamed kind still answers,
-/// with the source it was written as.
-fn item_label(item: &syn::Item) -> String {
-    match item {
-        syn::Item::Const(entry) => format!("const {}", entry.ident),
-        syn::Item::Enum(entry) => format!("enum {}", entry.ident),
-        syn::Item::ExternCrate(entry) => format!("extern crate {}", entry.ident),
-        syn::Item::Fn(entry) => format!("fn {}", entry.sig.ident),
-        syn::Item::ForeignMod(entry) => format!("extern block {}", token_text(&entry.abi)),
-        syn::Item::Impl(entry) => format!("impl {}", token_text(&entry.self_ty)),
-        syn::Item::Macro(entry) => format!("macro {}", token_text(&entry.mac.path)),
-        syn::Item::Mod(entry) => format!("inline mod {}", entry.ident),
-        syn::Item::Static(entry) => format!("static {}", entry.ident),
-        syn::Item::Struct(entry) => format!("struct {}", entry.ident),
-        syn::Item::Trait(entry) => format!("trait {}", entry.ident),
-        syn::Item::TraitAlias(entry) => format!("trait alias {}", entry.ident),
-        syn::Item::Type(entry) => format!("type {}", entry.ident),
-        syn::Item::Union(entry) => format!("union {}", entry.ident),
-        syn::Item::Use(entry) => format!("use {}", token_text(&entry.tree)),
-        other => token_text(other),
-    }
 }
 
 /// The family and the crate root publish exactly one vocabulary.

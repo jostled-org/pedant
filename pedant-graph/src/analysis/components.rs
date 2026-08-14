@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::id::{GraphEdgeId, GraphId, GraphNodeId, index_of, position};
 
-use super::index::{GraphAnalysis, SelectedAdjacency, SelectedIndexes};
+use super::index::{AnalysisContext, SelectedAdjacency, SelectedIndexes};
 
 /// Marker distinguishing component identities from the graph's own identities.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -137,14 +137,14 @@ impl CondensationGraph {
 /// One forward pass records the order nodes finish in; one backward pass over
 /// that order in reverse collects each component. Both are iterative, so a chain
 /// as long as the admitted node ceiling costs no stack.
-pub(crate) fn discover(analysis: &GraphAnalysis<'_>) -> GraphComponents {
+pub(crate) fn discover(analysis: &AnalysisContext<'_>) -> GraphComponents {
     let indexes = analysis.indexes();
     let finished = finish_order(indexes);
     assembled(grouped_backwards(indexes, &finished), indexes)
 }
 
 /// One selected topology with its components contracted and ordered.
-pub(crate) fn condense(analysis: &GraphAnalysis<'_>) -> CondensationGraph {
+pub(crate) fn condense(analysis: &AnalysisContext<'_>) -> CondensationGraph {
     let indexes = analysis.indexes();
     let components = discover(analysis);
     let edges = coalesced(indexes, &components);

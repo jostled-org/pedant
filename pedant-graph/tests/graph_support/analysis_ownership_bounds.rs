@@ -1,13 +1,17 @@
-//! Structural ownership of the analysis family's own work: which module may
-//! read the raw graph, in which order a ceiling is proved against the state it
-//! protects, and that no walk over a repository-sized graph recurses.
+//! How the analysis family spends: in which order a ceiling is proved against
+//! the state it protects, and that no walk over a repository-sized graph
+//! recurses.
 //!
 //! The boundary cases in [`super::analysis_ownership`] own what the family
-//! publishes. These own how it spends, so neither file has to be read to know
-//! what the other holds.
+//! publishes, and [`super::analysis_ownership_sharing`] owns what one selection
+//! produces and who may read it. These own how it spends, so no one file has to
+//! be read to know what the others hold.
 
-use super::analysis_ownership::ANALYSIS_SOURCES;
-use super::scan::{SOURCES, code_only, compact, function_body, method_body, position_of, source};
+use super::analysis_ownership::{
+    ANALYSIS_SOURCES, BETWEENNESS_OWNER, COMPONENT_OWNER, PARTITION_OWNER, SELECTION_OWNER,
+};
+use super::inventory::SOURCES;
+use super::scan::{code_only, compact, function_body, method_body, position_of, source};
 use super::surface::{declared_call_graph, recursive_functions};
 
 /// The spellings that allocate. A count taken to decide whether to allocate
@@ -50,91 +54,70 @@ pub const ALLOCATION_SPELLINGS: &[&str] = &[
     "vec !",
 ];
 
-/// The order analysis construction proves and then spends, in source spelling.
-const CONSTRUCTION_ORDER: &[&str] = &[
-    "admitted_nodes",
-    "admitted_edges",
-    "SelectedIndexes :: build",
-    "partition :: derive",
+/// The order the one admission owner proves both counts, in source spelling.
+const ADMISSION_ORDER: &[&str] = &["admitted_nodes", "admitted_edges"];
+
+/// The order shared analysis state is admitted and then built, in source
+/// spelling.
+///
+/// The counts are proved by one owner and the tables are filled by another, so
+/// a borrowed analysis and a cached lookup reach the same proof before either
+/// allocates anything indexed by it.
+const CONSTRUCTION_ORDER: &[&str] = &["admitted_counts (", "from_admitted"];
+
+/// The order the admitted counts are spent, in source spelling.
+const INDEXING_ORDER: &[&str] = &["SelectedIndexes :: build", "partition :: derive"];
+
+/// The order the one walk admission owner proves a seed and a depth, in source
+/// spelling.
+const QUERY_ORDER: &[&str] = &["known_node", "admitted_depth"];
+
+/// The order each bounded query proves its arguments and then walks, in source
+/// spelling.
+///
+/// The walk is named by the spelling that consumes it rather than by a bare
+/// `walk (`, which the admission spelling contains: an element its predecessor
+/// spells resolves inside that predecessor, so it would sort by construction
+/// and still hold with the walk deleted. [`assert_ordered`] refuses that shape
+/// outright; these spellings state the consumer so the element binds the real
+/// walk.
+const WALK_ORDER: &[(&str, &[&str])] = &[
+    ("neighbors", &["admitted_walk (", "Ok (walk ("]),
+    ("subgraph", &["admitted_walk (", "& walk ("]),
 ];
 
-/// The order a bounded query validates and then walks, in source spelling.
-const QUERY_ORDER: &[&str] = &["known_node", "admitted_depth", "walk ("];
+/// The one cached module answering bounded walks from retained products.
+const CACHED_QUERY_OWNER: &str = "src/cache/analysis.rs";
 
-/// The one analysis module allowed to read the raw edge slice and to apply the
-/// selection to it.
-pub const SELECTION_OWNER: &str = "src/analysis/index.rs";
-
-/// The one analysis module allowed to state a selection.
-const SELECTION_DECLARER: &str = "src/analysis/selection.rs";
-
-/// The one analysis module that derives the declared partition.
-const PARTITION_OWNER: &str = "src/analysis/partition.rs";
-
-/// The one analysis module that measures degree.
-const DEGREE_OWNER: &str = "src/analysis/degree.rs";
-
-/// The one analysis module that measures betweenness.
-const BETWEENNESS_OWNER: &str = "src/analysis/betweenness.rs";
-
-/// The one analysis module that discovers components and condenses them.
-const COMPONENT_OWNER: &str = "src/analysis/components.rs";
+/// The order a cached bounded query proves its arguments and then looks, in
+/// source spelling.
+const CACHED_QUERY_ORDER: &[&str] = &["self . admits_walk (", "self . product ("];
 
 /// The analysis modules whose every walk must be iterative.
 const ITERATIVE_SOURCES: &[&str] = &[COMPONENT_OWNER, "src/analysis/traversal.rs"];
 
-/// The modules that consume the shared indexes without rebuilding them.
-const INDEX_CONSUMERS: &[&str] = &[BETWEENNESS_OWNER, COMPONENT_OWNER, DEGREE_OWNER];
-
-/// The stored accessors a metric or component consumer must reach the selected
-/// topology through.
-const SHARED_ACCESSORS: &[(&str, &[&str])] = &[
-    (
-        BETWEENNESS_OWNER,
-        &[
-            "analysis.indexes()",
-            "indexes.outgoing(",
-            "indexes.node_count()",
-            "indexes.selected_edges()",
-        ],
-    ),
-    (
-        COMPONENT_OWNER,
-        &[
-            "analysis.indexes()",
-            "indexes.outgoing(",
-            "indexes.incoming(",
-            "indexes.node_count()",
-        ],
-    ),
-    (
-        DEGREE_OWNER,
-        &[
-            "analysis.indexes()",
-            "indexes.outgoing(",
-            "indexes.incoming(",
-            "indexes.node_count()",
-        ],
-    ),
-];
-
-/// Every derived operation the analysis view publishes, beside the one module
-/// that implements it.
-const ALGORITHM_OWNERS: &[(&str, &str)] = &[
-    ("degree::degree", DEGREE_OWNER),
-    ("betweenness::betweenness", BETWEENNESS_OWNER),
-    ("components::discover", COMPONENT_OWNER),
-    ("components::condense", COMPONENT_OWNER),
-];
-
 /// Every stated ceiling is proved before the work it protects is done.
 pub fn assert_analysis_limit_checks_dominate() {
     assert_ordered(
-        &method_body(SELECTION_OWNER, "new"),
-        CONSTRUCTION_ORDER,
-        "the analysis constructor",
+        &function_body(SELECTION_OWNER, "admitted_counts"),
+        ADMISSION_ORDER,
+        "the admission owner",
     );
-    for counted in ["admitted_nodes", "admitted_edges"] {
+    assert_ordered(
+        &method_body(SELECTION_OWNER, "indexed"),
+        CONSTRUCTION_ORDER,
+        "shared analysis construction",
+    );
+    assert_ordered(
+        &method_body(SELECTION_OWNER, "from_admitted"),
+        INDEXING_ORDER,
+        "shared analysis indexing",
+    );
+    assert!(
+        method_body(SELECTION_OWNER, "new").contains("SharedAnalysis :: indexed"),
+        "the borrowed analysis is built through the one shared owner"
+    );
+    for counted in ["admitted_nodes", "admitted_edges", "admitted_counts"] {
         let body = function_body(SELECTION_OWNER, counted);
         let allocating: Vec<&str> = ALLOCATION_SPELLINGS
             .iter()
@@ -151,10 +134,15 @@ pub fn assert_analysis_limit_checks_dominate() {
         "the indexed tables are allocated only after both counts are proved"
     );
 
-    for entry in ["neighbors", "subgraph"] {
+    assert_ordered(
+        &function_body("src/analysis/traversal.rs", "admitted_walk"),
+        QUERY_ORDER,
+        "the walk admission owner",
+    );
+    for &(entry, order) in WALK_ORDER {
         assert_ordered(
             &function_body("src/analysis/traversal.rs", entry),
-            QUERY_ORDER,
+            order,
             entry,
         );
     }
@@ -162,7 +150,37 @@ pub fn assert_analysis_limit_checks_dominate() {
         function_body("src/analysis/traversal.rs", "walk").contains("vec !"),
         "the visited state is allocated only after the depth is proved"
     );
+    assert_cached_walks_reach_the_admission_owner();
     assert_one_consumed_invariant_owner();
+}
+
+/// A cached bounded walk proves its arguments through the one admission owner,
+/// before it examines anything the graph retained.
+///
+/// The order matters as much as the checks do. Two refusals apply to one walk,
+/// and a handle that proved the depth first would answer an unknown node with
+/// the depth refusal the direct analysis never states for it.
+fn assert_cached_walks_reach_the_admission_owner() {
+    for entry in ["neighbors", "subgraph"] {
+        assert_ordered(
+            &method_body(CACHED_QUERY_OWNER, entry),
+            CACHED_QUERY_ORDER,
+            &format!("the cached {entry}"),
+        );
+    }
+    let admission = method_body(CACHED_QUERY_OWNER, "admits_walk");
+    assert!(
+        admission.contains("traversal :: admitted_walk ("),
+        "a cached walk is admitted by the owner the borrowed walks reach"
+    );
+    let stated: Vec<&str> = ["known_node", "admitted_depth"]
+        .into_iter()
+        .filter(|spelling| code_only(source(CACHED_QUERY_OWNER)).contains(spelling))
+        .collect();
+    assert!(
+        stated.is_empty(),
+        "{CACHED_QUERY_OWNER} must state no second walk admission: {stated:?}"
+    );
 }
 
 /// The defensive partition refusal is built once, by the derivation that owns
@@ -189,116 +207,28 @@ fn assert_one_consumed_invariant_owner() {
     );
 }
 
-/// Every named spelling occurs, in the stated order.
+/// Every named spelling occurs, in the stated order, at its own place in the
+/// body.
+///
+/// Each spelling is resolved by first occurrence, so one that another spelling
+/// contains would resolve inside it: the positions would sort by construction
+/// and the clause would hold with the named work deleted. Each occurrence must
+/// therefore begin at or after the end of the one before it, which every
+/// distinct step of a real sequence does.
 pub fn assert_ordered(body: &str, sequence: &[&str], subject: &str) {
-    let positions: Vec<usize> = sequence
-        .iter()
-        .map(|spelling| position_of(body, spelling, subject))
-        .collect();
-    assert!(
-        positions.is_sorted(),
-        "{subject} must reach {sequence:?} in that order, reaching them at {positions:?}"
-    );
-}
-
-/// One selection is applied once, and every consumer reads the indexes it
-/// produced rather than the graph it was applied to.
-pub fn assert_traversal_consumes_shared_indexes() {
-    for spelling in [".edges()", ".allows("] {
-        let sites: Vec<&str> = analysis_sources_naming(spelling);
-        assert_eq!(
-            sites,
-            [SELECTION_OWNER],
-            "{spelling} belongs to the one module that indexes the selection"
-        );
+    let mut previous: Option<(&str, usize)> = None;
+    for spelling in sequence {
+        let at = position_of(body, spelling, subject);
+        if let Some((before, from)) = previous {
+            assert!(
+                from + before.len() <= at,
+                "{subject} must reach {spelling:?} at {at} beyond {before:?} at {from}, rather \
+                 than inside it"
+            );
+        }
+        previous = Some((spelling, at));
     }
-    assert_eq!(
-        compact(source(SELECTION_OWNER)).matches(".edges()").count(),
-        1,
-        "the raw edge slice is read exactly once"
-    );
-    assert_eq!(
-        compact(source(SELECTION_OWNER)).matches(".allows(").count(),
-        1,
-        "the selection is applied exactly once"
-    );
-    for constructor in [
-        "GraphEdgeSelection::new",
-        "GraphEdgeSelection::all",
-        "GraphEdgeSelection::code_relations",
-    ] {
-        assert!(
-            analysis_sources_naming(constructor).is_empty(),
-            "no analysis module may reconstruct a selection: {constructor}"
-        );
-    }
-    assert_eq!(
-        analysis_sources_naming("GraphEdgeSelection"),
-        [SELECTION_OWNER, "src/analysis/mod.rs", SELECTION_DECLARER],
-        "a selection is stated by one module, applied by one module, and \
-         published by the family root"
-    );
-    let declarer = code_only(source(SELECTION_DECLARER));
-    for constructor in [
-        "pub fn new(kinds",
-        "pub fn all()",
-        "pub fn code_relations()",
-        "pub fn allows(",
-    ] {
-        assert_eq!(
-            declarer.matches(constructor).count(),
-            1,
-            "the selection is stated exactly once, by {SELECTION_DECLARER}: {constructor}"
-        );
-    }
-
-    assert_consumers_read_stored_indexes();
-    assert_partition_is_derived_once();
 }
-
-/// Every traversal and partition consumer reaches the stored accessors.
-fn assert_consumers_read_stored_indexes() {
-    let traversal = compact(source("src/analysis/traversal.rs"));
-    for accessor in [
-        "analysis.indexes()",
-        "indexes.outgoing(",
-        "indexes.incoming(",
-        "indexes.parent(",
-        "indexes.holds(",
-        "indexes.node_count()",
-    ] {
-        assert!(
-            traversal.contains(accessor),
-            "traversal must reach the shared indexes through {accessor}"
-        );
-    }
-    assert!(
-        compact(source(PARTITION_OWNER)).contains("indexes.parent("),
-        "partition derivation must read the stored containment parents"
-    );
-}
-
-/// The declared partition is derived once, inside analysis construction.
-fn assert_partition_is_derived_once() {
-    let sites: Vec<&str> = analysis_sources_naming("partition::derive");
-    assert_eq!(
-        sites,
-        [SELECTION_OWNER],
-        "the partition is derived where the analysis is built"
-    );
-    assert_eq!(
-        compact(source(SELECTION_OWNER))
-            .matches("partition::derive")
-            .count(),
-        1,
-        "the partition is derived exactly once"
-    );
-    assert!(
-        method_body(SELECTION_OWNER, "new").contains("partition :: derive"),
-        "the one derivation runs during successful construction"
-    );
-}
-
 /// Every analysis module that names one spelling, in [`ANALYSIS_SOURCES`]
 /// order.
 pub fn analysis_sources_naming(spelling: &str) -> Vec<&'static str> {
@@ -309,69 +239,43 @@ pub fn analysis_sources_naming(spelling: &str) -> Vec<&'static str> {
         .collect()
 }
 
-/// Every metric and component consumer reads the indexes one selection
-/// produced, and each derived algorithm has exactly one implementation owner.
-pub fn assert_metrics_and_components_consume_shared_indexes() {
-    for path in INDEX_CONSUMERS {
+/// The spellings a consumer would reach past the shared indexes with.
+///
+/// The raw edge slice, the selection predicate, and the selection type itself. A
+/// consumer that names one of them is answering from the graph or from a
+/// selection it reconstructed rather than from the indexes one selection already
+/// produced.
+const GRAPH_READS: &[&str] = &[".edges()", ".allows(", "GraphEdgeSelection"];
+
+/// No listed consumer reads the graph or the selection.
+///
+/// One rule, stated once. Every seam that has consumers — metrics, components,
+/// and the two derived answers built on them — asks the same question of them,
+/// and a copy of this loop per seam is a rule that can drift into two rules.
+pub fn assert_reads_indexes_not_graph(paths: &[&str]) {
+    for path in paths {
         let code = compact(source(path));
-        for spelling in [".edges()", ".allows(", "GraphEdgeSelection"] {
+        for spelling in GRAPH_READS {
             assert!(
                 !code.contains(spelling),
-                "{path} must read the indexes rather than the graph or the \
-                 selection: {spelling}"
+                "{path} must read the shared indexes rather than the graph or \
+                 the selection: {spelling}"
             );
         }
     }
-    for (path, accessors) in SHARED_ACCESSORS {
+}
+
+/// Every listed consumer reaches its inputs through the stated accessors.
+pub fn assert_reaches(table: &[(&str, &[&str])]) {
+    for (path, accessors) in table {
         let code = compact(source(path));
         for accessor in *accessors {
             assert!(
                 code.contains(accessor),
-                "{path} must reach the shared indexes through {accessor}"
+                "{path} must reach its inputs through {accessor}"
             );
         }
     }
-    assert_algorithms_have_one_owner();
-}
-
-/// Each derived algorithm is implemented once and reached by delegation.
-fn assert_algorithms_have_one_owner() {
-    for (operation, owner) in ALGORITHM_OWNERS {
-        let called = operation
-            .rsplit("::")
-            .next()
-            .unwrap_or_else(|| panic!("{operation} names a function"));
-        assert_eq!(
-            code_only(source(owner))
-                .matches(&format!("fn {called}("))
-                .count(),
-            1,
-            "{owner} declares {called} exactly once"
-        );
-        assert!(
-            compact(source(SELECTION_OWNER)).contains(operation),
-            "the analysis view must reach {operation}"
-        );
-    }
-    assert_eq!(
-        compact(source(COMPONENT_OWNER))
-            .matches("discover(")
-            .count(),
-        2,
-        "the one component algorithm is declared once and reached once by the \
-         condensation that contracts it"
-    );
-    let pass = compact(source(BETWEENNESS_OWNER));
-    assert_eq!(
-        pass.matches("fnempty(").count(),
-        1,
-        "the one bounded Brandes pass is declared exactly once"
-    );
-    assert_eq!(
-        pass.matches("Brandes::empty(").count(),
-        1,
-        "the one bounded Brandes pass is started from exactly one place"
-    );
 }
 
 /// The betweenness work bound is proved before any state exists to prove it

@@ -16,6 +16,18 @@ use std::path::{Path, PathBuf};
 /// Written down, never discovered. `graph_projection_uses_only_supplied_resolution_facts`
 /// compares it with the tree and fails on a missing or an extra entry.
 pub const PRODUCTION_SOURCES: &[&str] = &[
+    "src/analysis/betweenness.rs",
+    "src/analysis/components.rs",
+    "src/analysis/degree.rs",
+    "src/analysis/divergence.rs",
+    "src/analysis/error.rs",
+    "src/analysis/index.rs",
+    "src/analysis/layout.rs",
+    "src/analysis/limits.rs",
+    "src/analysis/mod.rs",
+    "src/analysis/partition.rs",
+    "src/analysis/selection.rs",
+    "src/analysis/traversal.rs",
     "src/containment.rs",
     "src/edge.rs",
     "src/error.rs",
@@ -47,6 +59,54 @@ pub struct Source {
 /// against the tree, so a file that stopped being scanned fails rather than
 /// silently narrows the search set.
 pub const SOURCES: &[Source] = &[
+    Source {
+        path: "src/analysis/betweenness.rs",
+        text: include_str!("../../src/analysis/betweenness.rs"),
+    },
+    Source {
+        path: "src/analysis/components.rs",
+        text: include_str!("../../src/analysis/components.rs"),
+    },
+    Source {
+        path: "src/analysis/degree.rs",
+        text: include_str!("../../src/analysis/degree.rs"),
+    },
+    Source {
+        path: "src/analysis/divergence.rs",
+        text: include_str!("../../src/analysis/divergence.rs"),
+    },
+    Source {
+        path: "src/analysis/error.rs",
+        text: include_str!("../../src/analysis/error.rs"),
+    },
+    Source {
+        path: "src/analysis/index.rs",
+        text: include_str!("../../src/analysis/index.rs"),
+    },
+    Source {
+        path: "src/analysis/layout.rs",
+        text: include_str!("../../src/analysis/layout.rs"),
+    },
+    Source {
+        path: "src/analysis/limits.rs",
+        text: include_str!("../../src/analysis/limits.rs"),
+    },
+    Source {
+        path: "src/analysis/mod.rs",
+        text: include_str!("../../src/analysis/mod.rs"),
+    },
+    Source {
+        path: "src/analysis/partition.rs",
+        text: include_str!("../../src/analysis/partition.rs"),
+    },
+    Source {
+        path: "src/analysis/selection.rs",
+        text: include_str!("../../src/analysis/selection.rs"),
+    },
+    Source {
+        path: "src/analysis/traversal.rs",
+        text: include_str!("../../src/analysis/traversal.rs"),
+    },
     Source {
         path: "src/containment.rs",
         text: include_str!("../../src/containment.rs"),
@@ -109,6 +169,76 @@ pub const SOURCES: &[Source] = &[
     },
 ];
 
+/// The registered test root, read at compile time.
+///
+/// Every `#[test]` wrapper this crate registers is declared there, so the
+/// structural cases can hold each production module to a predicate that names
+/// it without reading a file at run time.
+pub const TEST_ROOT: &str = include_str!("../graph.rs");
+
+/// This crate's tracked manifest, read at compile time.
+///
+/// The dependency and feature boundary is a property of the published package,
+/// so the case that holds it to a model reads the manifest itself rather than a
+/// lifecycle file describing it.
+pub const MANIFEST: &str = include_str!("../../Cargo.toml");
+
+/// One support module beside its compile-time contents.
+///
+/// Written as a list of module names: the path a case reports and the text it
+/// reads are one entry, so a module cannot be scanned under a name the tree does
+/// not hold.
+macro_rules! support_sources {
+    ($($name:literal),* $(,)?) => {
+        &[$(Source {
+            path: concat!("tests/graph_support/", $name, ".rs"),
+            text: include_str!(concat!($name, ".rs")),
+        }),*]
+    };
+}
+
+/// Every support module beneath the one registered root.
+///
+/// The root owns every libtest identity this crate registers; these declare
+/// fixtures, cases, and scanners. The inventory is compared with the tree, so a
+/// module that appeared without an entry fails rather than escaping the scan.
+pub const TEST_SUPPORT_SOURCES: &[Source] = support_sources![
+    "analysis_centrality",
+    "analysis_components",
+    "analysis_derived_bounds",
+    "analysis_derived_determinism",
+    "analysis_determinism",
+    "analysis_divergence",
+    "analysis_divergence_model",
+    "analysis_fixture",
+    "analysis_layout",
+    "analysis_oracle",
+    "analysis_ownership",
+    "analysis_ownership_bounds",
+    "analysis_ownership_model",
+    "analysis_partition",
+    "analysis_perturbation",
+    "analysis_selection",
+    "analysis_source_boundary",
+    "analysis_traversal",
+    "contract",
+    "corpus",
+    "corpus_analysis",
+    "corpus_generated",
+    "defensive",
+    "evidence",
+    "fixture",
+    "isolation",
+    "mod",
+    "ownership",
+    "promotion",
+    "render",
+    "scan",
+    "surface",
+    "topology",
+    "wire",
+];
+
 /// This crate's directory.
 pub fn crate_path(relative: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join(relative)
@@ -116,7 +246,17 @@ pub fn crate_path(relative: &str) -> PathBuf {
 
 /// Every `.rs` file beneath `src`, manifest-relative and `/`-separated.
 pub fn discovered_sources() -> BTreeSet<String> {
-    let root = crate_path("src");
+    discovered_beneath("src")
+}
+
+/// Every `.rs` file beneath `tests`, manifest-relative and `/`-separated.
+pub fn discovered_test_sources() -> BTreeSet<String> {
+    discovered_beneath("tests")
+}
+
+/// Every `.rs` file beneath one directory of this crate.
+fn discovered_beneath(directory: &str) -> BTreeSet<String> {
+    let root = crate_path(directory);
     let mut found = BTreeSet::new();
     collect(&root, &crate_path("."), &mut found);
     found
@@ -169,6 +309,15 @@ pub fn code_only(text: &str) -> String {
     kept.join("\n")
 }
 
+/// One source with every comment removed and every space dropped.
+///
+/// A call the formatter split across three lines is the same call, so a
+/// structural case that names a receiver and its accessor compares a spelling
+/// rather than a layout.
+pub fn compact(text: &str) -> String {
+    code_only(text).split_whitespace().collect()
+}
+
 /// The text of one modelled production source.
 pub fn source(path: &str) -> &'static str {
     SOURCES
@@ -194,7 +343,7 @@ pub fn function_body(path: &str, name: &str) -> String {
             _ => None,
         })
         .unwrap_or_else(|| panic!("{path} declares no fn {name}"));
-    quote_text(&found.block)
+    token_text(&found.block)
 }
 
 /// The exact body text of one method declared in an inherent or trait `impl`.
@@ -213,18 +362,15 @@ pub fn method_body(path: &str, name: &str) -> String {
             _ => None,
         })
         .unwrap_or_else(|| panic!("{path} declares no method {name}"));
-    quote_text(&found.block)
+    token_text(&found.block)
 }
 
-fn quote_text(block: &syn::Block) -> String {
-    use quote::ToTokens;
-    block.to_token_stream().to_string()
-}
-
-/// One type as its token text, for an `impl` block's subject.
-pub fn type_text(subject: &syn::Type) -> String {
-    use quote::ToTokens;
-    subject.to_token_stream().to_string()
+/// One parsed item as the exact tokens it is written with.
+///
+/// Bodies, types, and signatures all render through here, so every structural
+/// case compares one spelling of what the source states.
+pub fn token_text<T: quote::ToTokens>(value: &T) -> String {
+    value.to_token_stream().to_string()
 }
 
 /// Where `needle` first occurs in `haystack`, or a failure naming both.

@@ -6,7 +6,7 @@
 //! what "declared" means and a record moved into an inline `mod` cannot escape
 //! two cases by escaping one walk.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::scan::{self, parsed};
 
@@ -72,6 +72,128 @@ pub fn declared_error_variants() -> BTreeSet<String> {
         .collect()
 }
 
+/// Every name one source publicly re-exports, optionally from one module.
+///
+/// Read from the `use` trees rather than from the file's text, so a re-export
+/// wrapped differently by the formatter still answers with the same names.
+pub fn public_use_leaves(path: &str, root: Option<&str>) -> BTreeSet<String> {
+    parsed(path)
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            syn::Item::Use(declared) if is_public(&declared.vis) => Some(&declared.tree),
+            _ => None,
+        })
+        .flat_map(|tree| use_leaves(tree, root))
+        .collect()
+}
+
+/// The leaf names one `use` tree states, beneath `root` when one is stated.
+fn use_leaves(tree: &syn::UseTree, root: Option<&str>) -> Vec<String> {
+    match tree {
+        syn::UseTree::Path(path) => entered(path, root),
+        syn::UseTree::Group(group) => group
+            .items
+            .iter()
+            .flat_map(|inner| use_leaves(inner, root))
+            .collect(),
+        syn::UseTree::Name(name) => named_leaf(name.ident.to_string(), root),
+        syn::UseTree::Rename(rename) => named_leaf(rename.rename.to_string(), root),
+        syn::UseTree::Glob(_) => vec!["*".to_owned()],
+    }
+}
+
+/// The leaves beneath one path segment, unless a stated root was not entered.
+fn entered(path: &syn::UsePath, root: Option<&str>) -> Vec<String> {
+    match root {
+        Some(name) if path.ident != name => Vec::new(),
+        _ => use_leaves(&path.tree, None),
+    }
+}
+
+/// One leaf, unless a stated root was never entered.
+fn named_leaf(name: String, root: Option<&str>) -> Vec<String> {
+    match root {
+        Some(_) => Vec::new(),
+        None => vec![name],
+    }
+}
+
+/// Every public function one source declares, as `Subject::signature`.
+pub fn public_signatures(path: &str) -> Vec<String> {
+    let file = parsed(path);
+    declared_items(&file.items)
+        .into_iter()
+        .flat_map(declared_signatures)
+        .collect()
+}
+
+/// The public signatures one declared item states.
+fn declared_signatures(item: &syn::Item) -> Vec<String> {
+    match item {
+        syn::Item::Impl(block) => impl_signatures(block),
+        syn::Item::Fn(function) if is_public(&function.vis) => {
+            vec![normalized(&scan::token_text(&function.sig))]
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// The public signatures one `impl` block states, qualified by its subject.
+fn impl_signatures(block: &syn::ItemImpl) -> Vec<String> {
+    let subject = subject_name(&block.self_ty);
+    block
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            syn::ImplItem::Fn(function) if is_public(&function.vis) => Some(format!(
+                "{subject}::{}",
+                normalized(&scan::token_text(&function.sig)).replacen("fn ", "", 1)
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
+/// One token rendering with the spacing a reader would not write.
+///
+/// The parser answers with one space between every token, which turns an
+/// ordinary signature into an unreadable model. The delimiters below take
+/// their conventional spacing back; `->` is held aside first, because the rules
+/// that tighten `>` would otherwise consume it.
+fn normalized(text: &str) -> String {
+    let held = text.replace(" -> ", "\u{1}");
+    held.replace(" :: ", "::")
+        .replace(" :", ":")
+        .replace(" < ", "<")
+        .replace(" <", "<")
+        .replace(" > ", ">")
+        .replace(" >", ">")
+        .replace(" ,", ",")
+        .replace(" (", "(")
+        .replace("( ", "(")
+        .replace(" )", ")")
+        .replace("& ", "&")
+        .replace(",)", ")")
+        .replace('\u{1}', " -> ")
+}
+
+/// Every field one named struct declares, in declaration order.
+///
+/// Read whatever its visibility is: a private coordinate field is still a
+/// coordinate the crate decided to hold.
+pub fn declared_fields(items: &[&syn::Item], name: &str) -> Vec<String> {
+    items
+        .iter()
+        .filter_map(|item| match item {
+            syn::Item::Struct(declared) if declared.ident == name => Some(declared),
+            _ => None,
+        })
+        .flat_map(|declared| declared.fields.iter())
+        .filter_map(|field| field.ident.as_ref().map(ToString::to_string))
+        .collect()
+}
+
 /// Every public struct field a graph record exposes, if any does.
 pub fn public_fields(items: &[&syn::Item], path: &str) -> Vec<String> {
     items
@@ -110,7 +232,7 @@ pub fn public_constructors(items: &[&syn::Item], path: &str) -> Vec<String> {
             syn::Item::Impl(block) => Some(block),
             _ => None,
         })
-        .filter(|block| is_closed_type(block, path))
+        .filter(|block| is_closed_type(block))
         .flat_map(|block| block_constructors(block, path))
         .collect()
 }
@@ -144,7 +266,7 @@ fn block_constructors(block: &syn::ItemImpl, path: &str) -> Vec<String> {
 fn manufactures(signature: &syn::Signature, subject: &str) -> bool {
     let returned = match &signature.output {
         syn::ReturnType::Default => return false,
-        syn::ReturnType::Type(_, declared) => scan::type_text(declared),
+        syn::ReturnType::Type(_, declared) => scan::token_text(declared),
     };
     signature.receiver().is_none() && names_type(&returned, subject)
 }
@@ -157,20 +279,147 @@ fn names_type(text: &str, subject: &str) -> bool {
 
 /// The base name of one `impl` block's subject, without its generics.
 fn subject_name(subject: &syn::Type) -> String {
-    let text = scan::type_text(subject);
+    let text = scan::token_text(subject);
     text.split_whitespace()
         .next()
         .unwrap_or_else(|| panic!("an impl block states no subject type: {text:?}"))
         .to_owned()
 }
 
-/// Whether an `impl` block belongs to a record or identity type. `GraphLimits`
-/// is deliberately caller-constructible, so it is not one.
-fn is_closed_type(block: &syn::ItemImpl, path: &str) -> bool {
-    let text = scan::type_text(&block.self_ty);
-    path != "src/limits.rs" && !text.contains("GraphRecords") && !text.contains("GraphLimits")
+/// The types a caller is deliberately allowed to state.
+///
+/// Ceilings, an edge selection, and the analysis view over a graph it already
+/// holds are all caller policy. Every other type is a record or a result whose
+/// invariants this crate establishes, so a public constructor for one would be
+/// a second way to state it.
+const CALLER_CONSTRUCTED: &[&str] = &[
+    "GraphAnalysis",
+    "GraphAnalysisLimits",
+    "GraphEdgeSelection",
+    "GraphLimits",
+    "GraphRecords",
+];
+
+/// Whether an `impl` block belongs to a record, a result, or an identity.
+///
+/// The subject is compared by name rather than by substring: a type spelled
+/// `GraphAnalysisError` is not the analysis view, and reading it as one would
+/// exempt every future type that starts with an exempted name.
+fn is_closed_type(block: &syn::ItemImpl) -> bool {
+    let subject = subject_name(&block.self_ty);
+    !CALLER_CONSTRUCTED.iter().any(|allowed| subject == *allowed)
 }
 
 fn is_public(visibility: &syn::Visibility) -> bool {
     matches!(visibility, syn::Visibility::Public(_))
+}
+
+/// Every function one source declares, beside the declared functions its body
+/// calls.
+///
+/// Names are the whole model: two functions declared with one name — an
+/// accessor each of two records states — merge into one entry, so the answer
+/// over-approximates rather than losing a call. An over-approximated call graph
+/// can only reject a shape a real one would accept, never accept one it would
+/// reject.
+pub fn declared_call_graph(path: &str) -> BTreeMap<String, BTreeSet<String>> {
+    let file = parsed(path);
+    let bodies = declared_bodies(&declared_items(&file.items));
+    let declared: BTreeSet<&str> = bodies.keys().map(String::as_str).collect();
+    bodies
+        .iter()
+        .map(|(name, body)| (name.clone(), calls(body, &declared)))
+        .collect()
+}
+
+/// Every free function and method one source declares, beside its body text
+/// with every space dropped.
+fn declared_bodies(items: &[&syn::Item]) -> BTreeMap<String, String> {
+    let mut found: BTreeMap<String, String> = BTreeMap::new();
+    for item in items {
+        for (name, body) in item_bodies(item) {
+            found.entry(name).or_default().push_str(&body);
+        }
+    }
+    found
+}
+
+/// The functions one declared item states, as name and compacted body.
+fn item_bodies(item: &syn::Item) -> Vec<(String, String)> {
+    match item {
+        syn::Item::Fn(function) => vec![compacted(&function.sig, &function.block)],
+        syn::Item::Impl(block) => block.items.iter().filter_map(impl_body).collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// One implementation member's name beside its body, when it is a method.
+fn impl_body(item: &syn::ImplItem) -> Option<(String, String)> {
+    match item {
+        syn::ImplItem::Fn(method) => Some(compacted(&method.sig, &method.block)),
+        _ => None,
+    }
+}
+
+/// One function's name beside its body with every space dropped.
+fn compacted(signature: &syn::Signature, body: &syn::Block) -> (String, String) {
+    (
+        signature.ident.to_string(),
+        scan::token_text(body).split_whitespace().collect(),
+    )
+}
+
+/// Every declared function one body calls.
+fn calls(body: &str, declared: &BTreeSet<&str>) -> BTreeSet<String> {
+    declared
+        .iter()
+        .filter(|name| is_called(body, name))
+        .map(|name| (*name).to_owned())
+        .collect()
+}
+
+/// Whether one body calls one declared function by name.
+///
+/// The name must start where no identifier character precedes it, so a call to
+/// `index_of` is not read as a call to a function named `of`.
+fn is_called(body: &str, name: &str) -> bool {
+    let needle = format!("{name}(");
+    body.match_indices(&needle)
+        .any(|(at, _)| at == 0 || !is_name_char(body.as_bytes()[at - 1]))
+}
+
+fn is_name_char(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_'
+}
+
+/// Every function that sits on, or reaches, a cycle of calls.
+///
+/// Functions with no remaining outgoing call are dropped in turn; whatever
+/// cannot be dropped can still reach a call that returns to it.
+pub fn recursive_functions(calls: &BTreeMap<String, BTreeSet<String>>) -> Vec<String> {
+    let mut remaining: BTreeSet<&str> = calls.keys().map(String::as_str).collect();
+    loop {
+        let settled: Vec<&str> = remaining
+            .iter()
+            .copied()
+            .filter(|name| reaches_none(calls, name, &remaining))
+            .collect();
+        match settled.is_empty() {
+            true => return remaining.iter().map(|name| (*name).to_owned()).collect(),
+            false => remaining.retain(|name| !settled.contains(name)),
+        }
+    }
+}
+
+/// Whether one function calls nothing that is still remaining.
+fn reaches_none(
+    calls: &BTreeMap<String, BTreeSet<String>>,
+    name: &str,
+    remaining: &BTreeSet<&str>,
+) -> bool {
+    calls
+        .get(name)
+        .into_iter()
+        .flatten()
+        .all(|called| !remaining.contains(called.as_str()))
 }

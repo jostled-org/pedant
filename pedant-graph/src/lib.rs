@@ -40,8 +40,57 @@
 //! slice, and every graph-owned enum is one lower-snake-case string. No key
 //! states a coordinate, a size, a color, or any other layout choice.
 
+//! # Bounded queries over a built graph
+//!
+//! A caller states which edges to admit and what the answer may cost, then
+//! asks. Nothing about the graph changes.
+//!
+//! ```no_run
+//! # use pedant_graph::{
+//! #     CodeGraph, GraphAnalysis, GraphAnalysisError, GraphAnalysisLimits, GraphDirection,
+//! #     GraphEdgeSelection, GraphNeighbor, GraphNodeId,
+//! # };
+//! # fn callers_of(
+//! #     graph: &CodeGraph,
+//! #     node: GraphNodeId,
+//! # ) -> Result<Box<[GraphNeighbor]>, GraphAnalysisError> {
+//! let analysis = GraphAnalysis::new(
+//!     graph,
+//!     GraphEdgeSelection::code_relations(),
+//!     GraphAnalysisLimits::new(100_000, 400_000, 8, 50_000_000),
+//! )?;
+//! analysis.neighbors(node, 2, GraphDirection::Incoming)
+//! # }
+//! ```
+//!
+//! The same view answers the derived questions. Cohesion, modularity, affinity,
+//! and boundary-crossing cycles are evidence about the partition the graph
+//! declares; layout metadata is that evidence beside the degrees and weights a
+//! ranker or a renderer would otherwise measure itself.
+//!
+//! ```no_run
+//! # use pedant_graph::{
+//! #     CodeGraph, GraphAnalysis, GraphAnalysisError, GraphAnalysisLimits, GraphEdgeSelection,
+//! #     LayoutAssistMetadata,
+//! # };
+//! # fn described(graph: &CodeGraph) -> Result<LayoutAssistMetadata, GraphAnalysisError> {
+//! let analysis = GraphAnalysis::new(
+//!     graph,
+//!     GraphEdgeSelection::code_relations(),
+//!     GraphAnalysisLimits::new(100_000, 400_000, 8, 50_000_000),
+//! )?;
+//! let evidence = analysis.divergence();
+//! for module in evidence.cohesion() {
+//!     let _ = (module.root(), module.internal_edges(), module.score());
+//! }
+//! analysis.layout_assist()
+//! # }
+//! ```
+
 #![deny(missing_docs)]
 
+/// Derived analysis over one borrowed graph.
+mod analysis;
 /// The logical hierarchy relation.
 mod containment;
 /// Graph edges, their certainty, and their evidence.
@@ -61,6 +110,14 @@ mod reference;
 /// The Rust projection adapter.
 mod rust;
 
+pub use analysis::{
+    BetweennessCentrality, BoundaryCrossingComponent, ComponentIdKind, CondensationEdge,
+    CondensationGraph, DeclaredModulePartition, DegreeCentrality, GraphAnalysis,
+    GraphAnalysisError, GraphAnalysisLimits, GraphComponent, GraphComponentId, GraphComponents,
+    GraphDirection, GraphDivergence, GraphEdgeSelection, GraphNeighbor, GraphPath, GraphSubgraph,
+    LayoutAssistMetadata, LayoutEdgeMetadata, LayoutNodeMetadata, MisplacementCandidate,
+    ModuleCohesion,
+};
 pub use containment::ContainmentEdge;
 pub use edge::{
     DependencyEvidence, GraphCertainty, GraphDependencyKind, GraphEdge, GraphEdgeKind,

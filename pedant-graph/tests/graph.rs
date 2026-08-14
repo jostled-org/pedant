@@ -13,7 +13,128 @@
 #[path = "graph_support/mod.rs"]
 mod graph_support;
 
-use graph_support::{contract, defensive, evidence, isolation, ownership, topology, wire};
+use graph_support::{
+    analysis_centrality, analysis_components, analysis_derived_bounds,
+    analysis_derived_determinism, analysis_determinism, analysis_divergence, analysis_layout,
+    analysis_ownership, analysis_ownership_bounds, analysis_partition, analysis_selection,
+    analysis_source_boundary, analysis_traversal, contract, defensive, evidence, isolation,
+    ownership, topology, wire,
+};
+
+#[test]
+fn graph_analysis_selection_is_explicit_and_shared() {
+    analysis_selection::assert_selection_is_explicit_and_shared();
+}
+
+#[test]
+fn graph_analysis_limits_refuse_before_work() {
+    analysis_selection::assert_admission_limits_refuse();
+    analysis_traversal::assert_query_limits_refuse();
+}
+
+#[test]
+fn graph_analysis_limit_checks_dominate_allocations() {
+    analysis_ownership_bounds::assert_analysis_limit_checks_dominate();
+}
+
+#[test]
+fn graph_neighbors_are_bounded_directed_and_ordered() {
+    analysis_traversal::assert_neighbors_are_bounded_directed_and_ordered();
+}
+
+#[test]
+fn graph_path_is_shortest_directed_and_deterministic() {
+    analysis_traversal::assert_path_is_shortest_directed_and_deterministic();
+}
+
+#[test]
+fn graph_subgraph_is_exact_induced_selection() {
+    analysis_traversal::assert_subgraph_is_exact_induced_selection();
+}
+
+#[test]
+fn graph_declared_partition_follows_nearest_container() {
+    analysis_partition::assert_partition_follows_nearest_container();
+}
+
+#[test]
+fn graph_traversal_consumes_shared_analysis_indexes() {
+    analysis_ownership_bounds::assert_traversal_consumes_shared_indexes();
+}
+
+#[test]
+fn graph_analysis_public_boundary_is_exact() {
+    analysis_ownership::assert_analysis_public_boundary_is_exact();
+}
+
+#[test]
+fn graph_degree_and_betweenness_match_directed_oracles() {
+    analysis_centrality::assert_degree_and_betweenness_match_oracles();
+}
+
+#[test]
+fn graph_metric_selection_reuses_analysis_indexes() {
+    analysis_centrality::assert_metric_selection_reuses_indexes();
+    analysis_components::assert_component_selection_reuses_indexes();
+}
+
+#[test]
+fn graph_betweenness_refuses_work_before_source_state() {
+    analysis_centrality::assert_betweenness_refuses_work();
+    analysis_ownership_bounds::assert_betweenness_work_checks_dominate();
+}
+
+#[test]
+fn graph_components_and_condensation_are_exact() {
+    analysis_components::assert_components_and_condensation_are_exact();
+}
+
+#[test]
+fn graph_analysis_results_are_deterministic() {
+    analysis_determinism::assert_analysis_results_are_deterministic();
+}
+
+#[test]
+fn graph_traversal_and_components_are_iterative() {
+    analysis_components::assert_traversal_and_components_are_iterative();
+    analysis_ownership_bounds::assert_traversal_and_components_do_not_recurse();
+}
+
+#[test]
+fn graph_metrics_and_components_consume_shared_indexes() {
+    analysis_ownership_bounds::assert_metrics_and_components_consume_shared_indexes();
+}
+
+#[test]
+fn graph_divergence_selection_reuses_analysis_indexes() {
+    analysis_divergence::assert_divergence_selection_reuses_indexes();
+    analysis_layout::assert_layout_selection_reuses_indexes();
+}
+
+#[test]
+fn graph_divergence_matches_declared_partition_arithmetic() {
+    analysis_divergence::assert_divergence_matches_declared_partition_arithmetic();
+}
+
+#[test]
+fn graph_layout_assist_is_complete_and_coordinate_free() {
+    analysis_layout::assert_layout_is_complete_and_coordinate_free();
+}
+
+#[test]
+fn graph_divergence_and_layout_are_deterministic() {
+    analysis_derived_determinism::assert_divergence_and_layout_are_deterministic();
+}
+
+#[test]
+fn graph_derived_consumers_reuse_analysis_results() {
+    analysis_derived_bounds::assert_derived_consumers_reuse_analysis_results();
+}
+
+#[test]
+fn graph_analysis_source_boundary_is_exact() {
+    analysis_source_boundary::assert_analysis_source_boundary_is_exact();
+}
 
 #[test]
 fn graph_public_reading_surface_is_complete() {

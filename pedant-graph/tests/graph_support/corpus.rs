@@ -1,7 +1,9 @@
-//! The temporary Cargo repositories every graph case projects.
+//! The temporary Cargo repositories every graph case projects, written out.
 //!
 //! Each corpus is a real repository the production loader, snapshot, and
 //! syntactic resolver read; no case mocks a project, a snapshot, or a report.
+//! A corpus stated as a rule over a count lives beside this one, in
+//! `corpus_generated`.
 
 /// One fixture file: repository-relative path and exact contents.
 pub type FixtureFile = (&'static str, &'static str);

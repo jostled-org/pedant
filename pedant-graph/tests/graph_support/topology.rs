@@ -4,8 +4,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use pedant_core::resolution::rust::CargoTargetKind;
-use pedant_graph::{CodeGraph, GraphNodeId, GraphNodeKind, GraphNodeLocation};
+use pedant_graph::{CodeGraph, GraphNodeId, GraphNodeKind};
 
+use super::analysis_fixture::{definition, span_file};
 use super::corpus::{SHARED_SOURCE_CORPUS, TARGET_KIND_CORPUS};
 use super::fixture;
 use super::render;
@@ -249,8 +250,8 @@ pub fn assert_parentage_is_separate_from_location() {
     let (_fixture, _resolved, graph) = fixture::project_corpus_library();
     let parents = containment_parents(&graph);
 
-    let external = node_named(&graph, "plain");
-    let module = node_named(&graph, "alpha");
+    let external = definition(&graph, "plain");
+    let module = definition(&graph, "alpha");
     assert_eq!(
         parents.get(&external),
         Some(&module),
@@ -269,8 +270,8 @@ pub fn assert_parentage_is_separate_from_location() {
         "the item's span identifies its own unit-qualified file node"
     );
 
-    let inline = node_named(&graph, "nested");
-    let inline_parent = node_named(&graph, "inner");
+    let inline = definition(&graph, "nested");
+    let inline_parent = definition(&graph, "inner");
     assert_eq!(
         parents.get(&inline),
         Some(&inline_parent),
@@ -317,27 +318,4 @@ fn unit_owners(
         owners.insert(node.id(), current);
     }
     owners
-}
-
-fn node_named(graph: &CodeGraph, name: &str) -> GraphNodeId {
-    let found: Vec<GraphNodeId> = graph
-        .nodes()
-        .iter()
-        .filter(|node| node.name() == name && render::is_definition(node))
-        .map(|node| node.id())
-        .collect();
-    match found.as_slice() {
-        [only] => *only,
-        other => panic!(
-            "the corpus declares {} definitions named {name}",
-            other.len()
-        ),
-    }
-}
-
-fn span_file(graph: &CodeGraph, node: GraphNodeId) -> GraphNodeId {
-    match graph.node(node).and_then(|found| found.location()) {
-        Some(GraphNodeLocation::Span { file, .. }) => *file,
-        other => panic!("node {} has no span location: {other:?}", node.index()),
-    }
 }

@@ -15,7 +15,7 @@ use pedant_core::resolution::rust::{
 };
 use pedant_graph::{CodeGraph, build_rust_graph};
 
-use super::corpus::{BUILD_SCRIPT_CORPUS, FixtureFile, GRAPH_CORPUS};
+use super::corpus::{BUILD_SCRIPT_CORPUS, GRAPH_CORPUS};
 
 /// One declared target: its owning package, its Cargo kind, and its name.
 pub type DeclaredTarget = (&'static str, CargoTargetKind, &'static str);
@@ -44,7 +44,7 @@ pub struct Resolved {
 
 impl Fixture {
     /// Materialize `files` beneath a fresh temporary directory and load them.
-    pub fn build(files: &[FixtureFile]) -> Self {
+    pub fn build(files: &[(&str, &str)]) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory should be available");
         for (relative, contents) in files {
             write_file(directory.path(), relative, contents.as_bytes());
@@ -135,7 +135,7 @@ impl Fixture {
 }
 
 /// Materialize and resolve one corpus in one step.
-pub fn resolve_library(files: &[FixtureFile]) -> (Fixture, Resolved) {
+pub fn resolve_library(files: &[(&str, &str)]) -> (Fixture, Resolved) {
     let fixture = Fixture::build(files);
     let resolved = fixture.resolve_library();
     (fixture, resolved)
@@ -145,7 +145,7 @@ pub fn resolve_library(files: &[FixtureFile]) -> (Fixture, Resolved) {
 ///
 /// The fixture travels with the resolution so the repository outlives every
 /// case that reads it, exactly as [`resolve_library`] does.
-fn resolve_target(files: &[FixtureFile], declared: DeclaredTarget) -> (Fixture, Resolved) {
+fn resolve_target(files: &[(&str, &str)], declared: DeclaredTarget) -> (Fixture, Resolved) {
     let (package, kind, name) = declared;
     let fixture = Fixture::build(files);
     let resolved = fixture.resolve(fixture.target(package, kind, name));
@@ -154,13 +154,18 @@ fn resolve_target(files: &[FixtureFile], declared: DeclaredTarget) -> (Fixture, 
 
 /// Materialize one corpus, resolve one declared target, and project it.
 pub fn project_target(
-    files: &[FixtureFile],
+    files: &[(&str, &str)],
     declared: DeclaredTarget,
 ) -> (Fixture, Resolved, CodeGraph) {
     let (fixture, resolved) = resolve_target(files, declared);
-    let graph = build_rust_graph(&resolved.snapshot, &resolved.resolution)
-        .unwrap_or_else(|error| panic!("{declared:?} should project: {error}"));
+    let graph = project(&resolved, &format!("{declared:?}"));
     (fixture, resolved, graph)
+}
+
+/// The graph one resolution projects, named by the target that produced it.
+fn project(resolved: &Resolved, subject: &str) -> CodeGraph {
+    build_rust_graph(&resolved.snapshot, &resolved.resolution)
+        .unwrap_or_else(|error| panic!("{subject} should project: {error}"))
 }
 
 /// The corpus library, resolved but not projected.

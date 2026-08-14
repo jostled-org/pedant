@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/jostled-org/pedant/compare/pedant-graph-v0.1.2...pedant-graph-v0.2.0) - 2026-08-14
+
+### Added
+
+- [**breaking**] implement graph-incremental-cache
+- implement graph-queries-and-condensation
+
+### Fixed
+
+- *(graph)* enforce concrete cache example errors
+
 ## [0.1.2](https://github.com/jostled-org/pedant/compare/pedant-graph-v0.1.1...pedant-graph-v0.1.2) - 2026-08-13
 
 ### Other

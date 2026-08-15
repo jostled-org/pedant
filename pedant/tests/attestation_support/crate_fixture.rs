@@ -29,17 +29,25 @@ pub(crate) struct CrateFixture {
 }
 
 impl CrateFixture {
-    /// A crate holding `manifest` and an empty `src/`.
+    /// A crate holding `manifest` and nothing else.
     pub(crate) fn new(manifest: &str) -> Self {
         let root = tempfile::tempdir().expect("a temporary crate root");
-        fs::create_dir(root.path().join("src")).expect("a source directory");
         fs::write(root.path().join("Cargo.toml"), manifest).expect("a manifest");
         Self { root }
     }
 
     /// Write one file inside the crate and hand back its path.
+    ///
+    /// A directory appears only because a case put a file in it, so a crate
+    /// that names no source file keeps the layout it had before this fixture
+    /// existed.
     pub(crate) fn write(&self, relative: &str, contents: &str) -> PathBuf {
         let path = self.root.path().join(relative);
+        if let Some(directory) = path.parent() {
+            fs::create_dir_all(directory).unwrap_or_else(|error| {
+                panic!("{} should be creatable: {error}", directory.display());
+            });
+        }
         fs::write(&path, contents).unwrap_or_else(|error| {
             panic!("{} should be writable: {error}", path.display());
         });

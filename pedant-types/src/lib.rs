@@ -2,6 +2,7 @@
 
 mod attestation;
 mod capability;
+mod capability_analysis;
 mod diff;
 mod error;
 mod execution_context;
@@ -13,6 +14,10 @@ pub mod resolution;
 
 pub use attestation::{AnalysisCompleteness, AnalysisTier, AttestationContent, SkippedAnalysis};
 pub use capability::Capability;
+pub use capability_analysis::{
+    CapabilityAnalysis, CapabilitySymbol, CapabilitySymbolKind, SymbolAttributionStatus,
+    SymbolCapabilityProfile,
+};
 pub use diff::CapabilityDiff;
 pub use error::ParseCapabilityError;
 pub use execution_context::ExecutionContext;

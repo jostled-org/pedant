@@ -67,6 +67,10 @@ mod finding_cases;
 #[path = "serialization_support/profile_cases.rs"]
 mod profile_cases;
 
+/// The shared capability-analysis envelope, its decode boundary, and its merge.
+#[path = "serialization_support/capability_analysis_cases.rs"]
+mod capability_analysis_cases;
+
 /// The attestation envelope and its completeness record.
 #[path = "serialization_support/attestation_cases.rs"]
 mod attestation_cases;

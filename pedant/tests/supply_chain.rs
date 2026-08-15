@@ -26,6 +26,11 @@ mod journey;
 #[path = "supply_chain_support/guard_cases.rs"]
 mod guard_cases;
 
+/// The tracked Cargo classifier's runtime contract, exercised through guarded
+/// child shells. Same `#[path]` reason as the modules above.
+#[path = "supply_chain_support/cargo_classifier_cases.rs"]
+mod cargo_classifier_cases;
+
 #[cfg(feature = "resolution-test-support")]
 #[path = "supply_chain_support/probe_receipt.rs"]
 mod probe_receipt;

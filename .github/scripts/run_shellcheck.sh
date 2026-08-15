@@ -16,6 +16,7 @@ esac
 
 exec shellcheck -x \
     .github/scripts/repository_check_lib.sh \
+    .github/scripts/cargo_infrastructure.sh \
     .github/scripts/check_graph_capabilities.sh \
     .github/scripts/check_graph_dependency_closure.sh \
     .github/scripts/check_lang_feature_forwarding.sh \

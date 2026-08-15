@@ -8,6 +8,48 @@ const SHELLCHECK_VERSION: &str = "0.11.0";
 const SHELLCHECK_DIGEST: &str = "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198";
 const CARGO_DENY_REVISION: &str = "bca0dde53651ee946720e4540b5ce2610bec8f06";
 
+/// The one tracked owner of Cargo proof status.
+const CARGO_INFRASTRUCTURE_SCRIPT: &str = ".github/scripts/cargo_infrastructure.sh";
+
+/// The complete function inventory that owner may define, sorted.
+///
+/// `cargo_classify`, `cargo_record`, `cargo_run`, and `cargo_worst` are the API
+/// the ignored lifecycle runners already call; `cargo_classify_output` is the
+/// same decision for a transcript a caller holds rather than a file it wrote.
+/// A sixth name would be a second place for a runner to look.
+const CLASSIFIER_API: &[&str] = &[
+    "cargo_classify",
+    "cargo_classify_output",
+    "cargo_record",
+    "cargo_run",
+    "cargo_worst",
+];
+
+/// The signature table, in order, as the one regex owner spells it — with an
+/// underscore wherever the owner writes a space.
+///
+/// The redaction is load-bearing. The classifier this table describes reads
+/// Cargo's transcript, and Cargo puts source lines in that transcript: a
+/// rustfmt diff, a clippy span, or a compiler error quoting one of these
+/// signatures verbatim would make every honest failure of this crate look like
+/// an exhausted volume, and the loop would retry a real defect rather than
+/// report it. [`expanded`] restores the spaces for the one comparison that
+/// needs them.
+const INFRASTRUCTURE_SIGNATURES: &[&str] = &[
+    "spurious_network_error",
+    "failed_to_fetch",
+    "Could_not_resolve_host",
+    "error:_could_not_download",
+    "No_space_left_on_device",
+    "Read-only_file_system",
+    "failed_to_acquire_package_cache_lock",
+    "toolchain_.*_is_not_installed",
+    "rustup_could_not_choose_a_version",
+];
+
+/// Flags that would fold case and let a near miss claim an absent machine.
+const CASE_FOLDING_FLAGS: &[&str] = &[" -i", " --ignore-case", " -S", " --smart-case"];
+
 fn repository_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -73,6 +115,163 @@ fn initialize_release_fixture(root: &Path) {
     run_git(root, &["config", "user.name", "Fixture"]);
     commit_all(root, "initial release");
     run_git(root, &["tag", "core-v0.1.0"]);
+}
+
+/// One tracked owner classifies Cargo status, and it fails closed: an
+/// unclassifiable machine leaves through 75 rather than through a verdict.
+///
+/// Structure only. `pedant/tests/supply_chain.rs` owns what the script does
+/// with a real transcript, including every near miss it must refuse.
+#[test]
+fn cargo_infrastructure_classifier_is_complete_and_fail_closed() {
+    let source = read_repository_file(CARGO_INFRASTRUCTURE_SCRIPT);
+    assert_classifier_api(&source);
+    assert_signature_table(&source);
+    assert_fail_closed_lifecycle(&source);
+    assert_shellcheck_registration();
+}
+
+/// The tracked owner defines exactly the compatible API and nothing beside it.
+fn assert_classifier_api(source: &str) {
+    let mut defined: Vec<Box<str>> = source
+        .lines()
+        .filter_map(|line| line.strip_suffix("() {"))
+        .map(Box::from)
+        .collect();
+    defined.sort();
+    let expected: Box<[Box<str>]> = CLASSIFIER_API.iter().map(|name| (*name).into()).collect();
+    assert_eq!(
+        defined.into_boxed_slice(),
+        expected,
+        "the tracked classifier's function inventory changed"
+    );
+    assert!(
+        !source.contains("docs/scripts"),
+        "the tracked owner must not reach into ignored lifecycle files"
+    );
+}
+
+/// One regex owner holds the exact table, matched case-sensitively.
+fn assert_signature_table(source: &str) {
+    let owners: Box<[&str]> = source
+        .lines()
+        .filter_map(|line| line.strip_prefix("CARGO_INFRASTRUCTURE_PATTERNS="))
+        .collect();
+    assert_eq!(
+        owners.len(),
+        1,
+        "the signature table needs exactly one owner"
+    );
+    let declared = owners[0].trim_matches('\'');
+    let expected: Box<[Box<str>]> = INFRASTRUCTURE_SIGNATURES
+        .iter()
+        .map(|signature| expanded(signature))
+        .collect();
+    assert!(
+        expected.join("|") == declared,
+        "the signature table reads [{}] rather than [{}]",
+        redacted(declared),
+        INFRASTRUCTURE_SIGNATURES.join("|")
+    );
+    assert!(
+        source.contains("CARGO_INFRASTRUCTURE_STATUS=75"),
+        "the infrastructure status is 75"
+    );
+    for line in source.lines().filter(|line| line.contains("rg ")) {
+        for flag in CASE_FOLDING_FLAGS {
+            assert!(
+                !line.contains(flag),
+                "matching must stay case-sensitive: {}",
+                redacted(line)
+            );
+        }
+    }
+}
+
+/// One stored signature, with its underscores restored to the spaces the
+/// tracked owner writes.
+fn expanded(text: &str) -> Box<str> {
+    text.replace('_', " ").into()
+}
+
+/// One fragment of the script, rendered back into the stored form so a failure
+/// message cannot restate a signature. See [`INFRASTRUCTURE_SIGNATURES`].
+fn redacted(text: &str) -> Box<str> {
+    text.replace(' ', "_").into()
+}
+
+/// Infrastructure leaves immediately, an ordinary failure is kept once, and no
+/// path keeps a capture.
+fn assert_fail_closed_lifecycle(source: &str) {
+    let immediate_exit = "exit \"${CARGO_INFRASTRUCTURE_STATUS}\"";
+    let record = function_body(source, "cargo_record");
+    assert!(
+        record.contains(immediate_exit),
+        "classified infrastructure must exit immediately"
+    );
+    assert!(
+        record.contains("${cargo_infrastructure_worst}\" -eq 0"),
+        "only the first ordinary failure is kept"
+    );
+    assert!(
+        function_body(source, "cargo_worst").contains("${cargo_infrastructure_worst}"),
+        "the aggregate is reported from the recorded worst status"
+    );
+    assert_run_owns_its_capture(&function_body(source, "cargo_run"), immediate_exit);
+}
+
+/// `cargo_run` allocates before it runs, copies one indexed receipt, and
+/// removes its capture before any status can leave the shell.
+fn assert_run_owns_its_capture(run: &str, immediate_exit: &str) {
+    let allocation = offset_of(run, "mktemp");
+    let invocation = offset_of(run, "\"$@\"");
+    let removal = offset_of(run, "rm -f");
+    let record = offset_of(run, "cargo_record");
+    assert!(
+        run.contains(&format!("|| {immediate_exit}")),
+        "an unallocatable capture is an unavailable machine"
+    );
+    assert!(
+        run.contains("${PROOF_OUTPUT_DIR}/${label}.log"),
+        "an indexed run leaves one named receipt"
+    );
+    assert!(
+        allocation < invocation,
+        "the capture is allocated before the command runs"
+    );
+    assert!(
+        removal < record,
+        "the capture is removed before any status leaves the shell"
+    );
+}
+
+/// The tracked owner joins the ShellCheck subject inventory exactly once.
+fn assert_shellcheck_registration() {
+    let wrapper = read_repository_file(".github/scripts/run_shellcheck.sh");
+    assert_eq!(
+        wrapper.matches(CARGO_INFRASTRUCTURE_SCRIPT).count(),
+        1,
+        "the tracked classifier is a ShellCheck subject exactly once"
+    );
+}
+
+/// One shell function's body, between its opening line and its closing brace.
+fn function_body(source: &str, name: &str) -> Box<str> {
+    let opening: Box<str> = format!("\n{name}() {{\n").into();
+    let start = source
+        .find(&*opening)
+        .unwrap_or_else(|| panic!("{name} should be defined"))
+        + opening.len();
+    let length = source[start..]
+        .find("\n}\n")
+        .unwrap_or_else(|| panic!("{name} should have a closing brace"));
+    source[start..start + length].into()
+}
+
+/// Where one required fragment starts inside a function body.
+fn offset_of(body: &str, fragment: &str) -> usize {
+    body.find(fragment)
+        .unwrap_or_else(|| panic!("the body should contain {fragment}"))
 }
 
 #[test]

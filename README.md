@@ -52,6 +52,9 @@ pedant capabilities src scripts
 # Check for suspicious patterns
 pedant gate src
 
+# Judge one Cargo project against its declared module boundaries
+pedant gate --project .
+
 # Set up CI supply chain monitoring (see examples/supply-chain-check.md)
 ```
 
@@ -83,7 +86,63 @@ $ pedant gate --format github src
 ::error title=build-script-download-exec::Download-and-execute in build script — classic supply chain attack
 ```
 
-Violations anchor to their source location. Gate verdicts judge a whole capability profile and have no location, so they attach to the run.
+Violations anchor to their source location. Capability gate verdicts judge a whole profile and have no location, so they attach to the run. Module-boundary verdicts name a subject and anchor to it when it has source bytes.
+
+## Module Boundary Gate
+
+`pedant gate` takes exactly one input mode: a file list, `--stdin`, or one Cargo project.
+
+```bash
+pedant gate src/**/*.rs            # capability and data-flow rules
+pedant gate --stdin                # one source on standard input
+pedant gate --project .            # module-boundary rules over a Cargo project
+```
+
+`--project` conflicts with files, `--stdin`, and `--cross-language`. It selects every library, binary, and build-script target of every workspace member, judges each one separately, and labels the result `<package-dir-or-dot>#<kind>:<target-name>`. Examples, integration tests, benchmarks, and non-member path dependencies are not independent roots.
+
+Judgment reads only relationships the selected tier proved: resolved `Call`, `Import`, `Implementation`, and `Reference` edges. Ambiguous candidates and Cargo dependency edges never support a blocking claim.
+
+| Rule | Default | Fires when |
+|---|---|---|
+| `large-scc` | `warn` | a cyclic component has more than 8 members |
+| `boundary-crossing-scc` | `deny` | a cycle runs through more than one declared module |
+| `misplaced-symbol` | `warn` | a symbol has at least 3 foreign edges and at least 60% of its outgoing edges leave its module |
+| `low-module-cohesion` | `warn` | a module has at least 4 outgoing edges and keeps under 50% of them internal |
+
+Configure them under `[gate.module-boundary]`. Each rule key takes `false`, `true`, or a severity name. `enabled = false` disables all four without disabling project or analysis failures.
+
+```toml
+[gate.module-boundary]
+enabled = true
+boundary-crossing-scc = "deny"
+misplaced-symbol = "warn"
+
+max-scc-members = 8
+misplaced-symbol-min-foreign-edges = 3
+misplaced-symbol-min-affinity-percent = 60
+low-module-cohesion-min-outgoing-edges = 4
+low-module-cohesion-min-percent = 50
+
+max-nodes = 250000
+max-references = 1000000
+max-edges = 1000000
+max-selected-edges = 1000000
+```
+
+Project mode resolves configuration in one order: an explicit `--config` path, read as you wrote it relative to the working directory; then `<project-root>/.pedant.toml`; then the global config; then the defaults. A missing file advances to the next source. Any other failure is fatal.
+
+Text and GitHub state the tier and every analyzed target before any verdict. JSON carries both in the same envelope. A clean run stays observable in every format.
+
+```
+$ pedant gate --project .
+analysis-tier: syntactic
+target: ".#lib:demo"
+deny: boundary-crossing-scc — cycle crosses declared module partitions; target=".#lib:demo"; subject={"ordinal":4,"label":"scc::demo::left::up","location":{"path":"src/left.rs","line":2,"column":8}}; measurement={"kind":"component","cyclic":true,"members":[...],"partitions":[...]}
+```
+
+JSON appends `analyzed_targets` after the existing envelope fields and attaches the triggering evidence to each verdict. GitHub emits one workflow notice per run, then one annotation per verdict. File and stdin output keeps its exact previous bytes, because absent evidence is omitted.
+
+A `deny` verdict exits 1, advisory-only evidence exits 0, and any project, snapshot, resolution, graph, analysis, projection, or write failure exits 2 with no verdict and no success payload.
 
 ## CI Supply Chain Check
 
@@ -145,7 +204,7 @@ See [examples/capability-detection.md](examples/capability-detection.md) for the
 
 ## Style Checks (Rust)
 
-32 checks across five categories. Nesting checks run by default. Everything else needs `.pedant.toml`: most are off until you enable them, while the rule-driven checks (`item-visibility-policy`, `flat-module-family`, `feature-boundary`) are on by default but stay silent until you give them rules.
+33 checks across five categories. Nesting checks run by default. Everything else needs `.pedant.toml`: most are off until you enable them, while the rule-driven checks (`item-visibility-policy`, `flat-module-family`, `feature-boundary`) are on by default but stay silent until you give them rules.
 
 ```bash
 pedant check src                    # a directory — pedant recurses it
@@ -195,6 +254,8 @@ With the `semantic` feature, pedant resolves types through aliases using rust-an
 cargo install pedant --features semantic
 pedant gate --semantic src/**/*.rs
 ```
+
+In project mode `--semantic` is strict: pedant loads one context at the project root and resolves every target through it, or exits 2. It never reports a syntactic success for an explicitly semantic run.
 
 ## MCP Server
 
@@ -257,7 +318,7 @@ max_depth = 5
 enabled = false
 ```
 
-Thresholds also have CLI flags (`--max-function-body`, `--max-methods`, `--max-source-file-lines`, `--warn-source-file-lines`), and passing one enables its check. Every check has a `--no-<check>` toggle.
+Thresholds also have CLI flags (`--max-function-body`, `--max-methods`, `--max-source-file-lines`, `--warn-source-file-lines`), and passing one enables its check. Fifteen checks carry a `--no-<check>` flag that turns them off; `pedant check --help` lists them.
 
 Config loads from `.pedant.toml` (project) or `~/.config/pedant/config.toml` (global). Project wins. See [examples/](examples/) for full configs.
 

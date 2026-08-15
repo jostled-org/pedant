@@ -1,18 +1,25 @@
-//! Bounded ownership of every child this supply-chain root spawns.
+//! Bounded ownership of every child a `pedant` test root spawns.
 //!
-//! `pedant supply-chain` runs Cargo, and Cargo runs whatever else it likes, so
-//! a child here is a process tree rather than a process. One guard owns that
-//! tree: the child starts in its own process group on Unix and in its own Job
-//! Object on Windows, both output pipes are drained for the tree's whole life,
-//! every wait is bounded, and teardown closes stdin, kills the group, reaps the
-//! child, and joins both drains before a caller may assert anything.
+//! Both child-spawning roots consume this exact wrapper: `pedant supply-chain`
+//! runs Cargo and Cargo runs whatever else it likes, and `pedant gate
+//! --project` reads a repository someone else wrote. A child here is therefore
+//! a process tree rather than a process. One guard owns that tree: the child
+//! starts in its own process group on Unix and in its own Job Object on
+//! Windows, both output pipes are drained for the tree's whole life, every wait
+//! is bounded, and teardown closes stdin, kills the group, reaps the child, and
+//! joins both drains before a caller may assert anything.
 //!
 //! Draining matters twice over. A pipe nobody reads fills and blocks its
 //! writer, and a descendant inherits the same pipes — so the drains cannot
 //! finish until the last member of the tree is gone, which is exactly the
 //! property teardown must prove.
+//!
+//! One row deliberately closes the parent's stdout reader before the child
+//! writes, which is the only way to observe how the binary reports a failed
+//! write. That row still drains stderr, still bounds its wait, and still kills,
+//! reaps, and joins before it asserts.
 
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::Path;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::thread::{self, JoinHandle};
@@ -25,6 +32,14 @@ pub(crate) const BUDGET: Duration = Duration::from_secs(120);
 
 /// Poll interval for every bounded wait.
 pub(crate) const POLL: Duration = Duration::from_millis(25);
+
+/// Largest stdin fixture a row may state.
+///
+/// The fixture is written before the wait begins, so a child that never reads
+/// it can only block the harness once the write exceeds the pipe buffer. One
+/// page is below the smallest buffer either platform provides, which keeps the
+/// module's "every wait is bounded" contract true rather than merely untested.
+const STDIN_CEILING: usize = 4096;
 
 /// Why a guarded run could not produce a result.
 ///
@@ -80,6 +95,14 @@ pub(crate) struct Run<'a> {
     pub(crate) env: &'a [(&'a str, &'a str)],
     /// Ceiling on how long the child may run before it is killed.
     pub(crate) budget: Duration,
+    /// Bytes written to the child's stdin, which is closed straight after.
+    pub(crate) stdin: Option<&'a [u8]>,
+    /// Whether the parent keeps the child's stdout reader.
+    ///
+    /// A row that must observe a failed write sets this false, so the reader is
+    /// dropped before the child writes. Every other row drains stdout for the
+    /// tree's whole life.
+    pub(crate) capture_stdout: bool,
 }
 
 /// The binary under test, which most runs here name.
@@ -102,6 +125,8 @@ impl<'a> Run<'a> {
             path_prefix: None,
             env: &[],
             budget: BUDGET,
+            stdin: None,
+            capture_stdout: true,
         }
     }
 }
@@ -119,10 +144,16 @@ pub(crate) enum Outcome {
 pub(crate) struct Completed {
     /// How the child ended.
     pub(crate) outcome: Outcome,
-    /// Everything the tree wrote to stdout.
+    /// Everything the tree wrote to stdout, empty when nothing drained it.
+    ///
+    /// A row that closes the reader before the child writes reads empty here
+    /// whatever the child produced, so an assertion over this field states
+    /// nothing for that row. `captured_stdout` tells the two apart.
     pub(crate) stdout: Box<str>,
     /// Everything the tree wrote to stderr.
     pub(crate) stderr: Box<str>,
+    /// Whether a drain ran for stdout at all.
+    pub(crate) captured_stdout: bool,
 }
 
 impl Completed {
@@ -145,8 +176,13 @@ impl Completed {
     }
 
     /// Both streams, for a failure message that must say what the child said.
+    ///
+    /// An uncaptured stream says so, rather than reading as an empty one.
     pub(crate) fn transcript(&self) -> String {
-        format!("stdout={} stderr={}", self.stdout, self.stderr)
+        match self.captured_stdout {
+            true => format!("stdout={} stderr={}", self.stdout, self.stderr),
+            false => format!("stdout=<not captured> stderr={}", self.stderr),
+        }
     }
 }
 
@@ -155,15 +191,12 @@ pub(crate) fn execute(run: &Run<'_>) -> Result<Completed, Failure> {
     Guard::spawn(run)?.finish(run.budget)
 }
 
-/// Run one child after releasing a fixture blocked on post-adoption proof.
-pub(crate) fn execute_released(run: &Run<'_>, release_file: &Path) -> Result<Completed, Failure> {
-    let guard = Guard::spawn(run)?;
-    std::fs::write(release_file, b"adopted").map_err(io("the fixture release"))?;
-    guard.finish(run.budget)
-}
-
 /// Owns one child, its process tree, and the threads draining its pipes.
-struct Guard {
+///
+/// Exposed so a root that must act between adoption and the wait — releasing a
+/// fixture that blocks on proof of adoption — can do so without a second
+/// lifecycle owner.
+pub(crate) struct Guard {
     child: Child,
     group: ContainedProcessTree,
     stdout: Option<JoinHandle<std::io::Result<Vec<u8>>>>,
@@ -171,7 +204,8 @@ struct Guard {
 }
 
 impl Guard {
-    fn spawn(run: &Run<'_>) -> Result<Self, Failure> {
+    /// Start one contained child and its drains, before any wait begins.
+    pub(crate) fn spawn(run: &Run<'_>) -> Result<Self, Failure> {
         let mut command = Command::new(run.program);
         command
             .current_dir(run.cwd)
@@ -204,18 +238,24 @@ impl Guard {
         };
         let stdout = take_pipe(guard.child.stdout.take(), "stdout")?;
         let stderr = take_pipe(guard.child.stderr.take(), "stderr")?;
-        guard.stdout = Some(thread::spawn(move || drain(stdout)));
+        guard.stdout = start_stdout(stdout, run.capture_stdout);
+        // stderr is drained unconditionally: a row that closes stdout still has
+        // to report what the child said about the failed write.
         guard.stderr = Some(thread::spawn(move || drain(stderr)));
+        write_stdin(&mut guard.child, run.stdin)?;
         Ok(guard)
     }
 
-    fn finish(mut self, budget: Duration) -> Result<Completed, Failure> {
+    /// Wait out the budget, tear the tree down, and report what it wrote.
+    pub(crate) fn finish(mut self, budget: Duration) -> Result<Completed, Failure> {
         let waited = self.wait(budget);
+        let captured_stdout = self.stdout.is_some();
         let (stdout, stderr) = self.teardown()?;
         Ok(Completed {
             outcome: waited?,
             stdout,
             stderr,
+            captured_stdout,
         })
     }
 
@@ -240,8 +280,11 @@ impl Guard {
         std::mem::drop(self.child.stdin.take());
         self.group.terminate()?;
         self.child.wait().map_err(io("the reap"))?;
-        let stdout = joined(self.stdout.take(), "stdout")?;
-        let stderr = joined(self.stderr.take(), "stderr")?;
+        let stdout = match self.stdout.take() {
+            Some(handle) => joined(handle, "stdout")?,
+            None => Box::default(),
+        };
+        let stderr = joined(take_pipe(self.stderr.take(), "stderr")?, "stderr")?;
         Ok((stdout, stderr))
     }
 }
@@ -269,6 +312,44 @@ fn take_pipe<R>(pipe: Option<R>, name: &str) -> Result<R, Failure> {
     pipe.ok_or_else(|| Failure::Protocol(format!("the child has no {name}").into()))
 }
 
+/// Start the ordinary stdout drain, or close the reader before the child
+/// writes so the binary observes a broken pipe.
+fn start_stdout<R: Read + Send + 'static>(
+    pipe: R,
+    capture: bool,
+) -> Option<JoinHandle<std::io::Result<Vec<u8>>>> {
+    match capture {
+        true => Some(thread::spawn(move || drain(pipe))),
+        false => {
+            std::mem::drop(pipe);
+            None
+        }
+    }
+}
+
+/// Write the whole stdin fixture, then close the pipe before the wait begins.
+///
+/// A run that states no fixture keeps the pipe until teardown, exactly as
+/// every existing supply-chain row does. A fixture over [`STDIN_CEILING`]
+/// refuses here rather than blocking the harness on a child that never reads.
+fn write_stdin(child: &mut Child, fixture: Option<&[u8]>) -> Result<(), Failure> {
+    let Some(bytes) = fixture else {
+        return Ok(());
+    };
+    if bytes.len() > STDIN_CEILING {
+        return Err(Failure::Protocol(
+            format!(
+                "the stdin fixture is {} bytes, over the {STDIN_CEILING}-byte ceiling this \
+                 harness writes before its wait begins",
+                bytes.len()
+            )
+            .into(),
+        ));
+    }
+    let mut pipe = take_pipe(child.stdin.take(), "stdin")?;
+    pipe.write_all(bytes).map_err(io("the stdin write"))
+}
+
 fn drain<R: Read>(mut reader: R) -> std::io::Result<Vec<u8>> {
     let mut collected = Vec::new();
     reader.read_to_end(&mut collected)?;
@@ -280,10 +361,9 @@ fn drain<R: Read>(mut reader: R) -> std::io::Result<Vec<u8>> {
 /// Lossy, because a tree killed mid-write can be cut mid-codepoint; a strict
 /// decode would replace the diagnostic a reader needs with a different one.
 fn joined(
-    handle: Option<JoinHandle<std::io::Result<Vec<u8>>>>,
+    handle: JoinHandle<std::io::Result<Vec<u8>>>,
     name: &'static str,
 ) -> Result<Box<str>, Failure> {
-    let handle = take_pipe(handle, name)?;
     match handle.join() {
         Ok(Ok(bytes)) => Ok(String::from_utf8_lossy(&bytes).into()),
         Ok(Err(error)) => Err(Failure::Io {

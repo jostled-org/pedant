@@ -165,7 +165,7 @@ pub struct ConfigArgs {
 impl ConfigArgs {
     /// Merge CLI flags with the file config, with CLI taking precedence.
     pub fn to_check_config(&self, file_config: Option<&ConfigFile>) -> CheckConfig {
-        let mut base = file_config.map_or_else(CheckConfig::default, CheckConfig::from_config_file);
+        let mut base = crate::command::check_config_from(file_config);
 
         if let Some(max_depth) = self.max_depth {
             base.max_depth = max_depth;
@@ -267,10 +267,29 @@ pub struct AttestationArgs {
     pub semantic: bool,
 }
 
+/// The gate's three mutually exclusive input modes.
+///
+/// The group is required and single-valued, so `pedant gate` names exactly one
+/// of a file list, stdin, or one Cargo project root.
+#[derive(Args, Debug, Clone)]
+#[group(required = true, multiple = false)]
+pub struct GateInputArgs {
+    /// Files to analyze
+    pub files: Vec<String>,
+
+    /// Read a single source file from stdin
+    #[arg(long)]
+    pub stdin: bool,
+
+    /// Cargo project root to judge against declared module boundaries
+    #[arg(long, value_name = "ROOT")]
+    pub project: Option<String>,
+}
+
 #[derive(Args, Debug, Clone)]
 pub struct GateArgs {
     #[command(flatten)]
-    pub input: FileInputArgs,
+    pub input: GateInputArgs,
 
     /// Config file path
     #[arg(short = 'c', long)]
@@ -281,7 +300,7 @@ pub struct GateArgs {
     pub format: OutputFormat,
 
     /// Merge findings across all languages for gate evaluation
-    #[arg(long)]
+    #[arg(long, conflicts_with = "project")]
     pub cross_language: bool,
 
     /// Enable semantic analysis via rust-analyzer for flow-aware gate rules

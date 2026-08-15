@@ -9,10 +9,12 @@
 
 use std::borrow::Cow;
 use std::io::{self, Write};
+use std::sync::Arc;
 
 use pedant_core::GateVerdict;
 use pedant_core::gate::GateSeverity;
 use pedant_core::violation::{Severity, Violation};
+use pedant_types::AnalysisTier;
 
 /// Annotation level of a workflow command.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,14 +108,78 @@ pub(crate) fn write_gate_verdicts<W: Write>(
     verdicts: &[GateVerdict],
     writer: &mut W,
 ) -> io::Result<()> {
+    write_verdict_annotations(verdicts, writer)
+}
+
+/// The title every project-mode summary notice carries.
+const PROJECT_NOTICE_TITLE: &str = "pedant module-boundary";
+
+/// Emit one project-mode gate result: a workflow summary notice, then one
+/// annotation per verdict anchored to its subject location when it has one.
+pub(crate) fn write_project_gate<W: Write>(
+    tier: AnalysisTier,
+    targets: &[Arc<str>],
+    verdicts: &[GateVerdict],
+    writer: &mut W,
+) -> io::Result<()> {
+    write_project_notice(tier, targets, writer)?;
+    write_verdict_annotations(verdicts, writer)
+}
+
+/// One annotation per verdict, the sole owner of the verdict command grammar.
+///
+/// Every mode renders through here, so a verdict that carries evidence renders
+/// it wherever it was produced, and a fifth annotation field is added once.
+fn write_verdict_annotations<W: Write>(verdicts: &[GateVerdict], writer: &mut W) -> io::Result<()> {
     for verdict in verdicts {
-        writeln!(
-            writer,
-            "::{} title={}::{}",
-            AnnotationLevel::from(verdict.severity).command(),
-            escape_property(verdict.rule),
-            escape_message(verdict.rationale),
-        )?;
+        write_verdict_annotation(verdict, &crate::output::evidence_fields(verdict)?, writer)?;
     }
     Ok(())
+}
+
+/// The always-emitted workflow notice that makes a zero-verdict run visible.
+fn write_project_notice<W: Write>(
+    tier: AnalysisTier,
+    targets: &[Arc<str>],
+    writer: &mut W,
+) -> io::Result<()> {
+    let labels = crate::output::target_labels(targets);
+    let message = format!(
+        "analysis-tier={}; targets={}",
+        crate::output::tier_token(tier),
+        crate::output::compact(&labels)?
+    );
+    writeln!(
+        writer,
+        "::{} title={}::{}",
+        AnnotationLevel::Notice.command(),
+        escape_property(PROJECT_NOTICE_TITLE),
+        escape_message(&message),
+    )
+}
+
+/// One verdict annotation, anchored to its subject or to the workflow run.
+///
+/// The rationale and the evidence suffix are escaped separately and written in
+/// order, because escaping is per-character: joining them first would buy one
+/// allocation per verdict and change nothing else.
+fn write_verdict_annotation<W: Write>(
+    verdict: &GateVerdict,
+    evidence: &str,
+    writer: &mut W,
+) -> io::Result<()> {
+    let level = AnnotationLevel::from(verdict.severity).command();
+    let title = escape_property(verdict.rule);
+    let rationale = escape_message(verdict.rationale);
+    let evidence = escape_message(evidence);
+    match crate::output::subject_location(verdict) {
+        None => writeln!(writer, "::{level} title={title}::{rationale}{evidence}"),
+        Some(location) => writeln!(
+            writer,
+            "::{level} file={},line={},col={},title={title}::{rationale}{evidence}",
+            escape_property(location.path()),
+            location.line(),
+            location.column(),
+        ),
+    }
 }

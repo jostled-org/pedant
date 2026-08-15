@@ -77,6 +77,7 @@ pub const AUTHORITIES: &[Authority] = &[
         marker: "RustProject::load(",
         sites: &[
             "pedant-mcp/src/index/workspace.rs",
+            "pedant/src/gate/project.rs",
             "pedant/src/supply_chain/discovery.rs",
         ],
     },

@@ -119,7 +119,9 @@ Gate rules evaluate capability profiles for suspicious combinations. Run with `p
 pedant gate src/**/*.rs
 ```
 
-24 built-in rules across five categories:
+`pedant gate` takes exactly one input mode: a file list, `--stdin`, or one Cargo project through `--project <ROOT>`. The 24 capability and data-flow rules below run in file and stdin mode. Project mode runs the four module-boundary rules instead; see [Module Boundary Rules](#module-boundary-rules).
+
+24 built-in rules across six categories:
 
 **Compile-time execution** — build scripts and proc macros run at compile time with no sandboxing.
 
@@ -190,6 +192,96 @@ enabled = false
 ```
 
 Exit codes: `0` clean or warn-only, `1` deny-level verdict, `2` error.
+
+## Module Boundary Rules
+
+`pedant gate --project <ROOT>` judges one Cargo project against the module boundaries it declares. It selects every library, binary, and build-script target of every workspace member, judges each separately, and labels the result `<package-dir-or-dot>#<kind>:<target-name>`.
+
+```bash
+pedant gate --project .
+pedant gate --project . --format json
+pedant gate --project . --config ci/gate.toml
+```
+
+Judgment reads only relationships the selected tier proved: resolved `Call`, `Import`, `Implementation`, and `Reference` edges. Ambiguous candidates and Cargo dependency edges are excluded, so no blocking verdict rests on a guess.
+
+| Rule | Condition | Default Severity |
+|------|-----------|-----------------|
+| `large-scc` | Cyclic component above `max-scc-members` | warn |
+| `boundary-crossing-scc` | Cycle spans more than one declared module | deny |
+| `misplaced-symbol` | Foreign-edge count and share both meet their thresholds | warn |
+| `low-module-cohesion` | Enough outgoing edges, internal share below the threshold | warn |
+
+Configure in `.pedant.toml`. Each rule key takes `false`, `true`, or a severity name; unknown keys, wrong types, out-of-range integers, and percentages above 100 are rejected.
+
+```toml
+[gate.module-boundary]
+enabled = true
+boundary-crossing-scc = "deny"
+misplaced-symbol = "warn"
+
+max-scc-members = 8
+misplaced-symbol-min-foreign-edges = 3
+misplaced-symbol-min-affinity-percent = 60
+low-module-cohesion-min-outgoing-edges = 4
+low-module-cohesion-min-percent = 50
+
+max-nodes = 250000
+max-references = 1000000
+max-edges = 1000000
+max-selected-edges = 1000000
+```
+
+Project mode resolves configuration in one order: an explicit `--config` path, read as written relative to the working directory; then `<project-root>/.pedant.toml`; then the global config; then the defaults. A missing file advances to the next source; any other failure is fatal.
+
+Text and GitHub state the tier and every analyzed target before any verdict. JSON carries both in the same envelope, so a clean run stays observable in every format:
+
+```
+$ pedant gate --project .
+analysis-tier: syntactic
+target: ".#lib:demo"
+warn: low-module-cohesion — internal-edge cohesion is below the configured threshold; target=".#lib:demo"; subject={"ordinal":5,"label":"demo::left","location":{"path":"src/lib.rs","line":1,"column":5}}; measurement={"kind":"low_module_cohesion","internal_edges":0,"boundary_edges":4}
+```
+
+JSON appends `analyzed_targets` after the existing envelope fields and attaches the triggering evidence to each verdict:
+
+```json
+{
+  "analysis_tier": "syntactic",
+  "had_error": false,
+  "gate_verdicts": [
+    {
+      "rule": "boundary-crossing-scc",
+      "severity": "deny",
+      "rationale": "cycle crosses declared module partitions",
+      "evidence": {
+        "domain": "module_boundary",
+        "evidence": {
+          "target": ".#lib:demo",
+          "subject": { "ordinal": 4, "label": "scc::demo::left::up", "location": { "path": "src/left.rs", "line": 2, "column": 8 } },
+          "measurement": {
+            "kind": "component",
+            "cyclic": true,
+            "members": [
+              { "ordinal": 4, "label": "demo::left::up", "location": { "path": "src/left.rs", "line": 2, "column": 8 } },
+              { "ordinal": 7, "label": "demo::right::down", "location": { "path": "src/right.rs", "line": 2, "column": 8 } }
+            ],
+            "partitions": [
+              { "ordinal": 5, "label": "demo::left", "location": { "path": "src/lib.rs", "line": 1, "column": 5 } },
+              { "ordinal": 6, "label": "demo::right", "location": { "path": "src/lib.rs", "line": 2, "column": 5 } }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "analyzed_targets": [".#lib:demo"]
+}
+```
+
+File and stdin output keeps its exact previous bytes, because absent evidence is omitted.
+
+Exit codes: `0` clean or advisory-only, `1` deny-level verdict, `2` any project, snapshot, resolution, graph, analysis, projection, or write failure — with no verdict and no success payload.
 
 ## Attestation
 

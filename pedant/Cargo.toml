@@ -22,6 +22,10 @@ path = "src/main.rs"
 
 [dependencies]
 pedant-core = { version = "0.21.2", path = "../pedant-core", features = ["checks"] }
+# The CLI is the composition owner: it supplies snapshots and resolution
+# reports to the topology library, then judges the result through pedant-core.
+# Neither library depends on the other in this direction.
+pedant-graph = { version = "0.2.0", path = "../pedant-graph" }
 pedant-lang = { version = "0.6.0", path = "../pedant-lang" }
 pedant-types = { version = "0.15.0", path = "../pedant-types" }
 clap = { version = "4", features = ["derive"] }

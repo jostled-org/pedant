@@ -2,7 +2,7 @@ use std::fs;
 use std::io::Write;
 use std::time::SystemTime;
 
-use pedant_core::gate::GateSeverity;
+use pedant_core::gate::{GateEvidence, GateLocation, GateSeverity, GateVerdict};
 use pedant_core::json_format::JsonViolation;
 use pedant_core::violation::Violation;
 use pedant_types::{
@@ -23,7 +23,63 @@ struct JsonOutput<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     violations: Option<Vec<JsonViolation<'a>>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    gate_verdicts: Option<&'a [pedant_core::gate::GateVerdict]>,
+    gate_verdicts: Option<&'a [GateVerdict]>,
+    /// Project mode only: every analyzed root target, in selection order.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    analyzed_targets: Option<Box<[&'a str]>>,
+}
+
+/// The lower-snake-case token one tier is spelled by, equal to its JSON form.
+pub(crate) fn tier_token(tier: AnalysisTier) -> &'static str {
+    match tier {
+        AnalysisTier::Syntactic => "syntactic",
+        AnalysisTier::Semantic => "semantic",
+        AnalysisTier::DataFlow => "data_flow",
+    }
+}
+
+/// One value as its compact JSON spelling.
+///
+/// Text and GitHub records spell evidence through the JSON contract rather than
+/// through a second delimiter grammar, so this is the sole serialization owner
+/// for all three formats. A value that cannot be serialized is a write failure
+/// and reaches the same exit-2 owner as a broken pipe.
+pub(crate) fn compact(value: &(impl Serialize + ?Sized)) -> std::io::Result<String> {
+    serde_json::to_string(value).map_err(std::io::Error::other)
+}
+
+/// The module-boundary evidence one verdict carries, when it carries any.
+fn module_boundary(verdict: &GateVerdict) -> Option<&pedant_core::gate::ModuleBoundaryEvidence> {
+    match verdict.evidence.as_ref() {
+        Some(GateEvidence::ModuleBoundary(evidence)) => Some(evidence),
+        None => None,
+    }
+}
+
+/// The `; target=…; subject=…; measurement=…` suffix text and GitHub share.
+pub(crate) fn evidence_fields(verdict: &GateVerdict) -> std::io::Result<String> {
+    let Some(evidence) = module_boundary(verdict) else {
+        return Ok(String::new());
+    };
+    Ok(format!(
+        "; target={}; subject={}; measurement={}",
+        compact(evidence.target())?,
+        compact(evidence.subject())?,
+        compact(evidence.measurement())?,
+    ))
+}
+
+/// The reported target list, borrowed from the labels the run selected.
+///
+/// The JSON envelope and the GitHub summary notice name one projection, so the
+/// two cannot report a different target list for one run.
+pub(crate) fn target_labels(targets: &[std::sync::Arc<str>]) -> Box<[&str]> {
+    targets.iter().map(|target| &**target).collect()
+}
+
+/// The source anchor a GitHub annotation attaches one verdict to.
+pub(crate) fn subject_location(verdict: &GateVerdict) -> Option<&GateLocation> {
+    module_boundary(verdict).and_then(|evidence| evidence.subject().location())
 }
 
 /// Returns seconds since Unix epoch.
@@ -184,6 +240,7 @@ pub(crate) fn write_check_output(
                 had_error,
                 violations: Some(violations.iter().map(JsonViolation::from).collect()),
                 gate_verdicts: None,
+                analyzed_targets: None,
             };
             write_json(stdout, stderr, &output, "analysis output")
         }
@@ -194,7 +251,7 @@ pub(crate) fn write_gate_output(
     format: OutputFormat,
     analysis_tier: AnalysisTier,
     had_error: bool,
-    gate_verdicts: &[pedant_core::gate::GateVerdict],
+    gate_verdicts: &[GateVerdict],
     stdout: &mut impl Write,
     stderr: &mut impl Write,
 ) -> Result<(), std::process::ExitCode> {
@@ -215,6 +272,44 @@ pub(crate) fn write_gate_output(
                 had_error,
                 violations: None,
                 gate_verdicts: Some(gate_verdicts),
+                analyzed_targets: None,
+            };
+            write_json(stdout, stderr, &output, "gate output")
+        }
+    }
+}
+
+/// Emit one project-mode gate result in the requested format.
+///
+/// Text and GitHub state the tier and every analyzed target before any verdict.
+/// JSON carries both in the same envelope, appending `analyzed_targets` after
+/// `gate_verdicts`. A run that produced no verdict is observable in all three.
+pub(crate) fn write_project_gate_output(
+    format: OutputFormat,
+    tier: AnalysisTier,
+    targets: &[std::sync::Arc<str>],
+    verdicts: &[GateVerdict],
+    stdout: &mut impl Write,
+    stderr: &mut impl Write,
+) -> Result<(), std::process::ExitCode> {
+    match format {
+        OutputFormat::Text => map_io_error(
+            crate::reporter::report_project_gate(tier, targets, verdicts, stdout),
+            "gate output",
+            stderr,
+        ),
+        OutputFormat::Github => map_io_error(
+            crate::github::write_project_gate(tier, targets, verdicts, stdout),
+            "gate output",
+            stderr,
+        ),
+        OutputFormat::Json => {
+            let output = JsonOutput {
+                analysis_tier: tier,
+                had_error: false,
+                violations: None,
+                gate_verdicts: Some(verdicts),
+                analyzed_targets: Some(target_labels(targets)),
             };
             write_json(stdout, stderr, &output, "gate output")
         }
@@ -248,7 +343,7 @@ pub(crate) fn write_attestation_output(
 pub(crate) fn compute_exit_code(
     had_error: bool,
     has_deny_violation: bool,
-    gate_verdicts: &[pedant_core::gate::GateVerdict],
+    gate_verdicts: &[GateVerdict],
 ) -> std::process::ExitCode {
     let has_deny_gate = gate_verdicts
         .iter()

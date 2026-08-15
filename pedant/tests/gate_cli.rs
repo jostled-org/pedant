@@ -1,360 +1,165 @@
-use std::fs;
-use std::path::PathBuf;
+//! Operator journeys through the spawned `pedant gate` binary.
+//!
+//! This root states the claims. Every child runs under the package-shared
+//! process guard, and every assertion body lives in `gate_cli_support/`, so
+//! this file registers tests and delegates.
 
-mod common;
+#[path = "package_support/process_guard.rs"]
+mod process_guard;
 
-fn fixtures_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
-}
+#[path = "gate_cli_support/fixture.rs"]
+mod fixture;
+
+#[path = "gate_cli_support/capability_modes.rs"]
+mod capability_modes;
+
+#[path = "gate_cli_support/catalog.rs"]
+mod catalog;
+
+#[path = "gate_cli_support/ceilings.rs"]
+mod ceilings;
+
+#[path = "gate_cli_support/failures.rs"]
+mod failures;
+
+#[path = "gate_cli_support/output.rs"]
+mod output;
+
+#[path = "gate_cli_support/ownership.rs"]
+mod ownership;
+
+#[path = "gate_cli_support/project.rs"]
+mod project;
+
+#[path = "gate_cli_support/topology.rs"]
+mod topology;
+
+#[cfg(feature = "semantic")]
+#[path = "gate_cli_support/semantic.rs"]
+mod semantic;
 
 #[test]
 fn test_gate_cli_build_script_denied() {
-    let dir = tempfile::tempdir().unwrap();
-    let root = dir.path();
-
-    fs::create_dir(root.join("src")).unwrap();
-    fs::write(
-        root.join("Cargo.toml"),
-        "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )
-    .unwrap();
-    fs::write(root.join("src/lib.rs"), "fn lib_fn() {}\n").unwrap();
-    fs::write(
-        root.join("build.rs"),
-        concat!(
-            "use reqwest;\n",
-            "use std::process::Command;\n",
-            "fn main() { Command::new(\"cc\"); }\n",
-        ),
-    )
-    .unwrap();
-
-    let lib_path = root.join("src/lib.rs");
-    let output = common::run_subcommand("gate", &[lib_path.to_str().unwrap()], None);
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "expected exit code 1 for deny verdict, stdout:\n{stdout}\nstderr:\n{stderr}"
-    );
-    assert!(
-        stdout.contains("build-script-download-exec"),
-        "expected 'build-script-download-exec' in output, got:\n{stdout}"
-    );
-    assert!(
-        stdout.contains("deny"),
-        "expected 'deny' in output, got:\n{stdout}"
-    );
+    capability_modes::test_gate_cli_build_script_denied();
 }
 
 #[test]
 fn test_gate_cli_clean_crate() {
-    let dir = tempfile::tempdir().unwrap();
-    let root = dir.path();
-
-    fs::create_dir(root.join("src")).unwrap();
-    fs::write(
-        root.join("Cargo.toml"),
-        "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )
-    .unwrap();
-    fs::write(root.join("src/lib.rs"), "fn lib_fn() {}\n").unwrap();
-
-    let lib_path = root.join("src/lib.rs");
-    let output = common::run_subcommand("gate", &[lib_path.to_str().unwrap()], None);
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    assert!(
-        output.status.success(),
-        "expected exit code 0 for clean crate, stdout:\n{stdout}\nstderr:\n{stderr}"
-    );
+    capability_modes::test_gate_cli_clean_crate();
 }
 
 #[test]
 fn test_gate_cli_json_format() {
-    let dir = tempfile::tempdir().unwrap();
-    let root = dir.path();
-
-    fs::create_dir(root.join("src")).unwrap();
-    fs::write(
-        root.join("Cargo.toml"),
-        "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )
-    .unwrap();
-    fs::write(root.join("src/lib.rs"), "fn lib_fn() {}\n").unwrap();
-    fs::write(
-        root.join("build.rs"),
-        concat!(
-            "use reqwest;\n",
-            "use std::process::Command;\n",
-            "fn main() { Command::new(\"cc\"); }\n",
-        ),
-    )
-    .unwrap();
-
-    let lib_path = root.join("src/lib.rs");
-    let output = common::run_subcommand(
-        "gate",
-        &[lib_path.to_str().unwrap(), "--format", "json"],
-        None,
-    );
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    let payload: serde_json::Value = serde_json::from_str(&stdout).unwrap();
-    let verdicts = payload["gate_verdicts"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
-
-    assert!(
-        !verdicts.is_empty(),
-        "expected at least one gate verdict in JSON output, got:\n{stdout}"
-    );
-
-    let has_build_script_rule = verdicts.iter().any(|v| {
-        v.get("rule")
-            .and_then(serde_json::Value::as_str)
-            .is_some_and(|r| r.contains("build-script"))
-    });
-    assert!(
-        has_build_script_rule,
-        "expected a build-script verdict rule in parsed JSON, got: {verdicts:?}"
-    );
-
-    let first = &verdicts[0];
-    assert!(
-        first.get("severity").is_some(),
-        "expected severity field in verdict, got: {first:?}"
-    );
-    assert!(
-        first.get("rationale").is_some(),
-        "expected rationale field in verdict, got: {first:?}"
-    );
+    capability_modes::test_gate_cli_json_format();
 }
 
 #[test]
 fn test_gate_cli_warn_only_exit_zero() {
-    let dir = tempfile::tempdir().unwrap();
-    let root = dir.path();
-
-    fs::create_dir(root.join("src")).unwrap();
-    fs::write(
-        root.join("Cargo.toml"),
-        "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )
-    .unwrap();
-    fs::write(root.join("src/lib.rs"), "fn lib_fn() {}\n").unwrap();
-    // build.rs with only process exec (no network) — triggers build-script-exec at warn
-    fs::write(
-        root.join("build.rs"),
-        "use std::process::Command;\nfn main() { Command::new(\"cc\"); }\n",
-    )
-    .unwrap();
-
-    let lib_path = root.join("src/lib.rs");
-    let output = common::run_subcommand("gate", &[lib_path.to_str().unwrap()], None);
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    assert!(
-        output.status.success(),
-        "expected exit code 0 for warn-only verdicts, stdout:\n{stdout}\nstderr:\n{stderr}"
-    );
-    assert!(
-        stdout.contains("build-script-exec"),
-        "expected 'build-script-exec' in output, got:\n{stdout}"
-    );
-    assert!(
-        stdout.contains("warn"),
-        "expected 'warn' in output, got:\n{stdout}"
-    );
+    capability_modes::test_gate_cli_warn_only_exit_zero();
 }
 
 #[test]
 fn test_gate_cli_with_config_override() {
-    let dir = tempfile::tempdir().unwrap();
-    let root = dir.path();
-
-    fs::create_dir(root.join("src")).unwrap();
-    fs::write(
-        root.join("Cargo.toml"),
-        "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )
-    .unwrap();
-    fs::write(root.join("src/lib.rs"), "fn lib_fn() {}\n").unwrap();
-    // build.rs with network access — normally triggers build-script-network at deny
-    fs::write(root.join("build.rs"), "use reqwest;\nfn main() {}\n").unwrap();
-    // Config that downgrades build-script-network from deny to info
-    fs::write(
-        root.join(".pedant.toml"),
-        "[gate]\nbuild-script-network = \"info\"\nbuild-script-download-exec = \"info\"\n",
-    )
-    .unwrap();
-
-    let lib_path = root.join("src/lib.rs");
-    let output = common::run_subcommand(
-        "gate",
-        &[
-            lib_path.to_str().unwrap(),
-            "--config",
-            root.join(".pedant.toml").to_str().unwrap(),
-        ],
-        None,
-    );
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    assert!(
-        output.status.success(),
-        "expected exit code 0 after downgrade from deny to info, stdout:\n{stdout}\nstderr:\n{stderr}"
-    );
+    capability_modes::test_gate_cli_with_config_override();
 }
 
-/// 5.T2: Gate verdicts are evaluated per language (no cross-language false positives).
-///
-/// A Rust file with env access and a Python file with network access should NOT
-/// trigger `env-access-network` when evaluated per language (default).
 #[test]
 fn test_cli_mixed_rust_python_default_separate() {
-    let dir = tempfile::tempdir().unwrap();
-    let root = dir.path();
-
-    // Rust file with env access only.
-    fs::create_dir(root.join("src")).unwrap();
-    fs::write(
-        root.join("Cargo.toml"),
-        "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )
-    .unwrap();
-    fs::write(
-        root.join("src/lib.rs"),
-        "fn f() { std::env::var(\"KEY\"); }\n",
-    )
-    .unwrap();
-
-    // Python file with network only.
-    fs::write(
-        root.join("net.py"),
-        "import requests\nrequests.get('https://example.com')\n",
-    )
-    .unwrap();
-
-    let lib_path = root.join("src/lib.rs");
-    let py_path = root.join("net.py");
-    let output = common::run_subcommand(
-        "gate",
-        &[lib_path.to_str().unwrap(), py_path.to_str().unwrap()],
-        None,
-    );
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    // Per-language evaluation: Rust has env only, Python has network only.
-    // Neither language alone has both, so env-access-network should NOT fire.
-    assert!(
-        !stdout.contains("env-access-network"),
-        "expected no cross-language env-access-network verdict, stdout:\n{stdout}\nstderr:\n{stderr}"
-    );
+    capability_modes::test_cli_mixed_rust_python_default_separate();
 }
 
-/// 5.T3: Runtime and install-hook findings within the same language are not merged.
-///
-/// A JS runtime file with network and a package.json postinstall hook should NOT
-/// trigger cross-context combination rules.
 #[test]
 fn test_cli_runtime_and_install_hook_same_language_separate() {
-    let js_fixture = fixtures_dir().join("runtime.js");
-    let pkg_fixture = fixtures_dir().join("npm_project/package.json");
-
-    let output = common::run_subcommand(
-        "gate",
-        &[
-            js_fixture.to_str().unwrap(),
-            pkg_fixture.to_str().unwrap(),
-            "--format",
-            "json",
-        ],
-        None,
-    );
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    let payload: serde_json::Value =
-        serde_json::from_str(&stdout).expect("should parse JSON output");
-    let verdicts = payload["gate_verdicts"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
-
-    // The JS runtime file has Network. The package.json hook has ProcessExec.
-    // These are in different execution contexts, so build-script-download-exec
-    // (which checks build hook Network + ProcessExec) should NOT fire.
-    let has_download_exec = verdicts.iter().any(|v| {
-        v.get("rule")
-            .and_then(serde_json::Value::as_str)
-            .is_some_and(|r| r == "build-script-download-exec")
-    });
-
-    assert!(
-        !has_download_exec,
-        "expected no build-script-download-exec when runtime and hook are separate, verdicts: {verdicts:?}"
-    );
+    capability_modes::test_cli_runtime_and_install_hook_same_language_separate();
 }
 
-/// 5.T4: --cross-language merges findings from all languages for gate evaluation.
 #[test]
 fn test_cli_cross_language_flag() {
-    let dir = tempfile::tempdir().unwrap();
-    let root = dir.path();
+    capability_modes::test_cli_cross_language_flag();
+}
 
-    // Rust file with env access.
-    fs::create_dir(root.join("src")).unwrap();
-    fs::write(
-        root.join("Cargo.toml"),
-        "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )
-    .unwrap();
-    fs::write(
-        root.join("src/lib.rs"),
-        "fn f() { std::env::var(\"KEY\"); }\n",
-    )
-    .unwrap();
+/// The gate accepts exactly one input mode, and the legacy modes construct no
+/// graph and keep their exact output.
+#[test]
+fn project_gate_input_modes_are_disjoint_and_legacy_modes_stay_graph_free() {
+    project::input_modes_are_disjoint();
+    ownership::legacy_gate_dispatch_is_graph_free();
+}
 
-    // Python file with network access.
-    fs::write(
-        root.join("net.py"),
-        "import requests\nrequests.get('https://example.com')\n",
-    )
-    .unwrap();
+/// Project mode selects every and only primary workspace target, in project
+/// order, independent of filesystem creation order.
+///
+/// Both workspaces are built here and shared: the selection owner and the
+/// record owner ask different questions of the same two repositories, and
+/// building four identical fourteen-file trees would answer neither twice.
+#[test]
+fn project_gate_selects_every_primary_workspace_target_in_stable_order() {
+    let forward = fixture::workspace_fixture(false);
+    let reversed = fixture::workspace_fixture(true);
+    project::selects_every_primary_target_in_stable_order(&forward, &reversed);
+    output::records_are_stable_across_creation_order(&forward, &reversed);
+}
 
-    let lib_path = root.join("src/lib.rs");
-    let py_path = root.join("net.py");
-    let output = common::run_subcommand(
-        "gate",
-        &[
-            lib_path.to_str().unwrap(),
-            py_path.to_str().unwrap(),
-            "--cross-language",
-        ],
-        None,
-    );
+/// The live topology admits exactly the resolved code relations and excludes
+/// possible candidates and dependency edges.
+#[test]
+fn project_gate_structural_rules_follow_resolved_only_evidence() {
+    topology::structural_rules_follow_resolved_only_evidence();
+}
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
+/// Every configured ceiling refuses before a verdict is evaluated.
+#[test]
+fn project_gate_applies_every_resource_ceiling_before_verdicts() {
+    ceilings::applies_every_resource_ceiling_before_verdicts();
+    ownership::project_pipeline_wiring_is_exact();
+}
 
-    // With --cross-language, Rust env + Python network should combine to trigger
-    // env-access-network.
-    assert!(
-        stdout.contains("env-access-network"),
-        "expected env-access-network verdict with --cross-language, stdout:\n{stdout}\nstderr:\n{stderr}"
-    );
+/// Configuration authority is explicit, then project-local, then global, then
+/// defaults, and a discovered failure is fatal in project mode.
+#[test]
+fn project_gate_config_precedence_and_failure_contract_are_exact() {
+    project::config_precedence_and_failure_contract_are_exact();
+}
+
+/// Every project failure returns exit 2 with no verdict and no success payload,
+/// and every declared refusal is covered by a case or declared defensive.
+#[test]
+fn project_gate_failures_are_buffered_and_exit_two() {
+    failures::failures_are_buffered_and_exit_two();
+    ownership::project_failures_reach_one_exit_owner();
+    ownership::every_project_refusal_is_covered_or_defensive();
+}
+
+/// Text, JSON, and GitHub project records are exact, anchored, and actionable.
+#[test]
+fn project_gate_outputs_are_exact_and_actionable() {
+    output::outputs_are_exact_and_actionable();
+    ownership::project_output_is_one_description_owner();
+}
+
+/// Tier 1 reads the declared repository and invokes no toolchain.
+#[test]
+fn project_gate_tier1_invokes_no_toolchain() {
+    project::tier1_invokes_no_toolchain();
+}
+
+/// An explicit semantic request evaluates every target from one verified
+/// context or fails all-target.
+#[cfg(feature = "semantic")]
+#[test]
+fn project_gate_semantic_is_single_context_all_target_or_error() {
+    semantic::semantic_is_single_context_all_target_or_error();
+    ownership::semantic_context_is_loaded_once_before_iteration();
+}
+
+/// The module, support, dependency, and release boundaries are exact.
+#[test]
+fn module_boundary_repository_boundaries_are_exact() {
+    ownership::repository_boundaries_are_exact();
+}
+
+/// Every structural rule is listed once and explained once.
+#[test]
+fn module_boundary_catalog_is_listed_and_explained_once() {
+    catalog::catalog_is_listed_and_explained_once();
 }

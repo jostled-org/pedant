@@ -14,7 +14,7 @@ use pedant_process_guard::{
 
 use crate::fake_cargo::descendant_pid;
 use crate::fixtures::VendorFixture;
-use crate::process_guard::{Completed, Run, execute_released};
+use crate::process_guard::{Completed, Failure, Guard, Run};
 
 const DESCENDANT_BUDGET: Duration = Duration::from_secs(5);
 const FIXTURE_TEST: &str = "process_tree_fixture";
@@ -50,6 +50,19 @@ pub(crate) const GUARD_ROWS: &[GuardRow] = &[
 
 fn exited_with_error(completed: &Completed) -> bool {
     completed.code().is_some_and(|code| code != 0)
+}
+
+/// Run one child after releasing a fixture blocked on post-adoption proof.
+///
+/// The release has to happen between adoption and the wait, which is why this
+/// row drives the guard directly instead of through the shared one-shot helper.
+fn execute_released(run: &Run<'_>, release_file: &std::path::Path) -> Result<Completed, Failure> {
+    let guard = Guard::spawn(run)?;
+    std::fs::write(release_file, b"adopted").map_err(|error| Failure::Io {
+        operation: "the fixture release",
+        error,
+    })?;
+    guard.finish(run.budget)
 }
 
 /// One guarded run ends its whole process tree before its result is read.

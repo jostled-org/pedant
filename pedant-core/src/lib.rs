@@ -43,7 +43,7 @@ pub mod check_config;
 /// Check catalog: metadata, rationale, and the `ViolationType` enum.
 #[cfg(feature = "checks")]
 pub mod checks;
-/// Security gate rules that fire on suspicious capability combinations.
+/// Gate rules over capability combinations, data flows, and module boundaries.
 #[cfg(feature = "checks")]
 pub mod gate;
 /// BFS and pairwise-edge helpers for type-relationship graphs.
@@ -86,14 +86,17 @@ pub mod violation;
 pub use analysis_result::AnalysisResult;
 #[cfg(feature = "checks")]
 pub use check_config::{
-    CheckConfig as Config, ConfigFile, GateConfig, GateRuleOverride, NamingCheck, PatternCheck,
-    PatternOverride,
+    CheckConfig as Config, ConfigFile, GateConfig, GateRuleOverride, ModuleBoundaryConfig,
+    NamingCheck, PatternCheck, PatternOverride,
 };
 #[cfg(feature = "checks")]
 pub use checks::{ALL_CHECKS, CheckInfo};
 #[cfg(feature = "checks")]
 pub use gate::{
-    GateInputSummary, GateRuleInfo, GateSeverity, GateVerdict, all_gate_rules, evaluate_gate_rules,
+    GateAnchor, GateEvidence, GateInputSummary, GateLocation, GateRuleInfo, GateSeverity,
+    GateVerdict, ModuleBoundaryEntity, ModuleBoundaryEvidence, ModuleBoundaryFact,
+    ModuleBoundaryInput, ModuleBoundaryInputError, ModuleBoundaryMeasurement, all_gate_rules,
+    all_module_boundary_rules, evaluate_gate_rules, evaluate_module_boundary_rules,
 };
 #[cfg(feature = "checks")]
 pub use lint::{

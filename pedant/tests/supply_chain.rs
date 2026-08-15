@@ -5,7 +5,7 @@
 //! root states the claims; the support tree owns the fixtures, the tables, and
 //! the child lifecycle.
 
-#[path = "supply_chain_support/process_guard.rs"]
+#[path = "package_support/process_guard.rs"]
 mod process_guard;
 
 #[path = "supply_chain_support/fake_cargo.rs"]

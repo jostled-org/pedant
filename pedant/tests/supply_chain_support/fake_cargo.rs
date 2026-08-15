@@ -34,14 +34,11 @@ pub(crate) fn guarded_run(
     budget: Duration,
 ) -> Result<Completed, Failure> {
     write_fake_cargo_script(script_dir, vendor_body);
-    execute(&Run {
-        program: PEDANT,
-        cwd: consumer_root,
-        args,
-        path_prefix: Some(script_dir),
-        env,
-        budget,
-    })
+    let mut run = Run::program(PEDANT, consumer_root, args);
+    run.path_prefix = Some(script_dir);
+    run.env = env;
+    run.budget = budget;
+    execute(&run)
 }
 
 /// Run the real binary under a guard, with the real Cargo on `PATH`.

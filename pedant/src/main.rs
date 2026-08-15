@@ -5,6 +5,7 @@ mod attestation_inputs;
 mod command;
 mod config;
 mod explain;
+mod gate;
 mod github;
 mod input;
 mod output;

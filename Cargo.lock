@@ -1170,6 +1170,7 @@ version = "0.27.5"
 dependencies = [
  "clap",
  "pedant-core",
+ "pedant-graph",
  "pedant-lang",
  "pedant-process-guard",
  "pedant-types",

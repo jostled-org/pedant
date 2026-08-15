@@ -31,7 +31,12 @@ fn find_project_config_file() -> Result<Option<std::path::PathBuf>, ConfigError>
     Ok(config_path.exists().then_some(config_path))
 }
 
-fn find_global_config_file() -> Option<std::path::PathBuf> {
+/// The global `$XDG_CONFIG_HOME/pedant/config.toml`, when the user wrote one.
+///
+/// Separate from [`find_config_file`] because a caller that already knows its
+/// project root resolves the project-local source itself and needs only the
+/// global fallback, without re-deriving the XDG search this owns.
+pub fn find_global_config_file() -> Option<std::path::PathBuf> {
     let config_dir = std::env::var_os("XDG_CONFIG_HOME")
         .map(std::path::PathBuf::from)
         .or_else(|| {

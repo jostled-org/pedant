@@ -35,7 +35,11 @@ syn = { version = "2", features = ["full", "visit", "parsing"] }
 # it resolves, so both are substrate dependencies.
 toml = "1"
 semver = "1"
-serde = { version = "1", features = ["derive"], optional = true }
+# `rc` is what implements `Serialize` for the `Arc<str>` and
+# `Arc<[ModuleBoundaryEntity]>` payloads gate evidence shares between one input
+# fact and every verdict it triggers. It is declared here rather than inherited
+# from another member's selection of the same crate.
+serde = { version = "1", features = ["derive", "rc"], optional = true }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = "1"
 pedant-types = { version = "0.15.0", path = "../pedant-types" }

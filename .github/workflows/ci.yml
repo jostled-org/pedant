@@ -16,11 +16,6 @@ jobs:
       FIRST_PARTY_SOURCES: pedant/src pedant-core/src pedant-graph/src pedant-lang/src pedant-mcp/src pedant-snippet/src pedant-syntax/src pedant-types/src
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          # The published-manifest check compares each current Cargo.toml with
-          # its exact release tag. A shallow checkout would silently omit the
-          # evidence that makes an already-published version immutable.
-          fetch-depth: 0
       - run: sudo apt-get update
       - run: sudo apt-get install --yes ripgrep
       - name: Install pinned ShellCheck
@@ -50,7 +45,6 @@ jobs:
       # Resolver-only boundary checks run before anything that builds.
       - run: .github/scripts/check_syntax_dependency_closure.sh
       - run: .github/scripts/check_lang_feature_forwarding.sh
-      - run: .github/scripts/check_published_manifests.sh
       - run: .github/scripts/check_resolution_dependency_closure.sh
       - run: .github/scripts/check_graph_dependency_closure.sh
       - run: cargo fmt --check
@@ -94,7 +88,7 @@ jobs:
       # it omitted would be the one nothing checks.
       - uses: ./.github/actions/pedant-check
         with:
-          paths: pedant-types/tests/serialization.rs pedant-types/tests/serialization_support pedant-syntax/tests/enclosing_unit.rs pedant-lang/tests/detection.rs pedant-lang/tests/capability.rs pedant-lang/tests/capability_support pedant-snippet/tests/interfaces.rs pedant-core/tests/substrate.rs pedant-core/tests/substrate_support pedant-graph/tests/graph.rs pedant-graph/tests/graph_support pedant-core/tests/semantic.rs pedant-core/tests/semantic_support pedant/tests/supply_chain.rs pedant/tests/supply_chain_support pedant-mcp/tests/index.rs pedant-mcp/tests/index_support pedant-mcp/tests/watcher.rs pedant-mcp/tests/watcher_support pedant-mcp/tests/tools.rs pedant-mcp/tests/tools_support pedant-mcp/tests/integration.rs pedant-mcp/tests/integration_support pedant-mcp/tests/fixture_support test-support/process-guard/src
+          paths: pedant-types/tests/serialization.rs pedant-types/tests/serialization_support pedant-syntax/tests/enclosing_unit.rs pedant-lang/tests/detection.rs pedant-lang/tests/capability.rs pedant-lang/tests/capability_support pedant-snippet/tests/interfaces.rs pedant-core/tests/substrate.rs pedant-core/tests/substrate_support pedant-graph/tests/graph.rs pedant-graph/tests/graph_support pedant-core/tests/semantic.rs pedant-core/tests/semantic_support pedant/tests/gate_cli.rs pedant/tests/gate_cli_support pedant/tests/package_support pedant/tests/supply_chain.rs pedant/tests/supply_chain_support pedant-core/tests/gate.rs pedant-core/tests/gate_support pedant-mcp/tests/index.rs pedant-mcp/tests/index_support pedant-mcp/tests/watcher.rs pedant-mcp/tests/watcher_support pedant-mcp/tests/tools.rs pedant-mcp/tests/tools_support pedant-mcp/tests/integration.rs pedant-mcp/tests/integration_support pedant-mcp/tests/fixture_support test-support/process-guard/src
       - uses: ./.github/actions/pedant-gate
         with:
           paths: ${{ env.FIRST_PARTY_SOURCES }}

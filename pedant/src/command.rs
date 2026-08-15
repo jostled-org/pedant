@@ -1,17 +1,14 @@
-use std::collections::BTreeMap;
 use std::io::{self, Write};
 use std::process::ExitCode;
 
 use pedant_core::check_config::{CheckConfig, ConfigFile, find_config_file, load_config_file};
-use pedant_core::gate::{self, GateInputSummary, evaluate_gate_rules};
-use pedant_types::Language;
 
 use crate::analysis::{AnalysisAccumulator, AnalysisContext, AnalysisRequest, run_analysis};
 use crate::config::{
-    AttestationArgs, CapabilitiesArgs, CheckArgs, Command, ConfigArgs, GateArgs, SupplyChainCommand,
+    AttestationArgs, CapabilitiesArgs, CheckArgs, Command, GateArgs, SupplyChainCommand,
 };
 
-trait SemanticArgs {
+pub(crate) trait SemanticArgs {
     fn semantic_enabled(&self) -> bool;
 }
 
@@ -51,29 +48,35 @@ pub(crate) fn run(command: Command, stderr: &mut impl Write) -> ExitCode {
         Command::Check(args) => run_check(args, stderr),
         Command::Capabilities(args) => run_capabilities(args, stderr),
         Command::Attestation(args) => run_attestation(args, stderr),
-        Command::Gate(args) => run_gate(args, stderr),
+        Command::Gate(args) => crate::gate::run(args, stderr),
         Command::SupplyChain(args) => run_supply_chain(args.command, stderr),
     }
 }
 
-fn semantic_enabled(args: &impl SemanticArgs) -> bool {
+pub(crate) fn semantic_enabled(args: &impl SemanticArgs) -> bool {
     args.semantic_enabled()
 }
 
 /// Expand the caller's path arguments into the concrete file list to analyze.
 ///
 /// Yields an empty list in stdin mode, where there are no paths to resolve.
-fn resolve_input_files(
-    input: &crate::config::FileInputArgs,
+pub(crate) fn resolve_input_files(
+    files: &[String],
+    stdin: bool,
     stderr: &mut impl Write,
 ) -> Result<Vec<String>, ExitCode> {
-    match input.stdin {
+    match stdin {
         true => Ok(Vec::new()),
-        false => crate::input::resolve(&input.files).map_err(|error| {
+        false => crate::input::resolve(files).map_err(|error| {
             crate::report_error(stderr, format_args!("error: {error}"));
             ExitCode::from(2)
         }),
     }
+}
+
+/// The style configuration a command with no style flags of its own runs under.
+pub(crate) fn check_config_from(file_config: Option<&ConfigFile>) -> CheckConfig {
+    file_config.map_or_else(CheckConfig::default, CheckConfig::from_config_file)
 }
 
 fn run_supply_chain(command: SupplyChainCommand, stderr: &mut impl Write) -> ExitCode {
@@ -99,7 +102,7 @@ fn run_check(args: CheckArgs, stderr: &mut impl Write) -> ExitCode {
         Err(exit) => return exit,
     };
     let base_config = args.config.to_check_config(file_config.as_ref());
-    let files = match resolve_input_files(&args.input, stderr) {
+    let files = match resolve_input_files(&args.input.files, args.input.stdin, stderr) {
         Ok(files) => files,
         Err(exit) => return exit,
     };
@@ -139,7 +142,7 @@ fn run_check(args: CheckArgs, stderr: &mut impl Write) -> ExitCode {
 
 fn run_capabilities(args: CapabilitiesArgs, stderr: &mut impl Write) -> ExitCode {
     let base_config = CheckConfig::default();
-    let files = match resolve_input_files(&args.input, stderr) {
+    let files = match resolve_input_files(&args.input.files, args.input.stdin, stderr) {
         Ok(files) => files,
         Err(exit) => return exit,
     };
@@ -166,7 +169,7 @@ fn run_capabilities(args: CapabilitiesArgs, stderr: &mut impl Write) -> ExitCode
 
 fn run_attestation(args: AttestationArgs, stderr: &mut impl Write) -> ExitCode {
     let base_config = CheckConfig::default();
-    let files = match resolve_input_files(&args.input, stderr) {
+    let files = match resolve_input_files(&args.input.files, args.input.stdin, stderr) {
         Ok(files) => files,
         Err(exit) => return exit,
     };
@@ -200,78 +203,7 @@ fn run_attestation(args: AttestationArgs, stderr: &mut impl Write) -> ExitCode {
     bool_exit_code(acc.had_error)
 }
 
-fn run_gate(args: GateArgs, stderr: &mut impl Write) -> ExitCode {
-    let file_config = match load_file_config(args.config.as_deref(), stderr) {
-        Ok(cfg) => cfg,
-        Err(exit) => return exit,
-    };
-    let base_config = ConfigArgs {
-        max_depth: None,
-        config: None,
-        no_nested_if: false,
-        no_if_in_match: false,
-        no_nested_match: false,
-        no_match_in_if: false,
-        no_else_chain: false,
-        max_function_body: None,
-        no_long_function_body: false,
-        no_module_root_definitions: false,
-        max_source_file_lines: None,
-        warn_source_file_lines: None,
-        no_large_source_file: false,
-        max_methods: None,
-        count_forwarders: false,
-        no_high_method_count: false,
-        no_item_visibility_policy: false,
-        no_ungated_test_api: false,
-        no_conflicting_module_root: false,
-        no_flat_module_family: false,
-        no_feature_boundary: false,
-        no_scattered_inherent_impl: false,
-    }
-    .to_check_config(file_config.as_ref());
-    let files = match resolve_input_files(&args.input, stderr) {
-        Ok(files) => files,
-        Err(exit) => return exit,
-    };
-    let mut acc = AnalysisAccumulator::with_capacity(files.len());
-    let semantic =
-        crate::analysis::load_semantic_if_requested(semantic_enabled(&args), &files, stderr);
-    let ctx = AnalysisContext {
-        base_config: &base_config,
-        file_config: file_config.as_ref(),
-        semantic: semantic.as_ref(),
-    };
-    let request = AnalysisRequest {
-        files: &files,
-        stdin: args.input.stdin,
-        collect_source_hash: false,
-    };
-    std::mem::drop(run_analysis(&request, &ctx, &mut acc, stderr));
-    let analysis_tier = pedant_core::determine_analysis_tier(semantic.as_ref(), &acc.data_flows);
-    let default_gate = pedant_core::GateConfig::default();
-    let gate_config = file_config.as_ref().map_or(&default_gate, |cfg| &cfg.gate);
-    let verdicts = evaluate_gate(
-        &acc.findings,
-        &acc.data_flows,
-        gate_config,
-        args.cross_language,
-    );
-    let mut stdout = io::stdout().lock();
-    if let Err(exit) = crate::output::write_gate_output(
-        args.format,
-        analysis_tier,
-        acc.had_error,
-        &verdicts,
-        &mut stdout,
-        stderr,
-    ) {
-        return exit;
-    }
-    crate::output::compute_exit_code(acc.had_error, false, &verdicts)
-}
-
-fn load_file_config(
+pub(crate) fn load_file_config(
     explicit_config: Option<&str>,
     stderr: &mut impl Write,
 ) -> Result<Option<ConfigFile>, ExitCode> {
@@ -307,42 +239,4 @@ fn bool_exit_code(had_error: bool) -> ExitCode {
         true => ExitCode::from(2),
         false => ExitCode::from(0),
     }
-}
-
-fn evaluate_gate(
-    findings: &[pedant_types::CapabilityFinding],
-    flows: &[pedant_core::ir::DataFlowFact],
-    config: &pedant_core::GateConfig,
-    cross_language: bool,
-) -> Box<[gate::GateVerdict]> {
-    match cross_language {
-        true => {
-            let summary = GateInputSummary::from_analysis(findings, flows);
-            evaluate_gate_rules(&summary, config)
-        }
-        false => evaluate_gate_per_language(findings, flows, config),
-    }
-}
-
-fn evaluate_gate_per_language(
-    findings: &[pedant_types::CapabilityFinding],
-    flows: &[pedant_core::ir::DataFlowFact],
-    config: &pedant_core::GateConfig,
-) -> Box<[gate::GateVerdict]> {
-    let mut groups: BTreeMap<Option<Language>, Vec<&pedant_types::CapabilityFinding>> =
-        BTreeMap::new();
-    for finding in findings {
-        groups.entry(finding.language).or_default().push(finding);
-    }
-
-    let mut all_verdicts = Vec::new();
-    for (language, group_findings) in &groups {
-        let group_flows: &[pedant_core::ir::DataFlowFact] = match language {
-            None => flows,
-            Some(_) => &[],
-        };
-        let summary = GateInputSummary::from_refs(group_findings, group_flows);
-        all_verdicts.extend(evaluate_gate_rules(&summary, config).into_vec());
-    }
-    all_verdicts.into_boxed_slice()
 }

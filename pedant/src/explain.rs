@@ -2,7 +2,7 @@ use std::io::{self, Write};
 use std::process::ExitCode;
 
 use pedant_core::checks::ALL_CHECKS;
-use pedant_core::gate::all_gate_rules;
+use pedant_core::gate::{GateRuleInfo, all_gate_rules, all_module_boundary_rules};
 use pedant_core::violation::lookup_rationale;
 
 pub(crate) fn run_print_checks_list(stderr: &mut impl Write) -> ExitCode {
@@ -20,7 +20,7 @@ pub(crate) fn print_explain(code: &str, stderr: &mut impl Write) -> ExitCode {
         return write_result_to_exit(write_explain(code, &rationale), stderr);
     }
 
-    let gate_rules = all_gate_rules();
+    let gate_rules = every_gate_rule();
     if let Some(rule) = gate_rules.iter().find(|r| r.name == code) {
         return write_result_to_exit(write_gate_explain(rule), stderr);
     }
@@ -35,6 +35,17 @@ pub(crate) fn print_explain(code: &str, stderr: &mut impl Write) -> ExitCode {
 
 /// Column width for the check-code table: the longest code plus a space.
 const CODE_WIDTH: usize = 24;
+
+/// Every gate rule the binary can list or explain, capability rules first.
+///
+/// Both catalogs are read once through this owner, so a rule that
+/// configuration accepts always has a listing and an explanation.
+fn every_gate_rule() -> Box<[GateRuleInfo]> {
+    all_gate_rules()
+        .into_iter()
+        .chain(all_module_boundary_rules())
+        .collect()
+}
 
 fn print_checks_list() -> io::Result<()> {
     let mut stdout = io::stdout().lock();
@@ -54,7 +65,7 @@ fn print_checks_list() -> io::Result<()> {
         )?;
     }
 
-    let gate_rules = all_gate_rules();
+    let gate_rules = every_gate_rule();
     writeln!(stdout, "\nGate rules:\n")?;
     writeln!(stdout, "{:<30} {:<8} DESCRIPTION", "RULE", "SEVERITY")?;
     writeln!(stdout, "{:-<30} {:-<8} {:-<40}", "", "", "")?;

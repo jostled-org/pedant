@@ -53,6 +53,7 @@ pub struct ReferenceSite {
     pub(crate) glob: bool,
     pub(crate) receiver: Option<Rc<str>>,
     pub(crate) condition: RustCfgCondition,
+    pub(crate) containing_fn: Option<usize>,
 }
 
 impl ReferenceSite {
@@ -84,5 +85,11 @@ impl ReferenceSite {
     /// The conditional-compilation predicates guarding this reference.
     pub(crate) fn condition(&self) -> &RustCfgCondition {
         &self.condition
+    }
+
+    /// The `FileIr::functions` index of the callable body this reference sits
+    /// in, or `None` at module scope.
+    pub(crate) fn containing_fn(&self) -> Option<usize> {
+        self.containing_fn
     }
 }

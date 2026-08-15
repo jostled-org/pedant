@@ -59,7 +59,8 @@ fn source_file_inputs(selected: &[SelectedSource<'_>]) -> Box<[SourceFileInput]>
 fn projected_profile(selected: &[SelectedSource<'_>]) -> CapabilityProfile {
     let mut findings = Vec::new();
     for selected in selected {
-        let profile = detect_capabilities(selected.source.ir(), execution_context(selected));
+        let profile =
+            detect_capabilities(selected.source.ir(), execution_context(selected)).into_profile();
         findings.extend(rebased(profile, &selected.path));
     }
     CapabilityProfile {

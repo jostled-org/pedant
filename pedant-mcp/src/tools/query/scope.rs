@@ -39,7 +39,7 @@ pub(super) fn resolve_findings<'a>(
         |s| {
             index
                 .file_result(s)
-                .map(|r| r.capabilities.findings.iter().collect())
+                .map(|r| r.capabilities.profile.findings.iter().collect())
         },
     )
 }

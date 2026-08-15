@@ -1,4 +1,27 @@
 #![cfg(feature = "checks")]
+
+/// Rust callable ownership of capability evidence.
+///
+/// The `#[path]` is required. Default resolution would place the file in
+/// `tests/capability/`, which pedant's `conflicting-module-root` rule rejects
+/// beside `capability.rs`, and its advice — fold the root into
+/// `capability/mod.rs` — does not apply to a cargo test root, since cargo builds
+/// a test executable per `tests/*.rs` and would stop building this one. A
+/// sibling directory satisfies both: cargo declares no target for it, because it
+/// holds no `main.rs`.
+#[path = "capability_support/symbol_cases.rs"]
+mod symbol_cases;
+
+/// The shape of a hand-written capability expectation and the assertions that
+/// hold an analysis to one. Same `#[path]` reason as [`symbol_cases`].
+#[path = "capability_support/symbol_expectations.rs"]
+mod symbol_expectations;
+
+/// The Rust sources the cases below analyze. Same `#[path]` reason as
+/// [`symbol_cases`].
+#[path = "capability_support/sources.rs"]
+mod sources;
+
 use pedant_core::capabilities::{detect_capabilities, truncate_evidence};
 use pedant_core::check_config::CheckConfig;
 use pedant_core::ir;
@@ -60,20 +83,12 @@ fn test_clean_code_no_capabilities() {
     let source = include_str!("fixtures/clean.rs");
     let result = analyze("clean.rs", source, &permissive_config(), None).unwrap();
 
-    assert!(result.capabilities.findings.is_empty());
+    assert!(result.capabilities.profile.findings.is_empty());
 }
 
 #[test]
 fn test_multiple_capabilities_detected() {
-    let source = r#"
-use std::net::TcpStream;
-use std::fs;
-
-fn do_things() {
-    let _stream = TcpStream::connect("127.0.0.1:80");
-    let _content = fs::read_to_string("file.txt");
-}
-"#;
+    let source = sources::TEST_MULTIPLE_CAPABILITIES_DETECTED;
     let result = analyze("multi.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
 
@@ -92,11 +107,7 @@ fn test_glob_use_detected() {
 
 #[test]
 fn test_fs_write_function_detected() {
-    let source = r#"
-fn write_file() {
-    let _ = std::fs::write("out.txt", "data");
-}
-"#;
+    let source = sources::TEST_FS_WRITE_FUNCTION_DETECTED;
     let result = analyze("fs_write.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
 
@@ -127,30 +138,27 @@ fn test_finding_has_correct_evidence() {
     let source = "use std::net::TcpStream;\n";
     let result = analyze("evidence.rs", source, &permissive_config(), None).unwrap();
 
-    assert_eq!(result.capabilities.findings.len(), 1);
+    assert_eq!(result.capabilities.profile.findings.len(), 1);
     assert_eq!(
-        result.capabilities.findings[0].evidence.as_ref(),
+        result.capabilities.profile.findings[0].evidence.as_ref(),
         "std::net::TcpStream"
     );
     assert_eq!(
-        result.capabilities.findings[0].capability,
+        result.capabilities.profile.findings[0].capability,
         Capability::Network
     );
 }
 
 #[test]
 fn test_ffi_capability_extern_block() {
-    let source = r#"
-extern "C" {
-    fn my_c_function(x: i32) -> i32;
-}
-"#;
+    let source = sources::TEST_FFI_CAPABILITY_EXTERN_BLOCK;
     let result = analyze("ffi.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::Ffi));
     assert!(
         result
             .capabilities
+            .profile
             .findings
             .iter()
             .any(|f| f.evidence.as_ref() == "extern block")
@@ -163,6 +171,7 @@ fn test_ffi_capability_link_attribute() {
     let result = analyze("ffi_link.rs", source, &permissive_config(), None).unwrap();
     let ffi_findings: Vec<_> = result
         .capabilities
+        .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::Ffi)
@@ -180,17 +189,14 @@ fn test_ffi_capability_libc_import() {
 
 #[test]
 fn test_unsafe_block_detected() {
-    let source = r#"
-fn foo() {
-    let _val = unsafe { 42 };
-}
-"#;
+    let source = sources::TEST_UNSAFE_BLOCK_DETECTED;
     let result = analyze("unsafe_block.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::UnsafeCode));
     assert!(
         result
             .capabilities
+            .profile
             .findings
             .iter()
             .any(|f| f.evidence.as_ref() == "unsafe block")
@@ -199,17 +205,14 @@ fn foo() {
 
 #[test]
 fn test_unsafe_fn_detected() {
-    let source = r#"
-unsafe fn dangerous() -> i32 {
-    42
-}
-"#;
+    let source = sources::TEST_UNSAFE_FN_DETECTED;
     let result = analyze("unsafe_fn.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::UnsafeCode));
     assert!(
         result
             .capabilities
+            .profile
             .findings
             .iter()
             .any(|f| f.evidence.as_ref() == "unsafe fn")
@@ -218,16 +221,14 @@ unsafe fn dangerous() -> i32 {
 
 #[test]
 fn test_unsafe_impl_detected() {
-    let source = r#"
-struct MyType;
-unsafe impl Send for MyType {}
-"#;
+    let source = sources::TEST_UNSAFE_IMPL_DETECTED;
     let result = analyze("unsafe_impl.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::UnsafeCode));
     assert!(
         result
             .capabilities
+            .profile
             .findings
             .iter()
             .any(|f| f.evidence.as_ref() == "unsafe impl")
@@ -236,11 +237,7 @@ unsafe impl Send for MyType {}
 
 #[test]
 fn test_hardcoded_url_detected() {
-    let source = r#"
-fn foo() {
-    let _url = "https://api.example.com/v1/data";
-}
-"#;
+    let source = sources::TEST_HARDCODED_URL_DETECTED;
     let result = analyze("url.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::Network));
@@ -248,11 +245,7 @@ fn foo() {
 
 #[test]
 fn test_hardcoded_ip_detected() {
-    let source = r#"
-fn foo() {
-    let _ip = "192.168.1.1:8080";
-}
-"#;
+    let source = sources::TEST_HARDCODED_IP_DETECTED;
     let result = analyze("ip.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::Network));
@@ -260,11 +253,7 @@ fn foo() {
 
 #[test]
 fn test_ipv6_detected() {
-    let source = r#"
-fn foo() {
-    let _ip = "[::1]:8080";
-}
-"#;
+    let source = sources::TEST_IPV6_DETECTED;
     let result = analyze("ipv6.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::Network));
@@ -274,9 +263,7 @@ fn foo() {
 fn test_oid_string_is_not_network() {
     // "2.5.4.10" is an X.500 OID (organizationName). Four dotted decimals, all
     // <=255, so the old heuristic read it as a bare IPv4 with no port.
-    let source = r#"
-pub const OID: &str = "2.5.4.10";
-"#;
+    let source = sources::TEST_OID_STRING_IS_NOT_NETWORK;
     let result = analyze("oid.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(
@@ -288,9 +275,7 @@ pub const OID: &str = "2.5.4.10";
 #[test]
 fn test_rust_path_string_is_not_network() {
     // A `::`-separated path has many `::`; valid IPv6 has at most one.
-    let source = r#"
-pub const PATH: &str = "A::B::C::D::E::F";
-"#;
+    let source = sources::TEST_RUST_PATH_STRING_IS_NOT_NETWORK;
     let result = analyze("path.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(
@@ -302,9 +287,7 @@ pub const PATH: &str = "A::B::C::D::E::F";
 #[test]
 fn test_version_string_is_not_network() {
     // A dotted version quad is also IPv4-shaped without a port.
-    let source = r#"
-pub const VERSION: &str = "1.2.3.40";
-"#;
+    let source = sources::TEST_VERSION_STRING_IS_NOT_NETWORK;
     let result = analyze("ver.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(
@@ -315,14 +298,11 @@ pub const VERSION: &str = "1.2.3.40";
 
 #[test]
 fn test_short_string_not_flagged() {
-    let source = r#"
-fn foo() {
-    let _s = "hello";
-}
-"#;
+    let source = sources::TEST_SHORT_STRING_NOT_FLAGGED;
     let result = analyze("short.rs", source, &permissive_config(), None).unwrap();
     let net_findings: Vec<_> = result
         .capabilities
+        .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::Network)
@@ -332,11 +312,7 @@ fn foo() {
 
 #[test]
 fn test_pem_key_material_detected() {
-    let source = r#"
-fn foo() {
-    let _key = "-----BEGIN PRIVATE KEY-----\ndata\n-----END PRIVATE KEY-----";
-}
-"#;
+    let source = sources::TEST_PEM_KEY_MATERIAL_DETECTED;
     let result = analyze("pem.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::Crypto));
@@ -368,18 +344,14 @@ fn test_chrono_detected() {
 
 #[test]
 fn test_proc_macro_detected() {
-    let source = r#"
-#[proc_macro]
-fn my_macro(input: TokenStream) -> TokenStream {
-    input
-}
-"#;
+    let source = sources::TEST_PROC_MACRO_DETECTED;
     let result = analyze("proc_macro.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::ProcMacro));
     assert!(
         result
             .capabilities
+            .profile
             .findings
             .iter()
             .any(|f| f.evidence.as_ref() == "#[proc_macro]")
@@ -388,18 +360,14 @@ fn my_macro(input: TokenStream) -> TokenStream {
 
 #[test]
 fn test_proc_macro_derive_detected() {
-    let source = r#"
-#[proc_macro_derive(Foo)]
-fn my_derive(input: TokenStream) -> TokenStream {
-    input
-}
-"#;
+    let source = sources::TEST_PROC_MACRO_DERIVE_DETECTED;
     let result = analyze("proc_macro_derive.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::ProcMacro));
     assert!(
         result
             .capabilities
+            .profile
             .findings
             .iter()
             .any(|f| f.evidence.as_ref() == "#[proc_macro_derive]")
@@ -410,26 +378,25 @@ fn my_derive(input: TokenStream) -> TokenStream {
 
 #[test]
 fn test_build_script_findings_tagged() {
-    let source = r#"
-use std::process::Command;
-
-fn main() {
-    Command::new("cc").status().unwrap();
-}
-"#;
+    let source = sources::TEST_BUILD_SCRIPT_FINDINGS_TAGGED;
     let syntax = syn::parse_file(source).unwrap();
     let ir_data = ir::extract("build.rs", &syntax, None);
 
-    let profile_build =
+    let analysis_build =
         detect_capabilities(&ir_data, Some(pedant_types::ExecutionContext::BuildHook));
     assert!(
-        profile_build.findings.iter().all(|f| f.is_build_hook()),
+        analysis_build
+            .profile
+            .findings
+            .iter()
+            .all(|f| f.is_build_hook()),
         "all findings should have execution_context=BuildHook"
     );
 
-    let profile_normal = detect_capabilities(&ir_data, None);
+    let analysis_normal = detect_capabilities(&ir_data, None);
     assert!(
-        profile_normal
+        analysis_normal
+            .profile
             .findings
             .iter()
             .all(|f| f.execution_context.is_none()),
@@ -442,9 +409,10 @@ fn test_build_script_network_detection() {
     let source = include_str!("fixtures/build_script_network.rs");
     let syntax = syn::parse_file(source).unwrap();
     let ir_data = ir::extract("build.rs", &syntax, None);
-    let profile = detect_capabilities(&ir_data, Some(pedant_types::ExecutionContext::BuildHook));
+    let analysis = detect_capabilities(&ir_data, Some(pedant_types::ExecutionContext::BuildHook));
 
-    let net_findings: Vec<_> = profile
+    let net_findings: Vec<_> = analysis
+        .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::Network && f.is_build_hook())
@@ -460,9 +428,10 @@ fn test_build_script_process_detection() {
     let source = include_str!("fixtures/build_script_process.rs");
     let syntax = syn::parse_file(source).unwrap();
     let ir_data = ir::extract("build.rs", &syntax, None);
-    let profile = detect_capabilities(&ir_data, Some(pedant_types::ExecutionContext::BuildHook));
+    let analysis = detect_capabilities(&ir_data, Some(pedant_types::ExecutionContext::BuildHook));
 
-    let proc_findings: Vec<_> = profile
+    let proc_findings: Vec<_> = analysis
+        .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::ProcessExec && f.is_build_hook())
@@ -481,6 +450,7 @@ fn test_existing_findings_default_false() {
     assert!(
         result
             .capabilities
+            .profile
             .findings
             .iter()
             .all(|f| f.execution_context.is_none()),
@@ -514,6 +484,7 @@ fn test_hex_key_64_chars_detected() {
     let result = analyze("hex_key.rs", source, &permissive_config(), None).unwrap();
     let crypto_findings: Vec<_> = result
         .capabilities
+        .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::Crypto)
@@ -537,6 +508,7 @@ fn test_hex_key_128_chars_detected() {
     let result = analyze("hex_key128.rs", source, &permissive_config(), None).unwrap();
     let crypto_findings: Vec<_> = result
         .capabilities
+        .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::Crypto)
@@ -551,14 +523,11 @@ fn test_hex_key_128_chars_detected() {
 
 #[test]
 fn test_hex_short_not_flagged() {
-    let source = r#"
-fn foo() {
-    let _hash = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4";
-}
-"#;
+    let source = sources::TEST_HEX_SHORT_NOT_FLAGGED;
     let result = analyze("hex_short.rs", source, &permissive_config(), None).unwrap();
     let crypto_findings: Vec<_> = result
         .capabilities
+        .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::Crypto)
@@ -575,16 +544,13 @@ fn test_hex_odd_length_not_flagged() {
     // Note: base58 detection may still fire (65 chars falls in Solana range,
     // and hex chars are a subset of base58). This test verifies the hex
     // checker rejects odd lengths — base58 findings are expected.
-    let source = r#"
-fn foo() {
-    let _odd = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2a";
-}
-"#;
+    let source = sources::TEST_HEX_ODD_LENGTH_NOT_FLAGGED;
     let syntax = syn::parse_file(source).unwrap();
     let ir_data = ir::extract("hex_odd.rs", &syntax, None);
-    let profile = detect_capabilities(&ir_data, None);
+    let analysis = detect_capabilities(&ir_data, None);
     // Should have at most 1 finding (base58), not 2 (hex would be a second)
-    let crypto_findings: Vec<_> = profile
+    let crypto_findings: Vec<_> = analysis
+        .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::Crypto)
@@ -598,11 +564,7 @@ fn foo() {
 
 #[test]
 fn test_hex_mixed_case_detected() {
-    let source = r#"
-fn foo() {
-    let _key = "aAbBcCdDeEfF0011aAbBcCdDeEfF0011aAbBcCdDeEfF0011aAbBcCdDeEfF0011";
-}
-"#;
+    let source = sources::TEST_HEX_MIXED_CASE_DETECTED;
     let result = analyze("hex_mixed.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(
@@ -619,6 +581,7 @@ fn test_bitcoin_wif_detected() {
     let result = analyze("base58.rs", source, &permissive_config(), None).unwrap();
     let crypto_findings: Vec<_> = result
         .capabilities
+        .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::Crypto)
@@ -631,11 +594,7 @@ fn test_bitcoin_wif_detected() {
 
 #[test]
 fn test_bitcoin_wif_k_prefix_detected() {
-    let source = r#"
-fn foo() {
-    let _key = "KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn";
-}
-"#;
+    let source = sources::TEST_BITCOIN_WIF_K_PREFIX_DETECTED;
     let result = analyze("wif_k.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(
@@ -650,6 +609,7 @@ fn test_solana_keypair_detected() {
     let result = analyze("solana.rs", source, &permissive_config(), None).unwrap();
     let crypto_findings: Vec<_> = result
         .capabilities
+        .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::Crypto)
@@ -664,14 +624,11 @@ fn test_solana_keypair_detected() {
 
 #[test]
 fn test_short_base58_not_flagged() {
-    let source = r#"
-fn foo() {
-    let _addr = "1A1zP1eP5QGefi2DM";
-}
-"#;
+    let source = sources::TEST_SHORT_BASE58_NOT_FLAGGED;
     let result = analyze("base58_short.rs", source, &permissive_config(), None).unwrap();
     let crypto_findings: Vec<_> = result
         .capabilities
+        .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::Crypto)
@@ -685,14 +642,11 @@ fn foo() {
 #[test]
 fn test_base58_with_invalid_chars_not_flagged() {
     // Contains '0', 'O', 'I', 'l' which are NOT in base58 alphabet
-    let source = r#"
-fn foo() {
-    let _not_key = "5HueCGU8rMjxEXxiPuD5BDku4MkFqeZyd4dZ1jvhTVq0OIl";
-}
-"#;
+    let source = sources::TEST_BASE58_WITH_INVALID_CHARS_NOT_FLAGGED;
     let result = analyze("base58_invalid.rs", source, &permissive_config(), None).unwrap();
     let crypto_findings: Vec<_> = result
         .capabilities
+        .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::Crypto)
@@ -711,6 +665,7 @@ fn test_age_secret_key_detected() {
     let result = analyze("age_key.rs", source, &permissive_config(), None).unwrap();
     let crypto_findings: Vec<_> = result
         .capabilities
+        .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::Crypto)
@@ -729,6 +684,7 @@ fn test_xprv_key_detected() {
     let result = analyze("xprv.rs", source, &permissive_config(), None).unwrap();
     let crypto_findings: Vec<_> = result
         .capabilities
+        .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::Crypto)
@@ -743,14 +699,11 @@ fn test_xprv_key_detected() {
 
 #[test]
 fn test_ethereum_private_key_detected() {
-    let source = r#"
-fn foo() {
-    let _key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-}
-"#;
+    let source = sources::TEST_ETHEREUM_PRIVATE_KEY_DETECTED;
     let result = analyze("eth_key.rs", source, &permissive_config(), None).unwrap();
     let crypto_findings: Vec<_> = result
         .capabilities
+        .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::Crypto)
@@ -763,11 +716,7 @@ fn foo() {
 
 #[test]
 fn test_near_ed25519_key_detected() {
-    let source = r#"
-fn foo() {
-    let _key = "ed25519:3D4YudUahN1nawWogh6LMPvoRPW8QHr9AJsByJsXk7gn";
-}
-"#;
+    let source = sources::TEST_NEAR_ED25519_KEY_DETECTED;
     let result = analyze("near_key.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(
@@ -784,6 +733,7 @@ fn test_aws_access_key_detected() {
     let result = analyze("aws_key.rs", source, &permissive_config(), None).unwrap();
     let crypto_findings: Vec<_> = result
         .capabilities
+        .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::Crypto)
@@ -796,11 +746,7 @@ fn test_aws_access_key_detected() {
 
 #[test]
 fn test_github_pat_detected() {
-    let source = r#"
-fn foo() {
-    let _token = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij";
-}
-"#;
+    let source = sources::TEST_GITHUB_PAT_DETECTED;
     let result = analyze("ghp.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(
@@ -811,11 +757,7 @@ fn foo() {
 
 #[test]
 fn test_stripe_secret_key_detected() {
-    let source = r#"
-fn foo() {
-    let _key = "sk_live_abcdefghijklmnopqrstuvwx";
-}
-"#;
+    let source = sources::TEST_STRIPE_SECRET_KEY_DETECTED;
     let result = analyze("stripe.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(
@@ -826,14 +768,11 @@ fn foo() {
 
 #[test]
 fn test_short_0x_not_flagged() {
-    let source = r#"
-fn foo() {
-    let _val = "0xdeadbeef12";
-}
-"#;
+    let source = sources::TEST_SHORT_0X_NOT_FLAGGED;
     let result = analyze("short_0x.rs", source, &permissive_config(), None).unwrap();
     let crypto_findings: Vec<_> = result
         .capabilities
+        .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::Crypto)
@@ -847,11 +786,7 @@ fn foo() {
 #[test]
 fn test_existing_pem_still_works() {
     // Regression: verify PEM and crypto import detection still work
-    let pem_source = r#"
-fn foo() {
-    let _key = "-----BEGIN PRIVATE KEY-----\ndata\n-----END PRIVATE KEY-----";
-}
-"#;
+    let pem_source = sources::TEST_EXISTING_PEM_STILL_WORKS_PEM_SOURCE;
     let pem_result = analyze("pem_regress.rs", pem_source, &permissive_config(), None).unwrap();
     assert!(
         pem_result
@@ -878,11 +813,11 @@ fn import_finding_has_import_origin() {
     let source = "use std::net::TcpStream;\n";
     let syntax = syn::parse_file(source).unwrap();
     let ir_data = ir::extract("import_origin.rs", &syntax, None);
-    let profile = detect_capabilities(&ir_data, None);
+    let analysis = detect_capabilities(&ir_data, None);
 
-    assert_eq!(profile.findings.len(), 1);
+    assert_eq!(analysis.profile.findings.len(), 1);
     assert_eq!(
-        profile.findings[0].origin,
+        analysis.profile.findings[0].origin,
         Some(FindingOrigin::Import),
         "use-path finding should have Import origin"
     );
@@ -890,16 +825,13 @@ fn import_finding_has_import_origin() {
 
 #[test]
 fn string_literal_finding_has_string_literal_origin() {
-    let source = r#"
-fn foo() {
-    let _url = "https://api.example.com/v1/data";
-}
-"#;
+    let source = sources::STRING_LITERAL_FINDING_HAS_STRING_LITERAL_ORIGIN;
     let syntax = syn::parse_file(source).unwrap();
     let ir_data = ir::extract("string_origin.rs", &syntax, None);
-    let profile = detect_capabilities(&ir_data, None);
+    let analysis = detect_capabilities(&ir_data, None);
 
-    let net_findings: Vec<_> = profile
+    let net_findings: Vec<_> = analysis
+        .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::Network)
@@ -914,16 +846,13 @@ fn foo() {
 
 #[test]
 fn key_material_finding_has_string_literal_origin() {
-    let source = r#"
-fn foo() {
-    let _key = "-----BEGIN PRIVATE KEY-----\ndata\n-----END PRIVATE KEY-----";
-}
-"#;
+    let source = sources::KEY_MATERIAL_FINDING_HAS_STRING_LITERAL_ORIGIN;
     let syntax = syn::parse_file(source).unwrap();
     let ir_data = ir::extract("pem_origin.rs", &syntax, None);
-    let profile = detect_capabilities(&ir_data, None);
+    let analysis = detect_capabilities(&ir_data, None);
 
-    let crypto_findings: Vec<_> = profile
+    let crypto_findings: Vec<_> = analysis
+        .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::Crypto)
@@ -939,17 +868,13 @@ fn foo() {
 
 #[test]
 fn attribute_finding_has_attribute_origin() {
-    let source = r#"
-#[proc_macro]
-fn my_macro(input: TokenStream) -> TokenStream {
-    input
-}
-"#;
+    let source = sources::ATTRIBUTE_FINDING_HAS_ATTRIBUTE_ORIGIN;
     let syntax = syn::parse_file(source).unwrap();
     let ir_data = ir::extract("attr_origin.rs", &syntax, None);
-    let profile = detect_capabilities(&ir_data, None);
+    let analysis = detect_capabilities(&ir_data, None);
 
-    let proc_findings: Vec<_> = profile
+    let proc_findings: Vec<_> = analysis
+        .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::ProcMacro)
@@ -964,16 +889,13 @@ fn my_macro(input: TokenStream) -> TokenStream {
 
 #[test]
 fn unsafe_block_finding_has_code_site_origin() {
-    let source = r#"
-fn foo() {
-    let _val = unsafe { 42 };
-}
-"#;
+    let source = sources::UNSAFE_BLOCK_FINDING_HAS_CODE_SITE_ORIGIN;
     let syntax = syn::parse_file(source).unwrap();
     let ir_data = ir::extract("unsafe_origin.rs", &syntax, None);
-    let profile = detect_capabilities(&ir_data, None);
+    let analysis = detect_capabilities(&ir_data, None);
 
-    let unsafe_findings: Vec<_> = profile
+    let unsafe_findings: Vec<_> = analysis
+        .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::UnsafeCode)
@@ -988,16 +910,13 @@ fn foo() {
 
 #[test]
 fn extern_block_finding_has_code_site_origin() {
-    let source = r#"
-extern "C" {
-    fn my_c_function(x: i32) -> i32;
-}
-"#;
+    let source = sources::EXTERN_BLOCK_FINDING_HAS_CODE_SITE_ORIGIN;
     let syntax = syn::parse_file(source).unwrap();
     let ir_data = ir::extract("extern_origin.rs", &syntax, None);
-    let profile = detect_capabilities(&ir_data, None);
+    let analysis = detect_capabilities(&ir_data, None);
 
-    let ffi_findings: Vec<_> = profile
+    let ffi_findings: Vec<_> = analysis
+        .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::Ffi)
@@ -1012,17 +931,13 @@ extern "C" {
 
 #[test]
 fn link_attribute_finding_has_attribute_origin() {
-    let source = r#"
-#[link(name = "mylib")]
-extern "C" {
-    fn my_c_function(x: i32) -> i32;
-}
-"#;
+    let source = sources::LINK_ATTRIBUTE_FINDING_HAS_ATTRIBUTE_ORIGIN;
     let syntax = syn::parse_file(source).unwrap();
     let ir_data = ir::extract("link_origin.rs", &syntax, None);
-    let profile = detect_capabilities(&ir_data, None);
+    let analysis = detect_capabilities(&ir_data, None);
 
-    let attr_findings: Vec<_> = profile
+    let attr_findings: Vec<_> = analysis
+        .profile
         .findings
         .iter()
         .filter(|f| f.origin == Some(FindingOrigin::Attribute))
@@ -1046,9 +961,10 @@ fn test_self_analysis_no_false_positives() {
     .concat();
     let syntax = syn::parse_file(&source).unwrap();
     let ir_data = ir::extract("capabilities.rs", &syntax, None);
-    let profile = detect_capabilities(&ir_data, None);
+    let analysis = detect_capabilities(&ir_data, None);
 
-    let crypto_findings: Vec<_> = profile
+    let crypto_findings: Vec<_> = analysis
+        .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::Crypto)

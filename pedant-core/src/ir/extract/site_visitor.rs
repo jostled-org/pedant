@@ -12,6 +12,8 @@ use crate::ir::facts::TypeDefKind;
 use crate::ir::sites::ReferenceOrigin;
 use crate::observe::{self, Observation};
 
+use crate::ir::cfg::RustCfgCondition;
+
 use super::extractor::IrExtractor;
 use super::imports::use_tree_leaves;
 use super::paths::{path_range, path_segments, path_text, range_between, range_of};
@@ -19,6 +21,27 @@ use super::sites::{LocalReceivers, ModuleEntry, ReferenceEntry, SavedPosition};
 
 /// The path segment `impl` blocks give a name to.
 const SELF_SEGMENT: &str = "Self";
+
+/// Record one reference site, stamped with the callable body under traversal.
+///
+/// The function scope is the single owner of that index, so every recorder here
+/// routes through this pair rather than reading the scope itself.
+fn push_reference(extractor: &mut IrExtractor, entry: ReferenceEntry) {
+    let containing_fn = extractor.fn_scope.current();
+    extractor.sites.push_reference(entry, containing_fn);
+}
+
+/// [`push_reference`] for a reference whose own attributes widen the condition.
+fn push_conditional_reference(
+    extractor: &mut IrExtractor,
+    entry: ReferenceEntry,
+    condition: &RustCfgCondition,
+) {
+    let containing_fn = extractor.fn_scope.current();
+    extractor
+        .sites
+        .push_conditional_reference(entry, condition, containing_fn);
+}
 
 /// The nesting state one function body replaced.
 pub(super) struct FunctionEntry {
@@ -117,13 +140,16 @@ pub(super) fn enter_module(extractor: &mut IrExtractor, node: &syn::ItemMod) -> 
     let name = node.ident.to_string().into_boxed_str();
     let range = range_between(node.mod_token.span, node.ident.span());
     if node.content.is_none() {
-        extractor.sites.push_reference(ReferenceEntry::path(
-            ReferenceKind::Module,
-            ReferenceOrigin::ModuleDeclaration,
-            name.clone(),
-            range,
-            Box::from([name.clone()]),
-        ));
+        push_reference(
+            extractor,
+            ReferenceEntry::path(
+                ReferenceKind::Module,
+                ReferenceOrigin::ModuleDeclaration,
+                name.clone(),
+                range,
+                Box::from([name.clone()]),
+            ),
+        );
     }
     extractor.sites.push_module(ModuleEntry {
         name,
@@ -190,7 +216,8 @@ pub(super) fn record_import(extractor: &mut IrExtractor, node: &syn::ItemUse) {
     let condition = extractor.sites.condition().with(&node.attrs);
     let range = range_between(node.use_token.span, node.semi_token.span);
     for leaf in use_tree_leaves(&node.tree).into_vec() {
-        extractor.sites.push_conditional_reference(
+        push_conditional_reference(
+            extractor,
             ReferenceEntry {
                 kind: ReferenceKind::Import,
                 origin: ReferenceOrigin::Import,
@@ -225,29 +252,29 @@ pub(super) fn record_expression_path(extractor: &mut IrExtractor, path: &syn::Pa
         (_, true) => (ReferenceKind::Call, ReferenceOrigin::ExpressionPath),
         (_, false) => (ReferenceKind::Type, ReferenceOrigin::ExpressionPath),
     };
-    extractor.sites.push_reference(ReferenceEntry::path(
-        classified.0,
-        classified.1,
-        text,
-        range,
-        segments,
-    ));
+    push_reference(
+        extractor,
+        ReferenceEntry::path(classified.0, classified.1, text, range, segments),
+    );
 }
 
 /// Record a method call, with the receiver type when one is established.
 pub(super) fn record_method_call(extractor: &mut IrExtractor, node: &syn::ExprMethodCall) {
     let receiver = receiver_type(extractor, &node.receiver);
     let name: Box<str> = node.method.to_string().into_boxed_str();
-    extractor.sites.push_reference(ReferenceEntry {
-        kind: ReferenceKind::Call,
-        origin: ReferenceOrigin::MethodCall,
-        segments: Box::from([name.clone()]),
-        text: name,
-        range: range_of(node.method.span()),
-        alias: None,
-        glob: false,
-        receiver,
-    });
+    push_reference(
+        extractor,
+        ReferenceEntry {
+            kind: ReferenceKind::Call,
+            origin: ReferenceOrigin::MethodCall,
+            segments: Box::from([name.clone()]),
+            text: name,
+            range: range_of(node.method.span()),
+            alias: None,
+            glob: false,
+            receiver,
+        },
+    );
 }
 
 /// Record a type named anywhere in the source.
@@ -258,13 +285,16 @@ pub(super) fn record_type_path(extractor: &mut IrExtractor, node: &syn::TypePath
     let raw = path_segments(&node.path);
     let text = path_text(&raw);
     let segments = qualified(extractor, raw);
-    extractor.sites.push_reference(ReferenceEntry::path(
-        ReferenceKind::Type,
-        ReferenceOrigin::TypeMention,
-        text,
-        range,
-        segments,
-    ));
+    push_reference(
+        extractor,
+        ReferenceEntry::path(
+            ReferenceKind::Type,
+            ReferenceOrigin::TypeMention,
+            text,
+            range,
+            segments,
+        ),
+    );
 }
 
 /// Replace a leading `Self` with the type the enclosing `impl` block names.
@@ -295,13 +325,16 @@ pub(super) fn record_struct_literal(extractor: &mut IrExtractor, node: &syn::Exp
         return;
     };
     let segments = path_segments(&node.path);
-    extractor.sites.push_reference(ReferenceEntry::path(
-        ReferenceKind::Type,
-        ReferenceOrigin::TypeMention,
-        path_text(&segments),
-        range,
-        segments,
-    ));
+    push_reference(
+        extractor,
+        ReferenceEntry::path(
+            ReferenceKind::Type,
+            ReferenceOrigin::TypeMention,
+            path_text(&segments),
+            range,
+            segments,
+        ),
+    );
 }
 
 /// Record the trait an `impl` block implements.
@@ -313,13 +346,16 @@ pub(super) fn record_implementation(extractor: &mut IrExtractor, node: &syn::Ite
         return;
     };
     let segments = path_segments(path);
-    extractor.sites.push_reference(ReferenceEntry::path(
-        ReferenceKind::Implementation,
-        ReferenceOrigin::Implementation,
-        path_text(&segments),
-        range,
-        segments,
-    ));
+    push_reference(
+        extractor,
+        ReferenceEntry::path(
+            ReferenceKind::Implementation,
+            ReferenceOrigin::Implementation,
+            path_text(&segments),
+            range,
+            segments,
+        ),
+    );
 }
 
 /// Record a macro invocation, whose target this tier never expands.
@@ -328,13 +364,16 @@ pub(super) fn record_macro(extractor: &mut IrExtractor, node: &syn::Macro) {
         return;
     };
     let segments = path_segments(&node.path);
-    extractor.sites.push_reference(ReferenceEntry::path(
-        ReferenceKind::Call,
-        ReferenceOrigin::MacroInvocation,
-        path_text(&segments),
-        range,
-        segments,
-    ));
+    push_reference(
+        extractor,
+        ReferenceEntry::path(
+            ReferenceKind::Call,
+            ReferenceOrigin::MacroInvocation,
+            path_text(&segments),
+            range,
+            segments,
+        ),
+    );
 }
 
 /// Record the type a `let` binding is known to hold.

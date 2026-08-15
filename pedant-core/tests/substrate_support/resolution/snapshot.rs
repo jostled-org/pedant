@@ -75,6 +75,7 @@ fn snapshots_accept_bare_callable_traits_only_for_legacy_editions() {
             .unwrap_or_else(|error| panic!("{label} should parse: {error}"));
         let source = snapshot.source(source_path).expect("the library source");
         let finding = detect_capabilities(source.ir(), None)
+            .profile
             .findings
             .into_iter()
             .find(|finding| finding.capability == Capability::Network)

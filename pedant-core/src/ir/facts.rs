@@ -339,6 +339,10 @@ pub struct UsePathFact {
     pub path: Box<str>,
     /// Location of the `use` statement.
     pub span: IrSpan,
+    /// Index into `FileIr::functions`; the callable body this path sits in, or
+    /// `None` at module scope. A module import states no callable owner, and
+    /// nothing infers one from a later use of the name it binds.
+    pub containing_fn: Option<usize>,
 }
 
 /// A method call expression with receiver and loop context.
@@ -383,6 +387,9 @@ pub struct AttributeFact {
     pub span: IrSpan,
     /// Top-level attribute name (e.g., `derive`, `cfg`, `link`).
     pub name: Box<str>,
+    /// Index into `FileIr::functions`; the callable body this attribute sits
+    /// in, or `None` at module scope.
+    pub containing_fn: Option<usize>,
 }
 
 /// A string literal for credential and endpoint detection.
@@ -392,6 +399,9 @@ pub struct StringLitFact {
     pub value: Box<str>,
     /// Location of the opening quote.
     pub span: IrSpan,
+    /// Index into `FileIr::functions`; the callable body this literal sits in,
+    /// or `None` at module scope.
+    pub containing_fn: Option<usize>,
 }
 
 /// An unsafe block, function, or impl for safety auditing.
@@ -403,6 +413,9 @@ pub struct UnsafeFact {
     pub span: IrSpan,
     /// Snippet of the unsafe code for evidence reporting.
     pub evidence: Box<str>,
+    /// Index into `FileIr::functions`. An `unsafe` block or `unsafe impl`
+    /// names the body it sits in; an `unsafe fn` names the declaration itself.
+    pub containing_fn: Option<usize>,
 }
 
 /// Discriminant for unsafe constructs.
@@ -421,6 +434,9 @@ pub enum UnsafeKind {
 pub struct ExternBlockFact {
     /// Location of the `extern` keyword.
     pub span: IrSpan,
+    /// Index into `FileIr::functions`; the callable body this block sits in,
+    /// or `None` at module scope.
+    pub containing_fn: Option<usize>,
 }
 
 /// Structural fingerprint for a function, used for duplicate detection.

@@ -42,6 +42,7 @@ pub(crate) fn process_evidence(path: &Path) -> Option<Box<str>> {
     let syntax = parse_rust_file(path);
     let ir = extract(&path.to_string_lossy(), &syntax, None);
     detect_capabilities(&ir, None)
+        .profile
         .findings
         .iter()
         .find(|finding| finding.capability == Capability::ProcessExec)
@@ -228,13 +229,22 @@ impl PathIdents {
         scan
     }
 
-    /// Whether the file names any of `candidates` as a path segment or a
-    /// use-tree entry. Gated with its one caller, the parse-route scan.
-    #[cfg(feature = "resolution-test-support")]
-    pub(crate) fn names_any(&self, candidates: &[&str]) -> bool {
+    /// Which of `candidates` the file names as a path segment or a use-tree
+    /// entry, so a failure can report the route it found rather than only that
+    /// one exists.
+    pub(crate) fn names_among(&self, candidates: &[&str]) -> Box<[Box<str>]> {
         candidates
             .iter()
-            .any(|candidate| self.idents.contains(*candidate))
+            .filter(|candidate| self.idents.contains(**candidate))
+            .map(|candidate| Box::from(*candidate))
+            .collect()
+    }
+
+    /// Whether the file names any of `candidates`. Gated with its one caller,
+    /// the parse-route scan.
+    #[cfg(feature = "resolution-test-support")]
+    pub(crate) fn names_any(&self, candidates: &[&str]) -> bool {
+        !self.names_among(candidates).is_empty()
     }
 
     /// Visit a macro body under the two shapes `syn` can re-parse: a

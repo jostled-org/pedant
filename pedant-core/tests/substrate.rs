@@ -18,6 +18,11 @@
 #[path = "substrate_support/declaration_scan.rs"]
 mod declaration_scan;
 
+/// Rust symbol capability analysis on the substrate, and the exact ownership of
+/// the attribution closure. Same `#[path]` reason as [`declaration_scan`].
+#[path = "substrate_support/capability_analysis.rs"]
+mod capability_analysis;
+
 /// Published-package release order and registry compatibility.
 /// Same `#[path]` reason as [`declaration_scan`].
 #[path = "substrate_support/release_contract.rs"]
@@ -68,8 +73,13 @@ mod substrate_behavior {
             "the import and the call path are both flattened into use-path facts"
         );
 
-        let profile = detect_capabilities(&ir, None);
-        let found: Vec<Capability> = profile.findings.iter().map(|it| it.capability).collect();
+        let analysis = detect_capabilities(&ir, None);
+        let found: Vec<Capability> = analysis
+            .profile
+            .findings
+            .iter()
+            .map(|it| it.capability)
+            .collect();
         assert_eq!(
             found,
             [Capability::FileRead],

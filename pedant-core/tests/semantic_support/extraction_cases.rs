@@ -216,10 +216,10 @@ fn test_capability_finding_reachable_none_by_default() {
     let result = analyze("<test>", source, &config, None).unwrap();
 
     assert!(
-        !result.capabilities.findings.is_empty(),
+        !result.capabilities.profile.findings.is_empty(),
         "should detect Network capability from std::net import"
     );
-    for finding in result.capabilities.findings.iter() {
+    for finding in result.capabilities.profile.findings.iter() {
         assert!(
             finding.reachable.is_none(),
             "reachable should be None by default, got: {:?}",

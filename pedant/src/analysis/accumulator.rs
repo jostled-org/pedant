@@ -35,7 +35,7 @@ impl AnalysisAccumulator {
             Ok((r, shape)) => {
                 self.violations.append(&mut r.violations.into_vec());
                 self.findings
-                    .append(&mut r.capabilities.findings.into_vec());
+                    .append(&mut r.capabilities.into_profile().findings.into_vec());
                 self.data_flows.extend_from_slice(&r.data_flows);
                 self.file_shapes.push(shape);
             }

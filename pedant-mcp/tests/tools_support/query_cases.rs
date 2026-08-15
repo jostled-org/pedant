@@ -30,6 +30,30 @@ fn test_query_capabilities_returns_findings() {
         text.contains("network"),
         "expected network capability in response: {text}"
     );
+
+    // The MCP index takes the flat projection from each analysis, so the
+    // payload keeps its exact current shape and carries no symbol evidence.
+    let findings: Vec<serde_json::Value> =
+        serde_json::from_str(&text).expect("the payload is a flat finding array");
+    assert!(!findings.is_empty(), "expected findings: {text}");
+    for finding in &findings {
+        let fields: Vec<&str> = finding
+            .as_object()
+            .expect("each finding is an object")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert!(
+            !fields.contains(&"symbols") && !fields.contains(&"symbol_attribution"),
+            "a capability finding must carry no symbol field: {fields:?}"
+        );
+    }
+    for field in ["\"symbols\"", "\"symbol_attribution\""] {
+        assert!(
+            !text.contains(field),
+            "the MCP capability payload must not carry {field}: {text}"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

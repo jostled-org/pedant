@@ -10,7 +10,7 @@ use crate::ir::facts::{
     AttributeFact, BindingFact, BranchContext, ControlFlowFact, ControlFlowKind, ElseInfo,
     ExternBlockFact, FileIr, FnFact, ImplFact, IrSpan, MacroFact, MethodCallFact, ModuleFact,
     ParamFact, StringLitFact, TypeAliasFact, TypeDefFact, TypeDefKind, TypeInfo, TypeRefContext,
-    TypeRefFact, UnsafeFact, UnsafeKind, Visibility,
+    TypeRefFact, UnsafeFact, Visibility,
 };
 use crate::ir::type_introspection::{
     classify_type_ref, collect_signature_type_names_into, first_pat_ident, for_each_pat_ident,
@@ -305,14 +305,9 @@ impl IrExtractor {
         }
     }
 
-    pub(in crate::ir::extract) fn record_unsafe_fn(&mut self, sig: &Signature) {
-        if let Some(token) = sig.unsafety {
-            self.unsafe_sites.push(UnsafeFact {
-                kind: UnsafeKind::Fn,
-                span: span_from(token.span.start()),
-                evidence: "unsafe fn".into(),
-            });
-        }
+    /// The index [`Self::push_fn`] will assign to the next function it records.
+    pub(in crate::ir::extract) fn next_fn_index(&self) -> usize {
+        self.functions.len()
     }
 
     /// Push any `#[cfg(feature = "…")]` gates from `attrs`, run `body`, then pop.

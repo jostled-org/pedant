@@ -8,6 +8,7 @@
 //! one `use`-tree walk, `use_paths` projects the flat capability path list from
 //! the resulting sites, and `paths` renders ranges and path spellings.
 //! `syn_helpers` holds the stateless AST queries the others share.
+//! `unsafe_sites` records the three `unsafe` constructs and their callables.
 //! `fingerprint` and `enrich` are post-passes over the finished IR. `parse` is
 //! the one route into the traversal, so every production parse is observed
 //! wherever it was requested from.
@@ -26,6 +27,7 @@ mod site_visitor;
 mod sites;
 mod syn_helpers;
 mod type_edges;
+mod unsafe_sites;
 mod use_paths;
 mod visitor;
 

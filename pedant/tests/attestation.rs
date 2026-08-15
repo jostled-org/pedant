@@ -1,11 +1,24 @@
 use std::collections::BTreeMap;
-use std::fs;
 use std::sync::Arc;
 
 use pedant_core::hash::compute_source_hash;
 use pedant_types::{AnalysisTier, AttestationContent, Capability, CapabilityProfile};
 
 mod common;
+
+/// One temporary crate on disk and the CLI runs a case makes against it.
+///
+/// The `#[path]` is required. Default resolution would place the file in
+/// `tests/attestation/`, which pedant's `conflicting-module-root` rule rejects
+/// beside `attestation.rs`, and its advice — fold the root into
+/// `attestation/mod.rs` — does not apply to a cargo test root, since cargo
+/// builds a test executable per `tests/*.rs` and would stop building this one.
+/// A sibling directory satisfies both: cargo declares no target for it, because
+/// it holds no `main.rs`.
+#[path = "attestation_support/crate_fixture.rs"]
+mod crate_fixture;
+
+use crate_fixture::{CrateFixture, FILE_READ_LIB, PLAIN_MANIFEST, PROCESS_BUILD_SCRIPT, decoded};
 
 // --- Hash unit tests ---
 
@@ -101,6 +114,12 @@ fn test_attestation_cli_output_structure() {
             .chars()
             .all(|c| c.is_ascii_hexdigit())
     );
+    assert!(
+        attestation.profile.findings.is_empty(),
+        "`fn main() {{}}` exercises no capability: {:?}",
+        attestation.profile.findings
+    );
+    assert_no_symbol_fields(&output.stdout);
 }
 
 #[test]
@@ -147,7 +166,41 @@ fn test_capabilities_flag_unchanged() {
     let profile: CapabilityProfile = serde_json::from_slice(&output.stdout)
         .expect("--capabilities should output CapabilityProfile, not AttestationContent");
 
-    assert!(!profile.findings.is_empty());
+    let rendered: Vec<(pedant_types::Capability, &str, usize, usize)> = profile
+        .findings
+        .iter()
+        .map(|finding| {
+            (
+                finding.capability,
+                &*finding.evidence,
+                finding.location.line,
+                finding.location.column,
+            )
+        })
+        .collect();
+    assert_eq!(
+        rendered,
+        [(
+            pedant_types::Capability::Network,
+            "std::net::TcpStream",
+            1,
+            1
+        )],
+        "the capability CLI prints exactly the flat profile it always did"
+    );
+    assert_no_symbol_fields(&output.stdout);
+}
+
+/// The published capability wire shapes carry no lexical symbol data: symbol
+/// evidence is a library projection, not an operator or persisted surface.
+fn assert_no_symbol_fields(payload: &[u8]) {
+    let text = String::from_utf8_lossy(payload);
+    for field in ["\"symbols\"", "\"symbol_attribution\""] {
+        assert!(
+            !text.contains(field),
+            "output must not carry {field}: {text}"
+        );
+    }
 }
 
 #[test]
@@ -180,42 +233,11 @@ fn test_attestation_timestamp_reasonable() {
 
 #[test]
 fn test_attestation_includes_build_script() {
-    let dir = tempfile::tempdir().unwrap();
-    let root = dir.path();
+    let fixture = CrateFixture::new(PLAIN_MANIFEST);
+    fixture.write("src/lib.rs", FILE_READ_LIB);
+    fixture.write("build.rs", PROCESS_BUILD_SCRIPT);
 
-    fs::create_dir(root.join("src")).unwrap();
-    fs::write(
-        root.join("Cargo.toml"),
-        "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )
-    .unwrap();
-    fs::write(root.join("src/lib.rs"), "use std::fs::read_to_string;\n").unwrap();
-    fs::write(
-        root.join("build.rs"),
-        "use std::process::Command;\nfn main() { Command::new(\"cc\"); }\n",
-    )
-    .unwrap();
-
-    let lib_path = root.join("src/lib.rs");
-    let output = common::run_subcommand(
-        "attestation",
-        &[
-            lib_path.to_str().unwrap(),
-            "--crate-name",
-            "test",
-            "--crate-version",
-            "0.1.0",
-        ],
-        None,
-    );
-
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    let attestation: AttestationContent = serde_json::from_slice(&output.stdout).unwrap();
+    let attestation: AttestationContent = decoded(&fixture.attest("src/lib.rs"));
     let findings = &attestation.profile.findings;
 
     // lib.rs should produce FileRead with no execution context
@@ -236,41 +258,16 @@ fn test_attestation_includes_build_script() {
 
 #[test]
 fn test_attestation_custom_build_path() {
-    let dir = tempfile::tempdir().unwrap();
-    let root = dir.path();
-
-    fs::create_dir(root.join("src")).unwrap();
-    fs::write(
-        root.join("Cargo.toml"),
+    let fixture = CrateFixture::new(
         "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2024\"\nbuild = \"custom_build.rs\"\n",
-    ).unwrap();
-    fs::write(root.join("src/lib.rs"), "fn lib_fn() {}\n").unwrap();
-    fs::write(
-        root.join("custom_build.rs"),
+    );
+    fixture.write("src/lib.rs", "fn lib_fn() {}\n");
+    fixture.write(
+        "custom_build.rs",
         "use std::net::TcpStream;\nfn main() {}\n",
-    )
-    .unwrap();
-
-    let lib_path = root.join("src/lib.rs");
-    let output = common::run_subcommand(
-        "attestation",
-        &[
-            lib_path.to_str().unwrap(),
-            "--crate-name",
-            "test",
-            "--crate-version",
-            "0.1.0",
-        ],
-        None,
     );
 
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    let attestation: AttestationContent = serde_json::from_slice(&output.stdout).unwrap();
+    let attestation: AttestationContent = decoded(&fixture.attest("src/lib.rs"));
 
     assert!(
         attestation
@@ -285,34 +282,11 @@ fn test_attestation_custom_build_path() {
 
 #[test]
 fn test_attestation_no_build_script() {
-    let dir = tempfile::tempdir().unwrap();
-    let root = dir.path();
-
-    fs::create_dir(root.join("src")).unwrap();
-    fs::write(
-        root.join("Cargo.toml"),
-        "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )
-    .unwrap();
-    fs::write(root.join("src/lib.rs"), "use std::fs::read_to_string;\n").unwrap();
+    let fixture = CrateFixture::new(PLAIN_MANIFEST);
+    fixture.write("src/lib.rs", FILE_READ_LIB);
     // No build.rs
 
-    let lib_path = root.join("src/lib.rs");
-    let output = common::run_subcommand(
-        "attestation",
-        &[
-            lib_path.to_str().unwrap(),
-            "--crate-name",
-            "test",
-            "--crate-version",
-            "0.1.0",
-        ],
-        None,
-    );
-
-    assert!(output.status.success());
-
-    let attestation: AttestationContent = serde_json::from_slice(&output.stdout).unwrap();
+    let attestation: AttestationContent = decoded(&fixture.attest("src/lib.rs"));
 
     assert!(
         attestation
@@ -330,29 +304,12 @@ fn test_attestation_no_build_script() {
 
 #[test]
 fn test_single_file_mode_unchanged() {
-    let dir = tempfile::tempdir().unwrap();
-    let root = dir.path();
+    let fixture = CrateFixture::new(PLAIN_MANIFEST);
+    fixture.write("src/lib.rs", FILE_READ_LIB);
+    fixture.write("build.rs", PROCESS_BUILD_SCRIPT);
 
-    fs::create_dir(root.join("src")).unwrap();
-    fs::write(
-        root.join("Cargo.toml"),
-        "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )
-    .unwrap();
-    fs::write(root.join("src/lib.rs"), "use std::fs::read_to_string;\n").unwrap();
-    fs::write(
-        root.join("build.rs"),
-        "use std::process::Command;\nfn main() { Command::new(\"cc\"); }\n",
-    )
-    .unwrap();
-
-    let lib_path = root.join("src/lib.rs");
-    // Non-attestation mode: just run pedant on the file with --capabilities
-    let output = common::run_subcommand("capabilities", &[lib_path.to_str().unwrap()], None);
-
-    assert!(output.status.success());
-
-    let profile: CapabilityProfile = serde_json::from_slice(&output.stdout).unwrap();
+    // Non-attestation mode: just run pedant on the file with `capabilities`.
+    let profile: CapabilityProfile = decoded(&fixture.run("capabilities", "src/lib.rs"));
 
     // Should include build script findings (build scripts are always discovered)
     assert!(
@@ -371,30 +328,10 @@ fn test_single_file_mode_unchanged() {
 
 #[test]
 fn test_explicit_build_script_path_is_analyzed_as_build_hook() {
-    let dir = tempfile::tempdir().unwrap();
-    let root = dir.path();
+    let fixture = CrateFixture::new(PLAIN_MANIFEST);
+    fixture.write("build.rs", PROCESS_BUILD_SCRIPT);
 
-    fs::write(
-        root.join("Cargo.toml"),
-        "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )
-    .unwrap();
-    fs::write(
-        root.join("build.rs"),
-        "use std::process::Command;\nfn main() { Command::new(\"cc\"); }\n",
-    )
-    .unwrap();
-
-    let build_path = root.join("build.rs");
-    let output = common::run_subcommand("capabilities", &[build_path.to_str().unwrap()], None);
-
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    let profile: CapabilityProfile = serde_json::from_slice(&output.stdout).unwrap();
+    let profile: CapabilityProfile = decoded(&fixture.run("capabilities", "build.rs"));
     assert!(
         profile.findings.iter().any(|f| f.is_build_hook()),
         "expected build-hook findings, got: {:?}",
@@ -407,22 +344,15 @@ fn test_explicit_build_script_path_is_analyzed_as_build_hook() {
 #[cfg(feature = "semantic")]
 #[test]
 fn test_semantic_attestation_tier() {
-    let dir = tempfile::tempdir().unwrap();
-    let root = dir.path();
-
-    fs::create_dir(root.join("src")).unwrap();
-    fs::write(
-        root.join("Cargo.toml"),
+    let fixture = CrateFixture::new(
         "[package]\nname = \"tier-test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[workspace]\n",
-    )
-    .unwrap();
-    fs::write(root.join("src/lib.rs"), "pub fn f() {}\n").unwrap();
+    );
+    let lib_path = fixture.write("src/lib.rs", "pub fn f() {}\n");
 
-    let lib_path = root.join("src/lib.rs");
     let output = common::run_subcommand(
         "attestation",
         &[
-            lib_path.to_str().unwrap(),
+            lib_path.to_str().expect("a temporary path is valid UTF-8"),
             "--semantic",
             "--crate-name",
             "tier-test",
@@ -432,14 +362,7 @@ fn test_semantic_attestation_tier() {
         None,
     );
 
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    let attestation: AttestationContent =
-        serde_json::from_slice(&output.stdout).expect("should parse as AttestationContent");
+    let attestation: AttestationContent = decoded(&output);
 
     assert_eq!(
         attestation.analysis_tier,

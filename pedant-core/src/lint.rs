@@ -4,7 +4,7 @@ use std::path::{Component, Path, PathBuf};
 use pedant_types::{AnalysisTier, ExecutionContext};
 
 use crate::analysis_result::AnalysisResult;
-use crate::capabilities::detect_capabilities;
+use crate::capabilities::{draft_capabilities, project_analysis};
 use crate::check_config::CheckConfig;
 use crate::ir;
 use crate::ir::DataFlowFact;
@@ -141,16 +141,18 @@ fn analyze_inner(
     ir.source_line_count = source.lines().count();
     let violations = check_style(&ir, config).into_boxed_slice();
     let shape = project_shape(&ir, config);
-    let capabilities = detect_capabilities(&ir, execution_context);
+    let draft = draft_capabilities(&ir, execution_context);
 
     #[cfg(feature = "semantic")]
-    let capabilities = {
-        let mut caps = capabilities;
+    let draft = {
+        let mut draft = draft;
         if let Some(ctx) = semantic {
-            enrich_reachability(&mut caps.findings, ctx);
+            enrich_reachability(draft.entries_mut(), ctx);
         }
-        caps
+        draft
     };
+
+    let capabilities = project_analysis(&ir, draft);
 
     let fn_fingerprints = compute_fingerprints(&ir);
 
@@ -340,10 +342,13 @@ pub fn discover_build_script(crate_root: &Path) -> Result<Option<PathBuf>, LintE
     Ok(candidate.is_file().then_some(candidate))
 }
 
-/// Analyze a source file and optionally merge build-script capability findings.
+/// Analyze a source file and optionally merge build-script capability analysis.
 ///
 /// When `build_source` is `Some`, its findings are tagged with
-/// `ExecutionContext::BuildHook` and appended to the main result's capability profile.
+/// `ExecutionContext::BuildHook` and merged after the main source's, keeping
+/// main-source findings first and coalescing symbol identities the two sources
+/// share. Both inputs are parsed Rust, so the merged attribution stays
+/// `Complete`.
 pub fn analyze_with_build_script(
     file_path: &str,
     source: &str,
@@ -358,10 +363,7 @@ pub fn analyze_with_build_script(
     };
 
     let build_caps = analyze_build_script(build_path, build_src, config, semantic)?.capabilities;
-
-    let mut merged = result.capabilities.findings.into_vec();
-    merged.extend(build_caps.findings);
-    result.capabilities.findings = merged.into_boxed_slice();
+    result.capabilities = result.capabilities.merge(build_caps);
 
     Ok(result)
 }
@@ -389,15 +391,15 @@ pub fn determine_analysis_tier(
 /// based on whether the containing function is reachable from a public
 /// entry point via the call graph.
 #[cfg(feature = "semantic")]
-fn enrich_reachability(findings: &mut [pedant_types::CapabilityFinding], ctx: &SemanticContext) {
+fn enrich_reachability(entries: &mut [crate::capabilities::DraftedFinding], ctx: &SemanticContext) {
     use std::collections::BTreeMap;
     use std::sync::Arc;
 
     // Group finding indices by file so the call graph is built once per file.
     let mut by_file: BTreeMap<Arc<str>, Vec<usize>> = BTreeMap::new();
-    for (idx, finding) in findings.iter().enumerate() {
+    for (idx, entry) in entries.iter().enumerate() {
         by_file
-            .entry(Arc::clone(&finding.location.file))
+            .entry(Arc::clone(&entry.finding.location.file))
             .or_default()
             .push(idx);
     }
@@ -406,10 +408,13 @@ fn enrich_reachability(findings: &mut [pedant_types::CapabilityFinding], ctx: &S
         let Some(analysis) = ctx.analyze_file(file) else {
             continue;
         };
-        let lines: Vec<usize> = indices.iter().map(|&i| findings[i].location.line).collect();
+        let lines: Vec<usize> = indices
+            .iter()
+            .map(|&i| entries[i].finding.location.line)
+            .collect();
         let results = analysis.check_reachability_batch(&lines);
         for (pos, &idx) in indices.iter().enumerate() {
-            findings[idx].reachable = Some(results[pos]);
+            entries[idx].finding.reachable = Some(results[pos]);
         }
     }
 }

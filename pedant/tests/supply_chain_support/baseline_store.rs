@@ -46,11 +46,21 @@ impl BaselineStore {
 
     /// One written baseline, parsed.
     pub(crate) fn read(&self, name: &str, version: &str) -> AttestationContent {
+        let raw = self.raw(name, version);
+        serde_json::from_str(&raw).unwrap_or_else(|error| {
+            panic!(
+                "baseline {} should parse: {error}",
+                self.path_for(name, version).display()
+            )
+        })
+    }
+
+    /// One written baseline's exact bytes, for a claim about what the wire
+    /// shape does and does not carry.
+    pub(crate) fn raw(&self, name: &str, version: &str) -> String {
         let path = self.path_for(name, version);
-        let raw = fs::read_to_string(&path)
-            .unwrap_or_else(|error| panic!("no baseline at {}: {error}", path.display()));
-        serde_json::from_str(&raw)
-            .unwrap_or_else(|error| panic!("baseline {} should parse: {error}", path.display()))
+        fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("no baseline at {}: {error}", path.display()))
     }
 
     /// Every baseline file's exact bytes, so a failed command can be held to

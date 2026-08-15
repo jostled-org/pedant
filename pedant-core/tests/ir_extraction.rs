@@ -1,4 +1,19 @@
 #![cfg(feature = "checks")]
+
+/// One-parse, one-extraction observation of Rust symbol attribution. The probe
+/// exists only under the proof feature, so this module follows that gate.
+///
+/// The `#[path]` is required. Default resolution would place the file in
+/// `tests/ir_extraction/`, which pedant's `conflicting-module-root` rule rejects
+/// beside `ir_extraction.rs`, and its advice — fold the root into
+/// `ir_extraction/mod.rs` — does not apply to a cargo test root, since cargo
+/// builds a test executable per `tests/*.rs` and would stop building this one. A
+/// sibling directory satisfies both: cargo declares no target for it, because it
+/// holds no `main.rs`.
+#[cfg(feature = "resolution-test-support")]
+#[path = "ir_extraction_support/symbol_attribution.rs"]
+mod symbol_attribution;
+
 use pedant_core::capabilities::detect_capabilities;
 use pedant_core::check_config::{CheckConfig, NamingCheck, PatternCheck};
 use pedant_core::ir::extract::compute_fingerprints;
@@ -544,47 +559,42 @@ fn test_ir_capabilities_match_visitor() {
     let config = permissive_config();
 
     for (name, source) in fixtures {
-        let baseline = analyze(name, source, &config, None).unwrap();
-        let baseline_caps = baseline.capabilities.capabilities();
-
-        let syntax = syn::parse_file(source).unwrap();
-        let ir = extract(name, &syntax, None);
-        let ir_profile = detect_capabilities(&ir, None);
-        let ir_caps = ir_profile.capabilities();
-
-        assert_eq!(
-            &*baseline_caps, &*ir_caps,
-            "capability mismatch for fixture {name}: baseline={baseline_caps:?}, ir={ir_caps:?}"
-        );
-
-        // Verify same number of findings
-        assert_eq!(
-            baseline.capabilities.findings.len(),
-            ir_profile.findings.len(),
-            "finding count mismatch for fixture {name}"
-        );
-
-        // Verify evidence strings match (sorted for stable comparison)
-        let mut baseline_evidence: Vec<&str> = baseline
-            .capabilities
-            .findings
-            .iter()
-            .map(|f| f.evidence.as_ref())
-            .collect();
-        baseline_evidence.sort();
-
-        let mut ir_evidence: Vec<&str> = ir_profile
-            .findings
-            .iter()
-            .map(|f| f.evidence.as_ref())
-            .collect();
-        ir_evidence.sort();
-
-        assert_eq!(
-            baseline_evidence, ir_evidence,
-            "evidence mismatch for fixture {name}"
-        );
+        assert_ir_projection_matches_analyze(name, source, &config);
     }
+}
+
+/// One fixture's direct IR projection must equal what `analyze` reports: same
+/// capability set, same finding count, and the same evidence strings.
+fn assert_ir_projection_matches_analyze(name: &str, source: &str, config: &CheckConfig) {
+    let baseline = analyze(name, source, config, None).unwrap();
+    let baseline_caps = baseline.capabilities.capabilities();
+
+    let syntax = syn::parse_file(source).unwrap();
+    let ir = extract(name, &syntax, None);
+    let ir_profile = detect_capabilities(&ir, None);
+    let ir_caps = ir_profile.capabilities();
+
+    assert_eq!(
+        &*baseline_caps, &*ir_caps,
+        "capability mismatch for fixture {name}: baseline={baseline_caps:?}, ir={ir_caps:?}"
+    );
+    assert_eq!(
+        baseline.capabilities.profile.findings.len(),
+        ir_profile.profile.findings.len(),
+        "finding count mismatch for fixture {name}"
+    );
+    assert_eq!(
+        sorted_evidence(&baseline.capabilities.profile.findings),
+        sorted_evidence(&ir_profile.profile.findings),
+        "evidence mismatch for fixture {name}"
+    );
+}
+
+/// One profile's evidence strings, sorted for a stable comparison.
+fn sorted_evidence(findings: &[pedant_types::CapabilityFinding]) -> Vec<&str> {
+    let mut evidence: Vec<&str> = findings.iter().map(|f| f.evidence.as_ref()).collect();
+    evidence.sort();
+    evidence
 }
 
 // 2.T2: Network detection via IR
@@ -599,13 +609,14 @@ fn connect() {
 "#;
     let syntax = syn::parse_file(source).unwrap();
     let ir = extract("test.rs", &syntax, None);
-    let profile = detect_capabilities(&ir, None);
-    let caps = profile.capabilities();
+    let analysis = detect_capabilities(&ir, None);
+    let caps = analysis.capabilities();
 
     assert!(caps.contains(&Capability::Network));
 
     // Should have findings for both the use path and the URL string
-    let net_findings: Vec<_> = profile
+    let net_findings: Vec<_> = analysis
+        .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::Network)
@@ -629,12 +640,13 @@ fn uses_unsafe() {
 "#;
     let syntax = syn::parse_file(source).unwrap();
     let ir = extract("test.rs", &syntax, None);
-    let profile = detect_capabilities(&ir, None);
-    let caps = profile.capabilities();
+    let analysis = detect_capabilities(&ir, None);
+    let caps = analysis.capabilities();
 
     assert!(caps.contains(&Capability::UnsafeCode));
 
-    let evidence: Vec<&str> = profile
+    let evidence: Vec<&str> = analysis
+        .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::UnsafeCode)
@@ -956,147 +968,149 @@ fn test_ir_style_naming() {
     assert!(!naming.is_empty());
 }
 
+/// Every fixture the analyze-versus-direct-IR equivalence case walks.
+const EQUIVALENCE_FIXTURES: &[(&str, &str)] = &[
+    ("clean.rs", include_str!("fixtures/clean.rs")),
+    ("deep_nesting.rs", include_str!("fixtures/deep_nesting.rs")),
+    ("nested_if.rs", include_str!("fixtures/nested_if.rs")),
+    ("nested_match.rs", include_str!("fixtures/nested_match.rs")),
+    ("if_in_match.rs", include_str!("fixtures/if_in_match.rs")),
+    ("else_chain.rs", include_str!("fixtures/else_chain.rs")),
+    (
+        "clone_in_loop.rs",
+        include_str!("fixtures/clone_in_loop.rs"),
+    ),
+    ("dyn_return.rs", include_str!("fixtures/dyn_return.rs")),
+    ("dyn_param.rs", include_str!("fixtures/dyn_param.rs")),
+    ("dyn_field.rs", include_str!("fixtures/dyn_field.rs")),
+    ("vec_box_dyn.rs", include_str!("fixtures/vec_box_dyn.rs")),
+    (
+        "default_hasher.rs",
+        include_str!("fixtures/default_hasher.rs"),
+    ),
+    (
+        "let_underscore_result.rs",
+        include_str!("fixtures/let_underscore_result.rs"),
+    ),
+    ("inline_tests.rs", include_str!("fixtures/inline_tests.rs")),
+    (
+        "mixed_concerns.rs",
+        include_str!("fixtures/mixed_concerns.rs"),
+    ),
+    (
+        "mixed_concerns_clean.rs",
+        include_str!("fixtures/mixed_concerns_clean.rs"),
+    ),
+    (
+        "mixed_concerns_body.rs",
+        include_str!("fixtures/mixed_concerns_body.rs"),
+    ),
+    (
+        "generic_naming.rs",
+        include_str!("fixtures/generic_naming.rs"),
+    ),
+    (
+        "network_capability.rs",
+        include_str!("fixtures/network_capability.rs"),
+    ),
+    (
+        "filesystem_capability.rs",
+        include_str!("fixtures/filesystem_capability.rs"),
+    ),
+    (
+        "process_capability.rs",
+        include_str!("fixtures/process_capability.rs"),
+    ),
+    (
+        "env_capability.rs",
+        include_str!("fixtures/env_capability.rs"),
+    ),
+    (
+        "ffi_capability.rs",
+        include_str!("fixtures/ffi_capability.rs"),
+    ),
+    (
+        "crypto_capability.rs",
+        include_str!("fixtures/crypto_capability.rs"),
+    ),
+    (
+        "unsafe_capability.rs",
+        include_str!("fixtures/unsafe_capability.rs"),
+    ),
+    (
+        "endpoint_capability.rs",
+        include_str!("fixtures/endpoint_capability.rs"),
+    ),
+    (
+        "proc_macro_capability.rs",
+        include_str!("fixtures/proc_macro_capability.rs"),
+    ),
+    (
+        "system_time_capability.rs",
+        include_str!("fixtures/system_time_capability.rs"),
+    ),
+];
+
 // 4.T1: analyze() produces identical output to direct IR calls
 #[test]
 fn test_analyze_produces_identical_output() {
-    let fixtures: &[(&str, &str)] = &[
-        ("clean.rs", include_str!("fixtures/clean.rs")),
-        ("deep_nesting.rs", include_str!("fixtures/deep_nesting.rs")),
-        ("nested_if.rs", include_str!("fixtures/nested_if.rs")),
-        ("nested_match.rs", include_str!("fixtures/nested_match.rs")),
-        ("if_in_match.rs", include_str!("fixtures/if_in_match.rs")),
-        ("else_chain.rs", include_str!("fixtures/else_chain.rs")),
-        (
-            "clone_in_loop.rs",
-            include_str!("fixtures/clone_in_loop.rs"),
-        ),
-        ("dyn_return.rs", include_str!("fixtures/dyn_return.rs")),
-        ("dyn_param.rs", include_str!("fixtures/dyn_param.rs")),
-        ("dyn_field.rs", include_str!("fixtures/dyn_field.rs")),
-        ("vec_box_dyn.rs", include_str!("fixtures/vec_box_dyn.rs")),
-        (
-            "default_hasher.rs",
-            include_str!("fixtures/default_hasher.rs"),
-        ),
-        (
-            "let_underscore_result.rs",
-            include_str!("fixtures/let_underscore_result.rs"),
-        ),
-        ("inline_tests.rs", include_str!("fixtures/inline_tests.rs")),
-        (
-            "mixed_concerns.rs",
-            include_str!("fixtures/mixed_concerns.rs"),
-        ),
-        (
-            "mixed_concerns_clean.rs",
-            include_str!("fixtures/mixed_concerns_clean.rs"),
-        ),
-        (
-            "mixed_concerns_body.rs",
-            include_str!("fixtures/mixed_concerns_body.rs"),
-        ),
-        (
-            "generic_naming.rs",
-            include_str!("fixtures/generic_naming.rs"),
-        ),
-        (
-            "network_capability.rs",
-            include_str!("fixtures/network_capability.rs"),
-        ),
-        (
-            "filesystem_capability.rs",
-            include_str!("fixtures/filesystem_capability.rs"),
-        ),
-        (
-            "process_capability.rs",
-            include_str!("fixtures/process_capability.rs"),
-        ),
-        (
-            "env_capability.rs",
-            include_str!("fixtures/env_capability.rs"),
-        ),
-        (
-            "ffi_capability.rs",
-            include_str!("fixtures/ffi_capability.rs"),
-        ),
-        (
-            "crypto_capability.rs",
-            include_str!("fixtures/crypto_capability.rs"),
-        ),
-        (
-            "unsafe_capability.rs",
-            include_str!("fixtures/unsafe_capability.rs"),
-        ),
-        (
-            "endpoint_capability.rs",
-            include_str!("fixtures/endpoint_capability.rs"),
-        ),
-        (
-            "proc_macro_capability.rs",
-            include_str!("fixtures/proc_macro_capability.rs"),
-        ),
-        (
-            "system_time_capability.rs",
-            include_str!("fixtures/system_time_capability.rs"),
-        ),
-    ];
-
     let config = CheckConfig::default();
 
-    for (name, source) in fixtures {
-        // Run through analyze() — the public entry point
-        let result = analyze(name, source, &config, None).unwrap_or_else(|e| {
-            panic!("analyze failed for {name}: {e}");
-        });
+    for (name, source) in EQUIVALENCE_FIXTURES {
+        assert_analyze_matches_direct_ir(name, source, &config);
+    }
+}
 
-        // Run through direct IR path for comparison
-        let ir = parse_and_extract(source);
-        let direct_violations = check_style(&ir, &config);
-        let direct_capabilities = detect_capabilities(&ir, None);
+/// `analyze` and the direct IR path must agree on one fixture, violation for
+/// violation and finding for finding.
+fn assert_analyze_matches_direct_ir(name: &str, source: &str, config: &CheckConfig) {
+    // Run through analyze() — the public entry point
+    let result = analyze(name, source, config, None).unwrap_or_else(|e| {
+        panic!("analyze failed for {name}: {e}");
+    });
 
-        // Violation counts must match exactly
+    // Run through direct IR path for comparison
+    let ir = parse_and_extract(source);
+    let direct_violations = check_style(&ir, config);
+    let direct_capabilities = detect_capabilities(&ir, None);
+
+    assert_eq!(
+        result.violations.len(),
+        direct_violations.len(),
+        "{name}: violation count mismatch (analyze={}, direct={})",
+        result.violations.len(),
+        direct_violations.len()
+    );
+    for (i, (a, d)) in result
+        .violations
+        .iter()
+        .zip(direct_violations.iter())
+        .enumerate()
+    {
         assert_eq!(
-            result.violations.len(),
-            direct_violations.len(),
-            "{name}: violation count mismatch (analyze={}, direct={})",
-            result.violations.len(),
-            direct_violations.len()
+            a.violation_type, d.violation_type,
+            "{name}: violation[{i}] type mismatch"
         );
+        assert_eq!(a.line, d.line, "{name}: violation[{i}] line mismatch");
+    }
 
-        // Violation types must match in order
-        for (i, (a, d)) in result
-            .violations
-            .iter()
-            .zip(direct_violations.iter())
-            .enumerate()
-        {
-            assert_eq!(
-                a.violation_type, d.violation_type,
-                "{name}: violation[{i}] type mismatch"
-            );
-            assert_eq!(a.line, d.line, "{name}: violation[{i}] line mismatch");
-        }
-
-        // Capability finding counts must match
+    assert_eq!(
+        result.capabilities.profile.findings.len(),
+        direct_capabilities.profile.findings.len(),
+        "{name}: capability count mismatch"
+    );
+    for (i, (a, d)) in result
+        .capabilities
+        .profile
+        .findings
+        .iter()
+        .zip(direct_capabilities.profile.findings.iter())
+        .enumerate()
+    {
         assert_eq!(
-            result.capabilities.findings.len(),
-            direct_capabilities.findings.len(),
-            "{name}: capability count mismatch"
+            a.capability, d.capability,
+            "{name}: capability[{i}] mismatch"
         );
-
-        // Capability findings must match in order
-        for (i, (a, d)) in result
-            .capabilities
-            .findings
-            .iter()
-            .zip(direct_capabilities.findings.iter())
-            .enumerate()
-        {
-            assert_eq!(
-                a.capability, d.capability,
-                "{name}: capability[{i}] mismatch"
-            );
-        }
     }
 }
 
@@ -1135,7 +1149,7 @@ fn test_analyze_single_parse() {
         "expected style violations from deep nesting"
     );
     assert!(
-        !result.capabilities.findings.is_empty(),
+        !result.capabilities.profile.findings.is_empty(),
         "expected capability findings from unsafe/network"
     );
 }

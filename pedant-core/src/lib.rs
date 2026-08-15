@@ -23,13 +23,20 @@
 //! ```
 //! use pedant_core::capabilities::detect_capabilities;
 //! use pedant_core::ir::extract;
-//! use pedant_types::Capability;
+//! use pedant_types::{Capability, CapabilitySymbolKind, SymbolAttributionStatus};
 //!
-//! let syntax = syn::parse_file("use std::fs;").expect("source parses");
+//! let source = "fn load() {\n    use std::fs;\n}\n";
+//! let syntax = syn::parse_file(source).expect("source parses");
 //! let ir = extract("example.rs", &syntax, None);
-//! let profile = detect_capabilities(&ir, None);
+//! let analysis = detect_capabilities(&ir, None);
 //!
-//! assert_eq!(profile.findings[0].capability, Capability::FileRead);
+//! // The flat profile stays the persisted and policy authority.
+//! assert_eq!(analysis.profile.findings[0].capability, Capability::FileRead);
+//!
+//! // The symbol projection names the callable that contains the evidence.
+//! assert_eq!(analysis.symbol_attribution, SymbolAttributionStatus::Complete);
+//! assert_eq!(&*analysis.symbols[0].symbol.name, "load");
+//! assert_eq!(analysis.symbols[0].symbol.kind, CapabilitySymbolKind::Function);
 //! ```
 
 /// Violations + capabilities produced by a single analysis run.

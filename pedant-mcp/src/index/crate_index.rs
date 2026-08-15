@@ -6,7 +6,7 @@ use pedant_core::gate::{GateInputSummary, GateVerdict};
 use pedant_core::project::FileShape;
 use pedant_core::{AnalysisResult, Config, GateConfig, SemanticContext};
 use pedant_lang::FileClassification;
-use pedant_types::CapabilityProfile;
+use pedant_types::{CapabilityAnalysis, CapabilityProfile, SymbolAttributionStatus};
 use walkdir::WalkDir;
 
 use super::IndexError;
@@ -113,12 +113,15 @@ pub(super) fn recompute_aggregates(crate_index: &mut CrateIndex, gate_config: &G
 
 /// Collect all per-file capability findings into a single aggregated profile.
 fn aggregate_profile(files: &BTreeMap<Box<str>, AnalysisResult>) -> CapabilityProfile {
-    let findings_count: usize = files.values().map(|r| r.capabilities.findings.len()).sum();
+    let findings_count: usize = files
+        .values()
+        .map(|r| r.capabilities.profile.findings.len())
+        .sum();
     let mut all_findings = Vec::with_capacity(findings_count);
     all_findings.extend(
         files
             .values()
-            .flat_map(|r| r.capabilities.findings.iter().cloned()),
+            .flat_map(|r| r.capabilities.profile.findings.iter().cloned()),
     );
     CapabilityProfile {
         findings: all_findings.into(),
@@ -215,28 +218,52 @@ pub(super) fn analyze_non_rust_or_manifest(path: &Path) -> Result<AnalysisResult
     let manifest_profile = pedant_lang::analyze_manifest(path, &source);
 
     let mut findings = Vec::new();
+    let mut attribution = SymbolAttributionStatus::NotApplicable;
     if let Some(lp) = lang_profile {
         findings.extend(lp.findings.iter().cloned());
+        attribution = attribution.combine(SOURCE_ATTRIBUTION);
     }
     findings.extend(manifest_profile.findings.iter().cloned());
 
-    Ok(analysis_result_from_profile(CapabilityProfile {
-        findings: findings.into_boxed_slice(),
-    }))
+    Ok(analysis_result_from_profile(
+        CapabilityProfile {
+            findings: findings.into_boxed_slice(),
+        },
+        attribution,
+    ))
 }
 
 /// Analyze a manifest or hook-entrypoint file via `pedant-lang`.
 fn analyze_manifest_file(path: &Path) -> Result<AnalysisResult, IndexError> {
     let source = read_file(path)?;
     let profile = pedant_lang::analyze_manifest(path, &source);
-    Ok(analysis_result_from_profile(profile))
+    Ok(analysis_result_from_profile(
+        profile,
+        SymbolAttributionStatus::NotApplicable,
+    ))
 }
 
-/// Build an `AnalysisResult` from a `CapabilityProfile` with no violations or data flows.
-fn analysis_result_from_profile(profile: CapabilityProfile) -> AnalysisResult {
+/// What a `pedant-lang` source analysis claims about symbol attribution.
+///
+/// The language backends emit flat findings without a callable inventory, so
+/// they claim nothing rather than an empty successful one. A manifest carries
+/// [`SymbolAttributionStatus::NotApplicable`] instead: its format has no
+/// source-callable model at all.
+const SOURCE_ATTRIBUTION: SymbolAttributionStatus = SymbolAttributionStatus::Unavailable;
+
+/// Build an `AnalysisResult` from a flat profile, with no violations, no data
+/// flows, and no symbol projection.
+fn analysis_result_from_profile(
+    profile: CapabilityProfile,
+    symbol_attribution: SymbolAttributionStatus,
+) -> AnalysisResult {
     AnalysisResult {
         violations: Box::new([]),
-        capabilities: profile,
+        capabilities: CapabilityAnalysis {
+            profile,
+            symbol_attribution,
+            symbols: Box::new([]),
+        },
         data_flows: std::sync::Arc::from([]),
         fn_fingerprints: Box::new([]),
     }

@@ -99,6 +99,16 @@ pub(crate) fn test_gate_cli_json_format() {
         first.get("rationale").is_some(),
         "expected rationale field in verdict, got: {first:?}"
     );
+
+    // The gate receives the flat profile and applies no symbol policy, so no
+    // symbol field may reach its published JSON.
+    for field in ["\"symbols\"", "\"symbol_attribution\""] {
+        assert!(
+            !run.stdout.contains(field),
+            "gate JSON must not carry {field}:\n{}",
+            run.stdout
+        );
+    }
 }
 
 pub(crate) fn test_gate_cli_warn_only_exit_zero() {

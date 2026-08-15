@@ -12,7 +12,6 @@ use crate::pattern::{extract_attribute_text, extract_macro_text, extract_method_
 use crate::ir::facts::{
     AttributeFact, BranchContext, ControlFlowKind, ElseInfo, ExternBlockFact, MacroFact,
     MethodCallFact, ModuleFact, StringLitFact, TypeAliasFact, TypeDefKind, TypeRefContext,
-    UnsafeFact, UnsafeKind,
 };
 
 use super::super::extractor::IrExtractor;
@@ -27,6 +26,7 @@ use super::super::syn_helpers::{
     count_else_chain, is_cfg_test_attr, is_pure_forwarder, normalize_visibility, span_from,
 };
 use super::super::type_edges::{alias_edges, enum_edges, struct_edges, trait_edges, union_edges};
+use super::super::unsafe_sites::{record_unsafe_block, record_unsafe_fn, record_unsafe_impl};
 
 impl<'ast> Visit<'ast> for IrExtractor {
     fn visit_signature(&mut self, node: &'ast Signature) {
@@ -36,7 +36,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
     }
 
     fn visit_item_fn(&mut self, node: &'ast syn::ItemFn) {
-        self.record_unsafe_fn(&node.sig);
+        record_unsafe_fn(self, &node.sig);
         self.with_cfg_gates(&node.attrs, |this| {
             let entry = enter_function(this, &node.sig, None);
             let fn_index = this.visit_fn_body(&node.sig, &node.block, false, true, |inner| {
@@ -48,7 +48,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
     }
 
     fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
-        self.record_unsafe_fn(&node.sig);
+        record_unsafe_fn(self, &node.sig);
         self.with_cfg_gates(&node.attrs, |this| {
             let owner = current_self_type(this);
             let entry = enter_function(this, &node.sig, owner);
@@ -72,7 +72,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
             let entry = enter_function(this, &node.sig, owner);
             match &node.default {
                 Some(body) => {
-                    this.record_unsafe_fn(&node.sig);
+                    record_unsafe_fn(this, &node.sig);
                     this.visit_fn_body(&node.sig, body, true, false, |inner| {
                         syn::visit::visit_trait_item_fn(inner, node);
                     });
@@ -163,25 +163,12 @@ impl<'ast> Visit<'ast> for IrExtractor {
     }
 
     fn visit_expr_unsafe(&mut self, node: &'ast syn::ExprUnsafe) {
-        let start = node.unsafe_token.span.start();
-        self.unsafe_sites.push(UnsafeFact {
-            kind: UnsafeKind::Block,
-            span: span_from(start),
-            evidence: "unsafe block".into(),
-        });
+        record_unsafe_block(self, node.unsafe_token.span.start());
         syn::visit::visit_expr_unsafe(self, node);
     }
 
     fn visit_item_impl(&mut self, node: &'ast syn::ItemImpl) {
-        // Unsafe impl
-        if let Some(token) = node.unsafety {
-            let start = token.span.start();
-            self.unsafe_sites.push(UnsafeFact {
-                kind: UnsafeKind::Impl,
-                span: span_from(start),
-                evidence: "unsafe impl".into(),
-            });
-        }
+        record_unsafe_impl(self, node.unsafety);
 
         let span = span_from(get_type_span_start(&node.self_ty));
 
@@ -390,7 +377,12 @@ impl<'ast> Visit<'ast> for IrExtractor {
         let span = span_from(node.pound_token.spans[0].start());
         let name: Box<str> = last_seg.ident.to_string().into_boxed_str();
 
-        self.attributes.push(AttributeFact { text, span, name });
+        self.attributes.push(AttributeFact {
+            text,
+            span,
+            name,
+            containing_fn: self.fn_scope.current(),
+        });
 
         syn::visit::visit_attribute(self, node);
     }
@@ -466,6 +458,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
             self.string_literals.push(StringLitFact {
                 value,
                 span: span_from(lit_str.span().start()),
+                containing_fn: self.fn_scope.current(),
             });
         }
         syn::visit::visit_expr_lit(self, node);
@@ -475,6 +468,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
         let start = node.abi.extern_token.span.start();
         self.extern_blocks.push(ExternBlockFact {
             span: span_from(start),
+            containing_fn: self.fn_scope.current(),
         });
         syn::visit::visit_item_foreign_mod(self, node);
     }

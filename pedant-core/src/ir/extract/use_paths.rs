@@ -33,5 +33,6 @@ fn fact(site: &ReferenceSite) -> UsePathFact {
     UsePathFact {
         path: site.text.clone(),
         span: site.range.start,
+        containing_fn: site.containing_fn(),
     }
 }

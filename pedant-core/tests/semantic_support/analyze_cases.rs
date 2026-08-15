@@ -4,6 +4,7 @@
 use pedant_core::check_config::CheckConfig;
 use pedant_core::lint::{analyze, analyze_with_build_script};
 use pedant_core::violation::ViolationType;
+use pedant_types::SymbolAttributionStatus;
 
 use crate::fixtures::{
     clone_in_loop_config, dataflow_lib_path, dataflow_source, dataflow_workspace_root,
@@ -87,9 +88,9 @@ fn test_analyze_with_semantic_resolves_capability_alias() {
     let analysis = analyze(&file_path, &source, &config, Some(&semantic_ctx)).unwrap();
     // No network/filesystem capabilities in the fixture
     assert!(
-        analysis.capabilities.findings.is_empty(),
+        analysis.capabilities.profile.findings.is_empty(),
         "fixture should not trigger capability findings, got: {:?}",
-        analysis.capabilities.findings
+        analysis.capabilities.profile.findings
     );
 }
 
@@ -131,7 +132,7 @@ fn test_analyze_with_semantic_annotates_reachability() {
     let result = analyze(&file_path, &source, &config, Some(&ctx)).unwrap();
 
     // All findings should have reachable set (not None) when semantic is active.
-    for finding in result.capabilities.findings.iter() {
+    for finding in result.capabilities.profile.findings.iter() {
         assert!(
             finding.reachable.is_some(),
             "finding at line {} should have reachable annotated, got None",
@@ -143,6 +144,7 @@ fn test_analyze_with_semantic_annotates_reachability() {
     // Line 21: TcpStream::connect string literal "127.0.0.1:8080"
     let reachable_finding = result
         .capabilities
+        .profile
         .findings
         .iter()
         .find(|f| f.location.line == 21);
@@ -155,6 +157,7 @@ fn test_analyze_with_semantic_annotates_reachability() {
     // Line 26: TcpStream::connect string literal "127.0.0.1:8080"
     let unreachable_finding = result
         .capabilities
+        .profile
         .findings
         .iter()
         .find(|f| f.location.line == 26);
@@ -177,7 +180,7 @@ fn test_analyze_without_semantic_no_data_flows() {
         result.data_flows.is_empty(),
         "data_flows should be empty without semantic context"
     );
-    for finding in result.capabilities.findings.iter() {
+    for finding in result.capabilities.profile.findings.iter() {
         assert!(
             finding.reachable.is_none(),
             "reachable should be None without semantic, got {:?} at line {}",
@@ -187,6 +190,83 @@ fn test_analyze_without_semantic_no_data_flows() {
     }
 }
 
+/// 3.T8 (Invariant 12): a symbol profile carries the same reachability value as
+/// the flat finding it groups.
+#[test]
+fn rust_symbol_reachability_matches_flat_findings() {
+    let root = dataflow_workspace_root();
+    let ctx =
+        crate::fixtures::load_semantic_context(&root).expect("dataflow workspace should load");
+    let file_path = dataflow_lib_path();
+    let source = dataflow_source();
+
+    let analysis = analyze(&file_path, &source, &CheckConfig::default(), Some(&ctx))
+        .unwrap()
+        .capabilities;
+
+    assert_eq!(
+        analysis.symbol_attribution,
+        SymbolAttributionStatus::Complete
+    );
+    assert!(
+        !analysis.symbols.is_empty(),
+        "the fixture declares callables that own capability evidence"
+    );
+
+    for entry in analysis.symbols.iter() {
+        for finding in entry.profile.findings.iter() {
+            assert!(
+                finding.reachable.is_some(),
+                "{}: symbol findings carry reachability when semantic is active",
+                entry.symbol.name
+            );
+            assert!(
+                analysis.profile.findings.contains(finding),
+                "{} at line {} must equal a flat finding, reachability included",
+                entry.symbol.name,
+                finding.location.line
+            );
+        }
+    }
+
+    assert_reachability_of(&analysis, "reachable_network", Some(true));
+    assert_reachability_of(&analysis, "unreachable_private", Some(false));
+}
+
+/// Every finding the named callable owns must carry `expected` reachability.
+fn assert_reachability_of(
+    analysis: &pedant_types::CapabilityAnalysis,
+    name: &str,
+    expected: Option<bool>,
+) {
+    let entry = analysis
+        .symbols
+        .iter()
+        .find(|entry| &*entry.symbol.name == name)
+        .unwrap_or_else(|| panic!("`{name}` should own a symbol profile"));
+    assert!(
+        !entry.profile.findings.is_empty(),
+        "`{name}` owns at least one finding"
+    );
+    assert!(
+        entry
+            .profile
+            .findings
+            .iter()
+            .all(|finding| finding.reachable == expected),
+        "`{name}` findings should report reachable={expected:?}, got {:?}",
+        entry
+            .profile
+            .findings
+            .iter()
+            .map(|finding| finding.reachable)
+            .collect::<Vec<_>>()
+    );
+}
+
+/// 3.T9 (Invariants 12 and 20): merging a source and its build script keeps
+/// every flat and symbol occurrence, main-before-build order, exact symbol
+/// identity coalescing, hook context, and per-source reachability.
 #[test]
 fn test_analyze_with_build_script_preserves_semantic_reachability() {
     let root = dataflow_workspace_root();
@@ -196,27 +276,117 @@ fn test_analyze_with_build_script_preserves_semantic_reachability() {
     let source = dataflow_source();
     let config = CheckConfig::default();
 
-    let result = analyze_with_build_script(
+    let main_only = analyze(&file_path, &source, &config, Some(&ctx))
+        .unwrap()
+        .capabilities;
+    let merged = analyze_with_build_script(
         &file_path,
         &source,
         &config,
         Some(&ctx),
         Some((&file_path, &source)),
     )
-    .unwrap();
+    .unwrap()
+    .capabilities;
 
-    let build_findings: Vec<_> = result
-        .capabilities
-        .findings
-        .iter()
-        .filter(|finding| finding.is_build_hook())
-        .collect();
-
-    assert!(!build_findings.is_empty(), "expected build-script findings");
-    assert!(
-        build_findings
-            .iter()
-            .all(|finding| finding.reachable.is_some()),
-        "build findings should keep semantic reachability"
+    assert_eq!(
+        merged.symbol_attribution,
+        SymbolAttributionStatus::Complete,
+        "both merged inputs are parsed Rust"
     );
+
+    assert_flat_merge_is_main_then_build(&merged, &main_only);
+    assert_symbol_merge_coalesces_exactly(&merged, &main_only);
+}
+
+/// Flat findings are the main source's, then the build script's, with nothing
+/// deduplicated.
+fn assert_flat_merge_is_main_then_build(
+    merged: &pedant_types::CapabilityAnalysis,
+    main_only: &pedant_types::CapabilityAnalysis,
+) {
+    let main_count = main_only.profile.findings.len();
+    assert!(main_count > 0, "the fixture produces capability findings");
+    assert_eq!(
+        merged.profile.findings.len(),
+        main_count * 2,
+        "no occurrence is deduplicated"
+    );
+    assert_eq!(
+        &merged.profile.findings[..main_count],
+        &*main_only.profile.findings,
+        "main-source findings come first, unchanged"
+    );
+    assert_build_hook_echo(
+        &merged.profile.findings[main_count..],
+        &main_only.profile.findings,
+    );
+}
+
+/// The build script is the same source at the same path, so every symbol
+/// identity collides exactly and coalesces into the main operand's position.
+fn assert_symbol_merge_coalesces_exactly(
+    merged: &pedant_types::CapabilityAnalysis,
+    main_only: &pedant_types::CapabilityAnalysis,
+) {
+    let identities = |analysis: &pedant_types::CapabilityAnalysis| {
+        analysis
+            .symbols
+            .iter()
+            .map(|entry| entry.symbol.clone())
+            .collect::<Vec<_>>()
+    };
+    let main_identities = identities(main_only);
+    assert!(
+        !main_identities.is_empty(),
+        "the fixture attributes evidence"
+    );
+    assert_eq!(
+        identities(merged),
+        main_identities,
+        "an exact identity collision keeps the first profile's position"
+    );
+
+    for (merged_entry, main_entry) in merged.symbols.iter().zip(main_only.symbols.iter()) {
+        let owned = main_entry.profile.findings.len();
+        assert_eq!(
+            merged_entry.profile.findings.len(),
+            owned * 2,
+            "{} keeps both sources' occurrences",
+            merged_entry.symbol.name
+        );
+        assert_eq!(
+            &merged_entry.profile.findings[..owned],
+            &*main_entry.profile.findings,
+            "{} keeps its main-source findings first",
+            merged_entry.symbol.name
+        );
+        assert_build_hook_echo(
+            &merged_entry.profile.findings[owned..],
+            &main_entry.profile.findings,
+        );
+    }
+}
+
+/// `appended` must be `original` again, differing only by the build-hook
+/// execution context — so order, position, evidence, and reachability all hold.
+fn assert_build_hook_echo(
+    appended: &[pedant_types::CapabilityFinding],
+    original: &[pedant_types::CapabilityFinding],
+) {
+    assert_eq!(appended.len(), original.len());
+    for (built, main) in appended.iter().zip(original) {
+        assert!(
+            built.is_build_hook(),
+            "a build-script finding carries the build-hook context"
+        );
+        assert_eq!(built.capability, main.capability);
+        assert_eq!(built.location, main.location);
+        assert_eq!(built.evidence, main.evidence);
+        assert_eq!(built.origin, main.origin);
+        assert_eq!(
+            built.reachable, main.reachable,
+            "each source keeps the reachability computed for it before the merge"
+        );
+    }
 }

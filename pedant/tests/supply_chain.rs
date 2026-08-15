@@ -153,13 +153,46 @@ fn snapshot_capability_projection_reuses_stored_file_ir() {
         "the parent owns the receipt and removes it with the workspace"
     );
 
-    let completeness = fixture
-        .baselines()
-        .read("reused", "0.4.0")
+    assert_persisted_profile_is_flat_and_exact(fixture.baselines());
+}
+
+/// The attestation the projection wrote holds exactly the flat findings the
+/// stored `FileIr` projects, and its bytes carry no symbol field.
+#[cfg(feature = "resolution-test-support")]
+fn assert_persisted_profile_is_flat_and_exact(baselines: &baseline_store::BaselineStore) {
+    let attestation = baselines.read("reused", "0.4.0");
+    let completeness = attestation
         .analysis_completeness
         .expect("a snapshot-backed attestation records its completeness");
     assert_eq!(completeness.analyzed_files, 4);
     assert_eq!(completeness.skipped_files, 0);
+
+    let persisted: Vec<(Capability, &str, &str, usize)> = attestation
+        .profile
+        .findings
+        .iter()
+        .map(|finding| {
+            (
+                finding.capability,
+                &*finding.location.file,
+                &*finding.evidence,
+                finding.location.line,
+            )
+        })
+        .collect();
+    assert_eq!(
+        persisted,
+        [(Capability::FileRead, "./src/util.rs", "std::fs", 1)],
+        "the persisted flat profile is exactly what the stored IR projects"
+    );
+
+    let raw = baselines.raw("reused", "0.4.0");
+    for field in ["\"symbols\"", "\"symbol_attribution\""] {
+        assert!(
+            !raw.contains(field),
+            "an attestation stores only the flat profile, but its bytes hold {field}: {raw}"
+        );
+    }
 }
 
 /// Cargo-default Rust 2015 syntax remains analyzable through the spawned

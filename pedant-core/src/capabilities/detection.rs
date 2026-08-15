@@ -1,25 +1,33 @@
 use std::sync::Arc;
 
 use pedant_types::{
-    Capability, CapabilityFinding, CapabilityProfile, ExecutionContext, FindingOrigin,
+    Capability, CapabilityAnalysis, CapabilityFinding, ExecutionContext, FindingOrigin,
     SourceLocation,
 };
 
+use super::attribution::{CapabilityDraft, CapabilitySourceFact, project_analysis};
 use super::paths::resolve_capabilities;
 use super::strings::{KEY_MATERIAL_CHECKS, STRING_LITERAL_CHECKS, truncate_evidence};
 use crate::ir::FileIr;
 use crate::observe::{self, Observation};
 
 struct FindingEmitter<'a> {
-    findings: &'a mut Vec<CapabilityFinding>,
+    draft: &'a mut CapabilityDraft,
     file: &'a Arc<str>,
     origin: FindingOrigin,
     execution_context: Option<ExecutionContext>,
 }
 
 impl FindingEmitter<'_> {
-    fn emit(&mut self, capability: Capability, line: usize, column: usize, evidence: &str) {
-        self.findings.push(CapabilityFinding {
+    fn emit(
+        &mut self,
+        capability: Capability,
+        line: usize,
+        column: usize,
+        evidence: &str,
+        containing_fn: Option<usize>,
+    ) {
+        let finding = CapabilityFinding {
             capability,
             location: SourceLocation {
                 file: Arc::clone(self.file),
@@ -31,53 +39,70 @@ impl FindingEmitter<'_> {
             language: None,
             execution_context: self.execution_context,
             reachable: None,
-        });
+        };
+        self.draft.push(finding, containing_fn);
     }
 
-    fn emit_from_facts<'a, T: 'a>(
+    fn emit_from_facts<'a, T: CapabilitySourceFact + 'a>(
         &mut self,
         facts: &'a [T],
         mut mapper: impl FnMut(&'a T) -> Option<(Capability, usize, usize, &'a str)>,
     ) {
         for fact in facts {
             if let Some((capability, line, column, evidence)) = mapper(fact) {
-                self.emit(capability, line, column, evidence);
+                self.emit(capability, line, column, evidence, fact.containing_fn());
             }
         }
     }
 }
 
-/// Scan all IR facts for capability usage and produce a profile.
+/// Scan all IR facts for capability usage and produce a complete analysis.
 ///
 /// When `execution_context` is present, every finding is tagged with that
 /// context, such as [`ExecutionContext::BuildHook`] for `build.rs`.
+///
+/// The reported symbol attribution is
+/// [`Complete`](pedant_types::SymbolAttributionStatus::Complete) relative to the
+/// callable inventory of the supplied `ir`. `FileIr` is a public fact bag, so
+/// this entry point proves classification against what the caller handed it,
+/// not the provenance or freshness of that parse.
 pub fn detect_capabilities(
     ir: &FileIr,
     execution_context: Option<ExecutionContext>,
-) -> CapabilityProfile {
+) -> CapabilityAnalysis {
+    project_analysis(ir, draft_capabilities(ir, execution_context))
+}
+
+/// Detect every capability finding, each paired with its callable owner.
+///
+/// Between this and [`project_analysis`] a caller may annotate the drafted
+/// findings — semantic reachability is the one such pass — so that the flat and
+/// symbol projections are sealed from the same settled values.
+pub(crate) fn draft_capabilities(
+    ir: &FileIr,
+    execution_context: Option<ExecutionContext>,
+) -> CapabilityDraft {
     let file_path = &ir.file_path;
     observe::record(Observation::CapabilityProjection(file_path));
-    let mut findings = Vec::new();
+    let mut draft = CapabilityDraft::default();
 
-    detect_use_paths(ir, file_path, execution_context, &mut findings);
-    detect_unsafe_sites(ir, file_path, execution_context, &mut findings);
-    detect_extern_blocks(ir, file_path, execution_context, &mut findings);
-    detect_attributes(ir, file_path, execution_context, &mut findings);
-    detect_string_literals(ir, file_path, execution_context, &mut findings);
+    detect_use_paths(ir, file_path, execution_context, &mut draft);
+    detect_unsafe_sites(ir, file_path, execution_context, &mut draft);
+    detect_extern_blocks(ir, file_path, execution_context, &mut draft);
+    detect_attributes(ir, file_path, execution_context, &mut draft);
+    detect_string_literals(ir, file_path, execution_context, &mut draft);
 
-    CapabilityProfile {
-        findings: findings.into_boxed_slice(),
-    }
+    draft
 }
 
 fn detect_use_paths(
     ir: &FileIr,
     file_path: &Arc<str>,
     execution_context: Option<ExecutionContext>,
-    findings: &mut Vec<CapabilityFinding>,
+    draft: &mut CapabilityDraft,
 ) {
     let mut emitter = FindingEmitter {
-        findings,
+        draft,
         file: file_path,
         origin: FindingOrigin::Import,
         execution_context,
@@ -98,10 +123,10 @@ fn detect_unsafe_sites(
     ir: &FileIr,
     file_path: &Arc<str>,
     execution_context: Option<ExecutionContext>,
-    findings: &mut Vec<CapabilityFinding>,
+    draft: &mut CapabilityDraft,
 ) {
     let mut emitter = FindingEmitter {
-        findings,
+        draft,
         file: file_path,
         origin: FindingOrigin::CodeSite,
         execution_context,
@@ -120,10 +145,10 @@ fn detect_extern_blocks(
     ir: &FileIr,
     file_path: &Arc<str>,
     execution_context: Option<ExecutionContext>,
-    findings: &mut Vec<CapabilityFinding>,
+    draft: &mut CapabilityDraft,
 ) {
     let mut emitter = FindingEmitter {
-        findings,
+        draft,
         file: file_path,
         origin: FindingOrigin::CodeSite,
         execution_context,
@@ -142,10 +167,10 @@ fn detect_attributes(
     ir: &FileIr,
     file_path: &Arc<str>,
     execution_context: Option<ExecutionContext>,
-    findings: &mut Vec<CapabilityFinding>,
+    draft: &mut CapabilityDraft,
 ) {
     let mut emitter = FindingEmitter {
-        findings,
+        draft,
         file: file_path,
         origin: FindingOrigin::Attribute,
         execution_context,
@@ -171,10 +196,10 @@ fn detect_string_literals(
     ir: &FileIr,
     file_path: &Arc<str>,
     execution_context: Option<ExecutionContext>,
-    findings: &mut Vec<CapabilityFinding>,
+    draft: &mut CapabilityDraft,
 ) {
     let mut emitter = FindingEmitter {
-        findings,
+        draft,
         file: file_path,
         origin: FindingOrigin::StringLiteral,
         execution_context,
@@ -182,19 +207,20 @@ fn detect_string_literals(
     for literal in &ir.string_literals {
         let line = literal.span.line;
         let column = literal.span.column;
+        let owner = literal.containing_fn();
 
         if let Some(&(_, capability)) = STRING_LITERAL_CHECKS
             .iter()
             .find(|&&(checker, _)| checker(&literal.value))
         {
-            emitter.emit(capability, line, column, &literal.value);
+            emitter.emit(capability, line, column, &literal.value, owner);
         }
         if KEY_MATERIAL_CHECKS
             .iter()
             .any(|check| check(&literal.value))
         {
             let evidence = truncate_evidence(&literal.value);
-            emitter.emit(Capability::Crypto, line, column, &evidence);
+            emitter.emit(Capability::Crypto, line, column, &evidence, owner);
         }
     }
 }

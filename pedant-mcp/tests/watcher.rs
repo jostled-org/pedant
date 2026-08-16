@@ -8,6 +8,8 @@
 //! Observations therefore return `Result` and are asserted after teardown.
 
 use std::fs;
+use std::io::Write;
+use std::path::Path;
 use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
@@ -46,9 +48,42 @@ use writable_fixture::copy_fixture_to_temp;
 /// watcher never saw.
 const WATCH_ESTABLISH: Duration = Duration::from_millis(200);
 
-/// Drive one create-then-remove cycle inside the root package while the
+/// The added root-package source, whose network capability must reach the
+/// crate profile.
+const ADDED_SOURCE: &str = "use std::net::TcpStream;\npub fn dial() -> std::io::Result<TcpStream> { TcpStream::connect(\"127.0.0.1:0\") }\n";
+
+/// The edited root-package source, whose process capability must reach the
+/// crate profile after the file is already indexed and watched.
+const EDITED_SOURCE: &str = "use std::fs;\nuse std::process::Command;\npub fn read_it() -> std::io::Result<String> { fs::read_to_string(\"x\") }\npub fn run_it() -> Command { Command::new(\"ls\") }\n";
+
+/// The unparsable source [`break_source`] leaves behind.
+const BROKEN_SOURCE: &str = "pub fn broken( {\n";
+
+/// Place `contents` at `target` in one rename from outside the watched tree.
+///
+/// A file created empty and filled afterwards is not observable: the kqueue
+/// backend learns a new file only from its parent directory's write event and
+/// registers the file's own watch after the drain loop that reported it, so a
+/// fill landing in that window raises no event at all. A rename carries the
+/// final bytes into the directory, so the one create event the watcher sees is
+/// already complete.
+fn place_source(staging: &Path, target: &Path, contents: &str) -> Result<(), Box<str>> {
+    let shown = target.display();
+    fs::write(staging, contents)
+        .map_err(|source| Box::<str>::from(format!("failed to stage {shown}: {source}")))?;
+    fs::rename(staging, target)
+        .map_err(|source| Box::<str>::from(format!("failed to place {shown}: {source}")))
+}
+
+/// Drive one create-edit-remove cycle inside the root package while the
 /// watcher is live. Every step returns `Result` so teardown runs before the
 /// caller asserts.
+///
+/// The edit lands on `src/lib.rs`, which the watcher has held since it started,
+/// so its event cannot be lost to the new-file registration window described on
+/// [`place_source`]. Observing that edit also proves the backend finished the
+/// drain that reported the added file, which is the drain that registers it, so
+/// the removal below is seen too.
 fn observe_reindex_and_removal<W>(guard: &WatcherGuard<W>) -> Result<(), Box<str>> {
     guard.wait_for("the root package is indexed", |index| {
         index.crate_profile("root-app").is_some()
@@ -56,22 +91,25 @@ fn observe_reindex_and_removal<W>(guard: &WatcherGuard<W>) -> Result<(), Box<str
 
     let extra = guard.root().join("src/extra.rs");
     let key = extra.to_string_lossy().into_owned();
-    fs::write(&extra, "")
-        .map_err(|source| Box::<str>::from(format!("failed to create {key}: {source}")))?;
+    place_source(&guard.root().join("extra.staged"), &extra, ADDED_SOURCE)?;
 
-    guard.wait_for("the empty root-package source is indexed", |index| {
+    guard.wait_for("the added root-package source is indexed", |index| {
         index.file_result(&key).is_some()
     })?;
-
-    fs::write(
-        &extra,
-        "use std::net::TcpStream;\npub fn dial() -> std::io::Result<TcpStream> { TcpStream::connect(\"127.0.0.1:0\") }\n",
-    )
-    .map_err(|source| Box::<str>::from(format!("failed to fill {key}: {source}")))?;
     guard.wait_for("the added source reaches the crate profile", |index| {
         index
             .crate_profile("root-app")
             .is_some_and(|profile| profile.capabilities().contains(&Capability::Network))
+    })?;
+
+    let lib = guard.root().join("src/lib.rs");
+    fs::write(&lib, EDITED_SOURCE).map_err(|source| {
+        Box::<str>::from(format!("failed to edit {}: {source}", lib.display()))
+    })?;
+    guard.wait_for("the edited source reaches the crate profile", |index| {
+        index
+            .crate_profile("root-app")
+            .is_some_and(|profile| profile.capabilities().contains(&Capability::ProcessExec))
     })?;
 
     fs::remove_file(&extra)
@@ -81,15 +119,35 @@ fn observe_reindex_and_removal<W>(guard: &WatcherGuard<W>) -> Result<(), Box<str
     })
 }
 
+/// Make one indexed source unparsable without ever emptying it.
+///
+/// `fs::write` truncates before it writes, and an empty file is valid Rust: a
+/// reindex that lands in that window records an empty profile as the crate's
+/// last good result, which is exactly the result this case then asserts on.
+/// Overwriting in place and shortening afterwards leaves two observable states,
+/// the broken prefix over the old tail and the broken prefix alone, and the
+/// unclosed `(` and `{` keep both of them unparsable.
+fn break_source(path: &Path) -> Result<(), Box<str>> {
+    let shown = path.display();
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .open(path)
+        .map_err(|source| Box::<str>::from(format!("failed to open {shown}: {source}")))?;
+    file.write_all(BROKEN_SOURCE.as_bytes())
+        .map_err(|source| Box::<str>::from(format!("failed to break {shown}: {source}")))?;
+    let length = u64::try_from(BROKEN_SOURCE.len())
+        .map_err(|source| Box::<str>::from(format!("broken source length: {source}")))?;
+    file.set_len(length)
+        .map_err(|source| Box::<str>::from(format!("failed to shorten {shown}: {source}")))
+}
+
 /// Break one source and watch the index mark it degraded while keeping what the
 /// last good analysis of the crate reported.
 fn observe_degraded_file<W>(guard: &WatcherGuard<W>) -> Result<(), Box<str>> {
     thread::sleep(WATCH_ESTABLISH);
 
     let other_rs = guard.root().join("lib-a/src/other.rs");
-    fs::write(&other_rs, "pub fn broken( {\n").map_err(|source| {
-        Box::<str>::from(format!("failed to break {}: {source}", other_rs.display()))
-    })?;
+    break_source(&other_rs)?;
 
     guard.wait_for("the unparsable file is reported degraded", |index| {
         index

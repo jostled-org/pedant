@@ -86,6 +86,29 @@ fn run_git(root: &Path, arguments: &[&str]) {
     );
 }
 
+/// Every shell script this repository tracks, in Git's own order.
+///
+/// Git is asked rather than the filesystem walked, because `tracked` is the
+/// whole claim: `docs/` holds ignored lifecycle adapters that this repository
+/// does not own and must not lint, and a filesystem walk would sweep them in.
+pub(crate) fn tracked_shell_scripts() -> Box<[Box<str>]> {
+    let output = Command::new("git")
+        .args(["ls-files", "-z", "--", "*.sh"])
+        .current_dir(repository_root())
+        .output()
+        .expect("git is available");
+    assert!(
+        output.status.success(),
+        "git ls-files failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout)
+        .split('\0')
+        .filter(|path| !path.is_empty())
+        .map(Box::from)
+        .collect()
+}
+
 fn commit_all(root: &Path, message: &str) {
     run_git(root, &["add", "."]);
     run_git(root, &["commit", "-m", message]);

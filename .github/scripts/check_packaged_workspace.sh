@@ -547,12 +547,29 @@ generate_archive_workspace() {
 # A wider one hides a package that no longer needs patching; a narrower one
 # lets a first-party edge fall through to crates.io, which is the exact failure
 # this proof exists to catch.
+#
+# The required set is read back out of the metadata Cargo produced for the
+# generated workspace, not out of the variable that wrote the manifest. A check
+# that compared this manifest against its own input would agree with itself
+# however wrong both of them were.
 assert_patch_set_is_exact() {
-    local written
+    local required written
+    required="$(jq -r --argjson names "${release_order_json}" \
+        'def first_party: . as $candidate | ($names | index($candidate)) != null;
+         [.packages[]
+          | select(.name | first_party)
+          | .dependencies[]
+          | select(.name | first_party)
+          | .name] as $inbound
+         | $names
+         | map(select(. as $name | ($inbound | index($name)) != null))
+         | .[]' \
+        "${archive_metadata}")" \
+        || fail "the packaged metadata could not be read for its inbound edges."
     written="$(rg -N -o -r '${1}' '^([a-zA-Z0-9_-]+) = \{ path = ' \
         "${workspace_root}/Cargo.toml" || true)"
-    test "${written}" = "${inbound_packages}" \
-        || fail "the generated workspace patches [${written}] rather than the inbound edge set [${inbound_packages}]."
+    test "${written}" = "${required}" \
+        || fail "the generated workspace patches [${written}] rather than the inbound edge set [${required}]."
 }
 
 # A patch Cargo never consulted means the requirement it was meant to redirect

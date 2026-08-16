@@ -5,7 +5,9 @@
 //! 500-line boundary, not a second owner: nothing here is reachable from any
 //! other predicate.
 
-use crate::release_workflow::{function_body, offset_of, read_repository_file};
+use crate::release_workflow::{
+    function_body, offset_of, read_repository_file, tracked_shell_scripts,
+};
 
 /// Read the tracked proof once and require every part of it.
 pub(crate) fn assert_release_graph_is_exact() {
@@ -367,6 +369,10 @@ fn assert_archive_packaging(joined: &str) {
 
 /// The generated workspace holds the extracted archives and patches exactly the
 /// packages with an inbound first-party edge.
+///
+/// Exactly is checked against the metadata Cargo produced, not against the value
+/// that wrote the manifest. Those two are the same number by construction, and a
+/// check that compared them would pass whatever the patch set was.
 fn assert_generated_workspace(joined: &str) {
     let body = function_body(joined, "generate_archive_workspace");
     assert!(
@@ -381,10 +387,27 @@ fn assert_generated_workspace(joined: &str) {
         joined.contains("[patch.crates-io]"),
         "the generated workspace patches crates.io"
     );
+    let exactness = function_body(joined, "assert_patch_set_is_exact");
     assert!(
-        joined.contains("assert_patch_set_is_exact"),
-        "the patch set is required to be exactly the inbound edge set"
+        exactness.contains("${archive_metadata}"),
+        "the required patch set is read from the packaged metadata"
     );
+    assert!(
+        !exactness.contains("${inbound_packages}"),
+        "a patch-set check that reads the value that wrote the manifest \
+         compares that manifest against itself"
+    );
+    let verification = function_body(joined, "verify_packaged_graph");
+    for check in [
+        "assert_no_unused_patch",
+        "assert_patch_set_is_exact",
+        "assert_packaged_graph_shape",
+    ] {
+        assert!(
+            verification.contains(check),
+            "the packaged graph is not proved by [{check}]"
+        );
+    }
 }
 
 /// The packaged graph is locked, read, refused for every wrong shape, and only
@@ -483,9 +506,37 @@ fn assert_package_script_ownership(source: &str, joined: &str) {
         function_body(joined, "interrupted").contains("exit \"$((128 + $1))\""),
         "a signalled proof leaves with its signal status"
     );
+    assert_shellcheck_covers_every_tracked_script();
+}
+
+/// The pinned ShellCheck run lints every tracked shell script, each once.
+///
+/// Step 5 added a shell surface outside `.github/scripts` for the first time —
+/// the three fake tools a lifecycle row installs on `PATH` — and a fault
+/// injector nobody lints is a fault injector nobody can trust. Requiring the
+/// subject list to equal the tracked inventory keeps that true for the next
+/// script too, rather than for these three.
+fn assert_shellcheck_covers_every_tracked_script() {
     let wrapper = read_repository_file(".github/scripts/run_shellcheck.sh");
+    let subjects: Box<[Box<str>]> = wrapper
+        .lines()
+        .map(|line| line.trim().trim_end_matches('\\').trim())
+        .filter(|token| token.ends_with(".sh"))
+        .map(Box::from)
+        .collect();
+    let mut sorted = subjects.clone();
+    sorted.sort();
+    let mut tracked = tracked_shell_scripts();
+    tracked.sort();
     assert_eq!(
-        wrapper.matches(PACKAGED_WORKSPACE_SCRIPT).count(),
+        sorted, tracked,
+        "the pinned ShellCheck run must lint exactly the tracked shell scripts"
+    );
+    assert_eq!(
+        subjects
+            .iter()
+            .filter(|subject| subject.as_ref() == PACKAGED_WORKSPACE_SCRIPT)
+            .count(),
         1,
         "the packaged-workspace proof is a ShellCheck subject exactly once"
     );

@@ -156,6 +156,19 @@ fn commit_base(repository: &Path) -> Box<str> {
     git(repository, &["rev-parse", "HEAD"]).stdout.trim().into()
 }
 
+/// The repository root as Git reports it, which is what the proof calls the
+/// original checkout.
+///
+/// Asked rather than assumed: on this platform the temporary directory sits
+/// under a symlink, so the path a row built and the path the proof refuses a
+/// member for resolving through are spelled differently.
+pub(super) fn original_checkout(repository: &Path) -> Box<str> {
+    git(repository, &["rev-parse", "--show-toplevel"])
+        .stdout
+        .trim()
+        .into()
+}
+
 /// The uncommitted change and untracked file the overlay must carry.
 fn apply_final_tree_edit(repository: &Path) {
     write(

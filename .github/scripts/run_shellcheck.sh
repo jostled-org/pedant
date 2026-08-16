@@ -26,4 +26,7 @@ exec shellcheck -x \
     .github/scripts/check_resolution_dependency_closure.sh \
     .github/scripts/check_syntax_capabilities.sh \
     .github/scripts/check_syntax_dependency_closure.sh \
-    .github/scripts/run_shellcheck.sh
+    .github/scripts/run_shellcheck.sh \
+    pedant/tests/supply_chain_support/packaged_workspace_support/cargo-semver-checks.sh \
+    pedant/tests/supply_chain_support/packaged_workspace_support/cargo.sh \
+    pedant/tests/supply_chain_support/packaged_workspace_support/release-plz.sh

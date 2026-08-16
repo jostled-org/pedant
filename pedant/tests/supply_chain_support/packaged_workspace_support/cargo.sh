@@ -3,8 +3,9 @@
 #
 # It implements the whole operation protocol the tracked proof drives, records
 # the target root every call inherited and the process ids it owns, and injects
-# at most one fault. It compiles nothing: a row proves the proof's lifecycle,
-# not Cargo's.
+# at most one fault. A fault is an operation that fails, or an archive graph
+# bent into a shape the proof has to refuse. It compiles nothing: a row proves
+# the proof's lifecycle, not Cargo's.
 
 set -eu
 
@@ -133,8 +134,14 @@ case "${operation}" in
                 package_json "${manifest}" | jq -s '{packages: .}'
             fi
         else
+            # The one reading the graph refusals judge. A row that wants a
+            # refusal supplies the jq filter that breaks the graph, or the
+            # warning Cargo prints when a patch redirects nothing.
             log "metadata archive"
-            workspace_json "${manifest}"
+            if [ -n "${FAKE_METADATA_WARNING:-}" ]; then
+                printf '%s\n' "${FAKE_METADATA_WARNING}" >&2
+            fi
+            workspace_json "${manifest}" | jq "${FAKE_GRAPH_MUTATION:-.}"
         fi
         ;;
     generate-lockfile)

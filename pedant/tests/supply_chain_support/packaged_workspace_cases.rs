@@ -15,6 +15,11 @@
 //! order it drove the tools in, the target root every Cargo call inherited, a
 //! dead process tree, and a temporary directory holding nothing at all.
 //!
+//! The same fake Cargo answers the second question a release proof raises:
+//! whether the graph check refuses anything. A conforming graph exercises none
+//! of its violation classes, so [`GRAPH_VIOLATIONS`] hands it one bent graph per
+//! class and requires the refusal that names it.
+//!
 //! Each row owns its root. `TMPDIR`, `CARGO_TARGET_DIR`, the Git fixture, the
 //! fake tools, and the recorded operations all live inside it, so a clone the
 //! script failed to release shows up as a directory the row left rather than as
@@ -64,9 +69,79 @@ const INFRASTRUCTURE_STATUS: i32 = 75;
 /// The status a proof that handled TERM must leave with.
 const SIGNALLED_STATUS: i32 = 143;
 
+/// The status a proof that refused its own graph must leave with.
+const REFUSED_STATUS: i32 = 1;
+
 /// A near miss the classifier must refuse, so the ordinary row proves the
 /// script kept a real failure rather than that no signature was present.
 const ORDINARY_SAMPLE: &str = "error: package cache entry is corrupt";
+
+/// The refusal every unreleaseable graph must produce.
+const GRAPH_REFUSAL: &str = "the packaged graph is not releaseable";
+
+/// The warning Cargo prints when a patch redirects a requirement no member
+/// states, which the proof reads out of the metadata transcript.
+const UNUSED_PATCH_WARNING: &str =
+    "warning: Patch `fixture-a v0.2.0` was not used in the crate graph.";
+
+/// One way the packaged graph can be wrong, and the refusal it must draw.
+///
+/// The proof's graph check is a single jq expression producing five violation
+/// classes, and a conforming graph exercises none of them: an expression that
+/// silently matched nothing would pass every other row here and the real run
+/// besides. Each row below bends exactly one thing and requires the refusal
+/// that names it.
+struct GraphViolation {
+    /// What is wrong with the graph, for the assertion message.
+    label: &'static str,
+    /// The jq filter that bends the archive metadata into that shape.
+    ///
+    /// `{origin}` expands to the row's repository root, which is the checkout
+    /// the proof must refuse a member for resolving through.
+    mutation: &'static str,
+    /// The fragment of the refusal the proof must print.
+    refusal: &'static str,
+}
+
+/// Every violation class the packaged-graph check implements.
+const GRAPH_VIOLATIONS: &[GraphViolation] = &[
+    GraphViolation {
+        label: "a member short of the release order",
+        mutation: ".packages |= map(select(.name != \"fixture-h\"))",
+        refusal: "first-party members rather than 8",
+    },
+    GraphViolation {
+        label: "a member resolved from the registry",
+        mutation: ".packages[0].source = \"registry+https://example.invalid/index\"",
+        refusal: "resolves through the registry rather than its archive",
+    },
+    GraphViolation {
+        label: "a member resolved through the operator's checkout",
+        mutation: ".packages[0].manifest_path = \"{origin}/fixture-a/Cargo.toml\"",
+        refusal: "resolves through the original checkout",
+    },
+    GraphViolation {
+        label: "a member resolved outside the archive workspace",
+        mutation: ".packages[0].manifest_path = \"/nowhere/fixture-a/Cargo.toml\"",
+        refusal: "resolves outside the archive workspace",
+    },
+    GraphViolation {
+        label: "a member carrying an unstaged version",
+        mutation: ".packages[0].version = \"9.9.9\"",
+        refusal: "carries version 9.9.9 rather than the staged 0.2.0",
+    },
+    GraphViolation {
+        label: "a member stating an unstaged requirement",
+        mutation: "(.packages[] | select(.name == \"fixture-b\") | .dependencies[0].req) = \"^9.9.9\"",
+        refusal: "states requirement ^9.9.9",
+    },
+    GraphViolation {
+        label: "a resolved edge pointing outside the archive members",
+        mutation: "(.resolve.nodes[] | select(.deps | length > 0) | .deps[0].pkg) \
+                   = \"registry+https://example.invalid/index#fixture-a@0.2.0\"",
+        refusal: "resolves through the registry rather than its archive",
+    },
+];
 
 /// Which Cargo operation carries each signature, so classification is proved at
 /// every stage the script runs rather than only at the cheapest one.
@@ -103,13 +178,21 @@ enum Fault<'a> {
         /// The operation that signals.
         operation: &'a str,
     },
+    /// Every operation succeeds, but the archive metadata describes a graph the
+    /// proof has to refuse.
+    Graph {
+        /// The jq filter that bends that metadata.
+        mutation: &'a str,
+        /// The warning the metadata call writes to its transcript.
+        warning: &'a str,
+    },
 }
 
 impl Fault<'_> {
     /// The operation this fault targets, or none.
     fn operation(&self) -> &str {
         match self {
-            Self::None => "",
+            Self::None | Self::Graph { .. } => "",
             Self::Ordinary { operation }
             | Self::Infrastructure { operation, .. }
             | Self::Interrupt { operation } => operation,
@@ -119,7 +202,7 @@ impl Fault<'_> {
     /// The mode the fake tools read.
     fn mode(&self) -> &'static str {
         match self {
-            Self::None => "",
+            Self::None | Self::Graph { .. } => "",
             Self::Ordinary { .. } => "ordinary",
             Self::Infrastructure { .. } => "infrastructure",
             Self::Interrupt { .. } => "interrupt",
@@ -131,7 +214,29 @@ impl Fault<'_> {
         match self {
             Self::Ordinary { .. } => ORDINARY_SAMPLE.into(),
             Self::Infrastructure { sample, .. } => expanded(sample),
-            Self::None | Self::Interrupt { .. } => Box::default(),
+            Self::None | Self::Interrupt { .. } | Self::Graph { .. } => Box::default(),
+        }
+    }
+
+    /// The jq filter the archive metadata is passed through.
+    fn mutation(&self) -> &str {
+        match self {
+            Self::Graph { mutation, .. } => mutation,
+            Self::None
+            | Self::Ordinary { .. }
+            | Self::Infrastructure { .. }
+            | Self::Interrupt { .. } => "",
+        }
+    }
+
+    /// The warning the archive metadata call writes to its transcript.
+    fn warning(&self) -> &str {
+        match self {
+            Self::Graph { warning, .. } => warning,
+            Self::None
+            | Self::Ordinary { .. }
+            | Self::Infrastructure { .. }
+            | Self::Interrupt { .. } => "",
         }
     }
 }
@@ -224,6 +329,75 @@ fn signalled_proof_leaves_with_its_signal(root: &RowRoot) {
     assert!(
         !root.warm_marker().exists(),
         "{label}: an interrupted proof must not claim a warm target"
+    );
+}
+
+/// Every unreleaseable packaged graph is refused, by name, before the archive
+/// workspace compiles.
+///
+/// The clean row proves the graph check accepts a good graph, which a check
+/// that accepted everything would also do. These rows are the other half: one
+/// bent graph per violation class, each required to draw the refusal that names
+/// it and to stop the proof before `cargo check` runs.
+#[test]
+fn packaged_graph_refuses_every_unreleaseable_shape() {
+    for violation in GRAPH_VIOLATIONS {
+        unreleaseable_graph_is_refused(&RowRoot::new(), violation);
+    }
+    unused_patch_is_refused(&RowRoot::new());
+}
+
+/// One bent graph draws its own refusal and compiles nothing.
+fn unreleaseable_graph_is_refused(root: &RowRoot, violation: &GraphViolation) {
+    let label: Box<str> = format!("a packaged graph with {}", violation.label).into();
+    let origin = fixture::original_checkout(&root.repository);
+    let mutation: Box<str> = violation.mutation.replace("{origin}", &origin).into();
+    let completed = root.run(&Fault::Graph {
+        mutation: &mutation,
+        warning: "",
+    });
+
+    assert_row_is_clean(root, &label, &completed, REFUSED_STATUS);
+    assert_refusal(&label, &completed, GRAPH_REFUSAL);
+    assert_refusal(&label, &completed, violation.refusal);
+    assert_nothing_compiled(root, &label);
+}
+
+/// A patch the crate graph never consulted is refused, because the graph below
+/// it proves nothing about the requirement that patch was meant to redirect.
+fn unused_patch_is_refused(root: &RowRoot) {
+    let label = "a packaged graph holding an unused patch";
+    let completed = root.run(&Fault::Graph {
+        mutation: "",
+        warning: UNUSED_PATCH_WARNING,
+    });
+
+    assert_row_is_clean(root, label, &completed, REFUSED_STATUS);
+    assert_refusal(label, &completed, "was not used in the crate graph");
+    assert_nothing_compiled(root, label);
+}
+
+/// The refusal reached the operator.
+fn assert_refusal(label: &str, completed: &Completed, fragment: &str) {
+    assert!(
+        completed.stderr.contains(fragment),
+        "{label}: the proof did not refuse with [{fragment}]: {}",
+        redacted(&completed.transcript())
+    );
+}
+
+/// A refused graph is refused before anything is built from it.
+fn assert_nothing_compiled(root: &RowRoot, label: &str) {
+    assert!(
+        !root
+            .operations()
+            .iter()
+            .any(|entry| entry.as_ref() == "check"),
+        "{label}: the proof compiled the archive workspace it had already refused"
+    );
+    assert!(
+        !root.warm_marker().exists(),
+        "{label}: a refused proof must not claim a warm target"
     );
 }
 
@@ -361,6 +535,8 @@ impl RowRoot {
             ("FAKE_FAULT_MODE", fault.mode()),
             ("FAKE_FAULT_SAMPLE", sample.as_ref()),
             ("FAKE_FAULT_STATUS", ordinary.as_ref()),
+            ("FAKE_GRAPH_MUTATION", fault.mutation()),
+            ("FAKE_METADATA_WARNING", fault.warning()),
         ];
         let mut run = Run::program("bash", &self.repository, &arguments);
         run.path_prefix = Some(&self.tools);

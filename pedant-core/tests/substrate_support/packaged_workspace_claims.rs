@@ -178,6 +178,31 @@ pub(crate) const ARCHIVE_PACKAGING_STEPS: &[&str] = &[
     "extract_archive \"${name}\" \"${version}\"",
 ];
 
+/// Where the generated workspace's member list begins.
+pub(crate) const MEMBER_LIST_OPEN: &str = "printf 'members = [\\n'";
+
+/// Where that member list ends.
+pub(crate) const MEMBER_LIST_CLOSE: &str = "printf ']\\n\\n'";
+
+/// The one line that may add a member to the generated workspace.
+///
+/// Spelled from its format string onward, because line joining collapses the
+/// indentation this `printf` carries inside its own quotes.
+pub(crate) const ARCHIVE_MEMBER_ENTRY: &str = "\"%s-%s\",\\n' \"${name}\" \"${version}\"";
+
+/// What proves an extracted member directory is the archive it is named for.
+///
+/// A member is a directory Cargo compiles, so the archive must land in the
+/// generated workspace under its own `name-version`, and must hold nothing
+/// outside it. An archive that unpacked a second tree beside its own would add
+/// a member the manifest never listed and the graph checks never read.
+pub(crate) const ARCHIVE_MEMBER_EXTRACTION: &[&str] = &[
+    "extracted=\"${workspace_root}/${name}-${version}\"",
+    "rg -N -v -e \"^${name}-${version}/\"",
+    "tar -xzf \"${archive}\" -C \"${workspace_root}\"",
+    "test -d \"${extracted}\"",
+];
+
 /// How the expected archive path is refused when it is not this run's to write.
 pub(crate) const ARCHIVE_IDENTITY_REFUSALS: &[&str] = &[
     "if [ -L \"${archive}\" ]; then",

@@ -9,9 +9,10 @@
 
 use crate::packaged_workspace_budget::assert_budget_contract;
 use crate::packaged_workspace_claims::{
-    ARCHIVE_GRAPH_COMMANDS, ARCHIVE_IDENTITY_REFUSALS, ARCHIVE_PACKAGING_STEPS, GRAPH_REFUSALS,
-    ISOLATED_COMMIT_IDENTITY, ISOLATED_STAGING_STEPS, PACKAGE_SCRIPT_FUNCTIONS, PINNED_IDENTITIES,
-    PINNED_TOOLS, RELEASE_STAGING_STEPS, TARGET_ROOT_REQUIREMENTS,
+    ARCHIVE_GRAPH_COMMANDS, ARCHIVE_IDENTITY_REFUSALS, ARCHIVE_MEMBER_ENTRY,
+    ARCHIVE_MEMBER_EXTRACTION, ARCHIVE_PACKAGING_STEPS, GRAPH_REFUSALS, ISOLATED_COMMIT_IDENTITY,
+    ISOLATED_STAGING_STEPS, MEMBER_LIST_CLOSE, MEMBER_LIST_OPEN, PACKAGE_SCRIPT_FUNCTIONS,
+    PINNED_IDENTITIES, PINNED_TOOLS, RELEASE_STAGING_STEPS, TARGET_ROOT_REQUIREMENTS,
 };
 use crate::release_workflow::{
     function_body, offset_of, read_repository_file, tracked_shell_scripts,
@@ -30,6 +31,7 @@ pub(crate) fn assert_release_graph_is_exact() {
     assert_release_update_precedes_packaging(&joined);
     assert_archive_packaging(&joined);
     assert_generated_workspace(&joined);
+    assert_members_are_extracted_archives(&joined);
     assert_packaged_graph_verification(&joined);
     assert_budget_contract(&joined);
     assert_package_script_ownership(&source, &joined);
@@ -272,6 +274,51 @@ fn assert_generated_workspace(joined: &str) {
         assert!(
             verification.contains(check),
             "the packaged graph is not proved by [{check}]"
+        );
+    }
+}
+
+/// Every member of the generated workspace is an archive this run extracted,
+/// one per released package.
+///
+/// The patch table decides which requirements are redirected; the member list
+/// decides which trees Cargo compiles at all. A member from anywhere but the
+/// release order — the operator's checkout, a directory an earlier run left, a
+/// path the script kept for convenience — would compile beside the archives and
+/// answer for them, and the proof would report a green check for source no
+/// consumer receives.
+fn assert_members_are_extracted_archives(joined: &str) {
+    let manifest = function_body(joined, "write_archive_manifest");
+    let open = offset_of(&manifest, MEMBER_LIST_OPEN) + MEMBER_LIST_OPEN.len();
+    let close = offset_of(&manifest, MEMBER_LIST_CLOSE);
+    assert!(
+        open < close,
+        "the member list is filled before it is closed"
+    );
+    let members = &manifest[open..close];
+    assert_eq!(
+        members.matches("printf").count(),
+        1,
+        "exactly one line may name a workspace member"
+    );
+    assert_eq!(
+        members.matches(ARCHIVE_MEMBER_ENTRY).count(),
+        1,
+        "that line names an extracted archive directory"
+    );
+    assert!(
+        members.contains("for name in \"${release_order[@]}\"; do"),
+        "the members are the release order and nothing beside it"
+    );
+    assert!(
+        members.contains("version=\"$(staged_version \"${name}\")\""),
+        "each member directory carries the version release-plz staged"
+    );
+    let extraction = function_body(joined, "extract_archive");
+    for requirement in ARCHIVE_MEMBER_EXTRACTION {
+        assert!(
+            extraction.contains(requirement),
+            "an extracted member is not proved to be its own archive by [{requirement}]"
         );
     }
 }

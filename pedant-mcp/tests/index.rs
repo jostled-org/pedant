@@ -25,6 +25,11 @@ mod writable_fixture;
 #[path = "index_support/reindex_cases.rs"]
 mod reindex_cases;
 
+/// The attribution status the index stores per non-Rust file. Same `#[path]`
+/// reason.
+#[path = "index_support/attribution_cases.rs"]
+mod attribution_cases;
+
 use crate::committed_fixture::fixture_path;
 use crate::workspace_fixtures::{
     make_glob_workspace, make_nested_glob_workspace, make_single_crate_workspace,

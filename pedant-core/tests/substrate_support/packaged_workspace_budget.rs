@@ -45,6 +45,7 @@ pub(crate) fn assert_budget_contract(joined: &str) {
         "elapsed time is read through the clock on PATH, not the shell's counter"
     );
     assert_warm_state_is_a_target_fact(joined);
+    assert_budget_pair_mapping(joined);
     assert_stage_selection(joined);
 }
 
@@ -94,18 +95,36 @@ fn assert_warm_state_is_a_target_fact(joined: &str) {
         ),
         "a warm tool root is reused whole rather than rebuilt"
     );
-    let selection = function_body(joined, "measure_proof_budget");
-    for budget in [
-        "WARM_RUNTIME_BUDGET_SECONDS",
-        "WARM_TARGET_BUDGET_KIB",
-        "COLD_RUNTIME_BUDGET_SECONDS",
-        "COLD_TARGET_BUDGET_KIB",
-    ] {
-        assert!(
-            selection.contains(budget),
-            "the release proof must choose between the budgets, and [{budget}] is not one of them"
-        );
-    }
+}
+
+/// Warm, cold, and install stages each pass their own exact runtime and target
+/// pair to the common budget judge.
+fn assert_budget_pair_mapping(joined: &str) {
+    let release = function_body(joined, "measure_proof_budget");
+    assert_exact_budget_call(
+        &release,
+        "warm",
+        "warm)\nmeasure_budget verify \"${WARM_RUNTIME_BUDGET_SECONDS}\" \"${WARM_TARGET_BUDGET_KIB}\"",
+    );
+    assert_exact_budget_call(
+        &release,
+        "cold",
+        "*)\nmeasure_budget verify \"${COLD_RUNTIME_BUDGET_SECONDS}\" \"${COLD_TARGET_BUDGET_KIB}\"",
+    );
+    assert_exact_budget_call(
+        &function_body(joined, "run_tool_installation"),
+        "install",
+        "measure_budget install \"${INSTALL_RUNTIME_BUDGET_SECONDS}\" \"${INSTALL_TARGET_BUDGET_KIB}\"",
+    );
+}
+
+/// One stage-to-budget relation must occur exactly once.
+fn assert_exact_budget_call(body: &str, stage: &str, call: &str) {
+    assert_eq!(
+        body.matches(call).count(),
+        1,
+        "the {stage} stage must select exactly its own runtime and target budget pair [{call}]"
+    );
 }
 
 /// The script has two stages, one entry point, and no third answer.
@@ -139,8 +158,8 @@ fn assert_stage_selection(joined: &str) {
         );
     }
     assert!(
-        installation.contains("\"$1\"") && installation.contains("measure_budget install"),
-        "the tool stage builds the installer it was handed and states what it cost"
+        installation.contains("\"$1\""),
+        "the tool stage builds the installer it was handed"
     );
     assert!(
         !installation.contains("stage_isolated_source"),

@@ -40,21 +40,58 @@ const BUDGET_OVERRUNS: &[BudgetOverrun] = &[
         jump: OVER_BUDGET_SECONDS,
         target_kib: "",
         staging_kib: "",
-        refusal: "the verify stage took 99999s, over its",
+        refusal: "the verify stage took 99999s, over its 2100s budget",
     },
     BudgetOverrun {
         label: "a stage that outgrew its target budget",
         jump: "",
         target_kib: OVER_BUDGET_KIB,
         staging_kib: "",
-        refusal: "grew the target root by 999999999KiB, over its",
+        refusal: "grew the target root by 999999999KiB, over its 5242880KiB budget",
     },
     BudgetOverrun {
         label: "a stage that outgrew its staging budget",
         jump: "",
         target_kib: "",
         staging_kib: OVER_BUDGET_KIB,
-        refusal: "held 999999999KiB of staging, over its",
+        refusal: "held 999999999KiB of staging, over its 1048576KiB budget",
+    },
+];
+
+/// The warm runtime and target pairs, each exercised after a cold run plants
+/// the pinned tools in the target root.
+const WARM_BUDGET_OVERRUNS: &[BudgetOverrun] = &[
+    BudgetOverrun {
+        label: "a warm stage that outran its runtime budget",
+        jump: OVER_BUDGET_SECONDS,
+        target_kib: "",
+        staging_kib: "",
+        refusal: "the verify stage took 99999s, over its 600s budget",
+    },
+    BudgetOverrun {
+        label: "a warm stage that outgrew its target budget",
+        jump: "",
+        target_kib: OVER_BUDGET_KIB,
+        staging_kib: "",
+        refusal: "grew the target root by 999999999KiB, over its 2097152KiB budget",
+    },
+];
+
+/// The tool-install runtime and target pairs.
+const INSTALL_BUDGET_OVERRUNS: &[BudgetOverrun] = &[
+    BudgetOverrun {
+        label: "a tool stage that outran its install budget",
+        jump: OVER_BUDGET_SECONDS,
+        target_kib: "",
+        staging_kib: "",
+        refusal: "the install stage took 99999s, over its 1100s budget",
+    },
+    BudgetOverrun {
+        label: "a tool stage that outgrew its target budget",
+        jump: "",
+        target_kib: OVER_BUDGET_KIB,
+        staging_kib: "",
+        refusal: "grew the target root by 999999999KiB, over its 2097152KiB budget",
     },
 ];
 
@@ -71,7 +108,51 @@ pub(super) fn verify_packaged_workspace_budgets() {
     for overrun in BUDGET_OVERRUNS {
         budget_overrun_is_refused(&RowRoot::new(), overrun);
     }
-    tool_stage_overrun_is_refused_against_the_install_budget(&RowRoot::new());
+    for overrun in WARM_BUDGET_OVERRUNS {
+        warm_budget_overrun_is_refused(&RowRoot::new(), overrun);
+    }
+    for overrun in INSTALL_BUDGET_OVERRUNS {
+        tool_stage_overrun_is_refused_against_the_install_budget(&RowRoot::new(), overrun);
+    }
+}
+
+/// One warm-stage overrun is refused against the pair selected by the pinned
+/// tools already present in the target root.
+fn warm_budget_overrun_is_refused(root: &RowRoot, overrun: &BudgetOverrun) {
+    let cold_fault = Fault::None;
+    let cold = root.run(&cold_fault);
+    assert_row_is_clean(
+        root,
+        "the cold proof before the warm overrun",
+        &cold,
+        0,
+        cold_fault.surviving_tool_builds(),
+    );
+    root.clear_record();
+
+    let fault = Fault::Overrun {
+        jump: overrun.jump,
+        target_kib: overrun.target_kib,
+        staging_kib: overrun.staging_kib,
+    };
+    let completed = root.run(&fault);
+
+    assert_row_is_clean(
+        root,
+        overrun.label,
+        &completed,
+        REFUSED_STATUS,
+        fault.surviving_tool_builds(),
+    );
+    assert_refusal(overrun.label, &completed, overrun.refusal);
+    assert!(
+        completed
+            .stdout
+            .contains("packaged workspace proof: stage=verify state=warm"),
+        "{}: the warm cost has to reach the operator before it is judged: {}",
+        overrun.label,
+        redacted(&completed.transcript())
+    );
 }
 
 /// A second proof over the same target root finds the pinned tool builds and
@@ -145,22 +226,31 @@ fn budget_overrun_is_refused(root: &RowRoot, overrun: &BudgetOverrun) {
 /// commands are actually judged against. A stage that reported its cost and
 /// then compared it to the wrong ceiling — or to none — would pass every other
 /// row here, because no other row runs it.
-fn tool_stage_overrun_is_refused_against_the_install_budget(root: &RowRoot) {
-    let label = "a tool stage that outran its install budget";
+fn tool_stage_overrun_is_refused_against_the_install_budget(
+    root: &RowRoot,
+    overrun: &BudgetOverrun,
+) {
     let fault = Fault::Overrun {
-        jump: OVER_BUDGET_SECONDS,
-        target_kib: "",
-        staging_kib: "",
+        jump: overrun.jump,
+        target_kib: overrun.target_kib,
+        staging_kib: overrun.staging_kib,
     };
     let completed = root.run_stage(&fault, &["--install-tools", "release-plz"]);
 
-    assert_row_is_clean(root, label, &completed, REFUSED_STATUS, &["release-plz"]);
-    assert_refusal(label, &completed, "the install stage took 99999s, over its");
+    assert_row_is_clean(
+        root,
+        overrun.label,
+        &completed,
+        REFUSED_STATUS,
+        &["release-plz"],
+    );
+    assert_refusal(overrun.label, &completed, overrun.refusal);
     assert!(
         completed
             .stdout
             .contains("packaged workspace proof: stage=install state=cold"),
-        "{label}: the cost has to reach the operator before it is judged: {}",
+        "{}: the cost has to reach the operator before it is judged: {}",
+        overrun.label,
         redacted(&completed.transcript())
     );
 }

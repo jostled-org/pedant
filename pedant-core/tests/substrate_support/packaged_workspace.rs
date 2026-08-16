@@ -234,6 +234,41 @@ fn assert_archive_packaging(joined: &str) {
             "the archive identity check is missing [{refusal}]"
         );
     }
+    assert_packaging_is_one_workspace_invocation(joined);
+}
+
+/// Exactly one command in the whole proof runs `cargo package`, and it is the
+/// workspace-wide one.
+///
+/// The staged versions are not on crates.io yet, so a member packaged on its own
+/// asks the registry for a sibling that does not exist until publication. The
+/// ordered steps above cannot see that: a per-member `cargo package` added to
+/// either loop leaves every one of them in its place, and the run would report a
+/// green check for archives built the way publication never builds them. So the
+/// count is the claim, and it is taken over the whole script rather than over
+/// one function, because a second invocation elsewhere packages the same tree.
+fn assert_packaging_is_one_workspace_invocation(joined: &str) {
+    let invocations: Box<[&str]> = joined
+        .lines()
+        .filter(|line| !line.starts_with('#'))
+        .map(command_of)
+        .filter(|command| command.contains("cargo package"))
+        .collect();
+    assert_eq!(
+        &*invocations,
+        &[ARCHIVE_PACKAGING_STEPS[2]],
+        "the eight archives come from exactly one workspace-wide packaging command"
+    );
+}
+
+/// The command one joined line runs, with any refusal message cut away.
+///
+/// A `fail` message quotes the command it is about, and a message is text rather
+/// than an invocation; counting it would let the proof's own prose decide
+/// whether the proof passes.
+fn command_of(line: &str) -> &str {
+    line.split_once(" || fail ")
+        .map_or(line, |(command, _)| command)
 }
 
 /// The generated workspace holds the extracted archives and patches exactly the

@@ -77,10 +77,11 @@ fn assert_package_script_stages(source: &str) {
 /// The inherited target root is checked, captured, sealed, and re-exported
 /// unchanged; nothing in the script may write or drop it.
 fn assert_target_root_contract(source: &str) {
+    let capture = function_body(source, "capture_target_root");
     for requirement in TARGET_ROOT_REQUIREMENTS {
         assert!(
-            source.contains(requirement),
-            "the target-root contract is missing [{requirement}]"
+            capture.contains(requirement),
+            "the target-root contract is missing [{requirement}] from capture_target_root"
         );
     }
     assert!(
@@ -393,11 +394,11 @@ fn assert_package_script_ownership(source: &str, joined: &str) {
 
 /// The pinned ShellCheck run lints every tracked shell script, each once.
 ///
-/// Step 5 added a shell surface outside `.github/scripts` for the first time —
-/// the three fake tools a lifecycle row installs on `PATH` — and a fault
+/// Steps 6 and 7 add shell surfaces outside `.github/scripts` — the five fake
+/// tools their lifecycle and budget rows install on `PATH` — and a fault
 /// injector nobody lints is a fault injector nobody can trust. Requiring the
 /// subject list to equal the tracked inventory keeps that true for the next
-/// script too, rather than for these three.
+/// script too, rather than for these five.
 fn assert_shellcheck_covers_every_tracked_script() {
     let wrapper = read_repository_file(".github/scripts/run_shellcheck.sh");
     let subjects: Box<[Box<str>]> = wrapper

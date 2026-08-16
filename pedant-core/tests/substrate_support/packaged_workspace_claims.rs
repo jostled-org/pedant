@@ -264,6 +264,8 @@ pub(crate) const TARGET_ROOT_REQUIREMENTS: &[&str] = &[
     "readonly target_root",
     "test -n \"${target_root}\"",
     "case \"${target_root}\" in",
+    "/*) ;;",
+    "*) fail \"CARGO_TARGET_DIR must be absolute: ${target_root}\" ;;",
     "test -d \"${target_root}\"",
     "test -w \"${target_root}\"",
     "export CARGO_TARGET_DIR",

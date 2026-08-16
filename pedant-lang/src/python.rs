@@ -17,10 +17,13 @@ use std::sync::Arc;
 #[cfg(feature = "ts-python")]
 use pedant_syntax::{
     SyntaxLanguage,
-    tree_sitter::{self, node_text, parse, walk_descendants},
+    tree_sitter::{self, ParsedSyntax, node_text, parse_bound, walk_descendants},
 };
-use pedant_types::{Capability, CapabilityFinding, FindingOrigin, Language, SourceLocation};
+use pedant_types::{
+    Capability, CapabilityAnalysis, CapabilityFinding, FindingOrigin, Language, SourceLocation,
+};
 
+use crate::attribution;
 use crate::string_analysis::{
     CommentStyle, detect_call_sites, detect_string_literal_findings, scan_string_literals,
 };
@@ -68,15 +71,23 @@ const CALL_SITE_PATTERNS: &[(&str, Capability, &str)] = &[
     ("shutil.rmtree(", Capability::FileWrite, "shutil.rmtree"),
 ];
 
-/// Analyze Python source for capability findings.
-pub(crate) fn analyze(path: &Arc<str>, source: &str) -> Box<[CapabilityFinding]> {
+/// Analyze Python source for capabilities, and attribute them to callables.
+///
+/// The structured tier binds one parse session, uses it for detection, and
+/// hands it to attribution. A build without the grammar, and a parser that
+/// produced no tree, take the text tier and report attribution as unavailable.
+pub(crate) fn analyze(path: &Arc<str>, source: &str) -> CapabilityAnalysis {
     let mut findings = Vec::new();
 
     #[cfg(feature = "ts-python")]
-    ts_analyze(path, source, &mut findings);
+    let bound = ts_analyze(path, source, &mut findings);
 
+    // No grammar in this build, so no session can exist and the text tier is
+    // the only path.
     #[cfg(not(feature = "ts-python"))]
-    {
+    let bound: Option<()> = None;
+
+    if bound.is_none() {
         detect_imports(path, source, &mut findings);
         detect_call_sites(
             path,
@@ -92,7 +103,11 @@ pub(crate) fn analyze(path: &Arc<str>, source: &str) -> Box<[CapabilityFinding]>
     let literals = scan_string_literals(source, CommentStyle::Always);
     detect_string_literal_findings(path, &literals, Language::Python, &mut findings);
 
-    findings.into_boxed_slice()
+    #[cfg(feature = "ts-python")]
+    let analysis = attribution::seal(bound, Language::Python, findings.into_boxed_slice());
+    #[cfg(not(feature = "ts-python"))]
+    let analysis = attribution::unavailable(findings.into_boxed_slice());
+    analysis
 }
 
 /// Check if a line is a Python import statement matching one of the known patterns.
@@ -141,19 +156,20 @@ fn detect_imports(path: &Arc<str>, source: &str, findings: &mut Vec<CapabilityFi
 
 // ── Tree-sitter structured extraction ──────────────────────────────────
 
+/// Detect through the Python grammar, returning the session that did it.
+///
+/// `None` means no tree: the caller owes the file its text-tier scan. The
+/// session travels back rather than dying here, because attribution asks it the
+/// same questions detection just did.
 #[cfg(feature = "ts-python")]
-fn ts_analyze(path: &Arc<str>, source: &str, findings: &mut Vec<CapabilityFinding>) {
+fn ts_analyze<'source>(
+    path: &Arc<str>,
+    source: &'source str,
+    findings: &mut Vec<CapabilityFinding>,
+) -> Option<ParsedSyntax<'source>> {
+    let parsed = parse_bound(source, SyntaxLanguage::Python)?;
     let bytes = source.as_bytes();
-    let tree = match parse(bytes, SyntaxLanguage::Python) {
-        Some(t) => t,
-        None => {
-            // Fall back to regex on parse failure.
-            detect_imports(path, source, findings);
-            detect_call_sites(path, source, CALL_SITE_PATTERNS, Language::Python, findings);
-            return;
-        }
-    };
-    let root = tree.root_node();
+    let root = parsed.root();
 
     // Phase 1: extract imports and build alias map.
     let mut alias_map = BTreeMap::new();
@@ -162,6 +178,8 @@ fn ts_analyze(path: &Arc<str>, source: &str, findings: &mut Vec<CapabilityFindin
     // Phase 2: detect call sites (regex patterns + alias-aware calls).
     detect_call_sites(path, source, CALL_SITE_PATTERNS, Language::Python, findings);
     ts_detect_aliased_calls(root, bytes, path, &alias_map, findings);
+
+    Some(parsed)
 }
 
 /// Extract imports from tree-sitter AST and build alias map.

@@ -125,13 +125,15 @@ fn analyze_non_rust_source(
     language: Language,
     acc: &mut AnalysisAccumulator,
 ) {
-    let profile = pedant_lang::analyze_file(path, source, language);
-    acc.findings.extend(profile.findings.into_vec());
+    let analysis = pedant_lang::analyze_file(path, source, language);
+    acc.findings
+        .extend(analysis.into_profile().findings.into_vec());
 }
 
 fn analyze_manifest_source(path: &Path, source: &str, acc: &mut AnalysisAccumulator) {
-    let profile = pedant_lang::analyze_manifest(path, source);
-    acc.findings.extend(profile.findings.into_vec());
+    let analysis = pedant_lang::analyze_manifest(path, source);
+    acc.findings
+        .extend(analysis.into_profile().findings.into_vec());
 }
 
 /// Read a source file, reporting errors to stderr and marking the accumulator.

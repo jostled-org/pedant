@@ -10,14 +10,17 @@ mod dispatch;
 #[cfg(any(feature = "rust", feature = "_ts"))]
 mod index;
 
+// Visible to the crate, not just to this module: a bound parse session selects
+// declarations through the same selector and the same recognizer, so both are
+// shared rather than reimplemented beside the tree.
 #[cfg(any(feature = "rust", feature = "_ts"))]
-mod select;
+pub(crate) mod select;
 
 #[cfg(feature = "rust")]
 mod rust;
 
 #[cfg(feature = "_ts")]
-mod ts;
+pub(crate) mod ts;
 
 pub use dispatch::enclosing_unit;
 #[cfg(feature = "rust")]

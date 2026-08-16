@@ -117,7 +117,8 @@ fn python_pem_in_string_detected() {
 // Verify language is set on findings
 #[test]
 fn python_findings_have_language_set() {
-    let profile = analyze_file(Path::new("test.py"), "import requests", Language::Python);
+    let profile =
+        analyze_file(Path::new("test.py"), "import requests", Language::Python).into_profile();
     assert!(
         !profile.findings.is_empty(),
         "the import must report at least one finding for the loop below to judge"

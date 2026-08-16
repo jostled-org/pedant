@@ -1,10 +1,14 @@
 //! Multi-language capability detection for pedant.
 //!
 //! Analyzes Python, JavaScript/TypeScript, Go, and Bash source files
-//! for capability findings. Produces the same `CapabilityProfile` shape as
-//! Rust analysis in `pedant-core`, with explicit language metadata.
+//! for capability findings. Produces the same `CapabilityAnalysis` envelope as
+//! Rust analysis in `pedant-core`, with explicit language metadata: the flat
+//! `CapabilityProfile` every persisted and policy consumer reads, the callables
+//! that contain those findings, and an honest statement of whether a complete
+//! structural parse stood behind them.
 
 mod analyze;
+mod attribution;
 mod bash;
 mod go;
 mod javascript;

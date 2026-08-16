@@ -75,6 +75,7 @@ pub const TIER1_SOURCES: &[&str] = &[
     "ir/extract/sites.rs",
     "ir/extract/syn_helpers.rs",
     "ir/extract/type_edges.rs",
+    "ir/extract/unsafe_sites.rs",
     "ir/extract/use_paths.rs",
     "ir/extract/visitor/implementation.rs",
     "ir/extract/visitor/mod.rs",

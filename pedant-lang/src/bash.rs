@@ -18,10 +18,13 @@ use std::sync::Arc;
 #[cfg(feature = "ts-bash")]
 use pedant_syntax::{
     SyntaxLanguage,
-    tree_sitter::{self, node_text, parse, walk_descendants},
+    tree_sitter::{self, ParsedSyntax, node_text, parse_bound, walk_descendants},
 };
-use pedant_types::{Capability, CapabilityFinding, FindingOrigin, Language, SourceLocation};
+use pedant_types::{
+    Capability, CapabilityAnalysis, CapabilityFinding, FindingOrigin, Language, SourceLocation,
+};
 
+use crate::attribution;
 use crate::string_analysis::{
     CommentStyle, detect_string_literal_findings, is_shell_command_boundary, scan_string_literals,
 };
@@ -114,15 +117,25 @@ const fn flatten_command_groups() -> [(&'static str, Capability); COMMAND_PATTER
 /// naming the one allocation outright.
 static COMMAND_PATTERNS: [(&str, Capability); COMMAND_PATTERN_COUNT] = flatten_command_groups();
 
-/// Analyze Bash source for capability findings.
-pub(crate) fn analyze(path: &Arc<str>, source: &str) -> Box<[CapabilityFinding]> {
+/// Analyze Bash source for capabilities, and attribute them to callables.
+///
+/// The structured tier binds one parse session, uses it for detection, and
+/// hands it to attribution. A build without the grammar, and a parser that
+/// produced no tree, take the text tier and report attribution as unavailable.
+pub(crate) fn analyze(path: &Arc<str>, source: &str) -> CapabilityAnalysis {
     let mut findings = Vec::new();
 
     #[cfg(feature = "ts-bash")]
-    ts_analyze(path, source, &mut findings);
+    let bound = ts_analyze(path, source, &mut findings);
 
+    // No grammar in this build, so no session can exist and the text tier is
+    // the only path.
     #[cfg(not(feature = "ts-bash"))]
-    analyze_regex(path, source, &mut findings);
+    let bound: Option<()> = None;
+
+    if bound.is_none() {
+        analyze_regex(path, source, &mut findings);
+    }
 
     // Python, JavaScript, and Go all end here, and Bash literals hold the same
     // evidence: a hard-coded endpoint, a PEM block, an `AKIA…` credential. The
@@ -131,7 +144,11 @@ pub(crate) fn analyze(path: &Arc<str>, source: &str) -> Box<[CapabilityFinding]>
     let literals = scan_string_literals(source, CommentStyle::ShellWord);
     detect_string_literal_findings(path, &literals, Language::Bash, &mut findings);
 
-    findings.into_boxed_slice()
+    #[cfg(feature = "ts-bash")]
+    let analysis = attribution::seal(bound, Language::Bash, findings.into_boxed_slice());
+    #[cfg(not(feature = "ts-bash"))]
+    let analysis = attribution::unavailable(findings.into_boxed_slice());
+    analysis
 }
 
 fn analyze_regex(path: &Arc<str>, source: &str, findings: &mut Vec<CapabilityFinding>) {
@@ -195,21 +212,21 @@ pub(crate) fn detect_commands_with_patterns(
 
 // ── Tree-sitter structured extraction ──────────────────────────────────
 
-/// Tree-sitter Bash analysis: parses source into an AST and walks
-/// `command_name` nodes for structured command detection. Falls back to
-/// regex only when parsing fails.
+/// Tree-sitter Bash analysis: binds one parse session and walks `command_name`
+/// nodes for structured command detection.
+///
+/// `None` means no tree: the caller owes the file its text-tier scan. The
+/// session travels back rather than dying here, because attribution asks it the
+/// same questions detection just did.
 #[cfg(feature = "ts-bash")]
-fn ts_analyze(path: &Arc<str>, source: &str, findings: &mut Vec<CapabilityFinding>) {
-    let bytes = source.as_bytes();
-    let tree = match parse(bytes, SyntaxLanguage::Bash) {
-        Some(t) => t,
-        None => {
-            analyze_regex(path, source, findings);
-            return;
-        }
-    };
-
-    ts_extract_commands(tree.root_node(), bytes, path, findings);
+fn ts_analyze<'source>(
+    path: &Arc<str>,
+    source: &'source str,
+    findings: &mut Vec<CapabilityFinding>,
+) -> Option<ParsedSyntax<'source>> {
+    let parsed = parse_bound(source, SyntaxLanguage::Bash)?;
+    ts_extract_commands(parsed.root(), source.as_bytes(), path, findings);
+    Some(parsed)
 }
 
 /// Walk the AST extracting command capabilities.

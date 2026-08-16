@@ -240,6 +240,29 @@ fn test_cli_python_capabilities() {
         all_python,
         "expected all findings to have language python, got:\n{stdout}"
     );
+
+    // 4.T13 (Invariants 13 and 14): the CLI takes the flat projection from each
+    // language analysis, so its published JSON keeps its exact current shape.
+    // Symbol evidence is a library projection, not an operator surface.
+    let document: serde_json::Value =
+        serde_json::from_str(&stdout).expect("the payload is one capability profile object");
+    let fields: Vec<&str> = document
+        .as_object()
+        .expect("the payload is an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        fields,
+        ["findings"],
+        "the capability payload states exactly its current fields: {stdout}"
+    );
+    for field in ["\"symbols\"", "\"symbol_attribution\""] {
+        assert!(
+            !stdout.contains(field),
+            "the capability payload must not carry {field}: {stdout}"
+        );
+    }
 }
 
 /// 5.T5: Running pedant --capabilities on an unknown extension produces no error and no findings.

@@ -11,8 +11,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use pedant_types::{
-    Capability, CapabilityFinding, CapabilityProfile, ExecutionContext, FindingOrigin,
-    SourceLocation,
+    Capability, CapabilityFinding, ExecutionContext, FindingOrigin, SourceLocation,
 };
 
 use crate::bash::{
@@ -31,12 +30,14 @@ const HOOK_SHELL_COMMAND_PATTERNS: &[(&str, Capability)] = &[
 
 /// Analyze a manifest or hook-entrypoint file for capability findings.
 ///
-/// Dispatches based on filename. Returns an empty profile for unrecognized files.
-pub(crate) fn analyze(path: &Path, source: &str) -> CapabilityProfile {
+/// Dispatches based on filename. Returns no findings for unrecognized files.
+/// The envelope around these findings is `analyze_manifest`'s to seal; a
+/// manifest names no callables, so nothing here asks a parser anything.
+pub(crate) fn analyze(path: &Path, source: &str) -> Box<[CapabilityFinding]> {
     let file: Arc<str> = path.to_string_lossy().into();
     let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
-    let findings = match filename {
+    match filename {
         "package.json" => analyze_package_json(&file, source),
         "setup.py" => analyze_setup_py(&file, source),
         "pyproject.toml" => analyze_pyproject_toml(&file, source),
@@ -50,9 +51,7 @@ pub(crate) fn analyze(path: &Path, source: &str) -> CapabilityProfile {
             analyze_go_generate(&file, source)
         }
         _ => Box::new([]),
-    };
-
-    CapabilityProfile { findings }
+    }
 }
 
 /// Detect npm install hooks in package.json.

@@ -23,6 +23,22 @@ mod table;
 #[path = "enclosing_unit_support/tree_sitter_support.rs"]
 mod tree_sitter_support;
 
+/// The session claim every case is written in, and the probe that asserts it.
+#[cfg(feature = "_ts")]
+#[path = "enclosing_unit_support/session_probe.rs"]
+mod session_probe;
+
+/// What one bound parse session answers about the source it was built from.
+#[cfg(feature = "_ts")]
+#[path = "enclosing_unit_support/session_cases.rs"]
+mod session_cases;
+
+/// Who may build a parser, and what a bound session may do. Needs `syn` to
+/// scan this crate's own source, so it carries the `rust` gate as well.
+#[cfg(all(feature = "rust", feature = "_ts"))]
+#[path = "enclosing_unit_support/ownership.rs"]
+mod ownership;
+
 #[cfg(any(feature = "rust", feature = "_ts"))]
 #[path = "enclosing_unit_support/location.rs"]
 mod location;

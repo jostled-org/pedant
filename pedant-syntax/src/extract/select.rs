@@ -118,6 +118,24 @@ impl<'s> UnitSelector<'s> {
         })
     }
 
+    /// The winning declaration as an anchor: its kind, its name, and where it
+    /// opens.
+    ///
+    /// The same selection [`Self::finish`] reports, without copying the
+    /// declaration's bytes. `None` means either that no declaration held the
+    /// location or that the winner opens at an offset the indexed source does
+    /// not address, which no current backend produces.
+    #[cfg(feature = "_ts")]
+    pub(crate) fn finish_anchor(self) -> Option<crate::tree_sitter::SourceUnitAnchor> {
+        let candidate = self.best?;
+        let start = self.index.position_at(candidate.range.start)?;
+        Some(crate::tree_sitter::SourceUnitAnchor {
+            kind: candidate.kind,
+            name: candidate.name.map(Box::from),
+            start,
+        })
+    }
+
     /// Whether the resolved target falls inside `range`.
     ///
     /// The one containment test in the crate, and every backend's gate before

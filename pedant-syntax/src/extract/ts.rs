@@ -8,7 +8,7 @@ use std::ops::Range;
 
 use crate::extract::select::UnitSelector;
 use crate::language::SyntaxLanguage;
-use crate::tree_sitter::{Node, node_text, parse, walk_descendants};
+use crate::tree_sitter::{Node, node_text, walk_descendants};
 use crate::unit::SourceUnitKind;
 
 /// One recognized grammar node: the byte range to return and the node naming it.
@@ -23,7 +23,7 @@ struct Declaration<'t> {
     name: Option<Node<'t>>,
 }
 
-/// Offer every recognized declaration in `source`.
+/// Parse `source` and offer every recognized declaration in it.
 ///
 /// A missing tree or an error-bearing root is parser failure: nothing is
 /// offered, even where recovery left a recognized declaration in the tree.
@@ -32,14 +32,28 @@ pub(crate) fn collect<'s>(
     language: SyntaxLanguage,
     selector: &mut UnitSelector<'s>,
 ) {
-    let bytes = source.as_bytes();
-    let Some(tree) = parse(bytes, language) else {
+    let Some(tree) = crate::tree_sitter::parse(source.as_bytes(), language) else {
         return;
     };
     let root = tree.root_node();
     if root.has_error() {
         return;
     }
+    offer_declarations(root, source, language, selector);
+}
+
+/// Offer every recognized declaration beneath `root` to `selector`.
+///
+/// The one recognizer both entry points share. `source` must be the exact
+/// string `root`'s tree was parsed from, because a node's byte range indexes
+/// it; [`collect`] parses that string itself and a session was bound to it.
+pub(crate) fn offer_declarations<'s>(
+    root: Node<'_>,
+    source: &'s str,
+    language: SyntaxLanguage,
+    selector: &mut UnitSelector<'s>,
+) {
+    let bytes = source.as_bytes();
     walk_descendants(root, |node| {
         let Some(declaration) = recognize(node, language) else {
             return;

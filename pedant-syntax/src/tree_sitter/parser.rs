@@ -1,16 +1,13 @@
-//! Shared tree-sitter helpers for structured AST extraction.
+//! Grammar selection and the crate's only tree-sitter parser.
 //!
-//! Feature-gated: only compiled when at least one `ts-*` language feature is
-//! enabled. Grammar selection lives here, so a consumer names a
-//! [`SyntaxLanguage`] and never a grammar crate. The node and tree types the
-//! public signatures below name are re-exported, because this module is a
-//! cross-crate API.
+//! Every tree this crate produces is built here. A session reads the tree this
+//! module handed it and never constructs a parser of its own, so "how many
+//! times was this source parsed" is a question one module answers.
 
-pub use ::tree_sitter::{Node, Tree};
-
-use ::tree_sitter::{Parser, TreeCursor};
+use ::tree_sitter::{Parser, Tree};
 
 use crate::language::SyntaxLanguage;
+use crate::tree_sitter::session::ParsedSyntax;
 
 /// Parse source code with the grammar for `language`.
 ///
@@ -30,6 +27,41 @@ pub fn parse(source: &[u8], language: SyntaxLanguage) -> Option<Tree> {
     );
     selected.ok()?;
     parser.parse(source, None)
+}
+
+/// Parse `source` into a [`ParsedSyntax`] session bound to that exact string.
+///
+/// One call is one parse. The returned session holds the tree beside the source
+/// it was built from, so a caller that needs both structured detection and
+/// declaration anchors asks the same session twice instead of parsing twice.
+///
+/// Returns `None` for the same two absences [`parse`] reports — a grammar this
+/// build does not link, and a parser that produced no tree — and synthesizes no
+/// fallback tree for either. A recovered tree carrying error nodes binds
+/// normally; [`ParsedSyntax::has_errors`] reports it.
+///
+/// # Examples
+///
+/// ```
+/// # #[cfg(feature = "ts-python")]
+/// # {
+/// use pedant_syntax::{Location, SourceUnitKind, SyntaxLanguage, tree_sitter::parse_bound};
+///
+/// let source = "def run():\n    import socket\n";
+/// let parsed = parse_bound(source, SyntaxLanguage::Python).expect("a parse session");
+///
+/// assert!(!parsed.has_errors());
+/// let anchor = parsed
+///     .enclosing_unit_anchor(Location { line: 2, column: Some(5) })
+///     .expect("the enclosing function");
+/// assert_eq!(anchor.kind, SourceUnitKind::Function);
+/// assert_eq!(anchor.name.as_deref(), Some("run"));
+/// assert_eq!(anchor.start.line, 1);
+/// # }
+/// ```
+pub fn parse_bound(source: &str, language: SyntaxLanguage) -> Option<ParsedSyntax<'_>> {
+    let tree = parse(source.as_bytes(), language)?;
+    Some(ParsedSyntax::bind(source, language, tree))
 }
 
 /// The enabled tree-sitter grammar for `language`, if this build has one.
@@ -65,56 +97,4 @@ fn grammar(language: SyntaxLanguage) -> Option<::tree_sitter::Language> {
         #[cfg(not(feature = "ts-bash"))]
         SyntaxLanguage::Bash => None,
     }
-}
-
-/// Extract UTF-8 text from a tree-sitter node.
-///
-/// `source` should be the same buffer [`parse`] consumed to build `node`'s
-/// tree. A node's byte range indexes that buffer, so a different one answers
-/// with the wrong text.
-///
-/// Returns an empty string when the range falls outside `source` and when it is
-/// not valid UTF-8. A caller that passes the parsed buffer and parsed a `&str`
-/// reaches neither, and reads an unnamed node rather than an error either way.
-pub fn node_text<'a>(node: Node<'_>, source: &'a [u8]) -> &'a str {
-    source
-        .get(node.byte_range())
-        .and_then(|bytes| std::str::from_utf8(bytes).ok())
-        .unwrap_or("")
-}
-
-/// Walk all descendants of `root` using a tree cursor, calling `visitor`
-/// for each node. Uses depth-first traversal with zero intermediate allocations.
-pub fn walk_descendants(root: Node<'_>, mut visitor: impl FnMut(Node<'_>)) {
-    let mut cursor = root.walk();
-    let mut at_root = true;
-
-    loop {
-        let node = cursor.node();
-        match at_root {
-            true => at_root = false,
-            false => visitor(node),
-        }
-
-        if cursor.goto_first_child() {
-            continue;
-        }
-
-        if !advance_to_next_sibling(&mut cursor) {
-            return;
-        }
-    }
-}
-
-/// Move the cursor to the next node in depth-first order after a leaf.
-///
-/// Ascends through parents until a next sibling is available. Returns `false`
-/// when the traversal has exhausted every node and returned to the root.
-fn advance_to_next_sibling(cursor: &mut TreeCursor<'_>) -> bool {
-    while !cursor.goto_next_sibling() {
-        if !cursor.goto_parent() {
-            return false;
-        }
-    }
-    true
 }

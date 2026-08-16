@@ -6,6 +6,8 @@
 
 use std::ops::Range;
 
+#[cfg(feature = "_ts")]
+use crate::location::Location;
 use crate::span::LineSpan;
 
 /// The byte offset of every line start in one source string.
@@ -79,6 +81,24 @@ impl<'s> SourceIndex<'s> {
             .chain(std::iter::once(text.len()))
             .nth(column)?;
         Some(start + within)
+    }
+
+    /// The one-based line and UTF-8 byte column of `offset`.
+    ///
+    /// Absent when the source does not address `offset` — past its end, or
+    /// inside a code point — so a position built from a parser range is checked
+    /// against the same index every caller location is.
+    #[cfg(feature = "_ts")]
+    pub(crate) fn position_at(&self, offset: usize) -> Option<Location> {
+        if !self.source.is_char_boundary(offset) {
+            return None;
+        }
+        let line = self.line_of(offset);
+        let start = *self.line_starts.get(line.checked_sub(1)?)?;
+        Some(Location {
+            line,
+            column: Some(offset - start + 1),
+        })
     }
 
     /// The one-based inclusive line span a byte range covers.

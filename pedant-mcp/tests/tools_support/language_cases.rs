@@ -39,6 +39,28 @@ fn test_mcp_query_capabilities_includes_language() {
         !python_findings.is_empty(),
         "expected Python-language findings in lib-a: {text}"
     );
+
+    // 4.T14 (Invariant 14): the MCP index takes the flat projection from each
+    // `pedant-lang` analysis, so a language finding keeps its exact current
+    // fields and no symbol evidence reaches the protocol payload.
+    for finding in &findings {
+        let fields: Vec<&str> = finding
+            .as_object()
+            .expect("each finding is an object")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert!(
+            !fields.contains(&"symbols") && !fields.contains(&"symbol_attribution"),
+            "a language capability finding must carry no symbol field: {fields:?}"
+        );
+    }
+    for field in ["\"symbols\"", "\"symbol_attribution\""] {
+        assert!(
+            !text.contains(field),
+            "the MCP language capability payload must not carry {field}: {text}"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

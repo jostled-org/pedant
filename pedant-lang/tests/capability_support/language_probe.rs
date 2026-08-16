@@ -9,11 +9,20 @@
 use std::path::Path;
 
 use pedant_lang::{analyze_file, detect_language};
-use pedant_types::{Capability, CapabilityFinding, Language};
+use pedant_types::{Capability, CapabilityAnalysis, CapabilityFinding, Language};
+
+/// The whole analysis `analyze_file` reports for one source.
+///
+/// The symbol cases and the availability cases read the status and the symbol
+/// projection from here; the older cases take the flat projection below, so
+/// both read the same one entry point.
+pub fn analysis_for(source: &str, path: &str, lang: Language) -> CapabilityAnalysis {
+    analyze_file(Path::new(path), source, lang)
+}
 
 /// Every finding `analyze_file` reports for one source.
 pub fn findings_for(source: &str, path: &str, lang: Language) -> Box<[CapabilityFinding]> {
-    analyze_file(Path::new(path), source, lang).findings
+    analysis_for(source, path, lang).into_profile().findings
 }
 
 /// The same, for a source whose language the detector names from its path.

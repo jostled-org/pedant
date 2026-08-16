@@ -213,17 +213,20 @@ fn walk_crate_files(crate_root: &Path) -> impl Iterator<Item = PathBuf> {
 /// for incremental updates of non-Rust files.
 pub(super) fn analyze_non_rust_or_manifest(path: &Path) -> Result<AnalysisResult, IndexError> {
     let source = read_file(path)?;
-    let lang_profile = pedant_lang::detect_language(path, &source)
+    let language = pedant_lang::detect_language(path, &source)
         .map(|lang| pedant_lang::analyze_file(path, &source, lang));
-    let manifest_profile = pedant_lang::analyze_manifest(path, &source);
+    let manifest = pedant_lang::analyze_manifest(path, &source);
 
+    // Each analysis states its own attribution; the index stores the combined
+    // claim rather than a hand-written one, so a file that is both a source and
+    // a manifest is honest about the weaker of the two.
     let mut findings = Vec::new();
-    let mut attribution = SymbolAttributionStatus::NotApplicable;
-    if let Some(lp) = lang_profile {
-        findings.extend(lp.findings.iter().cloned());
-        attribution = attribution.combine(SOURCE_ATTRIBUTION);
+    let mut attribution = manifest.symbol_attribution;
+    if let Some(analysis) = language {
+        findings.extend(analysis.profile.findings.iter().cloned());
+        attribution = attribution.combine(analysis.symbol_attribution);
     }
-    findings.extend(manifest_profile.findings.iter().cloned());
+    findings.extend(manifest.profile.findings.iter().cloned());
 
     Ok(analysis_result_from_profile(
         CapabilityProfile {
@@ -236,20 +239,13 @@ pub(super) fn analyze_non_rust_or_manifest(path: &Path) -> Result<AnalysisResult
 /// Analyze a manifest or hook-entrypoint file via `pedant-lang`.
 fn analyze_manifest_file(path: &Path) -> Result<AnalysisResult, IndexError> {
     let source = read_file(path)?;
-    let profile = pedant_lang::analyze_manifest(path, &source);
+    let analysis = pedant_lang::analyze_manifest(path, &source);
+    let attribution = analysis.symbol_attribution;
     Ok(analysis_result_from_profile(
-        profile,
-        SymbolAttributionStatus::NotApplicable,
+        analysis.into_profile(),
+        attribution,
     ))
 }
-
-/// What a `pedant-lang` source analysis claims about symbol attribution.
-///
-/// The language backends emit flat findings without a callable inventory, so
-/// they claim nothing rather than an empty successful one. A manifest carries
-/// [`SymbolAttributionStatus::NotApplicable`] instead: its format has no
-/// source-callable model at all.
-const SOURCE_ATTRIBUTION: SymbolAttributionStatus = SymbolAttributionStatus::Unavailable;
 
 /// Build an `AnalysisResult` from a flat profile, with no violations, no data
 /// flows, and no symbol projection.

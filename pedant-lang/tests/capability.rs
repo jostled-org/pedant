@@ -14,7 +14,7 @@
 use std::path::Path;
 
 use pedant_lang::analyze_file;
-use pedant_types::Language;
+use pedant_types::{Language, SymbolAttributionStatus};
 
 /// The one path every language case takes into `analyze_file`.
 #[path = "capability_support/language_probe.rs"]
@@ -48,15 +48,96 @@ mod tree_sitter_cases;
 #[path = "capability_support/retained_behavior.rs"]
 mod retained_behavior;
 
+/// The ownership table every symbol case is written in, and the assertions
+/// that read it.
+#[cfg(any(
+    feature = "ts-python",
+    feature = "ts-javascript",
+    feature = "ts-typescript",
+    feature = "ts-go",
+    feature = "ts-bash"
+))]
+#[path = "capability_support/symbol_model.rs"]
+mod symbol_model;
+
+/// The sources each symbol case reads: every detection family, duplicate and
+/// nested callables, and module-scope evidence.
+#[cfg(any(
+    feature = "ts-python",
+    feature = "ts-javascript",
+    feature = "ts-typescript",
+    feature = "ts-go",
+    feature = "ts-bash"
+))]
+#[path = "capability_support/symbol_family_tables.rs"]
+mod symbol_family_tables;
+
+#[cfg(any(
+    feature = "ts-python",
+    feature = "ts-javascript",
+    feature = "ts-typescript",
+    feature = "ts-go",
+    feature = "ts-bash"
+))]
+#[path = "capability_support/symbol_nesting_tables.rs"]
+mod symbol_nesting_tables;
+
+#[cfg(any(
+    feature = "ts-python",
+    feature = "ts-javascript",
+    feature = "ts-typescript",
+    feature = "ts-go",
+    feature = "ts-bash"
+))]
+#[path = "capability_support/symbol_module_tables.rs"]
+mod symbol_module_tables;
+
+/// Which callable owns each finding. Needs a linked grammar: a build with none
+/// reports attribution as unavailable, which `availability_cases` owns.
+#[cfg(any(
+    feature = "ts-python",
+    feature = "ts-javascript",
+    feature = "ts-typescript",
+    feature = "ts-go",
+    feature = "ts-bash"
+))]
+#[path = "capability_support/symbol_cases.rs"]
+mod symbol_cases;
+
+/// What a build without a grammar, a recovery tree, and a fallback corpus all
+/// report about symbol attribution.
+#[path = "capability_support/availability_cases.rs"]
+mod availability_cases;
+
+/// One parse session per structured source analysis, proven from this crate's
+/// own tracked source.
+#[path = "capability_support/ownership.rs"]
+mod ownership;
+
 /// `pedant-lang` remains the non-Rust capability backend: asked directly about
 /// `Language::Rust` it returns an empty profile rather than guessing with
 /// another language's scanner. Rust capability extraction stays in
 /// `pedant-core`.
+///
+/// 4.T9 (Invariant 11) adds the symbol claim: no callable inventory belongs to
+/// this crate for Rust, so the status is `NotApplicable` rather than the
+/// `Unavailable` a failed non-Rust parse reports.
 #[test]
 fn direct_rust_analysis_returns_empty_profile() {
     const SOURCE: &str =
         "use std::fs;\nuse std::process::Command;\nfn main() { let _ = fs::read(\"x\"); }\n";
-    let profile = analyze_file(Path::new("src/main.rs"), SOURCE, Language::Rust);
+    let analysis = analyze_file(Path::new("src/main.rs"), SOURCE, Language::Rust);
+    assert_eq!(
+        analysis.symbol_attribution,
+        SymbolAttributionStatus::NotApplicable,
+        "Rust callables belong to pedant-core, so this boundary claims none"
+    );
+    assert!(
+        analysis.symbols.is_empty(),
+        "direct Rust analysis claims no symbol, got {:?}",
+        analysis.symbols
+    );
+    let profile = analysis.into_profile();
     assert!(
         profile.findings.is_empty(),
         "direct Rust analysis returns no findings, got {:?}",

@@ -16,9 +16,12 @@ use std::sync::Arc;
 // because `analyze` and `grammar_enabled` name it in every configuration.
 use pedant_syntax::SyntaxLanguage;
 #[cfg(any(feature = "ts-javascript", feature = "ts-typescript"))]
-use pedant_syntax::tree_sitter::{self, node_text, parse, walk_descendants};
-use pedant_types::{Capability, CapabilityFinding, FindingOrigin, Language, SourceLocation};
+use pedant_syntax::tree_sitter::{self, ParsedSyntax, node_text, parse_bound, walk_descendants};
+use pedant_types::{
+    Capability, CapabilityAnalysis, CapabilityFinding, FindingOrigin, Language, SourceLocation,
+};
 
+use crate::attribution;
 use crate::string_analysis::{
     detect_call_sites, detect_string_literal_findings, matches_module_prefix,
     scan_js_string_literals,
@@ -65,29 +68,30 @@ pub(crate) fn analyze(
     source: &str,
     language: Language,
     syntax: SyntaxLanguage,
-) -> Box<[CapabilityFinding]> {
+) -> CapabilityAnalysis {
     let mut findings = Vec::new();
 
     #[cfg(any(feature = "ts-javascript", feature = "ts-typescript"))]
-    let structured = ts_analyze(path, source, language, syntax, &mut findings);
+    let bound = ts_analyze(path, source, language, syntax, &mut findings);
 
     // This build links no JavaScript or TypeScript grammar, so `grammar_enabled`
-    // answers false for every syntax and the regex scanners are the only path.
+    // answers false for every syntax and no session can exist.
     #[cfg(not(any(feature = "ts-javascript", feature = "ts-typescript")))]
-    let structured = grammar_enabled(syntax);
+    let bound = grammar_enabled(syntax).then_some(());
 
-    match structured {
-        true => {}
-        false => {
-            detect_imports(path, source, language, &mut findings);
-            detect_call_sites(path, source, CALL_SITE_PATTERNS, language, &mut findings);
-        }
+    if bound.is_none() {
+        detect_imports(path, source, language, &mut findings);
+        detect_call_sites(path, source, CALL_SITE_PATTERNS, language, &mut findings);
     }
 
     let literals = scan_js_string_literals(source);
     detect_string_literal_findings(path, &literals, language, &mut findings);
 
-    findings.into_boxed_slice()
+    #[cfg(any(feature = "ts-javascript", feature = "ts-typescript"))]
+    let analysis = attribution::seal(bound, language, findings.into_boxed_slice());
+    #[cfg(not(any(feature = "ts-javascript", feature = "ts-typescript")))]
+    let analysis = attribution::unavailable(findings.into_boxed_slice());
+    analysis
 }
 
 /// Extract the module name from a `require('module')` or `require("module")` call.
@@ -165,28 +169,25 @@ fn detect_imports(
 
 // ── Tree-sitter structured extraction ──────────────────────────────────
 
-/// Structured extraction through tree-sitter.
+/// Structured extraction through tree-sitter, returning the session that did it.
 ///
-/// Answers whether a grammar ran. `false` means this build links no grammar for
-/// `syntax`, or the parser failed outright, and the caller owes the file a regex
-/// scan.
+/// `None` means this build links no grammar for `syntax`, or the parser failed
+/// outright, and the caller owes the file a regex scan. The session travels
+/// back rather than dying here, because attribution asks it the same questions
+/// detection just did.
 #[cfg(any(feature = "ts-javascript", feature = "ts-typescript"))]
-fn ts_analyze(
+fn ts_analyze<'source>(
     path: &Arc<str>,
-    source: &str,
+    source: &'source str,
     language: Language,
     syntax: SyntaxLanguage,
     findings: &mut Vec<CapabilityFinding>,
-) -> bool {
-    let bytes = source.as_bytes();
+) -> Option<ParsedSyntax<'source>> {
     let parsed = grammar_enabled(syntax)
-        .then(|| parse(bytes, syntax))
-        .flatten();
-    let tree = match parsed {
-        Some(t) => t,
-        None => return false,
-    };
-    let root = tree.root_node();
+        .then(|| parse_bound(source, syntax))
+        .flatten()?;
+    let bytes = source.as_bytes();
+    let root = parsed.root();
 
     // Phase 1: detect module references via tree-sitter — ES imports and
     // require() calls, in one walk.
@@ -195,7 +196,7 @@ fn ts_analyze(
     // Phase 2: regex call-site patterns (fetch(), process.env, etc.).
     detect_call_sites(path, source, CALL_SITE_PATTERNS, language, findings);
 
-    true
+    Some(parsed)
 }
 
 /// Whether this crate's own features link a grammar for `syntax`.

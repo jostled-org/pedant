@@ -18,10 +18,13 @@ use std::sync::Arc;
 #[cfg(feature = "ts-go")]
 use pedant_syntax::{
     SyntaxLanguage,
-    tree_sitter::{self, node_text, parse, walk_descendants},
+    tree_sitter::{self, ParsedSyntax, node_text, parse_bound, walk_descendants},
 };
-use pedant_types::{Capability, CapabilityFinding, FindingOrigin, Language, SourceLocation};
+use pedant_types::{
+    Capability, CapabilityAnalysis, CapabilityFinding, FindingOrigin, Language, SourceLocation,
+};
 
+use crate::attribution;
 use crate::string_analysis::{
     detect_call_sites, detect_string_literal_findings, matches_module_prefix,
     scan_go_string_literals,
@@ -56,15 +59,23 @@ const CALL_SITE_PATTERNS: &[(&str, Capability, &str)] = &[
     ("syscall.Exec(", Capability::ProcessExec, "syscall.Exec"),
 ];
 
-/// Analyze Go source for capability findings.
-pub(crate) fn analyze(path: &Arc<str>, source: &str) -> Box<[CapabilityFinding]> {
+/// Analyze Go source for capabilities, and attribute them to callables.
+///
+/// The structured tier binds one parse session, uses it for detection, and
+/// hands it to attribution. A build without the grammar, and a parser that
+/// produced no tree, take the text tier and report attribution as unavailable.
+pub(crate) fn analyze(path: &Arc<str>, source: &str) -> CapabilityAnalysis {
     let mut findings = Vec::new();
 
     #[cfg(feature = "ts-go")]
-    ts_analyze(path, source, &mut findings);
+    let bound = ts_analyze(path, source, &mut findings);
 
+    // No grammar in this build, so no session can exist and the text tier is
+    // the only path.
     #[cfg(not(feature = "ts-go"))]
-    {
+    let bound: Option<()> = None;
+
+    if bound.is_none() {
         detect_imports(path, source, &mut findings);
         detect_call_sites(
             path,
@@ -78,7 +89,11 @@ pub(crate) fn analyze(path: &Arc<str>, source: &str) -> Box<[CapabilityFinding]>
     let literals = scan_go_string_literals(source);
     detect_string_literal_findings(path, &literals, Language::Go, &mut findings);
 
-    findings.into_boxed_slice()
+    #[cfg(feature = "ts-go")]
+    let analysis = attribution::seal(bound, Language::Go, findings.into_boxed_slice());
+    #[cfg(not(feature = "ts-go"))]
+    let analysis = attribution::unavailable(findings.into_boxed_slice());
+    analysis
 }
 
 /// Extract the package path from a Go import line.
@@ -167,18 +182,20 @@ fn emit_import_findings(
 
 // ── Tree-sitter structured extraction ──────────────────────────────────
 
+/// Detect through the Go grammar, returning the session that did it.
+///
+/// `None` means no tree: the caller owes the file its text-tier scan. The
+/// session travels back rather than dying here, because attribution asks it the
+/// same questions detection just did.
 #[cfg(feature = "ts-go")]
-fn ts_analyze(path: &Arc<str>, source: &str, findings: &mut Vec<CapabilityFinding>) {
+fn ts_analyze<'source>(
+    path: &Arc<str>,
+    source: &'source str,
+    findings: &mut Vec<CapabilityFinding>,
+) -> Option<ParsedSyntax<'source>> {
+    let parsed = parse_bound(source, SyntaxLanguage::Go)?;
     let bytes = source.as_bytes();
-    let tree = match parse(bytes, SyntaxLanguage::Go) {
-        Some(t) => t,
-        None => {
-            detect_imports(path, source, findings);
-            detect_call_sites(path, source, CALL_SITE_PATTERNS, Language::Go, findings);
-            return;
-        }
-    };
-    let root = tree.root_node();
+    let root = parsed.root();
 
     // Phase 1: extract imports and build package-name → path map.
     let mut pkg_map = BTreeMap::new();
@@ -189,6 +206,8 @@ fn ts_analyze(path: &Arc<str>, source: &str, findings: &mut Vec<CapabilityFindin
     ts_detect_qualified_calls(root, bytes, path, &pkg_map, findings);
     detect_call_sites(path, source, CALL_SITE_PATTERNS, Language::Go, findings);
     dedup_call_findings(findings);
+
+    Some(parsed)
 }
 
 /// Remove duplicate call-site findings at the same location (tree-sitter and

@@ -11,8 +11,9 @@
 //! That is what this tree owns. [`row`] installs the fake tools and runs one
 //! row, [`verdict`] states what a finished row must show, and this module holds
 //! the lifecycle claims: the script's own status, the order it drove the tools
-//! in, the target root every Cargo call inherited, a dead process tree, and a
-//! temporary directory holding no proof-owned staging root. The other two
+//! in, the target root every Cargo call inherited, no process of one row
+//! surviving into the next, and a temporary directory holding no proof-owned
+//! staging root. The other two
 //! questions a release proof raises have the same shape and a module each —
 //! [`graph_cases`] for what the packaged graph must refuse, [`budget_cases`]
 //! for what the run is allowed to cost.
@@ -288,8 +289,15 @@ fn infrastructure_signature_is_reclassified(root: &RowRoot, sample: &str, operat
     );
 }
 
-/// A proof that receives TERM leaves with the signal's status, releases its
-/// staging root, and leaves no descendant of the tool it was running.
+/// A proof that receives TERM leaves with the signal's status and releases the
+/// staging root it owns on the way out.
+///
+/// The interrupted tool orphans a descendant, which is the point: the script
+/// leaves that tree to whoever started it, so the guard's teardown is what
+/// clears it and the row states only that no such process reaches the next row.
+/// What the script itself has to do under TERM is run its trap — status 143 and
+/// an empty temporary root, both of which fail when that trap or its cleanup is
+/// removed.
 fn signalled_proof_leaves_with_its_signal(root: &RowRoot) {
     let label = "an interrupted packaged-workspace proof";
     let fault = Fault::Interrupt {

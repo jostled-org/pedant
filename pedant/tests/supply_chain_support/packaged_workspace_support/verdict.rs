@@ -2,9 +2,10 @@
 //!
 //! [`super::row`] runs one row; this module reads it. The readings are shared
 //! because every case module takes the same ones: the child's own exit, the
-//! stated status, a dead process tree, the target root every Cargo call
-//! inherited, no proof-owned staging root, a pinned tool root that matches how
-//! far the row got, and a caller's repository the proof never wrote into.
+//! stated status, no process of this row surviving into the next, the target
+//! root every Cargo call inherited, no proof-owned staging root, a pinned tool
+//! root that matches how far the row got, and a caller's repository the proof
+//! never wrote into.
 
 use std::time::Duration;
 
@@ -15,7 +16,8 @@ use super::row::{PINNED_BINARIES, RowRoot};
 use crate::cargo_classifier_cases::{entries, redacted};
 use crate::process_guard::Completed;
 
-/// How long a killed process tree has to disappear.
+/// How long the killed process tree has to disappear after the guard's
+/// teardown.
 const REAP_BUDGET: Duration = Duration::from_secs(30);
 
 /// The direct child every package-proof staging root uses beneath `TMPDIR`.
@@ -85,9 +87,9 @@ pub(super) fn assert_tool_root_matches_the_row(root: &RowRoot, label: &str, inst
 }
 
 /// What every row requires however it ended: the child's own exit, the stated
-/// status, a dead process tree, the inherited target root on every Cargo call,
-/// no proof-owned staging root, and a pinned tool root that matches how far the
-/// row got.
+/// status, no process of this row surviving into the next, the inherited target
+/// root on every Cargo call, no proof-owned staging root, and a pinned tool
+/// root that matches how far the row got.
 pub(super) fn assert_row_is_clean(
     root: &RowRoot,
     label: &str,
@@ -106,12 +108,7 @@ pub(super) fn assert_row_is_clean(
         "{label}: unexpected exit status: {}",
         redacted(&completed.transcript())
     );
-    for pid in root.recorded_pids().iter().copied() {
-        assert!(
-            wait_until_gone(pid, REAP_BUDGET),
-            "{label}: the tool process {pid} outlived the proof"
-        );
-    }
+    assert_no_process_survives_the_row(root, label);
     let targets = root.recorded_targets();
     assert!(
         !targets.is_empty(),
@@ -131,6 +128,29 @@ pub(super) fn assert_row_is_clean(
     assert_no_staging_root(root, label);
     assert_tool_root_matches_the_row(root, label, installed);
     assert_caller_repository_is_untouched(root, label);
+}
+
+/// No process this row started is still running once the row is read.
+///
+/// The reaping is the guard's work rather than the script's, and the script
+/// says so: it leaves with the signal's status precisely so the build lease or
+/// process guard that started it kills the command group, because a proof that
+/// killed its own group would kill whatever ran it. [`crate::process_guard`]
+/// terminates the group and joins both drains before `execute` returns, so this
+/// reading states the fixture boundary the row owns — a descendant an
+/// interrupted tool orphaned reaches no later row, and the recorded pids are
+/// where containment that stopped covering the tree would show. That
+/// containment has its own proof beside these rows in
+/// `supply_chain_process_guard_reaps_descendants_on_success_timeout_and_early_error`.
+/// The script's own release-what-it-owns claim is [`assert_no_staging_root`],
+/// which the script performs and this suite falsifies.
+pub(super) fn assert_no_process_survives_the_row(root: &RowRoot, label: &str) {
+    for pid in root.recorded_pids().iter().copied() {
+        assert!(
+            wait_until_gone(pid, REAP_BUDGET),
+            "{label}: the tool process {pid} survived the guard's teardown"
+        );
+    }
 }
 
 /// No package-proof staging root remains beneath the row's temporary root.

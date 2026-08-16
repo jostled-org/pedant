@@ -40,7 +40,7 @@ const PRELUDE: &str = "set -uo pipefail\n. .github/scripts/cargo_infrastructure.
 /// Representative Cargo output for each infrastructure signature, in the order
 /// the signature table states them, written in the redacted form this module's
 /// header requires.
-const INFRASTRUCTURE_MATCHES: &[&str] = &[
+pub(crate) const INFRASTRUCTURE_MATCHES: &[&str] = &[
     "warning:_spurious_network_error_(3_tries_remaining)",
     "failed_to_fetch_https://github.com/rust-lang/crates.io-index",
     "Could_not_resolve_host:_index.crates.io",
@@ -305,13 +305,13 @@ fn assert_transcript(completed: &Completed, label: &str, stdout: &str, code: i32
 }
 
 /// One stored sample, with its underscores restored to the spaces a child sees.
-fn expanded(text: &str) -> Box<str> {
+pub(crate) fn expanded(text: &str) -> Box<str> {
     text.replace('_', " ").into()
 }
 
 /// One observed transcript, rendered back into the stored form so a failure
 /// message cannot restate a signature. See this module's header.
-fn redacted(text: &str) -> Box<str> {
+pub(crate) fn redacted(text: &str) -> Box<str> {
     text.replace(' ', "_").into()
 }
 
@@ -407,7 +407,7 @@ impl RowRoot {
 }
 
 /// The sorted file names one directory holds.
-fn entries(directory: &Path) -> Box<[Box<str>]> {
+pub(crate) fn entries(directory: &Path) -> Box<[Box<str>]> {
     let mut names: Vec<Box<str>> = fs::read_dir(directory)
         .expect("a readable directory")
         .map(|entry| {
@@ -424,7 +424,7 @@ fn entries(directory: &Path) -> Box<[Box<str>]> {
 
 /// The workspace root, which is the only directory the tracked helper's
 /// repository-relative path resolves from.
-fn repository_root() -> PathBuf {
+pub(crate) fn repository_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("pedant has a workspace parent")

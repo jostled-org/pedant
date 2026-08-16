@@ -69,19 +69,20 @@ fn write_fake_cargo_script(script_dir: &Path, vendor_body: &str) {
     make_executable(&script_path);
 }
 
+/// Give one written fake tool the mode a `PATH` lookup needs.
 #[cfg(unix)]
-fn make_executable(script_path: &Path) {
+pub(crate) fn make_executable(script_path: &Path) {
     use std::os::unix::fs::PermissionsExt;
     let mut permissions = std::fs::metadata(script_path)
-        .expect("the fake cargo script should exist")
+        .expect("the fake tool should exist")
         .permissions();
     permissions.set_mode(0o755);
-    std::fs::set_permissions(script_path, permissions)
-        .expect("the fake cargo script should be executable");
+    std::fs::set_permissions(script_path, permissions).expect("the fake tool should be executable");
 }
 
+/// Windows resolves an interpreter rather than a mode bit.
 #[cfg(windows)]
-fn make_executable(_script_path: &Path) {}
+pub(crate) fn make_executable(_script_path: &Path) {}
 
 /// Where the real Cargo lives, so the fake one can forward to it.
 fn real_cargo() -> String {

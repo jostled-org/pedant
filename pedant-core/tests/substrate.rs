@@ -33,6 +33,10 @@ mod release_contract;
 #[path = "substrate_support/release_workflow.rs"]
 mod release_workflow;
 
+/// The tracked packaged-workspace release proof's structural contract.
+#[path = "substrate_support/packaged_workspace.rs"]
+mod packaged_workspace;
+
 /// Focused lexical-path authority and production-wiring proofs. The test-only
 /// adapter exists only under the proof feature, so ordinary builds expose no
 /// additional surface. Same `#[path]` reason as [`declaration_scan`].

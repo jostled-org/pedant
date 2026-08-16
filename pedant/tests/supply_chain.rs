@@ -31,6 +31,11 @@ mod guard_cases;
 #[path = "supply_chain_support/cargo_classifier_cases.rs"]
 mod cargo_classifier_cases;
 
+/// The packaged-workspace release proof's lifecycle, driven by fake Cargo and
+/// release-plz executables. Same `#[path]` reason as the modules above.
+#[path = "supply_chain_support/packaged_workspace_cases.rs"]
+mod packaged_workspace_cases;
+
 #[cfg(feature = "resolution-test-support")]
 #[path = "supply_chain_support/probe_receipt.rs"]
 mod probe_receipt;

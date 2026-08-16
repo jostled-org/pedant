@@ -50,14 +50,14 @@ const INFRASTRUCTURE_SIGNATURES: &[&str] = &[
 /// Flags that would fold case and let a near miss claim an absent machine.
 const CASE_FOLDING_FLAGS: &[&str] = &[" -i", " --ignore-case", " -S", " --smart-case"];
 
-fn repository_root() -> PathBuf {
+pub(crate) fn repository_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("pedant-core has a workspace parent")
         .to_path_buf()
 }
 
-fn read_repository_file(path: &str) -> String {
+pub(crate) fn read_repository_file(path: &str) -> String {
     fs::read_to_string(repository_root().join(path))
         .unwrap_or_else(|error| panic!("failed to read {path}: {error}"))
 }
@@ -256,7 +256,7 @@ fn assert_shellcheck_registration() {
 }
 
 /// One shell function's body, between its opening line and its closing brace.
-fn function_body(source: &str, name: &str) -> Box<str> {
+pub(crate) fn function_body(source: &str, name: &str) -> Box<str> {
     let opening: Box<str> = format!("\n{name}() {{\n").into();
     let start = source
         .find(&*opening)
@@ -269,9 +269,25 @@ fn function_body(source: &str, name: &str) -> Box<str> {
 }
 
 /// Where one required fragment starts inside a function body.
-fn offset_of(body: &str, fragment: &str) -> usize {
+pub(crate) fn offset_of(body: &str, fragment: &str) -> usize {
     body.find(fragment)
         .unwrap_or_else(|| panic!("the body should contain {fragment}"))
+}
+
+/// The packaged-workspace proof stages the release finalization will squash,
+/// lets release-plz own every version and requirement, and compiles all eight
+/// archives through the requirements those archives carry.
+///
+/// Structure only, and deliberately so: the run this describes installs two
+/// pinned tools from Git and talks to the registry, so it belongs to the
+/// indexed proof rather than to a scoped test. What a scoped test can own is
+/// that the script cannot silently stop being that run — that it cannot package
+/// seven members, reuse yesterday's archive, resolve a first-party edge through
+/// crates.io, leave its clone behind, or compute a version release-plz did not
+/// stage. `pedant/tests/supply_chain.rs` owns what it does with fake tools.
+#[test]
+fn packaged_workspace_script_is_release_graph_exact() {
+    crate::packaged_workspace::assert_release_graph_is_exact();
 }
 
 #[test]

@@ -20,6 +20,7 @@ exec shellcheck -x \
     .github/scripts/check_graph_capabilities.sh \
     .github/scripts/check_graph_dependency_closure.sh \
     .github/scripts/check_lang_feature_forwarding.sh \
+    .github/scripts/check_packaged_workspace.sh \
     .github/scripts/check_published_manifests.sh \
     .github/scripts/check_release_readiness.sh \
     .github/scripts/check_resolution_dependency_closure.sh \

@@ -80,8 +80,7 @@ const GRAPH_VIOLATIONS: &[GraphViolation] = &[
 
 /// Every unreleaseable packaged graph is refused, by name, before the archive
 /// workspace compiles.
-#[test]
-fn packaged_graph_refuses_every_unreleaseable_shape() {
+pub(super) fn verify_packaged_graph_refusals() {
     for violation in GRAPH_VIOLATIONS {
         unreleaseable_graph_is_refused(&RowRoot::new(), violation);
     }

@@ -3,8 +3,8 @@
 //! [`super::row`] runs one row; this module reads it. The readings are shared
 //! because every case module takes the same ones: the child's own exit, the
 //! stated status, a dead process tree, the target root every Cargo call
-//! inherited, an empty temporary root, a pinned tool root that matches how far
-//! the row got, and a caller's repository the proof never wrote into.
+//! inherited, no proof-owned staging root, a pinned tool root that matches how
+//! far the row got, and a caller's repository the proof never wrote into.
 
 use std::time::Duration;
 
@@ -17,6 +17,9 @@ use crate::process_guard::Completed;
 
 /// How long a killed process tree has to disappear.
 const REAP_BUDGET: Duration = Duration::from_secs(30);
+
+/// The direct child every package-proof staging root uses beneath `TMPDIR`.
+const STAGING_PREFIX: &str = "pedant-packaged-workspace.";
 
 /// The status a classified infrastructure transcript becomes.
 pub(super) const INFRASTRUCTURE_STATUS: i32 = 75;
@@ -83,8 +86,8 @@ pub(super) fn assert_tool_root_matches_the_row(root: &RowRoot, label: &str, inst
 
 /// What every row requires however it ended: the child's own exit, the stated
 /// status, a dead process tree, the inherited target root on every Cargo call,
-/// an empty temporary root, and a pinned tool root that matches how far the row
-/// got.
+/// no proof-owned staging root, and a pinned tool root that matches how far the
+/// row got.
 pub(super) fn assert_row_is_clean(
     root: &RowRoot,
     label: &str,
@@ -125,13 +128,24 @@ pub(super) fn assert_row_is_clean(
         root.target.is_dir() && root.target.is_absolute(),
         "{label}: the sentinel target root must stay an existing absolute directory"
     );
-    assert_eq!(
-        entries(&root.tmp),
-        Box::default(),
-        "{label}: the proof left staging behind"
-    );
+    assert_no_staging_root(root, label);
     assert_tool_root_matches_the_row(root, label, installed);
     assert_caller_repository_is_untouched(root, label);
+}
+
+/// No package-proof staging root remains beneath the row's temporary root.
+///
+/// Platform tool launchers may create their own cache entries under `TMPDIR`.
+/// Those entries are not owned by the package proof and must not be deleted or
+/// mistaken for its staging resources.
+pub(super) fn assert_no_staging_root(root: &RowRoot, label: &str) {
+    let observed = entries(&root.tmp);
+    assert!(
+        !observed
+            .iter()
+            .any(|entry| entry.starts_with(STAGING_PREFIX)),
+        "{label}: the proof left staging behind: {observed:?}"
+    );
 }
 
 /// The caller's repository ends every row exactly as the fixture planted it.
@@ -141,7 +155,7 @@ pub(super) fn assert_row_is_clean(
 /// changelogs, and a lockfile there. A regression that dropped the `-C
 /// "${clone_root}"` from one of those commands would stage into the operator's
 /// checkout instead, and every other reading a row takes — exit status, driven
-/// operations, inherited target, empty staging root, tool root — would be
+/// operations, inherited target, absent staging root, tool root — would be
 /// unchanged. The caller's head, refs, and working-tree changes are where that
 /// lands.
 pub(super) fn assert_caller_repository_is_untouched(root: &RowRoot, label: &str) {

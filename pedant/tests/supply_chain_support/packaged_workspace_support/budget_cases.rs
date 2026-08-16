@@ -66,8 +66,7 @@ const BUDGET_OVERRUNS: &[BudgetOverrun] = &[
 /// comparison or a swapped variable would pass the structural test, all twenty
 /// lifecycle rows, and both indexed runs. The clock and the sizer are the two
 /// readings those refusals judge, so the rows below supply the readings.
-#[test]
-fn packaged_workspace_budget_selects_state_and_refuses_every_overrun() {
+pub(super) fn verify_packaged_workspace_budgets() {
     warm_target_selects_the_warm_budget(&RowRoot::new());
     for overrun in BUDGET_OVERRUNS {
         budget_overrun_is_refused(&RowRoot::new(), overrun);

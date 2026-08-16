@@ -12,10 +12,10 @@
 //! row, [`verdict`] states what a finished row must show, and this module holds
 //! the lifecycle claims: the script's own status, the order it drove the tools
 //! in, the target root every Cargo call inherited, a dead process tree, and a
-//! temporary directory holding nothing at all. The other two questions a
-//! release proof raises have the same shape and a module each — [`graph_cases`]
-//! for what the packaged graph must refuse, [`budget_cases`] for what the run
-//! is allowed to cost.
+//! temporary directory holding no proof-owned staging root. The other two
+//! questions a release proof raises have the same shape and a module each —
+//! [`graph_cases`] for what the packaged graph must refuse, [`budget_cases`]
+//! for what the run is allowed to cost.
 //!
 //! A row selects its stage the way an operator does, through the argument list.
 //! Two words build one pinned tool and stop, none runs the release proof, and
@@ -44,12 +44,12 @@ mod graph_cases;
 #[path = "packaged_workspace_support/budget_cases.rs"]
 mod budget_cases;
 
-use crate::cargo_classifier_cases::{INFRASTRUCTURE_MATCHES, entries, redacted};
+use crate::cargo_classifier_cases::{INFRASTRUCTURE_MATCHES, redacted};
 use row::{Fault, ORDINARY_STATUS, PINNED_BINARIES, RowRoot};
 use verdict::{
     INFRASTRUCTURE_STATUS, REFUSED_STATUS, SIGNALLED_STATUS, assert_caller_repository_is_untouched,
-    assert_refusal, assert_row_is_clean, assert_tool_root_matches_the_row, expected_operations,
-    tool_stage_operations,
+    assert_no_staging_root, assert_refusal, assert_row_is_clean, assert_tool_root_matches_the_row,
+    expected_operations, tool_stage_operations,
 };
 
 /// An argument list that names a tool stage and then keeps talking.
@@ -102,6 +102,18 @@ fn packaged_workspace_cleanup_is_bounded_on_success_failure_infrastructure_and_i
         infrastructure_signature_is_reclassified(&RowRoot::new(), sample, operation);
     }
     signalled_proof_leaves_with_its_signal(&RowRoot::new());
+}
+
+/// Every unreleaseable packaged graph is refused before compilation begins.
+#[test]
+fn packaged_graph_refuses_every_unreleaseable_shape() {
+    graph_cases::verify_packaged_graph_refusals();
+}
+
+/// The packaged proof selects its warm budget and refuses every overrun.
+#[test]
+fn packaged_workspace_budget_selects_state_and_refuses_every_overrun() {
+    budget_cases::verify_packaged_workspace_budgets();
 }
 
 /// A clean run installs both pinned tools, proves their versions, stages the
@@ -187,11 +199,7 @@ fn overlong_stage_is_refused_before_anything_runs(root: &RowRoot) {
         "{label}: the proof drove a tool for an argument list it had already refused"
     );
     assert_tool_root_matches_the_row(root, label, &[]);
-    assert_eq!(
-        entries(&root.tmp),
-        Box::default(),
-        "{label}: the proof left staging behind"
-    );
+    assert_no_staging_root(root, label);
     assert_caller_repository_is_untouched(root, label);
 }
 
@@ -242,11 +250,7 @@ fn unknown_tool_name_is_refused_before_anything_runs(root: &RowRoot) {
         "{label}: the proof moved state for a tool name it was always going to refuse"
     );
     assert_tool_root_matches_the_row(root, label, PINNED_BINARIES);
-    assert_eq!(
-        entries(&root.tmp),
-        Box::default(),
-        "{label}: the proof left staging behind"
-    );
+    assert_no_staging_root(root, label);
     assert_caller_repository_is_untouched(root, label);
 }
 

@@ -37,6 +37,15 @@ mod release_workflow;
 #[path = "substrate_support/packaged_workspace.rs"]
 mod packaged_workspace;
 
+/// The tables that proof is compared against, and the readings that hold it to
+/// its stated cost. Split from [`packaged_workspace`] for the source-file
+/// budget alone, the way `fingerprint_claims` sits beside `fingerprint`.
+#[path = "substrate_support/packaged_workspace_claims.rs"]
+mod packaged_workspace_claims;
+
+#[path = "substrate_support/packaged_workspace_budget.rs"]
+mod packaged_workspace_budget;
+
 /// Focused lexical-path authority and production-wiring proofs. The test-only
 /// adapter exists only under the proof feature, so ordinary builds expose no
 /// additional surface. Same `#[path]` reason as [`declaration_scan`].

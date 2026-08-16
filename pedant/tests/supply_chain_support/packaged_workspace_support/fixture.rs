@@ -51,6 +51,15 @@ const BASE_VERSION: &str = "0.1.0";
 /// computes from the breaking commit the script writes.
 const STAGED_VERSION: &str = "0.2.0";
 
+/// The branch the fixture's base commit sits on, and the only ref it holds.
+const FIXTURE_BRANCH: &str = "main";
+
+/// The tracked file the final-tree edit changes and never commits.
+const FINAL_TREE_EDIT: &str = "fixture-a/src/lib.rs";
+
+/// The untracked, unignored file the overlay must copy and never commit.
+const UNTRACKED_FILE: &str = "notes/untracked.txt";
+
 /// Build one row's repository: the committed base, the uncommitted final-tree
 /// edit, and the untracked file the overlay must carry. Reports the base the
 /// proof is asked to stage onto.
@@ -138,7 +147,10 @@ pub(super) fn write_staged_tree(staged: &Path) {
 
 /// Commit the fixture and report the base the proof must overlay onto.
 fn commit_base(repository: &Path) -> Box<str> {
-    git(repository, &["init", "--quiet", "--initial-branch", "main"]);
+    git(
+        repository,
+        &["init", "--quiet", "--initial-branch", FIXTURE_BRANCH],
+    );
     git(repository, &["add", "--all"]);
     git(
         repository,
@@ -172,13 +184,59 @@ pub(super) fn original_checkout(repository: &Path) -> Box<str> {
 /// The uncommitted change and untracked file the overlay must carry.
 fn apply_final_tree_edit(repository: &Path) {
     write(
-        &repository.join("fixture-a/src/lib.rs"),
+        &repository.join(FINAL_TREE_EDIT),
         "pub fn fixture_a() {}\npub fn added_by_the_final_tree() {}\n",
     );
     write(
-        &repository.join("notes/untracked.txt"),
+        &repository.join(UNTRACKED_FILE),
         "an untracked, unignored file the overlay must copy\n",
     );
+}
+
+/// One repository read as labelled lines: the commit `HEAD` names, every ref it
+/// holds, and every change its working tree carries.
+///
+/// Three readings rather than one, because the proof writes three kinds of
+/// thing into the clone it owns — commits, a branch and its upstream, and the
+/// versions, requirements, changelogs, and lockfile release-plz stages — and a
+/// regression that wrote any of them into the caller's checkout instead lands
+/// in exactly one of these lines.
+pub(super) fn repository_state(repository: &Path) -> Box<[Box<str>]> {
+    let mut state: Vec<Box<str>> = vec![
+        format!(
+            "head {}",
+            git(repository, &["rev-parse", "HEAD"]).stdout.trim()
+        )
+        .into(),
+    ];
+    let refs = git(repository, &["show-ref"]);
+    state.extend(refs.stdout.lines().map(|line| format!("ref {line}").into()));
+    let status = git(
+        repository,
+        &["status", "--porcelain", "--untracked-files=all"],
+    );
+    state.extend(
+        status
+            .stdout
+            .lines()
+            .map(|line| format!("status {line}").into()),
+    );
+    state.into_boxed_slice()
+}
+
+/// The state [`build_repository`] planted, which is what a proof that never
+/// wrote into the caller's repository leaves behind.
+///
+/// Untracked files are listed one by one rather than collapsed into their
+/// directory, so a file the proof left in the caller's checkout is named rather
+/// than hidden inside a `notes/` entry that was going to be there anyway.
+pub(super) fn planted_state(base: &str) -> Box<[Box<str>]> {
+    Box::new([
+        format!("head {base}").into(),
+        format!("ref {base} refs/heads/{FIXTURE_BRANCH}").into(),
+        format!("status  M {FINAL_TREE_EDIT}").into(),
+        format!("status ?? {UNTRACKED_FILE}").into(),
+    ])
 }
 
 /// Run one fixture Git command under the guard and require it to succeed.
@@ -197,14 +255,20 @@ fn git(cwd: &Path, arguments: &[&str]) -> Completed {
     completed
 }
 
-/// Install the fake Cargo the proof finds on `PATH`, and the two tool bodies it
-/// copies out when the proof asks Cargo to install them.
+/// Install the fake Cargo, clock, and sizer the proof finds on `PATH`, and the
+/// two tool bodies Cargo copies out when the proof asks it to install them.
 ///
 /// The bodies sit beside the fake Cargo rather than on `PATH`: a tool the proof
 /// never installed must not be reachable, because `release-plz update` proving
 /// it can see the pinned semver checker is one of the things a row requires.
+///
+/// The clock and the sizer are installed for every row and stand aside unless a
+/// row asks them for a number. They exist because the proof's budget refusals
+/// are minutes and gigabytes away from anything a test can spend.
 pub(super) fn write_fake_tools(tools: &Path) {
     write_executable(&tools.join("cargo"), FAKE_CARGO);
+    write_executable(&tools.join("date"), FAKE_DATE);
+    write_executable(&tools.join("du"), FAKE_DU);
     write_executable(
         &tools.join("bodies/cargo-semver-checks"),
         FAKE_SEMVER_CHECKS,
@@ -224,6 +288,14 @@ fn write_executable(path: &Path, body: &str) {
 /// metadata the proof reads. It never compiles anything: what a row proves is
 /// the script's lifecycle, not Cargo's.
 const FAKE_CARGO: &str = include_str!("cargo.sh");
+
+/// The stand-in clock, which reports the real time until a row asks it to jump
+/// past a runtime budget.
+const FAKE_DATE: &str = include_str!("date.sh");
+
+/// The stand-in sizer, which measures for real until a row asks it to report a
+/// target root or staging root over budget.
+const FAKE_DU: &str = include_str!("du.sh");
 
 /// The stand-in cargo-semver-checks, which only has to be the pinned version.
 const FAKE_SEMVER_CHECKS: &str = include_str!("cargo-semver-checks.sh");

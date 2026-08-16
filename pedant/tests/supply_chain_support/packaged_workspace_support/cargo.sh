@@ -109,7 +109,22 @@ case "${operation}" in
         log "install ${last_argument}"
         ;;
     package)
-        for member in "$(dirname "${manifest}")"/*/Cargo.toml; do
+        # Real `cargo package --locked` refuses a tree carrying uncommitted
+        # changes, so the archives can only ever hold what the proof committed.
+        # The staging commit for the release-plz update is what makes that tree
+        # clean; without it the real tool refuses here, and so does this one.
+        clone_root=$(dirname "${manifest}")
+        if [ -n "$(git -C "${clone_root}" status --porcelain --untracked-files=all)" ]; then
+            printf 'error: %s\n' \
+                'files in the working directory contain changes that were not yet committed into git' \
+                >&2
+            exit 101
+        fi
+        # What the archives are built onto, newest first, so a row reads the
+        # isolated history rather than inferring it from an archive that would
+        # have been written either way.
+        git -C "${clone_root}" log --format='package onto %s' >> "${state}/operations"
+        for member in "${clone_root}"/*/Cargo.toml; do
             package_name=$(rg -N -o -r '${1}' '^name = "([^"]+)"$' "${member}")
             package_version=$(rg -N -o -r '${1}' '^version = "([^"]+)"$' "${member}")
             staging="${state}/pack/${package_name}-${package_version}"

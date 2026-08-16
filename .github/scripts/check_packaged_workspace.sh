@@ -12,14 +12,25 @@
 # packages all eight members, and compiles the extracted archives against each
 # other under exactly those generated requirements.
 #
-# It owns its clone, its tool root, its archives, and its generated workspace,
-# and it releases them on success, failure, and interruption. It never writes a
-# commit, tag, manifest, lockfile, or changelog into the caller's repository,
-# and it never deletes the runner's registry cache or the caller's target root.
+# It owns its clone, its tool root, its archives, and its generated workspace.
+# It releases all but the tool root on success, failure, and interruption; that
+# one it keeps, inside the target and named for both pinned revisions, because
+# rebuilding it is most of a cold run and it is what a later run reads its warm
+# state from. It never writes a commit, tag, manifest, lockfile, or changelog
+# into the caller's repository, and it never deletes the runner's registry cache
+# or the caller's target root.
 #
 # Independently pinned tools are not the pinned GitHub action. This proof says
 # the packaged graph compiles; the release workflow remains the publication
 # authority.
+#
+# Two stages, because building the two pinned tools from source costs 1,429
+# measured seconds against a 1,200-second verification slice, and five times
+# what the release proof itself costs. `--install-tools <tool>` builds one of
+# them into a revision-named root inside the caller's target and stops; the
+# release proof that follows asks those binaries their versions and is held to
+# the warm budget they earn. Any stage run alone is still correct: a proof that
+# finds no pinned build makes one and pays the cold budget for it.
 #
 # Exit 0 clean, 75 when the machine could not do the work, non-zero otherwise.
 
@@ -51,20 +62,38 @@ RELEASE_PACKAGE_COUNT=8
 STAGING_PREFIX="pedant-packaged-workspace"
 readonly RELEASE_PACKAGE_COUNT STAGING_PREFIX
 
-# What this proof is allowed to cost. The marker names both pinned revisions:
-# a tooling change invalidates the warm claim, because the tools are most of
-# the cold build.
-WARM_MARKER_NAME=".pedant-packaged-workspace-7e38e7a-c9d2ce64.warm"
-COLD_RUNTIME_BUDGET_SECONDS=1100
+# Where the pinned tools live, and what each stage is allowed to cost.
+#
+# The tool root sits inside the caller's target root and is named for both
+# pinned revisions, because it is the warm claim and a claim has to be checkable.
+# `cargo install` moves its binary out of the build directory, so nothing under
+# `release/` survives to be asked; what survives is whatever the installation
+# root kept. Naming that root for the revisions means a moved pin is a different
+# root rather than a stale binary, and a pruned or copied target answers the
+# same probe honestly: the binaries are there and pinned, or the run is cold.
+#
+# Every number below came off a measured run against an empty target root
+# rather than off an estimate, and carries headroom over what that run cost. A
+# budget nobody measured is discovered by the first genuinely cold caller, and
+# a proof that cannot meet its own ceiling proves nothing about the release.
+#
+# Measured cold, empty target: cargo-semver-checks 836s and 808,620KiB,
+# release-plz 593s and 1,476,192KiB, the release proof over those 266s and
+# 925,252KiB, owned staging peaking at 92,528KiB.
+TOOL_ROOT_NAME=".pedant-packaged-workspace-7e38e7a-c9d2ce64.tools"
+INSTALL_RUNTIME_BUDGET_SECONDS=1100
+INSTALL_TARGET_BUDGET_KIB=2097152
+COLD_RUNTIME_BUDGET_SECONDS=2100
 WARM_RUNTIME_BUDGET_SECONDS=600
-COLD_TARGET_BUDGET_KIB=6291456
-WARM_TARGET_BUDGET_KIB=524288
+COLD_TARGET_BUDGET_KIB=5242880
+WARM_TARGET_BUDGET_KIB=2097152
 OWNED_TEMP_BUDGET_KIB=1048576
-readonly WARM_MARKER_NAME
+readonly TOOL_ROOT_NAME
+readonly INSTALL_RUNTIME_BUDGET_SECONDS INSTALL_TARGET_BUDGET_KIB
 readonly COLD_RUNTIME_BUDGET_SECONDS WARM_RUNTIME_BUDGET_SECONDS
 readonly COLD_TARGET_BUDGET_KIB WARM_TARGET_BUDGET_KIB OWNED_TEMP_BUDGET_KIB
 
-REQUIRED_TOOLS="bash cargo du find git jq mktemp rg rm tar"
+REQUIRED_TOOLS="bash cargo date du find git jq mktemp rg rm tar"
 readonly REQUIRED_TOOLS
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -169,6 +198,8 @@ capture_target_root() {
     test -w "${target_root}" \
         || fail "CARGO_TARGET_DIR must be writable: ${target_root}"
     export CARGO_TARGET_DIR
+    tool_root="${target_root}/${TOOL_ROOT_NAME}"
+    readonly tool_root
 }
 
 # The release order, read from the file that owns it.
@@ -212,11 +243,11 @@ preflight() {
     read_release_order
 }
 
-# Release the clone, the tool root, the archives, and the generated workspace.
+# Release the clone, the archives, and the generated workspace.
 #
-# Only those. The registry cache, the target root, and the caller's repository
-# belong to somebody else, and a proof that tidied them would cost its next
-# caller an hour.
+# Only those. The registry cache, the target root, the pinned tool root inside
+# it, and the caller's repository belong to somebody else or to the next run,
+# and a proof that tidied them would cost its next caller a quarter of an hour.
 cleanup() {
     if [ -n "${staging_root}" ] && [ -d "${staging_root}" ]; then
         rm -rf -- "${staging_root}"
@@ -252,7 +283,6 @@ create_staging_root() {
     staging_root="$(cd -- "${staging_root}" && pwd)" \
         || unavailable "the staging root could not be resolved."
     clone_root="${staging_root}/clone"
-    tool_root="${staging_root}/tools"
     archive_root="${staging_root}/archives"
     workspace_root="${staging_root}/archive-workspace"
     staged_metadata="${staging_root}/capture/staged-metadata.json"
@@ -338,40 +368,79 @@ stage_isolated_source() {
         || fail "the staged branch could not track origin/${clone_branch}."
 }
 
+# Whether one tool binary exists and reports the version this proof pinned it
+# to. A question rather than a refusal, because the warm probe below asks it of
+# binaries that are allowed to be absent.
+tool_reports_version() {
+    local binary="$1"
+    local expected="$2"
+    shift 2
+    test -x "${binary}" || return 1
+    local reported
+    reported="$("${binary}" "$@" 2> /dev/null)" || return 1
+    case "${reported}" in
+        *"${expected}"*) ;;
+        *) return 1 ;;
+    esac
+}
+
 # One installed tool is the pinned version, or this proof describes something
 # else.
 assert_tool_version() {
     local binary="$1"
     local expected="$2"
     shift 2
-    local reported
-    reported="$("${binary}" "$@" 2>&1)" \
-        || fail "${binary} could not report its version."
-    case "${reported}" in
-        *"${expected}"*) ;;
-        *) fail "${binary} reports [${reported}] rather than ${expected}." ;;
-    esac
+    tool_reports_version "${binary}" "${expected}" "$@" \
+        || fail "${binary} reports [$("${binary}" "$@" 2>&1 || true)] rather than ${expected}."
 }
 
-# Build both pinned tools into a root this run owns.
+# The semantic checker `release-plz update` consults to decide whether this
+# tree's API change forces a major version.
 #
-# cargo-semver-checks first, because `release-plz update` consults it to decide
-# whether this tree's API change forces a major version. A release-plz that
-# could not find it would stage a version the registry would reject, and the
-# proof would compile the wrong release.
-install_pinned_tools() {
+# Already-installed is answered before installing, not by Cargo's own
+# already-installed message: the question the proof needs answered is whether
+# the binary in that root is the version the pinned revision builds, and only
+# the binary can say.
+install_semver_checks() {
+    if tool_reports_version "${tool_root}/bin/cargo-semver-checks" \
+        "${SEMVER_CHECKS_VERSION}" semver-checks --version; then
+        return 0
+    fi
     run_classified install-semver-checks cargo install \
         --git https://github.com/obi1kenobi/cargo-semver-checks \
         --rev "${SEMVER_CHECKS_REVISION}" --locked \
         --root "${tool_root}" cargo-semver-checks
+    assert_tool_version "${tool_root}/bin/cargo-semver-checks" \
+        "${SEMVER_CHECKS_VERSION}" semver-checks --version
+}
+
+# The tool that stages every version, requirement, changelog, and lockfile.
+install_release_plz() {
+    if tool_reports_version "${tool_root}/bin/release-plz" \
+        "${RELEASE_PLZ_VERSION}" --version; then
+        return 0
+    fi
     run_classified install-release-plz cargo install \
         --git https://github.com/release-plz/release-plz \
         --rev "${RELEASE_PLZ_REVISION}" --locked \
         --root "${tool_root}" release-plz
-    assert_tool_version "${tool_root}/bin/cargo-semver-checks" \
-        "${SEMVER_CHECKS_VERSION}" semver-checks --version
     assert_tool_version "${tool_root}/bin/release-plz" \
         "${RELEASE_PLZ_VERSION}" --version
+}
+
+# Both pinned tools, in the order the release proof needs them.
+#
+# cargo-semver-checks first, because a release-plz that could not find it would
+# stage a version the registry would reject, and the proof would compile the
+# wrong release. A warm root is skipped whole: the state that decided it is the
+# same probe either installation would have to satisfy.
+install_pinned_tools() {
+    case "${warm_state}" in
+        warm) return 0 ;;
+        *) ;;
+    esac
+    install_semver_checks
+    install_release_plz
 }
 
 # Let release-plz stage the release, then commit what it wrote.
@@ -665,63 +734,107 @@ measure_owned_temp() {
     fi
 }
 
-# Whether the pinned tools are already built in this target root.
-read_warm_state() {
-    if [ -f "${target_root}/${WARM_MARKER_NAME}" ]; then
-        warm_state="warm"
-    fi
+# The wall clock, read through the tool rather than through the shell.
+#
+# An external clock is a clock this script does not control, which is what lets
+# a lifecycle row hand it one that jumps. The runtime refusal below is minutes
+# away from anything a test can afford to wait for, and a refusal nobody can
+# reach is a refusal nobody has checked.
+now_seconds() {
+    date +%s
 }
 
-# What this run cost, and whether that is more than it was allowed to.
+# Whether this target root already holds the pinned tool builds.
+#
+# Asked of the binaries, not of a marker file. A file saying the tools are here
+# is a claim; a pruned target, or one copied out of another tree, keeps the
+# claim and loses the tools, and the run that believed it would be held to the
+# warm budget for a quarter hour of work it still has to do. Both binaries have
+# to be in the revision-named root and both have to report the version that
+# revision builds. Anything else is cold, which is the answer that cannot fail
+# wrongly.
+read_warm_state() {
+    tool_reports_version "${tool_root}/bin/cargo-semver-checks" \
+        "${SEMVER_CHECKS_VERSION}" semver-checks --version || return 0
+    tool_reports_version "${tool_root}/bin/release-plz" \
+        "${RELEASE_PLZ_VERSION}" --version || return 0
+    warm_state="warm"
+}
+
+# Start the clock and the target reading this stage is measured against.
+begin_measurement() {
+    start_seconds="$(now_seconds)"
+    target_start_kib="$(directory_kib "${target_root}")"
+}
+
+# What this stage cost, and whether that is more than it was allowed to.
 #
 # Reported before it is judged, because an operator reading a budget refusal
 # needs the number that caused it.
 measure_budget() {
-    local elapsed target_end_kib target_growth_kib runtime_budget target_budget
-    elapsed="$((SECONDS - start_seconds))"
+    local stage="$1"
+    local runtime_budget="$2"
+    local target_budget="$3"
+    local elapsed target_end_kib target_growth_kib
+    elapsed="$(($(now_seconds) - start_seconds))"
     target_end_kib="$(directory_kib "${target_root}")"
     target_growth_kib="$((target_end_kib - target_start_kib))"
     if [ "${target_growth_kib}" -lt 0 ]; then
         target_growth_kib=0
     fi
+    printf 'packaged workspace proof: stage=%s state=%s elapsed=%ss target_growth=%sKiB owned_temp_peak=%sKiB\n' \
+        "${stage}" "${warm_state}" "${elapsed}" "${target_growth_kib}" "${temp_peak_kib}"
+    test "${elapsed}" -le "${runtime_budget}" \
+        || fail "the ${stage} stage took ${elapsed}s, over its ${runtime_budget}s budget."
+    test "${target_growth_kib}" -le "${target_budget}" \
+        || fail "the ${stage} stage grew the target root by ${target_growth_kib}KiB, over its ${target_budget}KiB budget."
+    test "${temp_peak_kib}" -le "${OWNED_TEMP_BUDGET_KIB}" \
+        || fail "the ${stage} stage held ${temp_peak_kib}KiB of staging, over its ${OWNED_TEMP_BUDGET_KIB}KiB budget."
+}
+
+# Which pair of numbers the release proof is held to.
+measure_proof_budget() {
     case "${warm_state}" in
         warm)
-            runtime_budget="${WARM_RUNTIME_BUDGET_SECONDS}"
-            target_budget="${WARM_TARGET_BUDGET_KIB}"
+            measure_budget verify \
+                "${WARM_RUNTIME_BUDGET_SECONDS}" "${WARM_TARGET_BUDGET_KIB}"
             ;;
         *)
-            runtime_budget="${COLD_RUNTIME_BUDGET_SECONDS}"
-            target_budget="${COLD_TARGET_BUDGET_KIB}"
+            measure_budget verify \
+                "${COLD_RUNTIME_BUDGET_SECONDS}" "${COLD_TARGET_BUDGET_KIB}"
             ;;
-    esac
-    printf 'packaged workspace proof: state=%s elapsed=%ss target_growth=%sKiB owned_temp_peak=%sKiB\n' \
-        "${warm_state}" "${elapsed}" "${target_growth_kib}" "${temp_peak_kib}"
-    test "${elapsed}" -le "${runtime_budget}" \
-        || fail "the ${warm_state} proof took ${elapsed}s, over its ${runtime_budget}s budget."
-    test "${target_growth_kib}" -le "${target_budget}" \
-        || fail "the ${warm_state} proof grew the target root by ${target_growth_kib}KiB, over its ${target_budget}KiB budget."
-    test "${temp_peak_kib}" -le "${OWNED_TEMP_BUDGET_KIB}" \
-        || fail "the proof held ${temp_peak_kib}KiB of staging, over its ${OWNED_TEMP_BUDGET_KIB}KiB budget."
-}
-
-# Record that the pinned tools are built, so the next run is held to the warm
-# budget. Only a proof that succeeded may say so.
-write_warm_marker() {
-    case "${warm_state}" in
-        cold)
-            printf '%s %s\n' "${RELEASE_PLZ_REVISION}" "${SEMVER_CHECKS_REVISION}" \
-                > "${target_root}/${WARM_MARKER_NAME}"
-            ;;
-        *) ;;
     esac
 }
 
-main() {
+# Build one pinned tool into the caller's target and stop.
+#
+# One tool per invocation because one tool is what a verification slice holds.
+# Measured cold on an empty target: cargo-semver-checks 836s, release-plz 593s,
+# 1,429s together against a 1,200-second slice. Split, each fits with room; the
+# release proof that follows them measures the release rather than the
+# toolchain.
+#
+# The installer arrives already chosen, because the entry point is where an
+# unknown name has to be refused: a stage that decided the name here would first
+# create a staging root, run both pinned binaries to read the warm state, and
+# start the measurement for a request it was never going to accept.
+run_tool_installation() {
     preflight
     create_staging_root
     read_warm_state
-    start_seconds="${SECONDS}"
-    target_start_kib="$(directory_kib "${target_root}")"
+    begin_measurement
+    "$1"
+    measure_owned_temp
+    measure_budget install \
+        "${INSTALL_RUNTIME_BUDGET_SECONDS}" "${INSTALL_TARGET_BUDGET_KIB}"
+}
+
+# Stage the release, package all eight members, and compile the archives.
+run_packaged_workspace_proof() {
+    preflight
+    create_staging_root
+    read_warm_state
+    begin_measurement
     stage_isolated_source
     install_pinned_tools
     measure_owned_temp
@@ -732,8 +845,28 @@ main() {
     generate_archive_workspace
     verify_packaged_graph
     measure_owned_temp
-    measure_budget
-    write_warm_marker
+    measure_proof_budget
+}
+
+# The stage a caller asked for is its whole argument list, not its first word.
+#
+# Counting first is the point. A proof that dispatched on `$1` alone would read
+# `--install-tools release-plz --and-skip-the-check` as the release-plz stage,
+# build one tool, discard the rest of the sentence, and report success for a run
+# nobody asked for; the caller would read that zero as an answer to the question
+# it actually asked. The tool name is read in the same breath as the count, so
+# the two accepted sentences are spelled out whole here: an unknown name refused
+# further in would already have created a staging root and run both pinned
+# binaries. Two exact lists select a tool stage, none selects the release proof,
+# and everything else is refused before any state moves.
+main() {
+    case "$#:${1:-}:${2:-}" in
+        2:--install-tools:cargo-semver-checks) run_tool_installation install_semver_checks ;;
+        2:--install-tools:release-plz) run_tool_installation install_release_plz ;;
+        0::) run_packaged_workspace_proof ;;
+        *) fail "unknown arguments [$*]; this proof takes --install-tools \
+cargo-semver-checks, --install-tools release-plz, or nothing." ;;
+    esac
 }
 
 main "$@"

@@ -29,4 +29,6 @@ exec shellcheck -x \
     .github/scripts/run_shellcheck.sh \
     pedant/tests/supply_chain_support/packaged_workspace_support/cargo-semver-checks.sh \
     pedant/tests/supply_chain_support/packaged_workspace_support/cargo.sh \
+    pedant/tests/supply_chain_support/packaged_workspace_support/date.sh \
+    pedant/tests/supply_chain_support/packaged_workspace_support/du.sh \
     pedant/tests/supply_chain_support/packaged_workspace_support/release-plz.sh

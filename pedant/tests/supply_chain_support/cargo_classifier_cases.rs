@@ -117,11 +117,17 @@ struct ClassifyRow {
     expected: &'static str,
 }
 
-/// One aggregation or `cargo_run` row: a shell body, the transcript it must
-/// replay, the status it must exit with, and the receipts it must leave.
+/// One aggregation or `cargo_run` row: a shell body, the sample its body reads
+/// from the environment, the transcript it must replay, the status it must exit
+/// with, and the receipts it must leave.
+///
+/// The sample is handed in rather than written into the body, so a row that
+/// classifies a table entry cannot hold a stale copy of it. A row whose body
+/// names no sample states the empty one.
 struct LifecycleRow {
     label: &'static str,
     body: &'static str,
+    sample: &'static str,
     stdout: &'static str,
     code: i32,
     receipts: &'static [(&'static str, &'static str)],
@@ -131,14 +137,16 @@ const LIFECYCLE_ROWS: &[LifecycleRow] = &[
     LifecycleRow {
         label: "the first ordinary failure survives a later success",
         body: "cargo_record 3\ncargo_record 0\nprintf 'sentinel\\n'\nexit \"$(cargo_worst)\"\n",
+        sample: "",
         stdout: "sentinel\n",
         code: 3,
         receipts: &[],
     },
     LifecycleRow {
         label: "a near-miss transcript keeps its ordinary status",
-        body: "cargo_record 4 'read-only API contract failed'\n\
+        body: "cargo_record 4 \"$CLASSIFY_SAMPLE\"\n\
                printf 'sentinel\\n'\nexit \"$(cargo_worst)\"\n",
+        sample: INFRASTRUCTURE_NEAR_MISSES[5],
         stdout: "sentinel\n",
         code: 4,
         receipts: &[],
@@ -147,6 +155,7 @@ const LIFECYCLE_ROWS: &[LifecycleRow] = &[
         label: "a successful run replays once and leaves one receipt",
         body: "cargo_run ok /bin/sh -c 'printf \"run-ok\\n\"'\n\
                printf 'sentinel\\n'\nexit \"$(cargo_worst)\"\n",
+        sample: "",
         stdout: "run-ok\nsentinel\n",
         code: 0,
         receipts: &[("ok.log", "run-ok\n")],
@@ -155,6 +164,7 @@ const LIFECYCLE_ROWS: &[LifecycleRow] = &[
         label: "an ordinary run is recorded and the caller continues",
         body: "cargo_run bad /bin/sh -c 'printf \"run-bad\\n\"; exit 4'\n\
                printf 'sentinel\\n'\nexit \"$(cargo_worst)\"\n",
+        sample: "",
         stdout: "run-bad\nsentinel\n",
         code: 4,
         receipts: &[("bad.log", "run-bad\n")],
@@ -177,8 +187,22 @@ fn cargo_infrastructure_classifier_runtime_contract_is_exact() {
 }
 
 /// Every classification row: one success that must stay 0 despite a matching
-/// transcript, the nine signatures, and the nine near misses.
+/// transcript, every signature, and the near miss each one must refuse.
+///
+/// Both tables are bound before a row is built: to the tracked script, so a
+/// signature added there cannot go unexercised, and to each other, so a dropped
+/// near miss cannot silently shrink the row set.
 fn classify_rows() -> Box<[ClassifyRow]> {
+    assert_eq!(
+        INFRASTRUCTURE_MATCHES.len(),
+        tracked_signature_count(),
+        "every signature the tracked script states must have a sample here"
+    );
+    assert_eq!(
+        INFRASTRUCTURE_MATCHES.len(),
+        INFRASTRUCTURE_NEAR_MISSES.len(),
+        "every signature must have the near miss it refuses"
+    );
     let mut rows = vec![ClassifyRow {
         status: "0",
         output: REPRESENTATIVE_MATCH,
@@ -207,6 +231,38 @@ fn classify_rows() -> Box<[ClassifyRow]> {
     rows.into_boxed_slice()
 }
 
+/// How many alternatives the tracked script's one signature line states.
+///
+/// The line is read rather than restated: this module may hold no signature
+/// verbatim, so a count is the strongest claim it can make about the file
+/// without quoting it. A tenth signature added to the script makes this count
+/// disagree with the table above.
+fn tracked_signature_count() -> usize {
+    let path = repository_root().join(".github/scripts/cargo_infrastructure.sh");
+    let script = fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("{} should be readable: {error}", path.display()));
+    let mut assignments = script.lines().filter_map(|line| {
+        line.trim_start()
+            .strip_prefix("CARGO_INFRASTRUCTURE_PATTERNS=")
+    });
+    let quoted = assignments
+        .next()
+        .expect("the tracked script states its signature table");
+    assert!(
+        assignments.next().is_none(),
+        "the tracked script must state its signature table on one line"
+    );
+    let table = quoted
+        .strip_prefix('\'')
+        .and_then(|rest| rest.strip_suffix('\''))
+        .expect("the signature table is one single-quoted value");
+    assert!(
+        table.split('|').all(|alternative| !alternative.is_empty()),
+        "the signature table states no empty alternative"
+    );
+    table.split('|').count()
+}
+
 /// Both entry points report the row's status for the row's transcript.
 fn classification_row_reports_the_exact_status(root: &RowRoot, row: &ClassifyRow) {
     let capture = root.capture_path();
@@ -217,7 +273,7 @@ fn classification_row_reports_the_exact_status(root: &RowRoot, row: &ClassifyRow
         ("CLASSIFY_SAMPLE", sample.as_ref()),
         ("CLASSIFY_CAPTURE", capture_argument.as_ref()),
     ];
-    let completed = root.run(CLASSIFY_BODY, &environment);
+    let completed = root.run(row.output, CLASSIFY_BODY, &environment);
     let expected: Box<str> = format!("output={}\nfile={}\n", row.expected, row.expected).into();
 
     assert_transcript(&completed, row.output, &expected, 0);
@@ -228,7 +284,8 @@ fn classification_row_reports_the_exact_status(root: &RowRoot, row: &ClassifyRow
 /// One aggregation or `cargo_run` row exits, replays, and leaves exactly what
 /// its table row states.
 fn lifecycle_row_replays_records_and_cleans_up(root: &RowRoot, row: &LifecycleRow) {
-    let completed = root.run(row.body, &[]);
+    let sample = expanded(row.sample);
+    let completed = root.run(row.label, row.body, &[("CLASSIFY_SAMPLE", sample.as_ref())]);
 
     assert_transcript(&completed, row.label, row.stdout, row.code);
     root.assert_no_capture(row.label);
@@ -240,7 +297,7 @@ fn lifecycle_row_replays_records_and_cleans_up(root: &RowRoot, row: &LifecycleRo
 fn infrastructure_record_leaves_before_the_next_statement(root: &RowRoot) {
     let label = "a recorded infrastructure transcript leaves immediately";
     let sample = expanded(REPRESENTATIVE_MATCH);
-    let completed = root.run(RECORD_BODY, &[("CLASSIFY_SAMPLE", sample.as_ref())]);
+    let completed = root.run(label, RECORD_BODY, &[("CLASSIFY_SAMPLE", sample.as_ref())]);
 
     assert_transcript(&completed, label, "before\n", 75);
     root.assert_no_capture(label);
@@ -253,6 +310,7 @@ fn infrastructure_run_replays_reclassifies_and_leaves(root: &RowRoot) {
     let label = "an infrastructure run leaves before the next statement";
     let sample = expanded(REPRESENTATIVE_MATCH);
     let completed = root.run(
+        label,
         INFRASTRUCTURE_RUN_BODY,
         &[("CLASSIFY_SAMPLE", sample.as_ref())],
     );
@@ -271,7 +329,7 @@ fn infrastructure_run_replays_reclassifies_and_leaves(root: &RowRoot) {
 /// run exits 75 before the command it was asked to run produces anything.
 fn capture_allocation_failure_exits_before_the_command(root: &RowRoot) {
     let label = "an unallocatable capture exits before the command";
-    let completed = root.run(ALLOCATION_BODY, &[]);
+    let completed = root.run(label, ALLOCATION_BODY, &[]);
 
     assert_transcript(&completed, label, "", 75);
     root.assert_no_capture(label);
@@ -294,6 +352,10 @@ fn assert_transcript(completed: &Completed, label: &str, stdout: &str, code: i32
         Some(code),
         "{label}: unexpected exit status: {}",
         redacted(&completed.transcript())
+    );
+    assert!(
+        completed.captured_stdout,
+        "{label}: stdout was never drained, so the transcript below states nothing"
     );
     assert!(
         completed.stdout.as_ref() == stdout,
@@ -354,7 +416,10 @@ impl RowRoot {
     }
 
     /// Run one shell body against the tracked classifier under the guard.
-    fn run(&self, body: &str, extra: &[(&str, &str)]) -> Completed {
+    ///
+    /// `label` names the row, so a guard that could not run the child says
+    /// which row it could not run.
+    fn run(&self, label: &str, body: &str, extra: &[(&str, &str)]) -> Completed {
         let script: Box<str> = format!("{PRELUDE}{body}").into();
         let arguments = ["-c", script.as_ref()];
         let tmp: Box<str> = self.tmp.to_string_lossy().into();
@@ -369,7 +434,7 @@ impl RowRoot {
         let mut run = Run::program("bash", &workspace, &arguments);
         run.env = &environment;
         run.budget = ROW_BUDGET;
-        execute(&run).unwrap_or_else(|failure| panic!("the guard failed: {failure}"))
+        execute(&run).unwrap_or_else(|failure| panic!("{label}: the guard failed: {failure}"))
     }
 
     /// No capture may survive the row, whatever status it reported.

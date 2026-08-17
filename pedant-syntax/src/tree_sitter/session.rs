@@ -6,6 +6,12 @@
 //! checked source index. Binding the two together is the point: a caller cannot
 //! pair a tree with a source it was not built from, so an anchor's byte
 //! position always names the caller's own text.
+//!
+//! The batch answer is the primary one. A caller asking about many locations in
+//! one source asks once: the session indexes that source once and walks the
+//! tree once, and the selector keeps a narrowest declaration per location. The
+//! single-location answer is one slot of the same call, so there is one
+//! selection rule here rather than a batch rule beside a single one.
 
 use ::tree_sitter::Tree;
 
@@ -72,23 +78,45 @@ impl<'source> ParsedSyntax<'source> {
         self.tree.root_node().has_error()
     }
 
-    /// The narrowest recognized declaration containing `at`.
+    /// The narrowest recognized declaration containing each location in `at`,
+    /// answered in one pass and returned in the caller's order.
     ///
     /// Parses nothing: the bound tree, the shared declaration recognizer, and
-    /// the shared checked source index answer between them.
+    /// the shared checked source index answer between them. One call indexes
+    /// the source once and walks the tree once, whatever `at`'s length, so a
+    /// caller grouping many findings by owner pays for one scan and one walk
+    /// rather than one of each per finding.
     ///
-    /// Returns `None` when the tree carries errors, when `at` is not
-    /// addressable — a zero line or column, a line past the source, a column
-    /// past its line, or a column inside a UTF-8 code point — when no
-    /// recognized declaration contains it, and when the winning declaration
-    /// opens at a byte offset the source does not hold.
-    pub fn enclosing_unit_anchor(&self, at: Location) -> Option<SourceUnitAnchor> {
-        let root = self.tree.root_node();
-        if root.has_error() {
-            return None;
+    /// A slot is `None` when its location is not addressable — a zero line or
+    /// column, a line past the source, a column past its line, or a column
+    /// inside a UTF-8 code point — when no recognized declaration contains it,
+    /// and when the winning declaration opens at a byte offset the source does
+    /// not hold. Every slot is `None` when the tree carries errors, because a
+    /// recovery tree states no complete declaration inventory to select from.
+    pub fn enclosing_unit_anchors(&self, at: &[Location]) -> Box<[Option<SourceUnitAnchor>]> {
+        if self.has_errors() {
+            return at.iter().map(|_| None).collect();
         }
-        let mut selector = UnitSelector::new(self.source, at)?;
-        offer_declarations(root, self.source, self.language, &mut selector);
-        selector.finish_anchor()
+        let mut selector = UnitSelector::over(self.source, at);
+        offer_declarations(
+            self.tree.root_node(),
+            self.source,
+            self.language,
+            &mut selector,
+        );
+        selector.finish_anchors()
+    }
+
+    /// The narrowest recognized declaration containing `at`.
+    ///
+    /// One slot of [`Self::enclosing_unit_anchors`], which owns the whole rule:
+    /// the error tree, the unaddressable location, the narrowest containing
+    /// declaration, and the anchor conversion. Nothing about selection is
+    /// stated twice, so the single answer and the batch answer cannot drift.
+    pub fn enclosing_unit_anchor(&self, at: Location) -> Option<SourceUnitAnchor> {
+        self.enclosing_unit_anchors(std::slice::from_ref(&at))
+            .into_iter()
+            .next()
+            .flatten()
     }
 }

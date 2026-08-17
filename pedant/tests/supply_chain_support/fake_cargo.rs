@@ -10,6 +10,7 @@ use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::fixtures::write;
 use crate::process_guard::{BUDGET, Completed, Failure, PEDANT, POLL, Run, execute};
 
 /// Run `pedant` with a caller-written `cargo vendor` body, under a guard.
@@ -57,16 +58,19 @@ pub(crate) fn copying_vendor_body(vendor_source: &Path) -> String {
 }
 
 fn write_fake_cargo_script(script_dir: &Path, vendor_body: &str) {
-    let script_path = script_dir.join("cargo");
-    std::fs::write(
-        &script_path,
-        format!(
+    write_executable(
+        &script_dir.join("cargo"),
+        &format!(
             "#!/bin/sh\nif [ \"$1\" = vendor ]; then\n  {vendor_body}\nfi\nexec {} \"$@\"\n",
             real_cargo()
         ),
-    )
-    .expect("the fake cargo script should be writable");
-    make_executable(&script_path);
+    );
+}
+
+/// Write one fake tool and give it the mode a `PATH` lookup needs.
+pub(crate) fn write_executable(path: &Path, body: &str) {
+    write(path, body);
+    make_executable(path);
 }
 
 /// Give one written fake tool the mode a `PATH` lookup needs.

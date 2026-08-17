@@ -346,9 +346,8 @@ pub fn discover_build_script(crate_root: &Path) -> Result<Option<PathBuf>, LintE
 ///
 /// When `build_source` is `Some`, its findings are tagged with
 /// `ExecutionContext::BuildHook` and merged after the main source's, keeping
-/// main-source findings first and coalescing symbol identities the two sources
-/// share. Both inputs are parsed Rust, so the merged attribution stays
-/// `Complete`.
+/// main-source findings first. Both inputs are parsed Rust, so the merged
+/// attribution stays `Complete`.
 pub fn analyze_with_build_script(
     file_path: &str,
     source: &str,

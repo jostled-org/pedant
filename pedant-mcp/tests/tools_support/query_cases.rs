@@ -6,7 +6,7 @@ use pedant_mcp::tools::{
     search_by_capability,
 };
 
-use crate::tool_fixture::{fixture_index, is_error, result_text};
+use crate::tool_fixture::{assert_no_symbol_evidence, fixture_index, is_error, result_text};
 
 // ---------------------------------------------------------------------------
 // 2.T1: query_capabilities returns findings
@@ -33,27 +33,12 @@ fn test_query_capabilities_returns_findings() {
 
     // The MCP index takes the flat projection from each analysis, so the
     // payload keeps its exact current shape and carries no symbol evidence.
+    // A payload with no findings would satisfy that vacuously, so the count is
+    // asserted here before the shared guard reads the same text.
     let findings: Vec<serde_json::Value> =
         serde_json::from_str(&text).expect("the payload is a flat finding array");
     assert!(!findings.is_empty(), "expected findings: {text}");
-    for finding in &findings {
-        let fields: Vec<&str> = finding
-            .as_object()
-            .expect("each finding is an object")
-            .keys()
-            .map(String::as_str)
-            .collect();
-        assert!(
-            !fields.contains(&"symbols") && !fields.contains(&"symbol_attribution"),
-            "a capability finding must carry no symbol field: {fields:?}"
-        );
-    }
-    for field in ["\"symbols\"", "\"symbol_attribution\""] {
-        assert!(
-            !text.contains(field),
-            "the MCP capability payload must not carry {field}: {text}"
-        );
-    }
+    assert_no_symbol_evidence(&text, "capability");
 }
 
 // ---------------------------------------------------------------------------

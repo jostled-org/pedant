@@ -26,6 +26,19 @@ pub fn store() {
 pub fn quiet() {}
 "#;
 
+const TRAIT_FILE: &str = "trait_ir.rs";
+
+/// One trait method declared without a body and one with, each carrying the
+/// same capability-bearing attribute.
+const TRAIT_SOURCE: &str = r#"pub trait Loader {
+    #[link(name = "ssl")]
+    fn load();
+
+    #[link(name = "crypto")]
+    fn provide() {}
+}
+"#;
+
 /// 3.T4 (Invariant 8): `analyze` parses once, extracts once, and projects the
 /// stored IR once — and that single pass carries the symbol attribution.
 #[test]
@@ -104,9 +117,70 @@ fn assert_symbols_are_exact(analysis: &pedant_types::CapabilityAnalysis) {
     );
 
     let flat = rendered(&analysis.profile.findings);
-    assert!(
-        flat.contains(&(Capability::ProcessExec, "std::process::Command")),
-        "the module import stays flat evidence: {flat:?}"
+    assert_eq!(
+        flat,
+        [
+            (Capability::ProcessExec, "std::process::Command"),
+            (Capability::Network, "std::net::TcpStream"),
+            (Capability::FileWrite, "std::fs::write"),
+            (Capability::Network, "10.0.0.1:80"),
+        ],
+        "the flat profile keeps every occurrence in detection order, \
+         the module import no callable owns included"
+    );
+}
+
+/// One attributed symbol: its name, kind, declaration line, and the evidence it
+/// owns.
+type OwnedSymbol<'a> = (
+    &'a str,
+    CapabilitySymbolKind,
+    usize,
+    Vec<(Capability, &'a str)>,
+);
+
+/// 3.T4: a trait method declared without a body owns what is declared on it,
+/// exactly as the same declaration with a body does.
+#[test]
+fn bodiless_trait_method_owns_its_own_attribute() {
+    let analysis = analyze(TRAIT_FILE, TRAIT_SOURCE, &CheckConfig::default(), None)
+        .expect("the fixture source should parse")
+        .capabilities;
+
+    assert_eq!(
+        analysis.symbol_attribution,
+        SymbolAttributionStatus::Complete
+    );
+
+    let owned: Vec<OwnedSymbol<'_>> = analysis
+        .symbols
+        .iter()
+        .map(|entry| {
+            (
+                &*entry.symbol.name,
+                entry.symbol.kind,
+                entry.symbol.declaration.line,
+                rendered(&entry.profile.findings),
+            )
+        })
+        .collect();
+    assert_eq!(
+        owned,
+        [
+            (
+                "load",
+                CapabilitySymbolKind::Method,
+                3,
+                vec![(Capability::Ffi, "#[link]")],
+            ),
+            (
+                "provide",
+                CapabilitySymbolKind::Method,
+                6,
+                vec![(Capability::Ffi, "#[link]")],
+            ),
+        ],
+        "the bodiless declaration and the defaulted one attribute alike"
     );
 }
 

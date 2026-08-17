@@ -16,7 +16,7 @@ use crate::{attribution, bash, go, javascript, manifest, python};
 /// manifest states hooks, not callables, so there is no callable inventory to
 /// be complete or incomplete about.
 pub fn analyze_manifest(path: &Path, source: &str) -> CapabilityAnalysis {
-    attribution::not_applicable(manifest::analyze(path, source))
+    attribution::envelope::not_applicable(manifest::analyze(path, source))
 }
 
 /// Analyze a non-Rust source file for capabilities.
@@ -38,7 +38,7 @@ pub fn analyze_file(path: &Path, source: &str, language: Language) -> Capability
         // scanner would report findings from the wrong grammar, so the honest
         // answer at this boundary is an empty profile — and no callable claim,
         // because the callables are `pedant-core`'s to state.
-        Language::Rust => attribution::not_applicable(Box::new([])),
+        Language::Rust => attribution::envelope::not_applicable(Box::new([])),
         Language::Python => python::analyze(&file, source),
         Language::JavaScript | Language::TypeScript => {
             // A path `syntax_language` does not recognize keeps the plain

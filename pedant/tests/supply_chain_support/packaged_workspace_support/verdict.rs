@@ -12,7 +12,7 @@ use std::time::Duration;
 use pedant_process_guard::wait_until_gone;
 
 use super::fixture::{self, RELEASE_ORDER};
-use super::row::{PINNED_BINARIES, RowRoot};
+use super::row::{Fault, PINNED_BINARIES, RowRoot};
 use crate::cargo_classifier_cases::{entries, redacted};
 use crate::process_guard::Completed;
 
@@ -45,6 +45,13 @@ const PACKAGED_HISTORY: &[&str] = &[
     "package onto feat!: implement symbol capability profiles",
     "package onto base",
 ];
+
+/// Every reading the proof's stated cost line has to carry.
+///
+/// A line naming only its stage and state states no cost at all: deleting all
+/// three numeric fields from the proof's own `printf` leaves such a line, and a
+/// row that read no further would still pass.
+const COST_KEYS: &[&str] = &["elapsed=", "target_growth=", "owned_temp_peak="];
 
 /// The refusal reached the operator.
 pub(super) fn assert_refusal(label: &str, completed: &Completed, fragment: &str) {
@@ -130,6 +137,122 @@ pub(super) fn assert_row_is_clean(
     assert_caller_repository_is_untouched(root, label);
 }
 
+/// What a row refused before any tool ran must show.
+///
+/// [`assert_row_is_clean`] cannot state it. That reading requires the inherited
+/// target root on a Cargo call, and the whole claim here is that no Cargo call
+/// happened; everything else it requires is required here too, and the recorded
+/// operations are what tell an early refusal from a late one. Hand-rolling the
+/// six readings at each site had already dropped the process reading from both.
+pub(super) fn assert_refused_before_anything_ran(
+    root: &RowRoot,
+    label: &str,
+    completed: &Completed,
+    installed: &[&str],
+) {
+    assert!(
+        !completed.timed_out(),
+        "{label}: the row outlived its budget: {}",
+        redacted(&completed.transcript())
+    );
+    assert_eq!(
+        completed.code(),
+        Some(REFUSED_STATUS),
+        "{label}: unexpected exit status: {}",
+        redacted(&completed.transcript())
+    );
+    assert_no_process_survives_the_row(root, label);
+    assert_eq!(
+        root.operations(),
+        Box::default(),
+        "{label}: the proof moved state for a request it was always going to refuse"
+    );
+    assert_tool_root_matches_the_row(root, label, installed);
+    assert_no_staging_root(root, label);
+    assert_caller_repository_is_untouched(root, label);
+}
+
+/// The proof stated this stage's cost, and the line carries the reading the row
+/// made too expensive.
+///
+/// The cost is reported before it is judged, because an operator reading a
+/// budget refusal needs the number that caused it. A row that read only the
+/// stage and state would not notice the number going missing.
+pub(super) fn assert_stated_cost(
+    label: &str,
+    completed: &Completed,
+    stage: &str,
+    state: &str,
+    cost: &str,
+) {
+    let stated = stated_cost(label, completed, stage, state);
+    assert!(
+        stated.contains(cost),
+        "{label}: the stated cost [{}] carries no [{}]: {}",
+        redacted(stated),
+        redacted(cost),
+        redacted(&completed.transcript())
+    );
+}
+
+/// The same line, required to carry all three readings.
+///
+/// What a row whose numbers are the machine's own can state: the values cannot
+/// be predicted, so the shape is the claim.
+pub(super) fn assert_stated_cost_shape(
+    label: &str,
+    completed: &Completed,
+    stage: &str,
+    state: &str,
+) {
+    let stated = stated_cost(label, completed, stage, state);
+    for key in COST_KEYS.iter().copied() {
+        assert!(
+            stated.contains(key),
+            "{label}: the stated cost [{}] carries no {key} reading: {}",
+            redacted(stated),
+            redacted(&completed.transcript())
+        );
+    }
+}
+
+/// The cost line the proof stated for one stage at one warm state.
+fn stated_cost<'a>(label: &str, completed: &'a Completed, stage: &str, state: &str) -> &'a str {
+    let opening: Box<str> =
+        format!("packaged workspace proof: stage={stage} state={state} ").into();
+    completed
+        .stdout
+        .lines()
+        .find(|line| line.starts_with(opening.as_ref()))
+        .unwrap_or_else(|| {
+            panic!(
+                "{label}: the proof stated no {stage} cost at state {state}: {}",
+                redacted(&completed.transcript())
+            )
+        })
+}
+
+/// Plant the pinned tool builds a warm row is read against, and prove them.
+///
+/// Two tool stages rather than a whole release proof: the warm probe asks the
+/// two binaries in the target's revision-named tool root for their versions and
+/// reads nothing else, and a tool stage is the command that puts them there —
+/// which is also the order the two indexed commands run in. The row still owns
+/// every byte of that state, and pays two fake installations rather than thirty
+/// fake Cargo calls for it.
+///
+/// Each stage is required to have left exactly the tools installed so far, so
+/// the planting is itself the claim that a tool stage builds one tool and keeps
+/// what the stage before it built.
+pub(super) fn warm_the_tool_root(root: &RowRoot) {
+    for (index, binary) in PINNED_BINARIES.iter().copied().enumerate() {
+        let label: Box<str> = format!("the {binary} stage before the warm row").into();
+        let completed = root.run_stage(&Fault::None, &["--install-tools", binary]);
+        assert_row_is_clean(root, &label, &completed, 0, &PINNED_BINARIES[..=index]);
+    }
+    root.clear_record();
+}
+
 /// No process this row started is still running once the row is read.
 ///
 /// The reaping is the guard's work rather than the script's, and the script
@@ -193,12 +316,11 @@ pub(super) fn assert_caller_repository_is_untouched(root: &RowRoot, label: &str)
 /// proof that needs both run the same code. Interleaved because each owner
 /// proves what it just built rather than trusting the pair.
 pub(super) fn expected_operations() -> Box<[Box<str>]> {
-    let mut expected: Vec<Box<str>> = vec![
-        "install cargo-semver-checks".into(),
-        "version cargo-semver-checks".into(),
-        "install release-plz".into(),
-        "version release-plz".into(),
-    ];
+    let mut expected: Vec<Box<str>> = PINNED_BINARIES
+        .iter()
+        .copied()
+        .flat_map(|binary| tool_stage_operations(binary).into_vec())
+        .collect();
     expected.extend(release_operations());
     expected.into_boxed_slice()
 }
@@ -209,10 +331,11 @@ pub(super) fn expected_operations() -> Box<[Box<str>]> {
 /// binaries in the target root whether they are the pinned revisions, believing
 /// the answer, and reusing the quarter hour they cost.
 pub(super) fn warm_expected_operations() -> Box<[Box<str>]> {
-    let mut expected: Vec<Box<str>> = vec![
-        "version cargo-semver-checks".into(),
-        "version release-plz".into(),
-    ];
+    let mut expected: Vec<Box<str>> = PINNED_BINARIES
+        .iter()
+        .copied()
+        .map(version_operation)
+        .collect();
     expected.extend(release_operations());
     expected.into_boxed_slice()
 }
@@ -222,8 +345,13 @@ pub(super) fn warm_expected_operations() -> Box<[Box<str>]> {
 pub(super) fn tool_stage_operations(binary: &str) -> Box<[Box<str>]> {
     Box::new([
         format!("install {binary}").into(),
-        format!("version {binary}").into(),
+        version_operation(binary),
     ])
+}
+
+/// The probe one pinned tool answers with its own version.
+fn version_operation(binary: &str) -> Box<str> {
+    format!("version {binary}").into()
 }
 
 /// Everything a proof drives once its pinned tools are in place, derived from

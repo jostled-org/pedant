@@ -1,12 +1,12 @@
 //! One source per backend, carrying every detection family that backend covers.
 //!
 //! The written-down flat sequence for each, in detection order.
-//! [`symbol_cases`](crate::symbol_cases) asserts these tables and
-//! [`symbol_model`](crate::symbol_model) states what asserting one means.
+//! [`cases`](super::cases) asserts these tables and [`model`](super::model)
+//! states what asserting one means.
 
 use pedant_types::{Capability, CapabilitySymbolKind, FindingOrigin};
 
-use crate::symbol_model::{Family, Row, literal_row, owned_by};
+use super::model::{Family, Row, literal_row, owned_by};
 
 #[cfg(feature = "ts-python")]
 pub(crate) const PYTHON_FAMILY_SOURCE: &str = concat!(
@@ -27,15 +27,15 @@ pub(crate) const PYTHON_FAMILY_SOURCE: &str = concat!(
 pub(crate) const PYTHON_FAMILIES: [Family; 3] = [
     Family {
         name: "import",
-        callable: true,
+        owned: true,
     },
     Family {
         name: "call",
-        callable: true,
+        owned: true,
     },
     Family {
         name: "string-literal",
-        callable: true,
+        owned: true,
     },
 ];
 
@@ -115,23 +115,23 @@ pub(crate) const TYPESCRIPT_FAMILY_SOURCE: &str = concat!(
 pub(crate) const JS_FAMILIES: [Family; 5] = [
     Family {
         name: "import",
-        callable: false,
+        owned: false,
     },
     Family {
         name: "require",
-        callable: true,
+        owned: true,
     },
     Family {
         name: "call",
-        callable: true,
+        owned: true,
     },
     Family {
         name: "member",
-        callable: true,
+        owned: true,
     },
     Family {
         name: "string-literal",
-        callable: true,
+        owned: true,
     },
 ];
 
@@ -208,15 +208,15 @@ pub(crate) const GO_FAMILY_SOURCE: &str = concat!(
 pub(crate) const GO_FAMILIES: [Family; 3] = [
     Family {
         name: "import",
-        callable: false,
+        owned: false,
     },
     Family {
         name: "qualified-call",
-        callable: true,
+        owned: true,
     },
     Family {
         name: "string-literal",
-        callable: true,
+        owned: true,
     },
 ];
 
@@ -263,15 +263,15 @@ pub(crate) const BASH_FAMILY_SOURCE: &str = concat!(
 pub(crate) const BASH_FAMILIES: [Family; 3] = [
     Family {
         name: "command",
-        callable: true,
+        owned: true,
     },
     Family {
         name: "export",
-        callable: true,
+        owned: true,
     },
     Family {
         name: "string-literal",
-        callable: true,
+        owned: true,
     },
 ];
 

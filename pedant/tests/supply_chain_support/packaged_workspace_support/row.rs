@@ -18,21 +18,29 @@
 //! that hands text to a child.
 
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use tempfile::TempDir;
 
-use super::fixture;
+use super::fixture::{self, ISOLATED_GIT};
 use crate::cargo_classifier_cases::{expanded, repository_root};
 use crate::process_guard::{Completed, Run, execute};
 
 /// The tracked proof every row runs.
 const PACKAGE_SCRIPT: &str = ".github/scripts/check_packaged_workspace.sh";
 
-/// Every row drives a fixture of eight one-file crates, so a row that overran
-/// this budget is broken rather than slow.
-const ROW_BUDGET: Duration = Duration::from_secs(120);
+/// Every row drives a fixture of eight one-file crates through executables that
+/// compile nothing, so a row that overran this budget is broken rather than
+/// slow.
+///
+/// Half the process guard's own default, which is the ceiling a row would
+/// otherwise inherit and restate. The most expensive row here drives one
+/// installation, thirty-odd fake Cargo calls, and the Git, tar and jq those
+/// call, and finishes in under a second; a minute is the same order of headroom
+/// the sibling classifier rows keep over their short shell bodies.
+const ROW_BUDGET: Duration = Duration::from_secs(60);
 
 /// The ordinary status a failing Cargo operation must keep.
 pub(super) const ORDINARY_STATUS: i32 = 3;
@@ -42,7 +50,7 @@ pub(super) const ORDINARY_STATUS: i32 = 3;
 pub(super) const PINNED_BINARIES: &[&str] = &["cargo-semver-checks", "release-plz"];
 
 /// The argument list the release proof takes: none.
-const RELEASE_STAGE: &[&str] = &[];
+pub(super) const RELEASE_STAGE: &[&str] = &[];
 
 /// A near miss the classifier must refuse, so the ordinary row proves the
 /// script kept a real failure rather than that no signature was present.
@@ -89,75 +97,68 @@ pub(super) enum Fault<'a> {
     },
 }
 
-impl Fault<'_> {
-    /// The operation this fault targets, or none.
-    fn operation(&self) -> &str {
-        match self {
-            Self::None | Self::Graph { .. } | Self::Overrun { .. } => "",
-            Self::Ordinary { operation }
-            | Self::Infrastructure { operation, .. }
-            | Self::Interrupt { operation } => operation,
-        }
-    }
-
+/// Everything one row's fake tools read from its fault.
+///
+/// One reading rather than one accessor per field: the values are consumed
+/// together at a single call site, and six exhaustive matches over the same six
+/// variants can disagree about one of them while each still compiles.
+#[derive(Default)]
+pub(super) struct Tuning<'a> {
+    /// The operation that fails, or none.
+    pub(super) operation: &'a str,
     /// The mode the fake tools read.
-    fn mode(&self) -> &'static str {
-        match self {
-            Self::None | Self::Graph { .. } | Self::Overrun { .. } => "",
-            Self::Ordinary { .. } => "ordinary",
-            Self::Infrastructure { .. } => "infrastructure",
-            Self::Interrupt { .. } => "interrupt",
-        }
-    }
-
-    /// The message the failing operation writes, already expanded.
-    fn sample(&self) -> Box<str> {
-        match self {
-            Self::Ordinary { .. } => ORDINARY_SAMPLE.into(),
-            Self::Infrastructure { sample, .. } => expanded(sample),
-            Self::None | Self::Interrupt { .. } | Self::Graph { .. } | Self::Overrun { .. } => {
-                Box::default()
-            }
-        }
-    }
-
+    mode: &'a str,
+    /// The message the failing operation writes, still redacted.
+    sample: &'a str,
     /// The jq filter the archive metadata is passed through.
-    fn mutation(&self) -> &str {
-        match self {
-            Self::Graph { mutation, .. } => mutation,
-            Self::None
-            | Self::Ordinary { .. }
-            | Self::Infrastructure { .. }
-            | Self::Interrupt { .. }
-            | Self::Overrun { .. } => "",
-        }
-    }
-
+    mutation: &'a str,
     /// The warning the archive metadata call writes to its transcript.
-    fn warning(&self) -> &str {
-        match self {
-            Self::Graph { warning, .. } => warning,
-            Self::None
-            | Self::Ordinary { .. }
-            | Self::Infrastructure { .. }
-            | Self::Interrupt { .. }
-            | Self::Overrun { .. } => "",
-        }
-    }
+    warning: &'a str,
+    /// The seconds the clock jumps before the budget is judged.
+    jump: &'a str,
+    /// The target-root size the sizer reports after the stage.
+    target_kib: &'a str,
+    /// The staging-root size the sizer reports during the stage.
+    staging_kib: &'a str,
+}
 
-    /// The clock jump and the two sizes the fake clock and sizer report.
-    fn overrun(&self) -> (&str, &str, &str) {
+impl Fault<'_> {
+    /// How this fault tunes the fake tools, read once.
+    pub(super) fn tuning(&self) -> Tuning<'_> {
         match self {
+            Self::None => Tuning::default(),
+            Self::Ordinary { operation } => Tuning {
+                operation,
+                mode: "ordinary",
+                sample: ORDINARY_SAMPLE,
+                ..Tuning::default()
+            },
+            Self::Infrastructure { operation, sample } => Tuning {
+                operation,
+                mode: "infrastructure",
+                sample,
+                ..Tuning::default()
+            },
+            Self::Interrupt { operation } => Tuning {
+                operation,
+                mode: "interrupt",
+                ..Tuning::default()
+            },
+            Self::Graph { mutation, warning } => Tuning {
+                mutation,
+                warning,
+                ..Tuning::default()
+            },
             Self::Overrun {
                 jump,
                 target_kib,
                 staging_kib,
-            } => (jump, target_kib, staging_kib),
-            Self::None
-            | Self::Ordinary { .. }
-            | Self::Infrastructure { .. }
-            | Self::Interrupt { .. }
-            | Self::Graph { .. } => ("", "", ""),
+            } => Tuning {
+                jump,
+                target_kib,
+                staging_kib,
+                ..Tuning::default()
+            },
         }
     }
 
@@ -168,7 +169,7 @@ impl Fault<'_> {
     /// after building the tools leaves them built. Only a fault during the
     /// build leaves the target root with nothing to claim.
     pub(super) fn surviving_tool_builds(&self) -> &'static [&'static str] {
-        match self.operation() {
+        match self.tuning().operation {
             "install" => &[],
             _ => PINNED_BINARIES,
         }
@@ -234,15 +235,16 @@ impl RowRoot {
             .into();
         let mut arguments: Vec<&str> = vec![script.as_ref()];
         arguments.extend_from_slice(stage);
+        let arguments = arguments.into_boxed_slice();
         let tmp: Box<str> = self.tmp.to_string_lossy().into();
         let target: Box<str> = self.target.to_string_lossy().into();
         let state: Box<str> = self.state.to_string_lossy().into();
         let staged: Box<str> = self.root.path().join("staged").to_string_lossy().into();
         let bodies: Box<str> = self.tools.join("bodies").to_string_lossy().into();
-        let sample = fault.sample();
+        let tuning = fault.tuning();
+        let sample = expanded(tuning.sample);
         let ordinary: Box<str> = ORDINARY_STATUS.to_string().into();
-        let (jump, target_kib, staging_kib) = fault.overrun();
-        let environment = [
+        let mut environment: Vec<(&str, &str)> = vec![
             ("TMPDIR", tmp.as_ref()),
             ("CARGO_TARGET_DIR", target.as_ref()),
             ("PLAN_BASE_SHA", self.base.as_ref()),
@@ -250,16 +252,18 @@ impl RowRoot {
             ("FAKE_STATE_DIR", state.as_ref()),
             ("FAKE_STAGED_TREE", staged.as_ref()),
             ("FAKE_TOOL_BODIES", bodies.as_ref()),
-            ("FAKE_FAULT_OPERATION", fault.operation()),
-            ("FAKE_FAULT_MODE", fault.mode()),
+            ("FAKE_FAULT_OPERATION", tuning.operation),
+            ("FAKE_FAULT_MODE", tuning.mode),
             ("FAKE_FAULT_SAMPLE", sample.as_ref()),
             ("FAKE_FAULT_STATUS", ordinary.as_ref()),
-            ("FAKE_GRAPH_MUTATION", fault.mutation()),
-            ("FAKE_METADATA_WARNING", fault.warning()),
-            ("FAKE_DATE_JUMP_SECONDS", jump),
-            ("FAKE_DU_TARGET_KIB", target_kib),
-            ("FAKE_DU_STAGING_KIB", staging_kib),
+            ("FAKE_GRAPH_MUTATION", tuning.mutation),
+            ("FAKE_METADATA_WARNING", tuning.warning),
+            ("FAKE_DATE_JUMP_SECONDS", tuning.jump),
+            ("FAKE_DU_TARGET_KIB", tuning.target_kib),
+            ("FAKE_DU_STAGING_KIB", tuning.staging_kib),
         ];
+        environment.extend_from_slice(ISOLATED_GIT);
+        let environment = environment.into_boxed_slice();
         let mut run = Run::program("bash", &self.repository, &arguments);
         run.path_prefix = Some(&self.tools);
         run.env = &environment;
@@ -278,10 +282,24 @@ impl RowRoot {
     }
 
     /// Every process the fake tools started or became.
+    ///
+    /// A line this reader cannot understand is a failure rather than a skipped
+    /// entry. [`super::verdict::assert_no_process_survives_the_row`] states
+    /// nothing about a pid it never read, so containment that stopped covering
+    /// the tree would read exactly like containment that worked.
     pub(super) fn recorded_pids(&self) -> Box<[u32]> {
-        recorded_lines(&self.state.join("pids"))
+        let path = self.state.join("pids");
+        recorded_lines(&path)
             .iter()
-            .filter_map(|line| line.parse().ok())
+            .map(|line| {
+                line.parse().unwrap_or_else(|error| {
+                    panic!(
+                        "{} records the process [{line}], which is no pid this row can wait on: \
+                         {error}",
+                        path.display()
+                    )
+                })
+            })
             .collect()
     }
 
@@ -303,10 +321,14 @@ impl RowRoot {
 }
 
 /// One record file's lines, empty when the fake tools wrote none.
+///
+/// A missing file is the only reading that means no lines. Every other IO
+/// error is a reader that failed, and the rows requiring exactly no operations
+/// would pass on one without reading anything at all.
 fn recorded_lines(path: &Path) -> Box<[Box<str>]> {
-    fs::read_to_string(path)
-        .unwrap_or_default()
-        .lines()
-        .map(Box::from)
-        .collect()
+    match fs::read_to_string(path) {
+        Ok(recorded) => recorded.lines().map(Box::from).collect(),
+        Err(error) if error.kind() == ErrorKind::NotFound => Box::default(),
+        Err(error) => panic!("{} could not be read: {error}", path.display()),
+    }
 }

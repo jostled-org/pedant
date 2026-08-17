@@ -37,6 +37,20 @@ log() {
     printf '%s\n' "$1" >> "${state}/operations"
 }
 
+# One flag the selected operation consumes, present in the scan above.
+#
+# The scan recognizes the space form the proof writes and nothing else. An
+# operation that ran without what it needs would write outside this row's roots
+# — `install` would create `/bin` and copy into it, `generate-lockfile` would
+# drop a `Cargo.lock` in whatever directory this child started in — and still
+# report success.
+require() {
+    if [ -z "$2" ]; then
+        printf 'error: the fake cargo needs %s for %s\n' "$1" "${operation}" >&2
+        exit 2
+    fi
+}
+
 # One manifest as `cargo metadata` describes it, with its first-party edges.
 package_json() {
     package_manifest="$1"
@@ -98,17 +112,23 @@ if [ "${FAKE_FAULT_OPERATION:-}" = "${operation}" ]; then
             kill -TERM "${PPID}"
             exit 0
             ;;
+        *)
+            printf 'error: unknown fault mode [%s]\n' "${FAKE_FAULT_MODE:-}" >&2
+            exit 2
+            ;;
     esac
 fi
 
 case "${operation}" in
     install)
+        require --root "${install_root}"
         mkdir -p "${install_root}/bin"
         cp "${FAKE_TOOL_BODIES}/${last_argument}" "${install_root}/bin/${last_argument}"
         chmod +x "${install_root}/bin/${last_argument}"
         log "install ${last_argument}"
         ;;
     package)
+        require --manifest-path "${manifest}"
         # Real `cargo package --locked` refuses a tree carrying uncommitted
         # changes, so the archives can only ever hold what the proof committed.
         # The staging commit for the release-plz update is what makes that tree
@@ -139,6 +159,7 @@ case "${operation}" in
         done
         ;;
     metadata)
+        require --manifest-path "${manifest}"
         if [ "${no_deps}" -eq 1 ]; then
             if [ -f "$(dirname "${manifest}")/release-plz.toml" ]; then
                 log "metadata staged"
@@ -160,6 +181,7 @@ case "${operation}" in
         fi
         ;;
     generate-lockfile)
+        require --manifest-path "${manifest}"
         printf '# fixture lock\n' > "$(dirname "${manifest}")/Cargo.lock"
         log "generate-lockfile"
         ;;

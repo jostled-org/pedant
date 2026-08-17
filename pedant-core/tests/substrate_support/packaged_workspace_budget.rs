@@ -8,34 +8,39 @@
 
 use crate::packaged_workspace_claims::{
     BUDGET_CONSTANTS, PINNED_TOOLS, REJECTED_STAGE_SELECTIONS, REQUIRED_TOOLS, STAGE_SELECTION,
+    assert_contains_all, assert_exactly_once, assert_in_order, function_body,
 };
-use crate::release_workflow::{function_body, offset_of};
+
+/// The warm release stage's own pair of numbers, as the script spells them.
+const WARM_BUDGET_CALL: &str =
+    "measure_budget verify \"${WARM_RUNTIME_BUDGET_SECONDS}\" \"${WARM_TARGET_BUDGET_KIB}\"";
+
+/// The cold release stage's own pair.
+const COLD_BUDGET_CALL: &str =
+    "measure_budget verify \"${COLD_RUNTIME_BUDGET_SECONDS}\" \"${COLD_TARGET_BUDGET_KIB}\"";
+
+/// The tool stage's own pair.
+const INSTALL_BUDGET_CALL: &str =
+    "measure_budget install \"${INSTALL_RUNTIME_BUDGET_SECONDS}\" \"${INSTALL_TARGET_BUDGET_KIB}\"";
 
 /// The proof states its own cost, fails when it exceeds the budget its warm
 /// state selects, and reads that state out of the target root.
 pub(crate) fn assert_budget_contract(joined: &str) {
-    for constant in BUDGET_CONSTANTS {
-        assert!(
-            joined.contains(constant),
-            "the budget contract is missing [{constant}]"
-        );
-    }
+    assert_contains_all(joined, BUDGET_CONSTANTS, "the budget contract");
     assert!(
         joined.contains(REQUIRED_TOOLS),
         "the proof must require exactly [{REQUIRED_TOOLS}]"
     );
-    let body = function_body(joined, "measure_budget");
-    for fragment in [
-        "elapsed=",
-        "target_growth_kib=",
-        "temp_peak_kib",
-        "warm_state",
-    ] {
-        assert!(
-            body.contains(fragment),
-            "the budget report omits [{fragment}]"
-        );
-    }
+    assert_contains_all(
+        &function_body(joined, "measure_budget"),
+        &[
+            "elapsed=",
+            "target_growth_kib=",
+            "temp_peak_kib",
+            "warm_state",
+        ],
+        "the budget report",
+    );
     assert!(
         joined.contains("du -sk"),
         "target growth and owned temporary peak are measured, not estimated"
@@ -58,6 +63,11 @@ pub(crate) fn assert_budget_contract(joined: &str) {
 /// work it still has to do. `cargo install` moves its binary out of the build
 /// directory, so the durable evidence is the installation root itself — which is
 /// why that root lives in the target and carries both revisions in its name.
+///
+/// That each tool is probed before it is built is
+/// [`crate::packaged_workspace::assert_pinned_tool_installation`]'s claim, read
+/// over the same installer bodies. What is left here is the other half: the warm
+/// reading asks the same question those installers ask.
 fn assert_warm_state_is_a_target_fact(joined: &str) {
     assert!(
         joined.contains("tool_root=\"${target_root}/${TOOL_ROOT_NAME}\""),
@@ -69,31 +79,21 @@ fn assert_warm_state_is_a_target_fact(joined: &str) {
     );
     let warm = function_body(joined, "read_warm_state");
     for tool in PINNED_TOOLS {
+        let condition = tool
+            .probe
+            .strip_prefix("if ")
+            .and_then(|probe| probe.strip_suffix("; then"))
+            .expect("PinnedTool::probe is spelled as a shell if-condition");
         assert!(
-            warm.contains(
-                tool.probe
-                    .trim_start_matches("if ")
-                    .trim_end_matches("; then")
-            ),
+            warm.contains(condition),
             "the warm state must be proved against the installed {}",
             tool.binary
         );
-        let installer = function_body(joined, tool.installer);
-        assert!(
-            offset_of(&installer, tool.probe) < offset_of(&installer, tool.installation),
-            "{} is asked for its version before it is rebuilt",
-            tool.binary
-        );
     }
-    assert!(
-        offset_of(
-            &function_body(joined, "install_pinned_tools"),
-            "warm) return 0 ;;"
-        ) < offset_of(
-            &function_body(joined, "install_pinned_tools"),
-            "install_semver_checks"
-        ),
-        "a warm tool root is reused whole rather than rebuilt"
+    assert_in_order(
+        &function_body(joined, "install_pinned_tools"),
+        &["warm) return 0 ;;", "install_semver_checks"],
+        "a warm tool root is reused whole rather than rebuilt",
     );
 }
 
@@ -101,40 +101,42 @@ fn assert_warm_state_is_a_target_fact(joined: &str) {
 /// pair to the common budget judge.
 fn assert_budget_pair_mapping(joined: &str) {
     let release = function_body(joined, "measure_proof_budget");
-    assert_exact_budget_call(
+    assert_budget_arm(
         &release,
+        "\nwarm)",
         "warm",
-        "warm)\nmeasure_budget verify \"${WARM_RUNTIME_BUDGET_SECONDS}\" \"${WARM_TARGET_BUDGET_KIB}\"",
+        WARM_BUDGET_CALL,
+        COLD_BUDGET_CALL,
     );
-    assert_exact_budget_call(
-        &release,
-        "cold",
-        "*)\nmeasure_budget verify \"${COLD_RUNTIME_BUDGET_SECONDS}\" \"${COLD_TARGET_BUDGET_KIB}\"",
-    );
-    assert_exact_budget_call(
+    assert_budget_arm(&release, "\n*)", "cold", COLD_BUDGET_CALL, WARM_BUDGET_CALL);
+    assert_exactly_once(
         &function_body(joined, "run_tool_installation"),
-        "install",
-        "measure_budget install \"${INSTALL_RUNTIME_BUDGET_SECONDS}\" \"${INSTALL_TARGET_BUDGET_KIB}\"",
+        INSTALL_BUDGET_CALL,
+        "the install stage's budget pair",
     );
 }
 
-/// One stage-to-budget relation must occur exactly once.
-fn assert_exact_budget_call(body: &str, stage: &str, call: &str) {
-    assert_eq!(
-        body.matches(call).count(),
-        1,
-        "the {stage} stage must select exactly its own runtime and target budget pair [{call}]"
+/// One arm of the budget selector states its own pair and never the other's.
+///
+/// The arm is found by its `case` pattern and read to its `;;`, so an author who
+/// writes the whole arm on one line states the same contract. Refusing the other
+/// stage's pair inside it is the reading that matters: a warm arm holding the
+/// cold numbers is the defect, and a fragment check alone would pass it.
+fn assert_budget_arm(release: &str, pattern: &str, stage: &str, own: &str, foreign: &str) {
+    let arm = release
+        .split(";;")
+        .find_map(|segment| segment.split_once(pattern).map(|(_, arm)| arm))
+        .unwrap_or_else(|| panic!("the budget selector holds no [{pattern}] arm"));
+    assert_exactly_once(arm, own, &format!("the {stage} stage's budget pair"));
+    assert!(
+        !arm.contains(foreign),
+        "the {stage} arm also selects the other stage's budget pair"
     );
 }
 
 /// The script has two stages, one entry point, and no third answer.
 fn assert_stage_selection(joined: &str) {
-    for fragment in STAGE_SELECTION {
-        assert!(
-            joined.contains(fragment),
-            "the stage selection is missing [{fragment}]"
-        );
-    }
+    assert_contains_all(joined, STAGE_SELECTION, "the stage selection");
     for rejected in REJECTED_STAGE_SELECTIONS {
         assert!(
             !joined.contains(rejected),

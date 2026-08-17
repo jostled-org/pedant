@@ -36,7 +36,7 @@ mod session_cases;
 /// Who may build a parser, and what a bound session may do. Needs `syn` to
 /// scan this crate's own source, so it carries the `rust` gate as well.
 #[cfg(all(feature = "rust", feature = "_ts"))]
-#[path = "enclosing_unit_support/ownership.rs"]
+#[path = "enclosing_unit_support/ownership/mod.rs"]
 mod ownership;
 
 #[cfg(any(feature = "rust", feature = "_ts"))]

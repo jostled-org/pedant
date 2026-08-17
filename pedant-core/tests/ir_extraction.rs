@@ -512,53 +512,9 @@ fn test_ir_extracts_modules() {
 // 2.T1: IR capabilities match CapabilityVisitor output for all fixtures
 #[test]
 fn test_ir_capabilities_match_visitor() {
-    let fixtures: &[(&str, &str)] = &[
-        (
-            "network_capability.rs",
-            include_str!("fixtures/network_capability.rs"),
-        ),
-        (
-            "filesystem_capability.rs",
-            include_str!("fixtures/filesystem_capability.rs"),
-        ),
-        (
-            "process_capability.rs",
-            include_str!("fixtures/process_capability.rs"),
-        ),
-        (
-            "env_capability.rs",
-            include_str!("fixtures/env_capability.rs"),
-        ),
-        (
-            "ffi_capability.rs",
-            include_str!("fixtures/ffi_capability.rs"),
-        ),
-        (
-            "unsafe_capability.rs",
-            include_str!("fixtures/unsafe_capability.rs"),
-        ),
-        (
-            "endpoint_capability.rs",
-            include_str!("fixtures/endpoint_capability.rs"),
-        ),
-        (
-            "crypto_capability.rs",
-            include_str!("fixtures/crypto_capability.rs"),
-        ),
-        (
-            "proc_macro_capability.rs",
-            include_str!("fixtures/proc_macro_capability.rs"),
-        ),
-        (
-            "system_time_capability.rs",
-            include_str!("fixtures/system_time_capability.rs"),
-        ),
-        ("clean.rs", include_str!("fixtures/clean.rs")),
-    ];
-
     let config = permissive_config();
 
-    for (name, source) in fixtures {
+    for (name, source) in CAPABILITY_FIXTURES {
         assert_ir_projection_matches_analyze(name, source, &config);
     }
 }
@@ -566,10 +522,11 @@ fn test_ir_capabilities_match_visitor() {
 /// One fixture's direct IR projection must equal what `analyze` reports: same
 /// capability set, same finding count, and the same evidence strings.
 fn assert_ir_projection_matches_analyze(name: &str, source: &str, config: &CheckConfig) {
-    let baseline = analyze(name, source, config, None).unwrap();
+    let baseline = analyze(name, source, config, None)
+        .unwrap_or_else(|e| panic!("analyze failed for {name}: {e}"));
     let baseline_caps = baseline.capabilities.capabilities();
 
-    let syntax = syn::parse_file(source).unwrap();
+    let syntax = syn::parse_file(source).unwrap_or_else(|e| panic!("{name} should parse: {e}"));
     let ir = extract(name, &syntax, None);
     let ir_profile = detect_capabilities(&ir, None);
     let ir_caps = ir_profile.capabilities();
@@ -968,9 +925,55 @@ fn test_ir_style_naming() {
     assert!(!naming.is_empty());
 }
 
-/// Every fixture the analyze-versus-direct-IR equivalence case walks.
-const EQUIVALENCE_FIXTURES: &[(&str, &str)] = &[
+/// Every fixture carrying capability evidence, walked by both the capability
+/// projection case and the analyze-versus-direct-IR equivalence case.
+const CAPABILITY_FIXTURES: &[(&str, &str)] = &[
+    (
+        "network_capability.rs",
+        include_str!("fixtures/network_capability.rs"),
+    ),
+    (
+        "filesystem_capability.rs",
+        include_str!("fixtures/filesystem_capability.rs"),
+    ),
+    (
+        "process_capability.rs",
+        include_str!("fixtures/process_capability.rs"),
+    ),
+    (
+        "env_capability.rs",
+        include_str!("fixtures/env_capability.rs"),
+    ),
+    (
+        "ffi_capability.rs",
+        include_str!("fixtures/ffi_capability.rs"),
+    ),
+    (
+        "unsafe_capability.rs",
+        include_str!("fixtures/unsafe_capability.rs"),
+    ),
+    (
+        "endpoint_capability.rs",
+        include_str!("fixtures/endpoint_capability.rs"),
+    ),
+    (
+        "crypto_capability.rs",
+        include_str!("fixtures/crypto_capability.rs"),
+    ),
+    (
+        "proc_macro_capability.rs",
+        include_str!("fixtures/proc_macro_capability.rs"),
+    ),
+    (
+        "system_time_capability.rs",
+        include_str!("fixtures/system_time_capability.rs"),
+    ),
     ("clean.rs", include_str!("fixtures/clean.rs")),
+];
+
+/// Every remaining fixture the analyze-versus-direct-IR equivalence case walks:
+/// the style cases, which carry no capability evidence.
+const STYLE_FIXTURES: &[(&str, &str)] = &[
     ("deep_nesting.rs", include_str!("fixtures/deep_nesting.rs")),
     ("nested_if.rs", include_str!("fixtures/nested_if.rs")),
     ("nested_match.rs", include_str!("fixtures/nested_match.rs")),
@@ -1009,46 +1012,6 @@ const EQUIVALENCE_FIXTURES: &[(&str, &str)] = &[
         "generic_naming.rs",
         include_str!("fixtures/generic_naming.rs"),
     ),
-    (
-        "network_capability.rs",
-        include_str!("fixtures/network_capability.rs"),
-    ),
-    (
-        "filesystem_capability.rs",
-        include_str!("fixtures/filesystem_capability.rs"),
-    ),
-    (
-        "process_capability.rs",
-        include_str!("fixtures/process_capability.rs"),
-    ),
-    (
-        "env_capability.rs",
-        include_str!("fixtures/env_capability.rs"),
-    ),
-    (
-        "ffi_capability.rs",
-        include_str!("fixtures/ffi_capability.rs"),
-    ),
-    (
-        "crypto_capability.rs",
-        include_str!("fixtures/crypto_capability.rs"),
-    ),
-    (
-        "unsafe_capability.rs",
-        include_str!("fixtures/unsafe_capability.rs"),
-    ),
-    (
-        "endpoint_capability.rs",
-        include_str!("fixtures/endpoint_capability.rs"),
-    ),
-    (
-        "proc_macro_capability.rs",
-        include_str!("fixtures/proc_macro_capability.rs"),
-    ),
-    (
-        "system_time_capability.rs",
-        include_str!("fixtures/system_time_capability.rs"),
-    ),
 ];
 
 // 4.T1: analyze() produces identical output to direct IR calls
@@ -1056,7 +1019,7 @@ const EQUIVALENCE_FIXTURES: &[(&str, &str)] = &[
 fn test_analyze_produces_identical_output() {
     let config = CheckConfig::default();
 
-    for (name, source) in EQUIVALENCE_FIXTURES {
+    for (name, source) in CAPABILITY_FIXTURES.iter().chain(STYLE_FIXTURES) {
         assert_analyze_matches_direct_ir(name, source, &config);
     }
 }

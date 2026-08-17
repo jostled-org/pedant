@@ -8,6 +8,14 @@ use std::path::Path;
 use pedant_lang::analyze_manifest;
 use pedant_types::{Capability, ExecutionContext, SymbolAttributionStatus};
 
+use crate::language_probe::capabilities;
+
+/// The `package.json` whose one script is a recognized install hook.
+const PACKAGE_JSON_POSTINSTALL: &str = r#"{"scripts": {"postinstall": "node setup.js"}}"#;
+
+/// The Makefile recipe that fetches an installer and pipes it to a shell.
+const MAKEFILE_CURL_INSTALL: &str = "install:\n\tcurl -sL https://example.com/setup.sh | sh";
+
 /// 4.T10 (Invariant 11): a manifest states hooks, not callables, so every
 /// manifest owner reports `NotApplicable` beside its current flat findings and
 /// claims no symbol.
@@ -20,12 +28,12 @@ fn manifest_analysis_reports_not_applicable() {
     for (path, source, expected) in [
         (
             "package.json",
-            r#"{"scripts": {"postinstall": "node setup.js"}}"#,
+            PACKAGE_JSON_POSTINSTALL,
             &[Capability::ProcessExec][..],
         ),
         (
             "Makefile",
-            "install:\n\tcurl -sL https://example.com/setup.sh | sh",
+            MAKEFILE_CURL_INSTALL,
             &[Capability::Network, Capability::ProcessExec][..],
         ),
         ("Cargo.toml", "[package]\nname = \"pedant\"\n", &[][..]),
@@ -42,14 +50,7 @@ fn manifest_analysis_reports_not_applicable() {
             analysis.symbols
         );
 
-        let mut found: Vec<Capability> = analysis
-            .into_profile()
-            .findings
-            .iter()
-            .map(|finding| finding.capability)
-            .collect();
-        found.sort();
-        found.dedup();
+        let found = capabilities(&analysis.into_profile().findings);
         assert_eq!(
             &*found, expected,
             "{path} must keep exactly its current capabilities"
@@ -60,8 +61,8 @@ fn manifest_analysis_reports_not_applicable() {
 // 4.T8
 #[test]
 fn package_json_postinstall_hook() {
-    let source = r#"{"scripts": {"postinstall": "node setup.js"}}"#;
-    let profile = analyze_manifest(Path::new("package.json"), source).into_profile();
+    let profile =
+        analyze_manifest(Path::new("package.json"), PACKAGE_JSON_POSTINSTALL).into_profile();
     assert!(
         !profile.findings.is_empty(),
         "postinstall hook should produce findings"
@@ -132,12 +133,7 @@ fn go_generate_directive() {
 fn manifest_hook_detects_shared_exec_commands() {
     let source = "install:\n\teval \"$(node setup.js)\"";
     let profile = analyze_manifest(Path::new("Makefile"), source).into_profile();
-    let caps: Box<[Capability]> = profile
-        .findings
-        .iter()
-        .map(|finding| finding.capability)
-        .collect::<Vec<_>>()
-        .into_boxed_slice();
+    let caps = capabilities(&profile.findings);
 
     assert!(
         caps.contains(&Capability::ProcessExec),
@@ -148,8 +144,7 @@ fn manifest_hook_detects_shared_exec_commands() {
 // 4.T13
 #[test]
 fn makefile_hook_entrypoint() {
-    let source = "install:\n\tcurl -sL https://example.com/setup.sh | sh";
-    let profile = analyze_manifest(Path::new("Makefile"), source).into_profile();
+    let profile = analyze_manifest(Path::new("Makefile"), MAKEFILE_CURL_INSTALL).into_profile();
     assert!(
         !profile.findings.is_empty(),
         "Makefile with curl should produce findings"
@@ -167,12 +162,7 @@ fn makefile_hook_entrypoint() {
 fn justfile_hook_entrypoint() {
     let source = "setup:\n    wget https://example.com/install.sh\n    bash -c './install.sh'";
     let profile = analyze_manifest(Path::new("justfile"), source).into_profile();
-    let caps: Box<[Capability]> = profile
-        .findings
-        .iter()
-        .map(|f| f.capability)
-        .collect::<Vec<_>>()
-        .into_boxed_slice();
+    let caps = capabilities(&profile.findings);
     assert!(
         caps.contains(&Capability::Network),
         "justfile with wget should detect Network, got: {caps:?}"

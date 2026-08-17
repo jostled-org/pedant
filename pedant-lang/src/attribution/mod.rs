@@ -12,7 +12,14 @@
 //! beside their unchanged flat findings, rather than a successful analysis with
 //! an empty symbol list.
 
-mod envelope;
+//! Both owners are named where they are called, rather than re-exported here.
+//! A re-export would need the same five-feature disjunction the module below
+//! already carries — once for `seal`, and again for the envelope route a
+//! grammar-less backend takes — so the predicate would be written three times
+//! and would have to be kept identical. One `cfg` on one module is the whole
+//! condition, and a caller reads which owner answers it from the path it types.
+
+pub(crate) mod envelope;
 
 #[cfg(any(
     feature = "ts-python",
@@ -21,26 +28,4 @@ mod envelope;
     feature = "ts-go",
     feature = "ts-bash"
 ))]
-mod symbols;
-
-pub(crate) use envelope::not_applicable;
-
-/// A backend whose grammar this build omits seals its own text-tier findings
-/// through this route. Where every backend links a grammar, `Unavailable` is
-/// reached only through [`seal`], so the direct route would be dead code.
-#[cfg(not(all(
-    feature = "ts-python",
-    any(feature = "ts-javascript", feature = "ts-typescript"),
-    feature = "ts-go",
-    feature = "ts-bash"
-)))]
-pub(crate) use envelope::unavailable;
-
-#[cfg(any(
-    feature = "ts-python",
-    feature = "ts-javascript",
-    feature = "ts-typescript",
-    feature = "ts-go",
-    feature = "ts-bash"
-))]
-pub(crate) use symbols::seal;
+pub(crate) mod symbols;

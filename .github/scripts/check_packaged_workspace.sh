@@ -93,7 +93,7 @@ readonly INSTALL_RUNTIME_BUDGET_SECONDS INSTALL_TARGET_BUDGET_KIB
 readonly COLD_RUNTIME_BUDGET_SECONDS WARM_RUNTIME_BUDGET_SECONDS
 readonly COLD_TARGET_BUDGET_KIB WARM_TARGET_BUDGET_KIB OWNED_TEMP_BUDGET_KIB
 
-REQUIRED_TOOLS="bash cargo date du find git jq mktemp rg rm tar"
+REQUIRED_TOOLS="cargo cat cp date dirname du env git jq mkdir mktemp rg rm tar"
 readonly REQUIRED_TOOLS
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -116,6 +116,8 @@ archive_metadata=""
 clone_branch=""
 release_order=()
 release_order_json="[]"
+release_versions=()
+staged_version=""
 inbound_packages=""
 start_seconds=0
 target_start_kib=0
@@ -151,25 +153,36 @@ run_classified() {
 # The same, for an operation whose output this proof has to read rather than
 # replay. The transcript still reaches the operator and still reaches the
 # classifier; only its destination differs.
+#
+# The classifier is handed the diagnostic stream alone, because that is where
+# every infrastructure signature is written and the other stream is a metadata
+# document this proof would otherwise slurp into a shell variable to grep. A
+# stream that cannot be read at all is an unavailable machine: the redirect that
+# was supposed to create it is the first thing an exhausted volume takes away,
+# and reading that as an ordinary failure is the one mistake the classifier
+# exists to prevent.
 capture_classified() {
     local label="$1"
     local destination="$2"
     shift 2
     local status=0
     "$@" > "${destination}" 2> "${destination}.err" || status=$?
-    cat -- "${destination}.err" >&2
-    if [ -n "${PROOF_OUTPUT_DIR:-}" ] && [ -d "${PROOF_OUTPUT_DIR}" ]; then
-        cp -- "${destination}.err" "${PROOF_OUTPUT_DIR}/${label}.log" 2> /dev/null || true
-    fi
-    local transcript
-    transcript="$(cat -- "${destination}" "${destination}.err")"
-    cargo_record "${status}" "${transcript}"
+    cat -- "${destination}.err" >&2 \
+        || unavailable "the ${label} transcript could not be read."
+    cargo_receipt "${label}" "${destination}.err"
+    local classified
+    classified="$(cargo_classify "${status}" "${destination}.err")"
+    cargo_record "${classified}"
     local worst
     worst="$(cargo_worst)"
     test "${worst}" -eq 0 || exit "${worst}"
 }
 
 # Every tool this proof shells out to, proved present before it starts.
+#
+# The interpreter is not on that list. A shell this script never invokes is a
+# shell the list cannot claim to have checked, and a list holding a name nobody
+# calls invites the next one to hold a name somebody does.
 require_tools() {
     local tool
     for tool in ${REQUIRED_TOOLS}; do
@@ -204,10 +217,12 @@ capture_target_root() {
 
 # The release order, read from the file that owns it.
 #
-# release-plz publishes in this order and nothing else may restate it, so the
-# proof packages in it too: an archive built before its dependency's archive
-# exists would resolve against the registry and prove the opposite of the
-# claim.
+# release-plz publishes in this order and nothing else may restate it. The proof
+# reads it for two things: the member inventory — which packages must have a
+# manifest, an archive, and a workspace member — and one deterministic listing
+# order, so the generated workspace, the patch table, and every refusal name the
+# eight members the same way on every run. Packaging itself is a single
+# workspace-wide invocation and needs no order at all.
 read_release_order() {
     local name
     while IFS= read -r name; do
@@ -313,7 +328,7 @@ clone_isolated_base() {
 # finalization will publish, which is the only tree worth packaging.
 overlay_working_tree() {
     local patch="${staging_root}/overlay.patch"
-    git diff --binary "${PLAN_BASE_SHA}" > "${patch}" \
+    git -C "${repository_root}" diff --binary "${PLAN_BASE_SHA}" > "${patch}" \
         || fail "the working-tree overlay could not be computed."
     if [ -s "${patch}" ]; then
         git -C "${clone_root}" apply --binary --whitespace=nowarn -- "${patch}" \
@@ -323,13 +338,23 @@ overlay_working_tree() {
 }
 
 # Every untracked, unignored file, copied into the isolated tree.
+#
+# The listing is captured before anything reads it. Feeding the reader from a
+# process substitution puts Git in a subshell whose exit status nothing observes,
+# so a Git that died after emitting one path would leave one path, copy it, and
+# report a proof over a tree it never assembled. An empty listing is an answer
+# and not a failure: a repository may hold no untracked file at all.
 copy_untracked_files() {
+    local listing="${staging_root}/untracked.list"
     local relative
+    git -C "${repository_root}" ls-files --others --exclude-standard -z > "${listing}" \
+        || fail "the untracked files of ${repository_root} could not be listed."
     while IFS= read -r -d '' relative; do
-        mkdir -p -- "${clone_root}/$(dirname -- "${relative}")"
+        mkdir -p -- "${clone_root}/$(dirname -- "${relative}")" \
+            || fail "the isolated directory for ${relative} could not be created."
         cp -p -- "${repository_root}/${relative}" "${clone_root}/${relative}" \
             || fail "the untracked file ${relative} could not be copied."
-    done < <(git ls-files --others --exclude-standard -z)
+    done < "${listing}"
 }
 
 # One commit in the isolated clone, with a command-scoped identity.
@@ -468,15 +493,45 @@ read_staged_metadata() {
     capture_classified staged-metadata "${staged_metadata}" \
         cargo metadata --no-deps --format-version 1 \
         --manifest-path "${clone_root}/Cargo.toml"
+    read_release_versions
 }
 
-# The version release-plz staged for one package.
-staged_version() {
-    jq -er --arg name "$1" \
-        '[.packages[] | select(.name == $name) | .version]
+# The version release-plz staged for every released package, left in
+# ${release_versions} index-parallel with ${release_order}.
+#
+# One pass over the document rather than one per lookup. The four sites that
+# need a version ask for eight each, and a reader spawned thirty-two times to
+# re-run the same assertion over the same file states that assertion no better
+# than a reader spawned once.
+read_release_versions() {
+    local listing version
+    listing="$(jq -er --argjson names "${release_order_json}" \
+        '. as $metadata
+         | $names[] as $name
+         | [$metadata.packages[] | select(.name == $name) | .version]
          | if length == 1 then .[0]
            else error("release-plz staged no single version for " + $name) end' \
-        "${staged_metadata}"
+        "${staged_metadata}")" \
+        || fail "release-plz staged no single version for every released package."
+    release_versions=()
+    while IFS= read -r version; do
+        test -n "${version}" || continue
+        release_versions+=("${version}")
+    done <<< "${listing}"
+    test "${#release_versions[@]}" -eq "${RELEASE_PACKAGE_COUNT}" \
+        || fail "the staged metadata carries ${#release_versions[@]} versions rather than ${RELEASE_PACKAGE_COUNT}."
+}
+
+# The version release-plz staged for one package, left in ${staged_version}.
+read_staged_version() {
+    local wanted="$1" index
+    for index in "${!release_order[@]}"; do
+        if [ "${release_order[index]}" = "${wanted}" ]; then
+            staged_version="${release_versions[index]}"
+            return 0
+        fi
+    done
+    fail "the release order does not name ${wanted}."
 }
 
 # Clear the one archive path this run is about to write, and nothing else.
@@ -538,22 +593,22 @@ extract_archive() {
 # Every expected archive path is cleared before Cargo runs and required after
 # it, so each archive is provably this run's rather than an earlier one's.
 package_archives() {
-    local name version archive
+    local name archive
     for name in "${release_order[@]}"; do
-        version="$(staged_version "${name}")"
-        archive="${target_root}/package/${name}-${version}.crate"
+        read_staged_version "${name}"
+        archive="${target_root}/package/${name}-${staged_version}.crate"
         remove_prior_archive "${archive}"
     done
     run_classified package-workspace cargo package --manifest-path "${clone_root}/Cargo.toml" \
         --workspace --locked --no-verify
     for name in "${release_order[@]}"; do
-        version="$(staged_version "${name}")"
-        archive="${target_root}/package/${name}-${version}.crate"
+        read_staged_version "${name}"
+        archive="${target_root}/package/${name}-${staged_version}.crate"
         test -f "${archive}" \
             || fail "cargo package produced no archive at ${archive}."
-        cp -- "${archive}" "${archive_root}/${name}-${version}.crate" \
+        cp -- "${archive}" "${archive_root}/${name}-${staged_version}.crate" \
             || fail "the ${name} archive could not be copied into the staging root."
-        extract_archive "${name}" "${version}"
+        extract_archive "${name}" "${staged_version}"
     done
 }
 
@@ -585,21 +640,21 @@ derive_first_party_edges() {
 # The generated workspace: eight archive members, and a patch entry for exactly
 # the packages something in that workspace depends on.
 write_archive_manifest() {
-    local name version
+    local name
     {
         printf '[workspace]\n'
         printf 'resolver = "3"\n'
         printf 'members = [\n'
         for name in "${release_order[@]}"; do
-            version="$(staged_version "${name}")"
-            printf '    "%s-%s",\n' "${name}" "${version}"
+            read_staged_version "${name}"
+            printf '    "%s-%s",\n' "${name}" "${staged_version}"
         done
         printf ']\n\n'
         printf '[patch.crates-io]\n'
         if [ -n "${inbound_packages}" ]; then
             while IFS= read -r name; do
-                version="$(staged_version "${name}")"
-                printf '%s = { path = "%s-%s" }\n' "${name}" "${name}" "${version}"
+                read_staged_version "${name}"
+                printf '%s = { path = "%s-%s" }\n' "${name}" "${name}" "${staged_version}"
             done <<< "${inbound_packages}"
         fi
     } > "${workspace_root}/Cargo.toml"
@@ -622,7 +677,7 @@ generate_archive_workspace() {
 # that compared this manifest against its own input would agree with itself
 # however wrong both of them were.
 assert_patch_set_is_exact() {
-    local required written
+    local required written read_status=0
     required="$(jq -r --argjson names "${release_order_json}" \
         'def first_party: . as $candidate | ($names | index($candidate)) != null;
          [.packages[]
@@ -635,8 +690,15 @@ assert_patch_set_is_exact() {
          | .[]' \
         "${archive_metadata}")" \
         || fail "the packaged metadata could not be read for its inbound edges."
+    # 1 is ripgrep's "no match", which is a patch table this check may still
+    # judge. Anything else is a reader that failed, and an empty answer from a
+    # broken reader would agree with an empty required set.
     written="$(rg -N -o -r '${1}' '^([a-zA-Z0-9_-]+) = \{ path = ' \
-        "${workspace_root}/Cargo.toml" || true)"
+        "${workspace_root}/Cargo.toml")" || read_status=$?
+    case "${read_status}" in
+        0 | 1) ;;
+        *) unavailable "the generated workspace manifest could not be read for its patch table." ;;
+    esac
     test "${written}" = "${required}" \
         || fail "the generated workspace patches [${written}] rather than the inbound edge set [${required}]."
 }
@@ -689,12 +751,13 @@ assert_packaged_graph_shape() {
                   | .req) // "absent") as $expected
               | select($edge.req != $expected)
               | "\($member.name) states requirement \($edge.req) for \($edge.name) rather than the staged \($expected)"),
-             (.resolve.nodes[]
-              | select((.id as $node | $ids | index($node)) != null)
-              | .deps[]
+             (.resolve.nodes[] as $node
+              | select(($node.id as $id | $ids | index($id)) != null)
+              | ($members[] | select(.id == $node.id) | .name) as $consumer
+              | $node.deps[]
               | select(.name | first_party)
               | select((.pkg as $resolved | $ids | index($resolved)) == null)
-              | "\(.name) resolves through the registry rather than its archive")
+              | "\($consumer) resolves its \(.name) edge through the registry rather than the archive member")
            ]
          | .[]' \
         "${archive_metadata}")" \
@@ -806,6 +869,21 @@ measure_proof_budget() {
     esac
 }
 
+# Everything both stages do before either does its own work: prove the machine,
+# the target root and the release order, take the staging root this run owns,
+# read the warm state, and start the clock.
+#
+# One function rather than a prologue each entry point repeats. A stage that
+# omitted the warm reading would be judged against the other stage's pair of
+# numbers and report a cost nobody measured, and the omission would look like
+# four lines that were nearly the same as four other lines.
+begin_stage() {
+    preflight
+    create_staging_root
+    read_warm_state
+    begin_measurement
+}
+
 # Build one pinned tool into the caller's target and stop.
 #
 # One tool per invocation because one tool is what a verification slice holds.
@@ -819,10 +897,7 @@ measure_proof_budget() {
 # create a staging root, run both pinned binaries to read the warm state, and
 # start the measurement for a request it was never going to accept.
 run_tool_installation() {
-    preflight
-    create_staging_root
-    read_warm_state
-    begin_measurement
+    begin_stage
     "$1"
     measure_owned_temp
     measure_budget install \
@@ -831,10 +906,7 @@ run_tool_installation() {
 
 # Stage the release, package all eight members, and compile the archives.
 run_packaged_workspace_proof() {
-    preflight
-    create_staging_root
-    read_warm_state
-    begin_measurement
+    begin_stage
     stage_isolated_source
     install_pinned_tools
     measure_owned_temp

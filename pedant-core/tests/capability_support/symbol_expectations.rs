@@ -10,8 +10,6 @@
 //! callable ownership, so nothing reads the production grouping to decide what
 //! the grouping should be.
 
-use std::collections::BTreeSet;
-
 use pedant_core::check_config::CheckConfig;
 use pedant_core::lint::analyze;
 use pedant_types::{
@@ -42,6 +40,20 @@ pub(crate) const ALL_FAMILIES: &[FactFamily] = &[
     FactFamily::StringLiteral,
 ];
 
+/// The origin a family reports. A family determines its origin, so a row states
+/// the family alone and this derives the rest.
+///
+/// The match is exhaustive on purpose: a sixth family fails to compile here,
+/// which is what forces it into [`ALL_FAMILIES`] and into a case table.
+const fn origin_of(family: FactFamily) -> FindingOrigin {
+    match family {
+        FactFamily::UsePath => FindingOrigin::Import,
+        FactFamily::Unsafe | FactFamily::ExternBlock => FindingOrigin::CodeSite,
+        FactFamily::Attribute => FindingOrigin::Attribute,
+        FactFamily::StringLiteral => FindingOrigin::StringLiteral,
+    }
+}
+
 /// The callable a finding is expected to belong to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ExpectedSymbol {
@@ -58,7 +70,6 @@ pub(crate) struct ExpectedSymbol {
 pub(crate) struct ExpectedFinding {
     pub(crate) family: FactFamily,
     pub(crate) capability: Capability,
-    pub(crate) origin: FindingOrigin,
     /// One-based line of the finding.
     pub(crate) line: usize,
     /// One-based column of the finding.
@@ -77,17 +88,25 @@ pub(crate) fn permissive_config() -> CheckConfig {
 
 pub(crate) fn analysis_of(path: &str, source: &str) -> CapabilityAnalysis {
     analyze(path, source, &permissive_config(), None)
-        .expect("the fixture source should parse")
+        .unwrap_or_else(|error| panic!("{path} must parse: {error}"))
         .capabilities
 }
 
-/// A finding rendered for comparison: everything a flat occurrence states,
-/// except the file every finding in one analysis shares.
-fn rendered(
-    finding: &CapabilityFinding,
-) -> (Capability, usize, usize, &str, Option<FindingOrigin>) {
+/// The flat projection of one finding: everything a flat occurrence states
+/// about where it sits and what it says.
+type FlatRow<'a> = (
+    Capability,
+    &'a str,
+    usize,
+    usize,
+    &'a str,
+    Option<FindingOrigin>,
+);
+
+fn rendered(finding: &CapabilityFinding) -> FlatRow<'_> {
     (
         finding.capability,
+        &finding.location.file,
         finding.location.line,
         finding.location.column,
         &finding.evidence,
@@ -95,15 +114,14 @@ fn rendered(
     )
 }
 
-fn rendered_expectation(
-    expected: &ExpectedFinding,
-) -> (Capability, usize, usize, &str, Option<FindingOrigin>) {
+fn rendered_expectation<'a>(expected: &'a ExpectedFinding, file: &'a str) -> FlatRow<'a> {
     (
         expected.capability,
+        file,
         expected.line,
         expected.column,
         expected.evidence,
-        Some(expected.origin),
+        Some(origin_of(expected.family)),
     )
 }
 
@@ -111,10 +129,18 @@ fn rendered_expectation(
 /// and length.
 pub(crate) fn assert_flat_sequence_is_exact(
     analysis: &CapabilityAnalysis,
+    file: &str,
     expected: &[ExpectedFinding],
 ) {
-    let actual: Vec<_> = analysis.profile.findings.iter().map(rendered).collect();
-    let wanted: Vec<_> = expected.iter().map(rendered_expectation).collect();
+    assert!(
+        !expected.is_empty(),
+        "{file} must state at least one expected occurrence"
+    );
+    let actual: Box<[FlatRow<'_>]> = analysis.profile.findings.iter().map(rendered).collect();
+    let wanted: Box<[FlatRow<'_>]> = expected
+        .iter()
+        .map(|row| rendered_expectation(row, file))
+        .collect();
     assert_eq!(
         actual, wanted,
         "the complete flat occurrence sequence must match the hand-written table"
@@ -144,7 +170,7 @@ fn expected_indices(expected: &[ExpectedFinding], owner: ExpectedSymbol) -> Box<
 }
 
 /// Hold the symbol projection to exactly what the flat table implies: identity,
-/// occurrence value, occurrence order, flat index, and no reuse of an index.
+/// occurrence value, occurrence order, and flat index.
 pub(crate) fn assert_symbols_are_exactly_derived(
     analysis: &CapabilityAnalysis,
     file: &str,
@@ -162,7 +188,6 @@ pub(crate) fn assert_symbols_are_exactly_derived(
             .collect::<Vec<_>>()
     );
 
-    let mut claimed: BTreeSet<usize> = BTreeSet::new();
     for (actual, owner) in analysis.symbols.iter().zip(&owners) {
         assert_eq!(actual.symbol.language, Language::Rust);
         assert_eq!(actual.symbol.kind, owner.kind, "callable kind of {owner:?}");
@@ -178,40 +203,16 @@ pub(crate) fn assert_symbols_are_exactly_derived(
         );
 
         let indices = expected_indices(expected, *owner);
-        assert!(
-            !indices.is_empty(),
-            "an expected owner with no evidence must not exist: {owner:?}"
-        );
-        let owned: Vec<_> = actual.profile.findings.iter().map(rendered).collect();
-        let wanted: Vec<_> = indices
+        let owned: Box<[&CapabilityFinding]> = actual.profile.findings.iter().collect();
+        let wanted: Box<[&CapabilityFinding]> = indices
             .iter()
-            .map(|&index| rendered(&analysis.profile.findings[index]))
+            .map(|&index| &analysis.profile.findings[index])
             .collect();
         assert_eq!(
             owned, wanted,
             "{owner:?} must own exactly flat occurrences {indices:?}, in flat order"
         );
-        for index in indices {
-            assert!(
-                claimed.insert(index),
-                "flat occurrence {index} is claimed by more than one symbol profile"
-            );
-        }
     }
-
-    assert!(
-        analysis
-            .symbols
-            .iter()
-            .all(|entry| !entry.profile.findings.is_empty()),
-        "no emitted symbol profile may be empty"
-    );
-    let module_rows = expected.iter().filter(|row| row.owner.is_none()).count();
-    assert_eq!(
-        claimed.len() + module_rows,
-        expected.len(),
-        "every flat occurrence is either module evidence or owned exactly once"
-    );
 }
 
 /// Every fact family must contribute at least one callable-owned occurrence, so

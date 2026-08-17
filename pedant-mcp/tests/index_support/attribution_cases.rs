@@ -22,7 +22,12 @@ struct AttributionRow {
     because: &'static str,
 }
 
-/// Every status the language entry points can hand the index, once each.
+/// One row per indexed non-Rust input, covering every status the language entry
+/// points can hand the index.
+///
+/// `Complete` carries two rows because the two ways to reach it differ: the Go
+/// file combines a source answer with a manifest answer, and the Python file
+/// states it from one source analysis alone.
 const ATTRIBUTION_ROWS: &[AttributionRow] = &[
     AttributionRow {
         relative: "tools/main.go",
@@ -45,6 +50,16 @@ const ATTRIBUTION_ROWS: &[AttributionRow] = &[
         expected: SymbolAttributionStatus::NotApplicable,
         because: "a manifest states hooks rather than callables",
     },
+];
+
+/// Every status a `pedant-lang` entry point can hand the index.
+///
+/// Written down here so the coverage guard compares the table against the whole
+/// variant set rather than against a row count.
+const ALL_STATUSES: [SymbolAttributionStatus; 3] = [
+    SymbolAttributionStatus::Complete,
+    SymbolAttributionStatus::Unavailable,
+    SymbolAttributionStatus::NotApplicable,
 ];
 
 /// A crate whose non-Rust inputs cover each of those rows.
@@ -132,11 +147,7 @@ fn indexed_non_rust_attribution_status_comes_from_language_analysis() {
             row.relative
         );
     }
-    assert_eq!(
-        ATTRIBUTION_ROWS.len(),
-        4,
-        "the rows cover every status the language entry points can state"
-    );
+    assert_covers_every_status();
 
     let go_path = indexed_path(&workspace, "tools/main.go");
     assert_dual_role_combines_both_analyses(
@@ -144,6 +155,31 @@ fn indexed_non_rust_attribution_status_comes_from_language_analysis() {
             .file_result(&go_path)
             .expect("tools/main.go must be indexed"),
     );
+}
+
+/// Assert the table states every status, not merely a fixed number of rows.
+///
+/// A row count proves nothing about coverage: the table holds more rows than
+/// there are statuses, so replacing the `Unavailable` row with a second
+/// `NotApplicable` row keeps the count and drops a status the index must still
+/// carry. Comparing the stated statuses against [`ALL_STATUSES`] both ways fails
+/// that edit, and fails a table that gains a row for a status the guard does not
+/// know.
+fn assert_covers_every_status() {
+    for status in ALL_STATUSES {
+        assert!(
+            ATTRIBUTION_ROWS.iter().any(|row| row.expected == status),
+            "no row states {status:?}, which the language entry points can hand the index"
+        );
+    }
+    for row in ATTRIBUTION_ROWS {
+        assert!(
+            ALL_STATUSES.contains(&row.expected),
+            "{} states {:?}, which this guard does not list as a reachable status",
+            row.relative,
+            row.expected
+        );
+    }
 }
 
 /// The Go file's stored status is a combination, not one analysis's answer.

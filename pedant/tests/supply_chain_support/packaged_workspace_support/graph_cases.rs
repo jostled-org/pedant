@@ -21,11 +21,17 @@ const UNUSED_PATCH_WARNING: &str =
 
 /// One way the packaged graph can be wrong, and the refusal it must draw.
 ///
-/// The proof's graph check is a single jq expression producing five violation
+/// The proof's graph check is a single jq expression producing seven violation
 /// classes, and a conforming graph exercises none of them: an expression that
 /// silently matched nothing would pass every other row here and the real run
 /// besides. Each row below bends exactly one thing and requires the refusal
 /// that names it.
+///
+/// The refusal is required whole, subject included. The fixture is deterministic
+/// — the fake Cargo globs the members in order, so `.packages[0]` is always
+/// `fixture-a`, and removing `fixture-h` always leaves seven — so a refusal that
+/// named the wrong member or counted the wrong number would still be a refusal,
+/// and a fragment naming only the violation would accept it.
 struct GraphViolation {
     /// What is wrong with the graph, for the assertion message.
     label: &'static str,
@@ -34,53 +40,63 @@ struct GraphViolation {
     /// `{origin}` expands to the row's repository root, which is the checkout
     /// the proof must refuse a member for resolving through.
     mutation: &'static str,
-    /// The fragment of the refusal the proof must print.
+    /// The line of the refusal the proof must print.
     refusal: &'static str,
 }
+
+/// How many violation classes that check implements, so a table that lost a row
+/// is a failure rather than a shorter loop.
+const GRAPH_VIOLATION_CLASSES: usize = 7;
 
 /// Every violation class the packaged-graph check implements.
 const GRAPH_VIOLATIONS: &[GraphViolation] = &[
     GraphViolation {
         label: "a member short of the release order",
         mutation: ".packages |= map(select(.name != \"fixture-h\"))",
-        refusal: "first-party members rather than 8",
+        refusal: "holds 7 first-party members rather than 8",
     },
     GraphViolation {
         label: "a member resolved from the registry",
         mutation: ".packages[0].source = \"registry+https://example.invalid/index\"",
-        refusal: "resolves through the registry rather than its archive",
+        refusal: "fixture-a resolves through the registry rather than its archive",
     },
     GraphViolation {
         label: "a member resolved through the operator's checkout",
         mutation: ".packages[0].manifest_path = \"{origin}/fixture-a/Cargo.toml\"",
-        refusal: "resolves through the original checkout",
+        refusal: "fixture-a resolves through the original checkout",
     },
     GraphViolation {
         label: "a member resolved outside the archive workspace",
         mutation: ".packages[0].manifest_path = \"/nowhere/fixture-a/Cargo.toml\"",
-        refusal: "resolves outside the archive workspace",
+        refusal: "fixture-a resolves outside the archive workspace",
     },
     GraphViolation {
         label: "a member carrying an unstaged version",
         mutation: ".packages[0].version = \"9.9.9\"",
-        refusal: "carries version 9.9.9 rather than the staged 0.2.0",
+        refusal: "fixture-a carries version 9.9.9 rather than the staged 0.2.0",
     },
     GraphViolation {
         label: "a member stating an unstaged requirement",
         mutation: "(.packages[] | select(.name == \"fixture-b\") | .dependencies[0].req) = \"^9.9.9\"",
-        refusal: "states requirement ^9.9.9",
+        refusal: "fixture-b states requirement ^9.9.9 for fixture-a rather than the staged ^0.2.0",
     },
     GraphViolation {
         label: "a resolved edge pointing outside the archive members",
         mutation: "(.resolve.nodes[] | select(.deps | length > 0) | .deps[0].pkg) \
                    = \"registry+https://example.invalid/index#fixture-a@0.2.0\"",
-        refusal: "resolves through the registry rather than its archive",
+        refusal: "fixture-b resolves its fixture-a edge through the registry rather than \
+                  the archive member",
     },
 ];
 
 /// Every unreleaseable packaged graph is refused, by name, before the archive
 /// workspace compiles.
 pub(super) fn verify_packaged_graph_refusals() {
+    assert_eq!(
+        GRAPH_VIOLATIONS.len(),
+        GRAPH_VIOLATION_CLASSES,
+        "every violation class the packaged-graph check implements needs a row"
+    );
     for violation in GRAPH_VIOLATIONS {
         unreleaseable_graph_is_refused(&RowRoot::new(), violation);
     }

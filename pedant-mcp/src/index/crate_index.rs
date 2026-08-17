@@ -217,21 +217,19 @@ pub(super) fn analyze_non_rust_or_manifest(path: &Path) -> Result<AnalysisResult
         .map(|lang| pedant_lang::analyze_file(path, &source, lang));
     let manifest = pedant_lang::analyze_manifest(path, &source);
 
-    // Each analysis states its own attribution; the index stores the combined
-    // claim rather than a hand-written one, so a file that is both a source and
-    // a manifest is honest about the weaker of the two.
-    let mut findings = Vec::new();
-    let mut attribution = manifest.symbol_attribution;
-    if let Some(analysis) = language {
-        findings.extend(analysis.profile.findings.iter().cloned());
-        attribution = attribution.combine(analysis.symbol_attribution);
-    }
-    findings.extend(manifest.profile.findings.iter().cloned());
+    // Each analysis states its own attribution, and `CapabilityAnalysis::merge`
+    // owns the rule for reducing two of them to one: source findings first, then
+    // manifest findings, under the combined attribution claim. The index stores
+    // that combination rather than a hand-written one, so a file that is both a
+    // source and a manifest is honest about the weaker of the two.
+    let combined = match language {
+        Some(analysis) => analysis.merge(manifest),
+        None => manifest,
+    };
+    let attribution = combined.symbol_attribution;
 
     Ok(analysis_result_from_profile(
-        CapabilityProfile {
-            findings: findings.into_boxed_slice(),
-        },
+        combined.into_profile(),
         attribution,
     ))
 }

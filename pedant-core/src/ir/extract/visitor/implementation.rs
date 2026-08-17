@@ -77,10 +77,15 @@ impl<'ast> Visit<'ast> for IrExtractor {
                         syn::visit::visit_trait_item_fn(inner, node);
                     });
                 }
+                // A bodiless declaration is still a callable in the inventory,
+                // so its own attributes and signature name it as their owner
+                // exactly as a defaulted method's do.
                 None => {
                     let fn_index = this.push_fn(&node.sig, true);
                     this.emit_signature_type_refs(&node.sig, fn_index);
+                    let saved = this.fn_scope.enter(fn_index);
                     syn::visit::visit_trait_item_fn(this, node);
+                    this.fn_scope.leave(saved);
                 }
             }
             leave_function(this, entry);

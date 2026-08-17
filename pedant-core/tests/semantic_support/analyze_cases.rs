@@ -323,19 +323,20 @@ fn assert_flat_merge_is_main_then_build(
     );
 }
 
+/// Every symbol identity one analysis states, borrowed: the comparison reads
+/// the same values a clone would and allocates nothing.
+fn identities(
+    analysis: &pedant_types::CapabilityAnalysis,
+) -> Box<[&pedant_types::CapabilitySymbol]> {
+    analysis.symbols.iter().map(|entry| &entry.symbol).collect()
+}
+
 /// The build script is the same source at the same path, so every symbol
 /// identity collides exactly and coalesces into the main operand's position.
 fn assert_symbol_merge_coalesces_exactly(
     merged: &pedant_types::CapabilityAnalysis,
     main_only: &pedant_types::CapabilityAnalysis,
 ) {
-    let identities = |analysis: &pedant_types::CapabilityAnalysis| {
-        analysis
-            .symbols
-            .iter()
-            .map(|entry| entry.symbol.clone())
-            .collect::<Vec<_>>()
-    };
     let main_identities = identities(main_only);
     assert!(
         !main_identities.is_empty(),
@@ -374,19 +375,41 @@ fn assert_build_hook_echo(
     appended: &[pedant_types::CapabilityFinding],
     original: &[pedant_types::CapabilityFinding],
 ) {
-    assert_eq!(appended.len(), original.len());
-    for (built, main) in appended.iter().zip(original) {
+    assert_eq!(
+        appended.len(),
+        original.len(),
+        "the appended build-script findings must be as many as the main source's"
+    );
+    for (index, (built, main)) in appended.iter().zip(original).enumerate() {
         assert!(
             built.is_build_hook(),
-            "a build-script finding carries the build-hook context"
+            "occurrence {index} ({}) carries the build-hook context",
+            main.evidence
         );
-        assert_eq!(built.capability, main.capability);
-        assert_eq!(built.location, main.location);
-        assert_eq!(built.evidence, main.evidence);
-        assert_eq!(built.origin, main.origin);
+        assert_eq!(
+            built.capability, main.capability,
+            "occurrence {index} ({}) keeps its capability",
+            main.evidence
+        );
+        assert_eq!(
+            built.location, main.location,
+            "occurrence {index} ({}) keeps its location",
+            main.evidence
+        );
+        assert_eq!(
+            built.evidence, main.evidence,
+            "occurrence {index} keeps its evidence, expected {}",
+            main.evidence
+        );
+        assert_eq!(
+            built.origin, main.origin,
+            "occurrence {index} ({}) keeps its origin",
+            main.evidence
+        );
         assert_eq!(
             built.reachable, main.reachable,
-            "each source keeps the reachability computed for it before the merge"
+            "occurrence {index} ({}) keeps the reachability computed for it before the merge",
+            main.evidence
         );
     }
 }

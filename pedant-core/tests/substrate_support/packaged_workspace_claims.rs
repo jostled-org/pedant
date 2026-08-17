@@ -1,19 +1,29 @@
 //! Every table the tracked packaged-workspace release proof is compared
-//! against.
+//! against, and the readers its provers take that script with.
 //!
 //! The tables sit beside their readings rather than inside them, for the
 //! source-file budget alone — the way `fingerprint_claims` sits beside
 //! `fingerprint`. [`crate::packaged_workspace`] reads the structure they
 //! describe and [`crate::packaged_workspace_budget`] reads the cost, and both
 //! spell the script the same way because they spell it once, here.
+//!
+//! The file readers and the three shared assertions live here for the same
+//! reason. Three modules take them, and a test module that owned another test
+//! module's utilities would make one of them the other's library.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 /// The responsibilities that script gives one function each, sorted.
 ///
-/// Nine stages, because a stage that shares a function with its neighbour
+/// Twelve stages, because a stage that shares a function with its neighbour
 /// cannot be reordered, skipped, or read; and the two sequences that run them,
 /// because the script has two entry points and a cold tool build belongs to
-/// only one of them.
+/// only one of them. Sortedness is asserted rather than asked for, so a name
+/// added out of place is refused rather than left to the next reader to notice.
 pub(crate) const PACKAGE_SCRIPT_FUNCTIONS: &[&str] = &[
+    "begin_stage",
     "cleanup",
     "generate_archive_workspace",
     "install_pinned_tools",
@@ -111,30 +121,80 @@ pub(crate) const PINNED_IDENTITIES: &[&str] = &[
     "SEMVER_CHECKS_REVISION=\"c9d2ce641c044846899ade23a34d3d5f40341ce9\"",
 ];
 
-/// Every Git command the isolated staging stage must run, in order.
+/// What the isolated clone is, in the order `clone_isolated_base` builds it.
 ///
-/// The clone is local and hard-link free, the checkout is detached at the
-/// plan's base, the overlay carries the caller's complete working tree, and the
-/// staged result is refused when it is empty. Order is the claim: a commit
-/// created before the overlay would describe the base rather than the release.
+/// The base commit is named and proved to exist, the clone is local and
+/// hard-link free, and the checkout is detached at that base so nothing in the
+/// clone's own history can be mistaken for the release.
 ///
-/// The staged commit then moves onto a tracking branch, because release-plz
-/// resolves `@{upstream}` to find the project and refuses a repository whose
-/// HEAD points at no branch.
-pub(crate) const ISOLATED_STAGING_STEPS: &[&str] = &[
+/// Each of the four staging tables below is read against the body of the one
+/// function that owns it. A table read against the whole script would prove the
+/// order those commands were written in, which is not the order they run in:
+/// three of these functions could be moved past each other without moving a
+/// single line inside any of them.
+pub(crate) const ISOLATED_BASE_STEPS: &[&str] = &[
     "test -n \"${PLAN_BASE_SHA:-}\"",
     "git cat-file -e \"${PLAN_BASE_SHA}^{commit}\"",
     "git clone --no-hardlinks --quiet -- \"${repository_root}\" \"${clone_root}\"",
     "git -C \"${clone_root}\" checkout --quiet --detach \"${PLAN_BASE_SHA}\"",
-    "git diff --binary \"${PLAN_BASE_SHA}\"",
+];
+
+/// How the caller's whole working tree reaches that clone, in order.
+///
+/// The tracked half is a binary patch against the base; the untracked half is
+/// copied. Both run against the repository the proof was started from, named
+/// with `-C` rather than left to whichever directory the last stage stood in.
+pub(crate) const WORKING_TREE_OVERLAY_STEPS: &[&str] = &[
+    "git -C \"${repository_root}\" diff --binary \"${PLAN_BASE_SHA}\"",
     "git -C \"${clone_root}\" apply --binary --whitespace=nowarn -- \"${patch}\"",
-    "git ls-files --others --exclude-standard -z",
+    "copy_untracked_files",
+];
+
+/// How the untracked half is carried, in order.
+///
+/// The listing is written to a file and the write is checked, so a Git that
+/// died mid-stream is a failed proof rather than a partial tree. A reader fed
+/// from a process substitution puts Git in a subshell whose status nothing
+/// observes.
+pub(crate) const UNTRACKED_COPY_STEPS: &[&str] = &[
+    "git -C \"${repository_root}\" ls-files --others --exclude-standard -z > \"${listing}\"",
+    "cp -p -- \"${repository_root}/${relative}\" \"${clone_root}/${relative}\"",
+    "done < \"${listing}\"",
+];
+
+/// The sequence `stage_isolated_source` itself runs, in order.
+///
+/// Order is the claim: a commit created before the overlay would describe the
+/// base rather than the release, and an empty staged result is refused rather
+/// than committed. The staged commit then moves onto a tracking branch, because
+/// release-plz resolves `@{upstream}` to find the project and refuses a
+/// repository whose HEAD points at no branch.
+pub(crate) const ISOLATED_STAGING_SEQUENCE: &[&str] = &[
+    "clone_isolated_base",
+    "overlay_working_tree",
     "git -C \"${clone_root}\" add --all",
     "git -C \"${clone_root}\" diff --cached --quiet",
     "isolated_commit \"${PROOF_COMMIT_SUBJECT}\"",
     "git -C \"${clone_root}\" checkout --quiet -B \"${PROOF_BRANCH_NAME}\"",
     "git -C \"${clone_root}\" branch --quiet \
      --set-upstream-to=\"origin/${clone_branch}\" \"${PROOF_BRANCH_NAME}\"",
+];
+
+/// The stages the release proof runs, in the order its entry point runs them.
+///
+/// This is the call order, taken from the entry point's own body. The stages
+/// themselves are defined in whatever order reads best, so an ordering read off
+/// the whole script would hold however the entry point called them.
+pub(crate) const PROOF_STAGE_SEQUENCE: &[&str] = &[
+    "begin_stage",
+    "stage_isolated_source",
+    "install_pinned_tools",
+    "run_release_update",
+    "read_staged_metadata",
+    "package_archives",
+    "generate_archive_workspace",
+    "verify_packaged_graph",
+    "measure_proof_budget",
 ];
 
 /// The command-scoped identity settings the isolated commit must carry.
@@ -170,25 +230,29 @@ pub(crate) const RELEASE_STAGING_STEPS: &[&str] = &[
 /// are not on crates.io yet, so a member packaged alone would ask the registry
 /// for a sibling that does not exist until publication.
 pub(crate) const ARCHIVE_PACKAGING_STEPS: &[&str] = &[
-    "archive=\"${target_root}/package/${name}-${version}.crate\"",
+    "archive=\"${target_root}/package/${name}-${staged_version}.crate\"",
     "remove_prior_archive \"${archive}\"",
     "run_classified package-workspace cargo package --manifest-path \"${clone_root}/Cargo.toml\" \
      --workspace --locked --no-verify",
     "test -f \"${archive}\"",
-    "extract_archive \"${name}\" \"${version}\"",
+    "extract_archive \"${name}\" \"${staged_version}\"",
 ];
 
 /// Where the generated workspace's member list begins.
 pub(crate) const MEMBER_LIST_OPEN: &str = "printf 'members = [\\n'";
 
 /// Where that member list ends.
-pub(crate) const MEMBER_LIST_CLOSE: &str = "printf ']\\n\\n'";
+///
+/// The closing bracket alone. What follows it in the manifest is a blank line
+/// that carries no contract, and pinning it would make a reformatting of the
+/// generated file a failed release proof.
+pub(crate) const MEMBER_LIST_CLOSE: &str = "printf ']";
 
 /// The one line that may add a member to the generated workspace.
 ///
 /// Spelled from its format string onward, because line joining collapses the
 /// indentation this `printf` carries inside its own quotes.
-pub(crate) const ARCHIVE_MEMBER_ENTRY: &str = "\"%s-%s\",\\n' \"${name}\" \"${version}\"";
+pub(crate) const ARCHIVE_MEMBER_ENTRY: &str = "\"%s-%s\",\\n' \"${name}\" \"${staged_version}\"";
 
 /// What proves an extracted member directory is the archive it is named for.
 ///
@@ -222,15 +286,35 @@ pub(crate) const ARCHIVE_GRAPH_COMMANDS: &[&str] = &[
 /// Every state the packaged graph must refuse, named by its refusal message.
 ///
 /// Each one is a way the proof could pass while publication still failed: a
-/// first-party package pulled from the registry, a staged version the archive
-/// does not carry, a requirement the archive does not state, a patch the graph
-/// never used, or a member still resolving through the operator's checkout.
+/// first-party package pulled from the registry, a resolved edge leaving the
+/// archive members, a staged version the archive does not carry, a requirement
+/// the archive does not state, a patch the graph never used, or a member still
+/// resolving through the operator's checkout.
+///
+/// The member clause and the edge clause say different things because they
+/// refuse different documents — one reads what a manifest declares, the other
+/// what Cargo resolved it to, and only the second knows which consumer holds
+/// the edge. Two clauses spelled the same way let a broadened first one mask
+/// the second, and nothing reading the refusal could tell which had fired.
 pub(crate) const GRAPH_REFUSALS: &[&str] = &[
     "resolves through the registry rather than its archive",
+    "edge through the registry rather than the archive member",
     "carries version",
     "states requirement",
     "was not used in the crate graph",
     "resolves through the original checkout",
+];
+
+/// The checks the packaged graph is refused by, in the order they run.
+///
+/// Every one of them must run before the archive workspace compiles: a graph
+/// refused after `cargo check` was already spent is a refusal nobody was
+/// waiting for, and a check that compiled first would report the registry's
+/// answer rather than the archives'.
+pub(crate) const GRAPH_REFUSAL_CHECKS: &[&str] = &[
+    "assert_no_unused_patch",
+    "assert_patch_set_is_exact",
+    "assert_packaged_graph_shape",
 ];
 
 /// The budget contract, as the script spells it.
@@ -255,8 +339,13 @@ pub(crate) const BUDGET_CONSTANTS: &[&str] = &[
 /// The clock is on that list because the proof reads wall time through it
 /// rather than through the shell, which is what lets a lifecycle row hand the
 /// runtime refusal a clock it can reach.
+///
+/// It is exactly what the script calls, and nothing beside it. A list naming a
+/// tool the script never invokes states a requirement nobody has, and the same
+/// list was missing four the script does invoke — so it refused machines that
+/// could do the work and accepted machines that could not.
 pub(crate) const REQUIRED_TOOLS: &str =
-    "REQUIRED_TOOLS=\"bash cargo date du find git jq mktemp rg rm tar\"";
+    "REQUIRED_TOOLS=\"cargo cat cp date dirname du env git jq mkdir mktemp rg rm tar\"";
 
 /// What the inherited target root must satisfy before any state changes.
 pub(crate) const TARGET_ROOT_REQUIREMENTS: &[&str] = &[
@@ -270,3 +359,105 @@ pub(crate) const TARGET_ROOT_REQUIREMENTS: &[&str] = &[
     "test -w \"${target_root}\"",
     "export CARGO_TARGET_DIR",
 ];
+
+/// This workspace's root, which every tracked file below is read from.
+pub(crate) fn repository_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("pedant-core has a workspace parent")
+        .to_path_buf()
+}
+
+/// One tracked file, read whole.
+pub(crate) fn read_repository_file(path: &str) -> String {
+    fs::read_to_string(repository_root().join(path))
+        .unwrap_or_else(|error| panic!("failed to read {path}: {error}"))
+}
+
+/// Every shell script this repository tracks, in Git's own order.
+///
+/// Git is asked rather than the filesystem walked, because `tracked` is the
+/// whole claim: `docs/` holds ignored lifecycle adapters that this repository
+/// does not own and must not lint, and a filesystem walk would sweep them in.
+pub(crate) fn tracked_shell_scripts() -> Box<[Box<str>]> {
+    let output = Command::new("git")
+        .args(["ls-files", "-z", "--", "*.sh"])
+        .current_dir(repository_root())
+        .output()
+        .expect("git is available");
+    assert!(
+        output.status.success(),
+        "git ls-files failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout)
+        .split('\0')
+        .filter(|path| !path.is_empty())
+        .map(Box::from)
+        .collect()
+}
+
+/// One shell function's body, between its opening line and its closing brace.
+pub(crate) fn function_body(source: &str, name: &str) -> Box<str> {
+    let opening: Box<str> = format!("\n{name}() {{\n").into();
+    let start = source
+        .find(&*opening)
+        .unwrap_or_else(|| panic!("{name} should be defined"))
+        + opening.len();
+    let length = source[start..]
+        .find("\n}\n")
+        .unwrap_or_else(|| panic!("{name} should have a closing brace"));
+    source[start..start + length].into()
+}
+
+/// Where one required fragment starts in the text one subject is read from.
+///
+/// The subject travels with the fragment because half of these readings are
+/// taken over a single function body and half over the whole script, and a
+/// panic that named neither would leave the reader guessing which text was
+/// searched and which claim wanted it.
+pub(crate) fn offset_of(text: &str, fragment: &str, subject: &str) -> usize {
+    text.find(fragment)
+        .unwrap_or_else(|| panic!("{subject}: the text read holds no [{fragment}]"))
+}
+
+/// One text holds every fragment of a table, and the table holds something.
+///
+/// The emptiness check is the point of sharing this. A `for` loop over a table
+/// that lost its entries asserts nothing and reports success, which is the one
+/// failure a structural prover cannot afford.
+pub(crate) fn assert_contains_all(text: &str, table: &[&str], subject: &str) {
+    assert!(
+        !table.is_empty(),
+        "{subject}: an empty table requires nothing"
+    );
+    for fragment in table {
+        assert!(text.contains(fragment), "{subject} is missing [{fragment}]");
+    }
+}
+
+/// One text holds every step of a table, each after the one before it.
+pub(crate) fn assert_in_order(text: &str, steps: &[&str], subject: &str) {
+    assert!(
+        !steps.is_empty(),
+        "{subject}: an empty sequence requires nothing"
+    );
+    let mut previous: Option<usize> = None;
+    for step in steps {
+        let offset = offset_of(text, step, subject);
+        if let Some(earlier) = previous {
+            assert!(offset > earlier, "{subject}: [{step}] runs out of order");
+        }
+        previous = Some(offset);
+    }
+}
+
+/// One text states a fragment once, so a second statement of it cannot answer
+/// for the first.
+pub(crate) fn assert_exactly_once(text: &str, fragment: &str, subject: &str) {
+    assert_eq!(
+        text.matches(fragment).count(),
+        1,
+        "{subject} must be stated exactly once [{fragment}]"
+    );
+}

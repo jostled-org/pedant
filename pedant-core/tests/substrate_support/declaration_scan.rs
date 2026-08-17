@@ -241,10 +241,13 @@ impl PathIdents {
     }
 
     /// Whether the file names any of `candidates`. Gated with its one caller,
-    /// the parse-route scan.
+    /// the parse-route scan, which runs it over every source in `src/`, so it
+    /// stops at the first hit and builds no report.
     #[cfg(feature = "resolution-test-support")]
     pub(crate) fn names_any(&self, candidates: &[&str]) -> bool {
-        !self.names_among(candidates).is_empty()
+        candidates
+            .iter()
+            .any(|candidate| self.idents.contains(*candidate))
     }
 
     /// Visit a macro body under the two shapes `syn` can re-parse: a

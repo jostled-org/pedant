@@ -206,7 +206,7 @@ fn rust_symbol_attribution_owner_inventory_is_exact() {
     );
     let relative: Box<[String]> = discovered
         .iter()
-        .map(|path| relative_to_source(path))
+        .map(|(path, _)| relative_to_source(path))
         .collect();
     assert_eq!(
         &*relative, ATTRIBUTION_INVENTORY,
@@ -219,36 +219,44 @@ fn rust_symbol_attribution_owner_inventory_is_exact() {
 }
 
 /// Every source the `attribution` declaration owns, discovered by resolving
-/// module declarations and refusing any that names no file.
-fn discover_closure() -> Box<[PathBuf]> {
+/// module declarations and refusing any that names no file. Each member is
+/// returned as its path beside its single parse, so every assertion below reads
+/// one parse per member rather than parsing the closure again per question.
+///
+/// Deliberately not `declaration_scan::module_files`, which expands a directory:
+/// this walk follows the `mod` declarations themselves, so a submodule that a
+/// `#[path]` attribute relocates outside `capabilities/attribution/` still
+/// counts as a member, and a stray file inside that directory that no
+/// declaration names does not.
+fn discover_closure() -> Box<[(PathBuf, syn::File)]> {
     let capabilities = crate_path("src").join("capabilities");
     let root = resolve_module(&capabilities.join("mod.rs"), ATTRIBUTION_MODULE)
         .unwrap_or_else(|| panic!("`mod {ATTRIBUTION_MODULE};` should name a file"));
 
-    let mut discovered = Vec::new();
+    let mut discovered: Vec<(PathBuf, syn::File)> = Vec::new();
     let mut pending = vec![root];
     while let Some(path) = pending.pop() {
-        if discovered.contains(&path) {
+        if discovered.iter().any(|(member, _)| *member == path) {
             continue;
         }
-        for name in declared_modules(&path).iter() {
+        let syntax = parse_rust_file(&path);
+        for name in declared_modules(&syntax).iter() {
             let child = resolve_module(&path, name)
                 .unwrap_or_else(|| panic!("`mod {name};` in {} names no file", path.display()));
             pending.push(child);
         }
-        discovered.push(path);
+        discovered.push((path, syntax));
     }
-    discovered.sort();
+    discovered.sort_by(|(left, _), (right, _)| left.cmp(right));
     discovered.into_boxed_slice()
 }
 
-/// The names of every non-inline `mod` declaration in one source.
+/// The names of every non-inline `mod` declaration in one parsed source.
 ///
 /// An inline `mod` body is already part of this file, so it adds no member; a
 /// declaration that names another file must resolve or the scan refuses.
-fn declared_modules(path: &Path) -> Box<[Box<str>]> {
-    parse_rust_file(path)
-        .items
+fn declared_modules(file: &syn::File) -> Box<[Box<str>]> {
+    file.items
         .iter()
         .filter_map(|item| match item {
             syn::Item::Mod(declaration) if declaration.content.is_none() => {
@@ -279,11 +287,10 @@ fn relative_to_source(path: &Path) -> String {
 }
 
 /// Every fact family must read its stamped owner inside this closure.
-fn assert_owner_reads_are_complete(closure: &[PathBuf]) {
+fn assert_owner_reads_are_complete(closure: &[(PathBuf, syn::File)]) {
     let mut implemented: BTreeSet<Box<str>> = BTreeSet::new();
-    for path in closure {
-        let file = parse_rust_file(path);
-        for item in &file.items {
+    for (_, syntax) in closure {
+        for item in &syntax.items {
             let syn::Item::Impl(block) = item else {
                 continue;
             };
@@ -357,14 +364,25 @@ fn assert_projection_is_entered_once() {
     );
 }
 
-fn assert_no_forbidden_route(closure: &[PathBuf]) {
-    let offenders: Vec<Box<str>> = closure
+/// A source that does take a forbidden route, so the matcher below is shown to
+/// fire before it is asked to stay silent.
+const FORBIDDEN_ROUTE_CONTROL: &str = "ir/extract/parse.rs";
+
+fn assert_no_forbidden_route(closure: &[(PathBuf, syn::File)]) {
+    let control = parse_rust_file(&crate_path("src").join(FORBIDDEN_ROUTE_CONTROL));
+    assert!(
+        !PathIdents::scan(&control)
+            .names_among(FORBIDDEN_ROUTES)
+            .is_empty(),
+        "the route matcher is not vacuous: {FORBIDDEN_ROUTE_CONTROL} names a parser route"
+    );
+
+    let offenders: Box<[Box<str>]> = closure
         .iter()
-        .flat_map(|path| {
-            let named = PathIdents::scan(&parse_rust_file(path)).names_among(FORBIDDEN_ROUTES);
+        .flat_map(|(path, syntax)| {
+            let named = PathIdents::scan(syntax).names_among(FORBIDDEN_ROUTES);
             let label = relative_to_source(path);
             named
-                .into_vec()
                 .into_iter()
                 .map(move |route| format!("{label}: {route}").into_boxed_str())
         })

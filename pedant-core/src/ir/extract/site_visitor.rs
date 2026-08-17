@@ -32,6 +32,9 @@ fn push_reference(extractor: &mut IrExtractor, entry: ReferenceEntry) {
 }
 
 /// [`push_reference`] for a reference whose own attributes widen the condition.
+///
+/// One `use` item states one condition and records a site per leaf, so the
+/// shared condition is borrowed here and copied once into the site it lands in.
 fn push_conditional_reference(
     extractor: &mut IrExtractor,
     entry: ReferenceEntry,
@@ -40,7 +43,7 @@ fn push_conditional_reference(
     let containing_fn = extractor.fn_scope.current();
     extractor
         .sites
-        .push_conditional_reference(entry, condition, containing_fn);
+        .push_conditional_reference(entry, condition.clone(), containing_fn);
 }
 
 /// The nesting state one function body replaced.

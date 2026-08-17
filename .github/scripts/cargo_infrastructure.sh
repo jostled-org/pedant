@@ -11,6 +11,7 @@
 # The API:
 #   cargo_classify <status> <capture-path>       print the status for a file
 #   cargo_classify_output <status> <output>      print the status for a string
+#   cargo_receipt <label> <capture-path>         leave one named receipt
 #   cargo_record <status> [output]               fold one result into the total
 #   cargo_run <label> <command> [args ...]       run, capture, replay, classify
 #   cargo_worst                                  the aggregate status so far
@@ -74,6 +75,19 @@ cargo_classify() {
     cargo_classify_output "$1" "${output}"
 }
 
+# Leave one capture in the caller's output directory, named for its label.
+#
+# A caller that owns an output directory gets one log per label; a caller that
+# owns none gets nothing. Best effort either way: a receipt that could not be
+# written is not a reason to fail the run that produced it. Which capture is the
+# receipt is the caller's to say — the combined transcript for a run this file
+# replays, the diagnostic stream for one whose output its caller reads.
+cargo_receipt() {
+    if [ -n "${PROOF_OUTPUT_DIR:-}" ] && [ -d "${PROOF_OUTPUT_DIR}" ]; then
+        cp -- "$2" "${PROOF_OUTPUT_DIR}/$1.log" 2> /dev/null || true
+    fi
+}
+
 # Fold one result into the aggregate, classifying the output when given.
 cargo_record() {
     local classified="$1"
@@ -112,9 +126,7 @@ cargo_run() {
     "$@" > "${capture}" 2>&1 || code=$?
     cat -- "${capture}"
 
-    if [ -n "${PROOF_OUTPUT_DIR:-}" ] && [ -d "${PROOF_OUTPUT_DIR}" ]; then
-        cp -- "${capture}" "${PROOF_OUTPUT_DIR}/${label}.log" 2> /dev/null || true
-    fi
+    cargo_receipt "${label}" "${capture}"
 
     local classified
     classified=$(cargo_classify "${code}" "${capture}")

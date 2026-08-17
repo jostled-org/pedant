@@ -10,8 +10,9 @@
 //! parser constructs the crate's only tree-sitter parser and selects grammars:
 //! [`parse`] and [`parse_bound`]. The session owns a parsed tree bound to the
 //! exact source that produced it and answers declaration questions about it
-//! without parsing: [`ParsedSyntax`] and [`SourceUnitAnchor`]. The traversal
-//! walks a tree and reads node text: [`walk_descendants`] and [`node_text`].
+//! without parsing, one location or a whole slice of them at a time:
+//! [`ParsedSyntax`] and [`SourceUnitAnchor`]. The traversal walks a tree and
+//! reads node text: [`walk_descendants`] and [`node_text`].
 
 mod parser;
 mod session;

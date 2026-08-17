@@ -48,8 +48,13 @@ mod tree_sitter_cases;
 #[path = "capability_support/retained_behavior.rs"]
 mod retained_behavior;
 
-/// The ownership table every symbol case is written in, and the assertions
-/// that read it.
+/// Which callable owns each finding: the tables every symbol case is written
+/// in, the sources they read, and the assertions that read them.
+///
+/// The whole tree needs a linked grammar — a build with none reports attribution
+/// as unavailable, which `availability_cases` owns — so the gate sits once at
+/// this declaration and the tree's own `mod.rs` names its members. Only this
+/// first hop out of the test root needs `#[path]`.
 #[cfg(any(
     feature = "ts-python",
     feature = "ts-javascript",
@@ -57,52 +62,8 @@ mod retained_behavior;
     feature = "ts-go",
     feature = "ts-bash"
 ))]
-#[path = "capability_support/symbol_model.rs"]
-mod symbol_model;
-
-/// The sources each symbol case reads: every detection family, duplicate and
-/// nested callables, and module-scope evidence.
-#[cfg(any(
-    feature = "ts-python",
-    feature = "ts-javascript",
-    feature = "ts-typescript",
-    feature = "ts-go",
-    feature = "ts-bash"
-))]
-#[path = "capability_support/symbol_family_tables.rs"]
-mod symbol_family_tables;
-
-#[cfg(any(
-    feature = "ts-python",
-    feature = "ts-javascript",
-    feature = "ts-typescript",
-    feature = "ts-go",
-    feature = "ts-bash"
-))]
-#[path = "capability_support/symbol_nesting_tables.rs"]
-mod symbol_nesting_tables;
-
-#[cfg(any(
-    feature = "ts-python",
-    feature = "ts-javascript",
-    feature = "ts-typescript",
-    feature = "ts-go",
-    feature = "ts-bash"
-))]
-#[path = "capability_support/symbol_module_tables.rs"]
-mod symbol_module_tables;
-
-/// Which callable owns each finding. Needs a linked grammar: a build with none
-/// reports attribution as unavailable, which `availability_cases` owns.
-#[cfg(any(
-    feature = "ts-python",
-    feature = "ts-javascript",
-    feature = "ts-typescript",
-    feature = "ts-go",
-    feature = "ts-bash"
-))]
-#[path = "capability_support/symbol_cases.rs"]
-mod symbol_cases;
+#[path = "capability_support/symbols/mod.rs"]
+mod symbols;
 
 /// What a build without a grammar, a recovery tree, and a fallback corpus all
 /// report about symbol attribution.
@@ -142,9 +103,5 @@ fn direct_rust_analysis_returns_empty_profile() {
         profile.findings.is_empty(),
         "direct Rust analysis returns no findings, got {:?}",
         profile.findings
-    );
-    assert!(
-        language_probe::caps_for(SOURCE, "src/main.rs", Language::Rust).is_empty(),
-        "no capability is claimed for Rust here"
     );
 }

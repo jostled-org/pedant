@@ -9,7 +9,7 @@
 
 use std::collections::BTreeSet;
 
-use pedant_types::{Capability, CapabilitySymbolKind, FindingOrigin, SymbolAttributionStatus};
+use pedant_types::{Capability, CapabilitySymbolKind, SymbolAttributionStatus};
 
 use crate::symbol_expectations::{
     ExpectedFinding, ExpectedSymbol, FactFamily, analysis_of,
@@ -85,7 +85,6 @@ const ALL_FAMILIES_EXPECTED: &[ExpectedFinding] = &[
     ExpectedFinding {
         family: FactFamily::UsePath,
         capability: Capability::Network,
-        origin: FindingOrigin::Import,
         line: 1,
         column: 1,
         evidence: "std::net::TcpStream",
@@ -94,7 +93,6 @@ const ALL_FAMILIES_EXPECTED: &[ExpectedFinding] = &[
     ExpectedFinding {
         family: FactFamily::UsePath,
         capability: Capability::FileRead,
-        origin: FindingOrigin::Import,
         line: 11,
         column: 5,
         evidence: "std::fs",
@@ -103,7 +101,6 @@ const ALL_FAMILIES_EXPECTED: &[ExpectedFinding] = &[
     ExpectedFinding {
         family: FactFamily::UsePath,
         capability: Capability::ProcessExec,
-        origin: FindingOrigin::Import,
         line: 32,
         column: 17,
         evidence: "std::process::Command::new",
@@ -112,7 +109,6 @@ const ALL_FAMILIES_EXPECTED: &[ExpectedFinding] = &[
     ExpectedFinding {
         family: FactFamily::Unsafe,
         capability: Capability::UnsafeCode,
-        origin: FindingOrigin::CodeSite,
         line: 20,
         column: 9,
         evidence: "unsafe fn",
@@ -121,7 +117,6 @@ const ALL_FAMILIES_EXPECTED: &[ExpectedFinding] = &[
     ExpectedFinding {
         family: FactFamily::Unsafe,
         capability: Capability::UnsafeCode,
-        origin: FindingOrigin::CodeSite,
         line: 25,
         column: 9,
         evidence: "unsafe block",
@@ -130,7 +125,6 @@ const ALL_FAMILIES_EXPECTED: &[ExpectedFinding] = &[
     ExpectedFinding {
         family: FactFamily::ExternBlock,
         capability: Capability::Ffi,
-        origin: FindingOrigin::CodeSite,
         line: 4,
         column: 1,
         evidence: "extern block",
@@ -139,7 +133,6 @@ const ALL_FAMILIES_EXPECTED: &[ExpectedFinding] = &[
     ExpectedFinding {
         family: FactFamily::ExternBlock,
         capability: Capability::Ffi,
-        origin: FindingOrigin::CodeSite,
         line: 22,
         column: 9,
         evidence: "extern block",
@@ -148,7 +141,6 @@ const ALL_FAMILIES_EXPECTED: &[ExpectedFinding] = &[
     ExpectedFinding {
         family: FactFamily::Attribute,
         capability: Capability::Ffi,
-        origin: FindingOrigin::Attribute,
         line: 3,
         column: 1,
         evidence: "#[link]",
@@ -157,7 +149,6 @@ const ALL_FAMILIES_EXPECTED: &[ExpectedFinding] = &[
     ExpectedFinding {
         family: FactFamily::Attribute,
         capability: Capability::Ffi,
-        origin: FindingOrigin::Attribute,
         line: 21,
         column: 9,
         evidence: "#[link]",
@@ -166,7 +157,6 @@ const ALL_FAMILIES_EXPECTED: &[ExpectedFinding] = &[
     ExpectedFinding {
         family: FactFamily::StringLiteral,
         capability: Capability::Network,
-        origin: FindingOrigin::StringLiteral,
         line: 8,
         column: 32,
         evidence: "https://example.test/module",
@@ -175,7 +165,6 @@ const ALL_FAMILIES_EXPECTED: &[ExpectedFinding] = &[
     ExpectedFinding {
         family: FactFamily::StringLiteral,
         capability: Capability::Network,
-        origin: FindingOrigin::StringLiteral,
         line: 13,
         column: 18,
         evidence: "https://example.test/a",
@@ -184,7 +173,6 @@ const ALL_FAMILIES_EXPECTED: &[ExpectedFinding] = &[
     ExpectedFinding {
         family: FactFamily::StringLiteral,
         capability: Capability::Network,
-        origin: FindingOrigin::StringLiteral,
         line: 14,
         column: 19,
         evidence: "https://example.test/a",
@@ -193,7 +181,6 @@ const ALL_FAMILIES_EXPECTED: &[ExpectedFinding] = &[
     ExpectedFinding {
         family: FactFamily::StringLiteral,
         capability: Capability::Crypto,
-        origin: FindingOrigin::StringLiteral,
         line: 26,
         column: 22,
         evidence: "ghp_0123456789abcdefghijklmnopqrstuvwxyz",
@@ -213,7 +200,7 @@ fn rust_all_capability_fact_families_have_exact_callable_ownership() {
         SymbolAttributionStatus::Complete,
         "a parsed Rust source states a complete callable inventory"
     );
-    assert_flat_sequence_is_exact(&analysis, ALL_FAMILIES_EXPECTED);
+    assert_flat_sequence_is_exact(&analysis, ALL_FAMILIES_FILE, ALL_FAMILIES_EXPECTED);
     assert_symbols_are_exactly_derived(&analysis, ALL_FAMILIES_FILE, ALL_FAMILIES_EXPECTED);
 }
 
@@ -275,7 +262,6 @@ const DUPLICATE_EXPECTED: &[ExpectedFinding] = &[
     ExpectedFinding {
         family: FactFamily::UsePath,
         capability: Capability::ProcessExec,
-        origin: FindingOrigin::Import,
         line: 2,
         column: 13,
         evidence: "std::process::Command::new",
@@ -284,7 +270,6 @@ const DUPLICATE_EXPECTED: &[ExpectedFinding] = &[
     ExpectedFinding {
         family: FactFamily::StringLiteral,
         capability: Capability::Network,
-        origin: FindingOrigin::StringLiteral,
         line: 7,
         column: 17,
         evidence: "https://inner.test/a",
@@ -293,7 +278,6 @@ const DUPLICATE_EXPECTED: &[ExpectedFinding] = &[
     ExpectedFinding {
         family: FactFamily::StringLiteral,
         capability: Capability::Network,
-        origin: FindingOrigin::StringLiteral,
         line: 15,
         column: 22,
         evidence: "https://outer.test/x",
@@ -302,7 +286,6 @@ const DUPLICATE_EXPECTED: &[ExpectedFinding] = &[
     ExpectedFinding {
         family: FactFamily::StringLiteral,
         capability: Capability::Network,
-        origin: FindingOrigin::StringLiteral,
         line: 17,
         column: 26,
         evidence: "https://nested.test/y",
@@ -315,7 +298,7 @@ const DUPLICATE_EXPECTED: &[ExpectedFinding] = &[
 #[test]
 fn rust_duplicate_and_nested_callables_have_exact_ownership() {
     let analysis = analysis_of(DUPLICATE_FILE, DUPLICATE_SOURCE);
-    assert_flat_sequence_is_exact(&analysis, DUPLICATE_EXPECTED);
+    assert_flat_sequence_is_exact(&analysis, DUPLICATE_FILE, DUPLICATE_EXPECTED);
     assert_symbols_are_exactly_derived(&analysis, DUPLICATE_FILE, DUPLICATE_EXPECTED);
 
     let identities: BTreeSet<_> = analysis
@@ -395,7 +378,6 @@ const MODULE_EVIDENCE_EXPECTED: &[ExpectedFinding] = &[
     ExpectedFinding {
         family: FactFamily::UsePath,
         capability: Capability::ProcessExec,
-        origin: FindingOrigin::Import,
         line: 1,
         column: 1,
         evidence: "std::process::Command",
@@ -404,7 +386,6 @@ const MODULE_EVIDENCE_EXPECTED: &[ExpectedFinding] = &[
     ExpectedFinding {
         family: FactFamily::UsePath,
         capability: Capability::Network,
-        origin: FindingOrigin::Import,
         line: 8,
         column: 5,
         evidence: "std::net::TcpStream",
@@ -413,7 +394,6 @@ const MODULE_EVIDENCE_EXPECTED: &[ExpectedFinding] = &[
     ExpectedFinding {
         family: FactFamily::StringLiteral,
         capability: Capability::Network,
-        origin: FindingOrigin::StringLiteral,
         line: 4,
         column: 13,
         evidence: "https://first.test/a",
@@ -426,7 +406,7 @@ const MODULE_EVIDENCE_EXPECTED: &[ExpectedFinding] = &[
 #[test]
 fn rust_module_evidence_stays_flat_and_unpropagated() {
     let analysis = analysis_of(MODULE_EVIDENCE_FILE, MODULE_EVIDENCE_SOURCE);
-    assert_flat_sequence_is_exact(&analysis, MODULE_EVIDENCE_EXPECTED);
+    assert_flat_sequence_is_exact(&analysis, MODULE_EVIDENCE_FILE, MODULE_EVIDENCE_EXPECTED);
     assert_symbols_are_exactly_derived(&analysis, MODULE_EVIDENCE_FILE, MODULE_EVIDENCE_EXPECTED);
 
     assert!(

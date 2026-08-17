@@ -149,14 +149,14 @@ impl SiteCollector {
     /// Record one reference, stamping it with the current position.
     pub(super) fn push_reference(&mut self, entry: ReferenceEntry, containing_fn: Option<usize>) {
         let condition = self.condition.clone();
-        self.push_conditional_reference(entry, &condition, containing_fn);
+        self.push_conditional_reference(entry, condition, containing_fn);
     }
 
     /// Record one reference whose own attributes widen the active condition.
     pub(super) fn push_conditional_reference(
         &mut self,
         entry: ReferenceEntry,
-        condition: &RustCfgCondition,
+        condition: RustCfgCondition,
         containing_fn: Option<usize>,
     ) {
         self.references.push(ReferenceSite {
@@ -170,7 +170,7 @@ impl SiteCollector {
             alias: entry.alias,
             glob: entry.glob,
             receiver: entry.receiver,
-            condition: condition.clone(),
+            condition,
             containing_fn,
         });
     }

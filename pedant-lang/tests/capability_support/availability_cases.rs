@@ -7,17 +7,51 @@
 //! report `Unavailable`, rather than a successful analysis with an empty symbol
 //! list.
 
+#[cfg(not(any(
+    feature = "ts-python",
+    feature = "ts-javascript",
+    feature = "ts-typescript",
+    feature = "ts-go",
+    feature = "ts-bash"
+)))]
+use std::collections::BTreeSet;
+
 use pedant_types::{
     Capability, CapabilityAnalysis, FindingOrigin, Language, SymbolAttributionStatus,
 };
 
-use crate::language_probe::analysis_for;
+use crate::language_probe::{FlatRow, analysis_for, assert_flat_sequence};
 
-/// One written-down flat occurrence, in the projection every case compares.
-type FlatRow = (Capability, &'static str, usize, usize, FindingOrigin);
+/// One written-down flat occurrence, as a case states it.
+///
+/// The language is stated once per case rather than once per row, so a case
+/// cannot write a row against a language it did not analyze.
+type Occurrence = (Capability, &'static str, usize, usize, FindingOrigin);
+
+/// The occurrences a case states, in the projection the comparison reads.
+fn stated(language: Language, occurrences: &[Occurrence]) -> Box<[FlatRow<'static>]> {
+    occurrences
+        .iter()
+        .map(|&(capability, evidence, line, column, origin)| {
+            (
+                capability,
+                evidence,
+                line,
+                column,
+                Some(origin),
+                Some(language),
+            )
+        })
+        .collect()
+}
 
 /// Assert an analysis reports unavailable attribution beside exact findings.
-fn assert_unavailable(analysis: &CapabilityAnalysis, path: &str, expected: &[FlatRow]) {
+fn assert_unavailable(
+    analysis: &CapabilityAnalysis,
+    path: &str,
+    language: Language,
+    occurrences: &[Occurrence],
+) {
     assert_eq!(
         analysis.symbol_attribution,
         SymbolAttributionStatus::Unavailable,
@@ -28,51 +62,60 @@ fn assert_unavailable(analysis: &CapabilityAnalysis, path: &str, expected: &[Fla
         "{path} claims no symbol, got {:?}",
         analysis.symbols
     );
-
-    let actual: Box<[Compared<'_>]> = analysis
-        .profile
-        .findings
-        .iter()
-        .map(|finding| {
-            (
-                finding.capability,
-                &*finding.evidence,
-                finding.location.line,
-                finding.location.column,
-                finding.origin.expect("every finding states an origin"),
-            )
-        })
-        .collect();
-    // The written-down rows carry `&'static str` evidence; borrowing them for
-    // this one comparison shortens that to the analysis's own lifetime, which is
-    // all the tuple equality needs.
-    let expected: Box<[Compared<'_>]> = expected
-        .iter()
-        .map(|&(capability, evidence, line, column, origin)| {
-            (capability, evidence, line, column, origin)
-        })
-        .collect();
-    assert_eq!(
-        actual, expected,
-        "{path} must keep exactly its current flat findings"
-    );
+    assert_flat_sequence(analysis, path, &stated(language, occurrences));
 }
-
-/// One flat occurrence as both sides of a comparison spell it.
-type Compared<'a> = (Capability, &'a str, usize, usize, FindingOrigin);
 
 // ---------------------------------------------------------------------------
 // 4.T6: a disabled grammar
 // ---------------------------------------------------------------------------
 
-/// The Python source the disabled-grammar case scans at the text tier.
+/// One text-tier fixture: a source, where it lives, and what it must report.
 #[cfg(not(feature = "ts-python"))]
-const DISABLED_SOURCE: &str = concat!(
-    "import socket\n",        // 1
-    "\n",                     // 2
-    "def fetch(url):\n",      // 3
-    "    return open(url)\n", // 4
-);
+struct Fallback {
+    language: Language,
+    path: &'static str,
+    source: &'static str,
+    occurrences: &'static [Occurrence],
+}
+
+/// Analyze one text-tier fixture and judge the whole answer.
+#[cfg(not(feature = "ts-python"))]
+fn assert_fallback(fixture: &Fallback) {
+    let analysis = analysis_for(fixture.source, fixture.path, fixture.language);
+    assert_unavailable(
+        &analysis,
+        fixture.path,
+        fixture.language,
+        fixture.occurrences,
+    );
+}
+
+/// The Python fixture both no-grammar cases scan at the text tier.
+///
+/// The disabled-grammar case and the no-default corpus put this one source
+/// through this one assertion, so it is written once under the wider of the two
+/// gates rather than twice with two chances to drift.
+#[cfg(not(feature = "ts-python"))]
+const PYTHON_FALLBACK: Fallback = Fallback {
+    language: Language::Python,
+    path: "fallback.py",
+    source: concat!(
+        "import socket\n",        // 1
+        "\n",                     // 2
+        "def fetch(url):\n",      // 3
+        "    return open(url)\n", // 4
+    ),
+    occurrences: &[
+        (Capability::Network, "socket", 1, 1, FindingOrigin::Import),
+        (
+            Capability::FileRead,
+            "open()",
+            4,
+            12,
+            FindingOrigin::CodeSite,
+        ),
+    ],
+};
 
 /// 4.T6 (Invariant 10): a build whose requested grammar is disabled keeps its
 /// text-tier findings and reports attribution as unavailable.
@@ -83,21 +126,7 @@ const DISABLED_SOURCE: &str = concat!(
 #[cfg(not(feature = "ts-python"))]
 #[test]
 fn disabled_grammar_keeps_flat_findings_and_marks_attribution_unavailable() {
-    let analysis = analysis_for(DISABLED_SOURCE, "disabled.py", Language::Python);
-    assert_unavailable(
-        &analysis,
-        "disabled.py",
-        &[
-            (Capability::Network, "socket", 1, 1, FindingOrigin::Import),
-            (
-                Capability::FileRead,
-                "open()",
-                4,
-                12,
-                FindingOrigin::CodeSite,
-            ),
-        ],
-    );
+    assert_fallback(&PYTHON_FALLBACK);
 }
 
 // ---------------------------------------------------------------------------
@@ -105,12 +134,19 @@ fn disabled_grammar_keeps_flat_findings_and_marks_attribution_unavailable() {
 // ---------------------------------------------------------------------------
 
 /// Python the grammar recovers from: the parameter list never closes.
+///
+/// The alias carries the claim. `s` resolves to `socket` only through the import
+/// alias map the structured tier builds while walking the tree, so the second
+/// row below is one no text-tier scan can produce. A source whose rows the text
+/// tier could also emit would pass this case even if the parse had been
+/// abandoned and the fallback had run.
 #[cfg(feature = "ts-python")]
 const RECOVERY_SOURCE: &str = concat!(
-    "import socket\n",                                 // 1
-    "\n",                                              // 2
-    "def fetch(:\n",                                   // 3
-    "    return open(\"https://api.example.test\")\n", // 4
+    "import socket as s\n",               // 1
+    "conn = s.create_connection(addr)\n", // 2
+    "\n",                                 // 3
+    "def fetch(:\n",                      // 4
+    "    return conn\n",                  // 5
 );
 
 /// 4.T8 (Invariant 19): a recovery tree keeps every flat finding the structured
@@ -122,21 +158,15 @@ fn recovery_tree_keeps_flat_findings_and_marks_attribution_unavailable() {
     assert_unavailable(
         &analysis,
         "recovery.py",
+        Language::Python,
         &[
             (Capability::Network, "socket", 1, 1, FindingOrigin::Import),
             (
-                Capability::FileRead,
-                "open()",
-                4,
-                12,
-                FindingOrigin::CodeSite,
-            ),
-            (
                 Capability::Network,
-                "https://api.example.test",
-                4,
-                17,
-                FindingOrigin::StringLiteral,
+                "s.create_connection",
+                2,
+                8,
+                FindingOrigin::CodeSite,
             ),
         ],
     );
@@ -145,21 +175,6 @@ fn recovery_tree_keeps_flat_findings_and_marks_attribution_unavailable() {
 // ---------------------------------------------------------------------------
 // 4.T11: the no-default fallback corpus
 // ---------------------------------------------------------------------------
-
-/// One fallback row: a source, where it lives, and what the text tier reports.
-#[cfg(not(any(
-    feature = "ts-python",
-    feature = "ts-javascript",
-    feature = "ts-typescript",
-    feature = "ts-go",
-    feature = "ts-bash"
-)))]
-struct Fallback {
-    language: Language,
-    path: &'static str,
-    source: &'static str,
-    rows: &'static [FlatRow],
-}
 
 /// Every language this crate analyzes, at the text tier.
 #[cfg(not(any(
@@ -170,26 +185,12 @@ struct Fallback {
     feature = "ts-bash"
 )))]
 const FALLBACK_CORPUS: &[Fallback] = &[
-    Fallback {
-        language: Language::Python,
-        path: "fallback.py",
-        source: "import socket\n\ndef fetch(url):\n    return open(url)\n",
-        rows: &[
-            (Capability::Network, "socket", 1, 1, FindingOrigin::Import),
-            (
-                Capability::FileRead,
-                "open()",
-                4,
-                12,
-                FindingOrigin::CodeSite,
-            ),
-        ],
-    },
+    PYTHON_FALLBACK,
     Fallback {
         language: Language::JavaScript,
         path: "fallback.js",
         source: "const cp = require('child_process');\n",
-        rows: &[(
+        occurrences: &[(
             Capability::ProcessExec,
             "child_process",
             1,
@@ -201,21 +202,67 @@ const FALLBACK_CORPUS: &[Fallback] = &[
         language: Language::TypeScript,
         path: "fallback.ts",
         source: "const fs = require('fs');\n",
-        rows: &[(Capability::FileRead, "fs", 1, 1, FindingOrigin::Import)],
+        occurrences: &[(Capability::FileRead, "fs", 1, 1, FindingOrigin::Import)],
     },
     Fallback {
         language: Language::Go,
         path: "fallback.go",
         source: "package main\n\nimport \"net/http\"\n",
-        rows: &[(Capability::Network, "net/http", 3, 1, FindingOrigin::Import)],
+        occurrences: &[(Capability::Network, "net/http", 3, 1, FindingOrigin::Import)],
     },
     Fallback {
         language: Language::Bash,
         path: "fallback.sh",
         source: "curl https://example.test/root\n",
-        rows: &[(Capability::Network, "curl", 1, 1, FindingOrigin::CodeSite)],
+        occurrences: &[(Capability::Network, "curl", 1, 1, FindingOrigin::CodeSite)],
     },
 ];
+
+/// Whether this crate's own scanners answer for `language`.
+///
+/// Exhaustive by variant on purpose: a seventh `Language` fails to compile here
+/// rather than quietly leaving the corpus one row short.
+#[cfg(not(any(
+    feature = "ts-python",
+    feature = "ts-javascript",
+    feature = "ts-typescript",
+    feature = "ts-go",
+    feature = "ts-bash"
+)))]
+fn analyzed_here(language: Language) -> bool {
+    match language {
+        // Rust capability analysis belongs to `pedant-core`, so this crate
+        // scans no Rust and the corpus states no Rust row.
+        Language::Rust => false,
+        Language::Python
+        | Language::JavaScript
+        | Language::TypeScript
+        | Language::Go
+        | Language::Bash => true,
+    }
+}
+
+/// Every language the corpus must carry a row for.
+#[cfg(not(any(
+    feature = "ts-python",
+    feature = "ts-javascript",
+    feature = "ts-typescript",
+    feature = "ts-go",
+    feature = "ts-bash"
+)))]
+fn analyzed_languages() -> BTreeSet<Language> {
+    [
+        Language::Rust,
+        Language::Python,
+        Language::JavaScript,
+        Language::TypeScript,
+        Language::Go,
+        Language::Bash,
+    ]
+    .into_iter()
+    .filter(|&language| analyzed_here(language))
+    .collect()
+}
 
 /// 4.T11 (Invariant 16): the no-default build emits the same text-tier findings
 /// it does today and reports every source's symbol attribution as unavailable.
@@ -228,19 +275,17 @@ const FALLBACK_CORPUS: &[Fallback] = &[
 )))]
 #[test]
 fn no_default_language_analysis_keeps_flat_findings_and_marks_symbols_unavailable() {
-    let mut reached = 0_usize;
-    for row in FALLBACK_CORPUS {
-        let analysis = analysis_for(row.source, row.path, row.language);
-        assert_unavailable(&analysis, row.path, row.rows);
-        reached += 1;
+    for fixture in FALLBACK_CORPUS {
+        assert_fallback(fixture);
     }
+
+    let covered: BTreeSet<Language> = FALLBACK_CORPUS
+        .iter()
+        .map(|fixture| fixture.language)
+        .collect();
     assert_eq!(
-        reached,
-        FALLBACK_CORPUS.len(),
-        "every corpus row must be exercised"
-    );
-    assert_eq!(
-        reached, 5,
+        covered,
+        analyzed_languages(),
         "the corpus covers every language this crate analyzes"
     );
 }

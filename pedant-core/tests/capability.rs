@@ -23,18 +23,11 @@ mod symbol_expectations;
 mod sources;
 
 use pedant_core::capabilities::{detect_capabilities, truncate_evidence};
-use pedant_core::check_config::CheckConfig;
 use pedant_core::ir;
 use pedant_core::lint::analyze;
 use pedant_types::{Capability, FindingOrigin};
 
-fn permissive_config() -> CheckConfig {
-    CheckConfig {
-        max_depth: 10,
-        forbid_unsafe: false,
-        ..CheckConfig::default()
-    }
-}
+use crate::symbol_expectations::permissive_config;
 
 #[test]
 fn test_network_capability_detected() {
@@ -88,7 +81,7 @@ fn test_clean_code_no_capabilities() {
 
 #[test]
 fn test_multiple_capabilities_detected() {
-    let source = sources::TEST_MULTIPLE_CAPABILITIES_DETECTED;
+    let source = sources::NET_AND_FS_IMPORTS_SOURCE;
     let result = analyze("multi.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
 
@@ -107,7 +100,7 @@ fn test_glob_use_detected() {
 
 #[test]
 fn test_fs_write_function_detected() {
-    let source = sources::TEST_FS_WRITE_FUNCTION_DETECTED;
+    let source = sources::FS_WRITE_CALL_SOURCE;
     let result = analyze("fs_write.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
 
@@ -151,7 +144,7 @@ fn test_finding_has_correct_evidence() {
 
 #[test]
 fn test_ffi_capability_extern_block() {
-    let source = sources::TEST_FFI_CAPABILITY_EXTERN_BLOCK;
+    let source = sources::EXTERN_BLOCK_SOURCE;
     let result = analyze("ffi.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::Ffi));
@@ -169,14 +162,14 @@ fn test_ffi_capability_extern_block() {
 fn test_ffi_capability_link_attribute() {
     let source = include_str!("fixtures/ffi_capability.rs");
     let result = analyze("ffi_link.rs", source, &permissive_config(), None).unwrap();
-    let ffi_findings: Vec<_> = result
+    let ffi_finding_count = result
         .capabilities
         .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::Ffi)
-        .collect();
-    assert!(ffi_findings.len() >= 2);
+        .count();
+    assert!(ffi_finding_count >= 2);
 }
 
 #[test]
@@ -189,7 +182,7 @@ fn test_ffi_capability_libc_import() {
 
 #[test]
 fn test_unsafe_block_detected() {
-    let source = sources::TEST_UNSAFE_BLOCK_DETECTED;
+    let source = sources::UNSAFE_BLOCK_SOURCE;
     let result = analyze("unsafe_block.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::UnsafeCode));
@@ -205,7 +198,7 @@ fn test_unsafe_block_detected() {
 
 #[test]
 fn test_unsafe_fn_detected() {
-    let source = sources::TEST_UNSAFE_FN_DETECTED;
+    let source = sources::UNSAFE_FN_SOURCE;
     let result = analyze("unsafe_fn.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::UnsafeCode));
@@ -221,7 +214,7 @@ fn test_unsafe_fn_detected() {
 
 #[test]
 fn test_unsafe_impl_detected() {
-    let source = sources::TEST_UNSAFE_IMPL_DETECTED;
+    let source = sources::UNSAFE_IMPL_SOURCE;
     let result = analyze("unsafe_impl.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::UnsafeCode));
@@ -237,7 +230,7 @@ fn test_unsafe_impl_detected() {
 
 #[test]
 fn test_hardcoded_url_detected() {
-    let source = sources::TEST_HARDCODED_URL_DETECTED;
+    let source = sources::HTTPS_URL_SOURCE;
     let result = analyze("url.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::Network));
@@ -245,7 +238,7 @@ fn test_hardcoded_url_detected() {
 
 #[test]
 fn test_hardcoded_ip_detected() {
-    let source = sources::TEST_HARDCODED_IP_DETECTED;
+    let source = sources::IPV4_SOCKET_ADDRESS_SOURCE;
     let result = analyze("ip.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::Network));
@@ -253,7 +246,7 @@ fn test_hardcoded_ip_detected() {
 
 #[test]
 fn test_ipv6_detected() {
-    let source = sources::TEST_IPV6_DETECTED;
+    let source = sources::IPV6_SOCKET_ADDRESS_SOURCE;
     let result = analyze("ipv6.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::Network));
@@ -263,7 +256,7 @@ fn test_ipv6_detected() {
 fn test_oid_string_is_not_network() {
     // "2.5.4.10" is an X.500 OID (organizationName). Four dotted decimals, all
     // <=255, so the old heuristic read it as a bare IPv4 with no port.
-    let source = sources::TEST_OID_STRING_IS_NOT_NETWORK;
+    let source = sources::X500_OID_SOURCE;
     let result = analyze("oid.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(
@@ -275,7 +268,7 @@ fn test_oid_string_is_not_network() {
 #[test]
 fn test_rust_path_string_is_not_network() {
     // A `::`-separated path has many `::`; valid IPv6 has at most one.
-    let source = sources::TEST_RUST_PATH_STRING_IS_NOT_NETWORK;
+    let source = sources::RUST_PATH_STRING_SOURCE;
     let result = analyze("path.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(
@@ -287,7 +280,7 @@ fn test_rust_path_string_is_not_network() {
 #[test]
 fn test_version_string_is_not_network() {
     // A dotted version quad is also IPv4-shaped without a port.
-    let source = sources::TEST_VERSION_STRING_IS_NOT_NETWORK;
+    let source = sources::DOTTED_VERSION_SOURCE;
     let result = analyze("ver.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(
@@ -298,21 +291,21 @@ fn test_version_string_is_not_network() {
 
 #[test]
 fn test_short_string_not_flagged() {
-    let source = sources::TEST_SHORT_STRING_NOT_FLAGGED;
+    let source = sources::SHORT_STRING_SOURCE;
     let result = analyze("short.rs", source, &permissive_config(), None).unwrap();
-    let net_findings: Vec<_> = result
-        .capabilities
-        .profile
-        .findings
-        .iter()
-        .filter(|f| f.capability == Capability::Network)
-        .collect();
-    assert!(net_findings.is_empty());
+    assert!(
+        !result
+            .capabilities
+            .profile
+            .findings
+            .iter()
+            .any(|f| f.capability == Capability::Network)
+    );
 }
 
 #[test]
 fn test_pem_key_material_detected() {
-    let source = sources::TEST_PEM_KEY_MATERIAL_DETECTED;
+    let source = sources::PEM_PRIVATE_KEY_SOURCE;
     let result = analyze("pem.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::Crypto));
@@ -344,7 +337,7 @@ fn test_chrono_detected() {
 
 #[test]
 fn test_proc_macro_detected() {
-    let source = sources::TEST_PROC_MACRO_DETECTED;
+    let source = sources::PROC_MACRO_ATTRIBUTE_SOURCE;
     let result = analyze("proc_macro.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::ProcMacro));
@@ -360,7 +353,7 @@ fn test_proc_macro_detected() {
 
 #[test]
 fn test_proc_macro_derive_detected() {
-    let source = sources::TEST_PROC_MACRO_DERIVE_DETECTED;
+    let source = sources::PROC_MACRO_DERIVE_ATTRIBUTE_SOURCE;
     let result = analyze("proc_macro_derive.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(caps.contains(&Capability::ProcMacro));
@@ -378,7 +371,7 @@ fn test_proc_macro_derive_detected() {
 
 #[test]
 fn test_build_script_findings_tagged() {
-    let source = sources::TEST_BUILD_SCRIPT_FINDINGS_TAGGED;
+    let source = sources::BUILD_SCRIPT_COMMAND_SOURCE;
     let syntax = syn::parse_file(source).unwrap();
     let ir_data = ir::extract("build.rs", &syntax, None);
 
@@ -411,14 +404,12 @@ fn test_build_script_network_detection() {
     let ir_data = ir::extract("build.rs", &syntax, None);
     let analysis = detect_capabilities(&ir_data, Some(pedant_types::ExecutionContext::BuildHook));
 
-    let net_findings: Vec<_> = analysis
-        .profile
-        .findings
-        .iter()
-        .filter(|f| f.capability == Capability::Network && f.is_build_hook())
-        .collect();
     assert!(
-        !net_findings.is_empty(),
+        analysis
+            .profile
+            .findings
+            .iter()
+            .any(|f| f.capability == Capability::Network && f.is_build_hook()),
         "should detect Network capability in build script"
     );
 }
@@ -430,14 +421,12 @@ fn test_build_script_process_detection() {
     let ir_data = ir::extract("build.rs", &syntax, None);
     let analysis = detect_capabilities(&ir_data, Some(pedant_types::ExecutionContext::BuildHook));
 
-    let proc_findings: Vec<_> = analysis
-        .profile
-        .findings
-        .iter()
-        .filter(|f| f.capability == Capability::ProcessExec && f.is_build_hook())
-        .collect();
     assert!(
-        !proc_findings.is_empty(),
+        analysis
+            .profile
+            .findings
+            .iter()
+            .any(|f| f.capability == Capability::ProcessExec && f.is_build_hook()),
         "should detect ProcessExec capability in build script"
     );
 }
@@ -482,22 +471,16 @@ fn test_truncate_evidence_long_truncated() {
 fn test_hex_key_64_chars_detected() {
     let source = include_str!("fixtures/hex_key_material.rs");
     let result = analyze("hex_key.rs", source, &permissive_config(), None).unwrap();
-    let crypto_findings: Vec<_> = result
-        .capabilities
-        .profile
-        .findings
-        .iter()
-        .filter(|f| f.capability == Capability::Crypto)
-        .collect();
+    let findings = &result.capabilities.profile.findings;
     assert!(
-        !crypto_findings.is_empty(),
+        findings.iter().any(|f| f.capability == Capability::Crypto),
         "should detect Crypto from 64-char hex key"
     );
     // Evidence should be truncated (the 64-char string is > 40 chars)
     assert!(
-        crypto_findings
+        findings
             .iter()
-            .any(|f| f.evidence.contains('\u{2026}')),
+            .any(|f| f.capability == Capability::Crypto && f.evidence.contains('\u{2026}')),
         "evidence should be truncated for long hex key"
     );
 }
@@ -506,34 +489,31 @@ fn test_hex_key_64_chars_detected() {
 fn test_hex_key_128_chars_detected() {
     let source = include_str!("fixtures/hex_key_material.rs");
     let result = analyze("hex_key128.rs", source, &permissive_config(), None).unwrap();
-    let crypto_findings: Vec<_> = result
+    let crypto_count = result
         .capabilities
         .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::Crypto)
-        .collect();
+        .count();
     // Should have findings for both the 64-char and 128-char keys
     assert!(
-        crypto_findings.len() >= 2,
-        "should detect Crypto from both 64-char and 128-char hex keys, found {}",
-        crypto_findings.len()
+        crypto_count >= 2,
+        "should detect Crypto from both 64-char and 128-char hex keys, found {crypto_count}"
     );
 }
 
 #[test]
 fn test_hex_short_not_flagged() {
-    let source = sources::TEST_HEX_SHORT_NOT_FLAGGED;
+    let source = sources::HEX_32_CHAR_SOURCE;
     let result = analyze("hex_short.rs", source, &permissive_config(), None).unwrap();
-    let crypto_findings: Vec<_> = result
-        .capabilities
-        .profile
-        .findings
-        .iter()
-        .filter(|f| f.capability == Capability::Crypto)
-        .collect();
     assert!(
-        crypto_findings.is_empty(),
+        !result
+            .capabilities
+            .profile
+            .findings
+            .iter()
+            .any(|f| f.capability == Capability::Crypto),
         "32-char hex string should not trigger Crypto detection"
     );
 }
@@ -544,27 +524,26 @@ fn test_hex_odd_length_not_flagged() {
     // Note: base58 detection may still fire (65 chars falls in Solana range,
     // and hex chars are a subset of base58). This test verifies the hex
     // checker rejects odd lengths — base58 findings are expected.
-    let source = sources::TEST_HEX_ODD_LENGTH_NOT_FLAGGED;
+    let source = sources::HEX_ODD_LENGTH_SOURCE;
     let syntax = syn::parse_file(source).unwrap();
     let ir_data = ir::extract("hex_odd.rs", &syntax, None);
     let analysis = detect_capabilities(&ir_data, None);
     // Should have at most 1 finding (base58), not 2 (hex would be a second)
-    let crypto_findings: Vec<_> = analysis
+    let crypto_count = analysis
         .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::Crypto)
-        .collect();
+        .count();
     assert!(
-        crypto_findings.len() <= 1,
-        "65-char odd-length hex string should not trigger hex key detection (found {} crypto findings)",
-        crypto_findings.len()
+        crypto_count <= 1,
+        "65-char odd-length hex string should not trigger hex key detection (found {crypto_count} crypto findings)"
     );
 }
 
 #[test]
 fn test_hex_mixed_case_detected() {
-    let source = sources::TEST_HEX_MIXED_CASE_DETECTED;
+    let source = sources::HEX_64_CHAR_MIXED_CASE_SOURCE;
     let result = analyze("hex_mixed.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(
@@ -579,22 +558,20 @@ fn test_hex_mixed_case_detected() {
 fn test_bitcoin_wif_detected() {
     let source = include_str!("fixtures/base58_key_material.rs");
     let result = analyze("base58.rs", source, &permissive_config(), None).unwrap();
-    let crypto_findings: Vec<_> = result
-        .capabilities
-        .profile
-        .findings
-        .iter()
-        .filter(|f| f.capability == Capability::Crypto)
-        .collect();
     assert!(
-        !crypto_findings.is_empty(),
+        result
+            .capabilities
+            .profile
+            .findings
+            .iter()
+            .any(|f| f.capability == Capability::Crypto),
         "should detect Crypto from Bitcoin WIF key"
     );
 }
 
 #[test]
 fn test_bitcoin_wif_k_prefix_detected() {
-    let source = sources::TEST_BITCOIN_WIF_K_PREFIX_DETECTED;
+    let source = sources::BITCOIN_WIF_K_PREFIX_SOURCE;
     let result = analyze("wif_k.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(
@@ -607,34 +584,31 @@ fn test_bitcoin_wif_k_prefix_detected() {
 fn test_solana_keypair_detected() {
     let source = include_str!("fixtures/base58_key_material.rs");
     let result = analyze("solana.rs", source, &permissive_config(), None).unwrap();
-    let crypto_findings: Vec<_> = result
+    let crypto_count = result
         .capabilities
         .profile
         .findings
         .iter()
         .filter(|f| f.capability == Capability::Crypto)
-        .collect();
+        .count();
     // Should have findings for both the WIF key and the Solana keypair
     assert!(
-        crypto_findings.len() >= 2,
-        "should detect Crypto from both WIF and Solana keys, found {}",
-        crypto_findings.len()
+        crypto_count >= 2,
+        "should detect Crypto from both WIF and Solana keys, found {crypto_count}"
     );
 }
 
 #[test]
 fn test_short_base58_not_flagged() {
-    let source = sources::TEST_SHORT_BASE58_NOT_FLAGGED;
+    let source = sources::SHORT_BASE58_SOURCE;
     let result = analyze("base58_short.rs", source, &permissive_config(), None).unwrap();
-    let crypto_findings: Vec<_> = result
-        .capabilities
-        .profile
-        .findings
-        .iter()
-        .filter(|f| f.capability == Capability::Crypto)
-        .collect();
     assert!(
-        crypto_findings.is_empty(),
+        !result
+            .capabilities
+            .profile
+            .findings
+            .iter()
+            .any(|f| f.capability == Capability::Crypto),
         "20-char base58 string should not trigger Crypto detection"
     );
 }
@@ -642,17 +616,15 @@ fn test_short_base58_not_flagged() {
 #[test]
 fn test_base58_with_invalid_chars_not_flagged() {
     // Contains '0', 'O', 'I', 'l' which are NOT in base58 alphabet
-    let source = sources::TEST_BASE58_WITH_INVALID_CHARS_NOT_FLAGGED;
+    let source = sources::BASE58_WITH_INVALID_CHARS_SOURCE;
     let result = analyze("base58_invalid.rs", source, &permissive_config(), None).unwrap();
-    let crypto_findings: Vec<_> = result
-        .capabilities
-        .profile
-        .findings
-        .iter()
-        .filter(|f| f.capability == Capability::Crypto)
-        .collect();
     assert!(
-        crypto_findings.is_empty(),
+        !result
+            .capabilities
+            .profile
+            .findings
+            .iter()
+            .any(|f| f.capability == Capability::Crypto),
         "base58 string with invalid chars (0, O, I, l) should not trigger Crypto detection"
     );
 }
@@ -663,17 +635,14 @@ fn test_base58_with_invalid_chars_not_flagged() {
 fn test_age_secret_key_detected() {
     let source = include_str!("fixtures/key_prefix_material.rs");
     let result = analyze("age_key.rs", source, &permissive_config(), None).unwrap();
-    let crypto_findings: Vec<_> = result
-        .capabilities
-        .profile
-        .findings
-        .iter()
-        .filter(|f| f.capability == Capability::Crypto)
-        .collect();
     assert!(
-        crypto_findings
+        result
+            .capabilities
+            .profile
+            .findings
             .iter()
-            .any(|f| f.evidence.starts_with("AGE-SECRET-KEY-1")),
+            .any(|f| f.capability == Capability::Crypto
+                && f.evidence.starts_with("AGE-SECRET-KEY-1")),
         "should detect AGE-SECRET-KEY-1 prefix"
     );
 }
@@ -682,41 +651,35 @@ fn test_age_secret_key_detected() {
 fn test_xprv_key_detected() {
     let source = include_str!("fixtures/key_prefix_material.rs");
     let result = analyze("xprv.rs", source, &permissive_config(), None).unwrap();
-    let crypto_findings: Vec<_> = result
-        .capabilities
-        .profile
-        .findings
-        .iter()
-        .filter(|f| f.capability == Capability::Crypto)
-        .collect();
     assert!(
-        crypto_findings
+        result
+            .capabilities
+            .profile
+            .findings
             .iter()
-            .any(|f| f.evidence.starts_with("xprv")),
+            .any(|f| f.capability == Capability::Crypto && f.evidence.starts_with("xprv")),
         "should detect xprv key prefix"
     );
 }
 
 #[test]
 fn test_ethereum_private_key_detected() {
-    let source = sources::TEST_ETHEREUM_PRIVATE_KEY_DETECTED;
+    let source = sources::ETHEREUM_PRIVATE_KEY_SOURCE;
     let result = analyze("eth_key.rs", source, &permissive_config(), None).unwrap();
-    let crypto_findings: Vec<_> = result
-        .capabilities
-        .profile
-        .findings
-        .iter()
-        .filter(|f| f.capability == Capability::Crypto)
-        .collect();
     assert!(
-        !crypto_findings.is_empty(),
+        result
+            .capabilities
+            .profile
+            .findings
+            .iter()
+            .any(|f| f.capability == Capability::Crypto),
         "should detect 0x + 64 hex chars as Ethereum private key"
     );
 }
 
 #[test]
 fn test_near_ed25519_key_detected() {
-    let source = sources::TEST_NEAR_ED25519_KEY_DETECTED;
+    let source = sources::NEAR_ED25519_KEY_SOURCE;
     let result = analyze("near_key.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(
@@ -731,22 +694,20 @@ fn test_near_ed25519_key_detected() {
 fn test_aws_access_key_detected() {
     let source = include_str!("fixtures/credential_material.rs");
     let result = analyze("aws_key.rs", source, &permissive_config(), None).unwrap();
-    let crypto_findings: Vec<_> = result
-        .capabilities
-        .profile
-        .findings
-        .iter()
-        .filter(|f| f.capability == Capability::Crypto)
-        .collect();
     assert!(
-        crypto_findings.iter().any(|f| f.evidence.contains("AKIA")),
+        result
+            .capabilities
+            .profile
+            .findings
+            .iter()
+            .any(|f| f.capability == Capability::Crypto && f.evidence.contains("AKIA")),
         "should detect AKIA prefix as AWS access key"
     );
 }
 
 #[test]
 fn test_github_pat_detected() {
-    let source = sources::TEST_GITHUB_PAT_DETECTED;
+    let source = sources::GITHUB_PAT_SOURCE;
     let result = analyze("ghp.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(
@@ -757,7 +718,7 @@ fn test_github_pat_detected() {
 
 #[test]
 fn test_stripe_secret_key_detected() {
-    let source = sources::TEST_STRIPE_SECRET_KEY_DETECTED;
+    let source = sources::STRIPE_SECRET_KEY_SOURCE;
     let result = analyze("stripe.rs", source, &permissive_config(), None).unwrap();
     let caps = result.capabilities.capabilities();
     assert!(
@@ -768,17 +729,15 @@ fn test_stripe_secret_key_detected() {
 
 #[test]
 fn test_short_0x_not_flagged() {
-    let source = sources::TEST_SHORT_0X_NOT_FLAGGED;
+    let source = sources::SHORT_0X_HEX_SOURCE;
     let result = analyze("short_0x.rs", source, &permissive_config(), None).unwrap();
-    let crypto_findings: Vec<_> = result
-        .capabilities
-        .profile
-        .findings
-        .iter()
-        .filter(|f| f.capability == Capability::Crypto)
-        .collect();
     assert!(
-        crypto_findings.is_empty(),
+        !result
+            .capabilities
+            .profile
+            .findings
+            .iter()
+            .any(|f| f.capability == Capability::Crypto),
         "0x + 10 hex chars should not trigger key prefix detection"
     );
 }
@@ -786,7 +745,7 @@ fn test_short_0x_not_flagged() {
 #[test]
 fn test_existing_pem_still_works() {
     // Regression: verify PEM and crypto import detection still work
-    let pem_source = sources::TEST_EXISTING_PEM_STILL_WORKS_PEM_SOURCE;
+    let pem_source = sources::PEM_PRIVATE_KEY_SOURCE;
     let pem_result = analyze("pem_regress.rs", pem_source, &permissive_config(), None).unwrap();
     assert!(
         pem_result
@@ -825,12 +784,12 @@ fn import_finding_has_import_origin() {
 
 #[test]
 fn string_literal_finding_has_string_literal_origin() {
-    let source = sources::STRING_LITERAL_FINDING_HAS_STRING_LITERAL_ORIGIN;
+    let source = sources::HTTPS_URL_SOURCE;
     let syntax = syn::parse_file(source).unwrap();
     let ir_data = ir::extract("string_origin.rs", &syntax, None);
     let analysis = detect_capabilities(&ir_data, None);
 
-    let net_findings: Vec<_> = analysis
+    let net_findings: Box<[_]> = analysis
         .profile
         .findings
         .iter()
@@ -846,21 +805,24 @@ fn string_literal_finding_has_string_literal_origin() {
 
 #[test]
 fn key_material_finding_has_string_literal_origin() {
-    let source = sources::KEY_MATERIAL_FINDING_HAS_STRING_LITERAL_ORIGIN;
+    let source = sources::PEM_PRIVATE_KEY_SOURCE;
     let syntax = syn::parse_file(source).unwrap();
     let ir_data = ir::extract("pem_origin.rs", &syntax, None);
     let analysis = detect_capabilities(&ir_data, None);
 
-    let crypto_findings: Vec<_> = analysis
-        .profile
-        .findings
-        .iter()
-        .filter(|f| f.capability == Capability::Crypto)
-        .collect();
-    assert!(!crypto_findings.is_empty());
     assert!(
-        crypto_findings
+        analysis
+            .profile
+            .findings
             .iter()
+            .any(|f| f.capability == Capability::Crypto)
+    );
+    assert!(
+        analysis
+            .profile
+            .findings
+            .iter()
+            .filter(|f| f.capability == Capability::Crypto)
             .all(|f| f.origin == Some(FindingOrigin::StringLiteral)),
         "PEM key material finding should have StringLiteral origin"
     );
@@ -868,12 +830,12 @@ fn key_material_finding_has_string_literal_origin() {
 
 #[test]
 fn attribute_finding_has_attribute_origin() {
-    let source = sources::ATTRIBUTE_FINDING_HAS_ATTRIBUTE_ORIGIN;
+    let source = sources::PROC_MACRO_ATTRIBUTE_SOURCE;
     let syntax = syn::parse_file(source).unwrap();
     let ir_data = ir::extract("attr_origin.rs", &syntax, None);
     let analysis = detect_capabilities(&ir_data, None);
 
-    let proc_findings: Vec<_> = analysis
+    let proc_findings: Box<[_]> = analysis
         .profile
         .findings
         .iter()
@@ -889,12 +851,12 @@ fn attribute_finding_has_attribute_origin() {
 
 #[test]
 fn unsafe_block_finding_has_code_site_origin() {
-    let source = sources::UNSAFE_BLOCK_FINDING_HAS_CODE_SITE_ORIGIN;
+    let source = sources::UNSAFE_BLOCK_SOURCE;
     let syntax = syn::parse_file(source).unwrap();
     let ir_data = ir::extract("unsafe_origin.rs", &syntax, None);
     let analysis = detect_capabilities(&ir_data, None);
 
-    let unsafe_findings: Vec<_> = analysis
+    let unsafe_findings: Box<[_]> = analysis
         .profile
         .findings
         .iter()
@@ -910,12 +872,12 @@ fn unsafe_block_finding_has_code_site_origin() {
 
 #[test]
 fn extern_block_finding_has_code_site_origin() {
-    let source = sources::EXTERN_BLOCK_FINDING_HAS_CODE_SITE_ORIGIN;
+    let source = sources::EXTERN_BLOCK_SOURCE;
     let syntax = syn::parse_file(source).unwrap();
     let ir_data = ir::extract("extern_origin.rs", &syntax, None);
     let analysis = detect_capabilities(&ir_data, None);
 
-    let ffi_findings: Vec<_> = analysis
+    let ffi_findings: Box<[_]> = analysis
         .profile
         .findings
         .iter()
@@ -931,19 +893,17 @@ fn extern_block_finding_has_code_site_origin() {
 
 #[test]
 fn link_attribute_finding_has_attribute_origin() {
-    let source = sources::LINK_ATTRIBUTE_FINDING_HAS_ATTRIBUTE_ORIGIN;
+    let source = sources::LINK_ATTRIBUTE_EXTERN_BLOCK_SOURCE;
     let syntax = syn::parse_file(source).unwrap();
     let ir_data = ir::extract("link_origin.rs", &syntax, None);
     let analysis = detect_capabilities(&ir_data, None);
 
-    let attr_findings: Vec<_> = analysis
-        .profile
-        .findings
-        .iter()
-        .filter(|f| f.origin == Some(FindingOrigin::Attribute))
-        .collect();
     assert!(
-        !attr_findings.is_empty(),
+        analysis
+            .profile
+            .findings
+            .iter()
+            .any(|f| f.origin == Some(FindingOrigin::Attribute)),
         "#[link] finding should have Attribute origin"
     );
 }
@@ -963,7 +923,7 @@ fn test_self_analysis_no_false_positives() {
     let ir_data = ir::extract("capabilities.rs", &syntax, None);
     let analysis = detect_capabilities(&ir_data, None);
 
-    let crypto_findings: Vec<_> = analysis
+    let crypto_findings: Box<[_]> = analysis
         .profile
         .findings
         .iter()

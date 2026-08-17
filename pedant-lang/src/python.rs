@@ -104,9 +104,9 @@ pub(crate) fn analyze(path: &Arc<str>, source: &str) -> CapabilityAnalysis {
     detect_string_literal_findings(path, &literals, Language::Python, &mut findings);
 
     #[cfg(feature = "ts-python")]
-    let analysis = attribution::seal(bound, Language::Python, findings.into_boxed_slice());
+    let analysis = attribution::symbols::seal(bound, Language::Python, findings.into_boxed_slice());
     #[cfg(not(feature = "ts-python"))]
-    let analysis = attribution::unavailable(findings.into_boxed_slice());
+    let analysis = attribution::envelope::unavailable(findings.into_boxed_slice());
     analysis
 }
 

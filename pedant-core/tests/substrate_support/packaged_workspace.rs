@@ -3,18 +3,19 @@
 //! [`crate::release_workflow`] states the claim as one test; this module holds
 //! the readings that prove the proof stages, packages, and compiles what it
 //! says it does. [`crate::packaged_workspace_claims`] owns the tables those
-//! readings compare against, and [`crate::packaged_workspace_budget`] reads
-//! what the run costs. Both splits are the 500-line boundary, not a second
-//! owner: nothing here is reachable from any other predicate.
+//! readings compare against, the readers that take the script, and the three
+//! shared assertions; [`crate::packaged_workspace_budget`] reads what the run
+//! costs. Both splits are the 500-line boundary, not a second owner: nothing
+//! here is reachable from any other predicate.
 
 use crate::packaged_workspace_budget::assert_budget_contract;
 use crate::packaged_workspace_claims::{
     ARCHIVE_GRAPH_COMMANDS, ARCHIVE_IDENTITY_REFUSALS, ARCHIVE_MEMBER_ENTRY,
-    ARCHIVE_MEMBER_EXTRACTION, ARCHIVE_PACKAGING_STEPS, GRAPH_REFUSALS, ISOLATED_COMMIT_IDENTITY,
-    ISOLATED_STAGING_STEPS, MEMBER_LIST_CLOSE, MEMBER_LIST_OPEN, PACKAGE_SCRIPT_FUNCTIONS,
-    PINNED_IDENTITIES, PINNED_TOOLS, RELEASE_STAGING_STEPS, TARGET_ROOT_REQUIREMENTS,
-};
-use crate::release_workflow::{
+    ARCHIVE_MEMBER_EXTRACTION, ARCHIVE_PACKAGING_STEPS, GRAPH_REFUSAL_CHECKS, GRAPH_REFUSALS,
+    ISOLATED_BASE_STEPS, ISOLATED_COMMIT_IDENTITY, ISOLATED_STAGING_SEQUENCE, MEMBER_LIST_CLOSE,
+    MEMBER_LIST_OPEN, PACKAGE_SCRIPT_FUNCTIONS, PINNED_IDENTITIES, PINNED_TOOLS,
+    PROOF_STAGE_SEQUENCE, RELEASE_STAGING_STEPS, TARGET_ROOT_REQUIREMENTS, UNTRACKED_COPY_STEPS,
+    WORKING_TREE_OVERLAY_STEPS, assert_contains_all, assert_exactly_once, assert_in_order,
     function_body, offset_of, read_repository_file, tracked_shell_scripts,
 };
 
@@ -26,6 +27,7 @@ pub(crate) fn assert_release_graph_is_exact() {
     assert_package_script_stages(&source);
     assert_target_root_contract(&source);
     assert_release_order_authority(&source);
+    assert_proof_stage_sequence(&joined);
     assert_isolated_staging(&joined);
     assert_pinned_tool_installation(&joined);
     assert_release_update_precedes_packaging(&joined);
@@ -41,6 +43,9 @@ pub(crate) fn assert_release_graph_is_exact() {
 /// receives them.
 const PACKAGED_WORKSPACE_SCRIPT: &str = ".github/scripts/check_packaged_workspace.sh";
 
+/// The twelve stages the proof owns and the two sequences that run them.
+const PACKAGE_SCRIPT_FUNCTION_COUNT: usize = 14;
+
 /// One logical shell command per line, so a fragment states a whole command
 /// rather than whichever slice of it survived the author's line wrapping.
 fn joined_lines(source: &str) -> Box<str> {
@@ -55,8 +60,20 @@ fn joined_lines(source: &str) -> Box<str> {
     lines.join("\n").into()
 }
 
-/// Every stage the proof owns is one function, and no stage is missing.
+/// Every stage the proof owns is one function, no stage is missing, and the
+/// inventory is the sorted list it says it is.
 fn assert_package_script_stages(source: &str) {
+    assert_eq!(
+        PACKAGE_SCRIPT_FUNCTIONS.len(),
+        PACKAGE_SCRIPT_FUNCTION_COUNT,
+        "the proof owns twelve stages and the two sequences that run them"
+    );
+    let mut sorted: Box<[&str]> = PACKAGE_SCRIPT_FUNCTIONS.into();
+    sorted.sort_unstable();
+    assert_eq!(
+        &*sorted, PACKAGE_SCRIPT_FUNCTIONS,
+        "the stage inventory is stated sorted"
+    );
     let defined: Box<[Box<str>]> = source
         .lines()
         .filter_map(|line| line.strip_suffix("() {"))
@@ -77,13 +94,11 @@ fn assert_package_script_stages(source: &str) {
 /// The inherited target root is checked, captured, sealed, and re-exported
 /// unchanged; nothing in the script may write or drop it.
 fn assert_target_root_contract(source: &str) {
-    let capture = function_body(source, "capture_target_root");
-    for requirement in TARGET_ROOT_REQUIREMENTS {
-        assert!(
-            capture.contains(requirement),
-            "the target-root contract is missing [{requirement}] from capture_target_root"
-        );
-    }
+    assert_contains_all(
+        &function_body(source, "capture_target_root"),
+        TARGET_ROOT_REQUIREMENTS,
+        "the target-root contract",
+    );
     assert!(
         !source.contains("CARGO_TARGET_DIR="),
         "the proof must inherit its target root rather than choose one"
@@ -116,98 +131,92 @@ fn assert_release_order_authority(source: &str) {
     );
 }
 
-/// The isolated tree is the caller's whole working tree replayed onto the
-/// plan's base as one breaking commit, in that order.
-fn assert_isolated_staging(joined: &str) {
-    let mut previous = 0;
-    for step in ISOLATED_STAGING_STEPS {
-        let offset = offset_of(joined, step);
-        assert!(
-            offset > previous,
-            "the isolated staging step [{step}] runs out of order"
-        );
-        previous = offset;
-    }
-    for setting in ISOLATED_COMMIT_IDENTITY {
-        assert!(
-            joined.contains(setting),
-            "the isolated commit needs command-scoped identity [{setting}]"
-        );
-    }
-    assert_eq!(
-        joined
-            .matches("PROOF_COMMIT_SUBJECT=\"feat!: implement symbol capability profiles\"")
-            .count(),
-        1,
-        "the proof stages exactly one breaking release commit subject"
-    );
-    assert_eq!(
-        joined
-            .matches("isolated_commit \"${PROOF_COMMIT_SUBJECT}\"")
-            .count(),
-        1,
-        "that subject is committed exactly once"
+/// The release proof runs its stages in the order the release requires.
+///
+/// Read inside the entry point that calls them. The stages are defined in
+/// whatever order reads best, so the same sequence taken over the whole script
+/// would prove where they were written rather than when they run: moving the
+/// packaging call above the update call inside this function would leave every
+/// definition where it is.
+fn assert_proof_stage_sequence(joined: &str) {
+    assert_in_order(
+        &function_body(joined, "run_packaged_workspace_proof"),
+        PROOF_STAGE_SEQUENCE,
+        "the release proof sequence",
     );
 }
 
-/// Both tools are installed from their pinned revisions and proved to be the
-/// pinned versions.
-fn assert_pinned_tool_installation(joined: &str) {
-    for identity in PINNED_IDENTITIES {
-        assert!(
-            joined.contains(identity),
-            "the pinned identity [{identity}] is missing"
-        );
+/// The isolated tree is the caller's whole working tree replayed onto the
+/// plan's base as one breaking commit, in that order.
+///
+/// Four tables against four function bodies. The staging is spread over four
+/// functions, and an order read over all of them at once would hold however
+/// they called each other.
+fn assert_isolated_staging(joined: &str) {
+    for (owner, steps) in [
+        ("clone_isolated_base", ISOLATED_BASE_STEPS),
+        ("overlay_working_tree", WORKING_TREE_OVERLAY_STEPS),
+        ("copy_untracked_files", UNTRACKED_COPY_STEPS),
+        ("stage_isolated_source", ISOLATED_STAGING_SEQUENCE),
+    ] {
+        assert_in_order(&function_body(joined, owner), steps, owner);
     }
+    assert_contains_all(
+        joined,
+        ISOLATED_COMMIT_IDENTITY,
+        "the command-scoped isolated commit identity",
+    );
+    assert_exactly_once(
+        joined,
+        "PROOF_COMMIT_SUBJECT=\"feat!: implement symbol capability profiles\"",
+        "the breaking release commit subject",
+    );
+    assert_exactly_once(
+        joined,
+        "isolated_commit \"${PROOF_COMMIT_SUBJECT}\"",
+        "the commit that carries that subject",
+    );
+}
+
+/// Both tools are installed from their pinned revisions, and each is asked for
+/// its version before it is built and again after.
+///
+/// All three readings come from the body of the one function that owns that
+/// tool, which is where a warm root skips the build and a cold one pays for it.
+fn assert_pinned_tool_installation(joined: &str) {
+    assert_eq!(PINNED_TOOLS.len(), 2, "the proof pins exactly two tools");
+    assert_contains_all(joined, PINNED_IDENTITIES, "the pinned identities");
     for tool in PINNED_TOOLS {
-        let installation = offset_of(joined, tool.installation);
-        let assertion = offset_of(joined, tool.assertion);
-        assert!(
-            installation < assertion,
-            "{} is installed before its version is proved",
-            tool.binary
+        assert_in_order(
+            &function_body(joined, tool.installer),
+            &[tool.probe, tool.installation, tool.assertion],
+            tool.installer,
         );
     }
 }
 
 /// release-plz runs against the isolated clone with both pinned binaries on
-/// `PATH`, what it wrote becomes the run's second isolated commit, and only
-/// then is anything packaged.
+/// `PATH`, and what it wrote becomes the run's second isolated commit.
+///
+/// That this happens after the installation and before the packaging is
+/// [`assert_proof_stage_sequence`]'s claim, taken where those three stages are
+/// called.
 fn assert_release_update_precedes_packaging(joined: &str) {
     let body = function_body(joined, "run_release_update");
-    let mut previous = 0;
-    for step in RELEASE_STAGING_STEPS {
-        let offset = offset_of(&body, step);
-        assert!(
-            offset > previous,
-            "the release staging step [{step}] runs out of order"
-        );
-        previous = offset;
-    }
-    let update = offset_of(joined, RELEASE_STAGING_STEPS[0]);
-    let installation = offset_of(joined, PINNED_TOOLS[1].installation);
-    let packaging = offset_of(joined, "cargo package --manifest-path");
-    assert!(
-        installation < update && update < packaging,
-        "release-plz is installed, then runs, then packaging begins"
-    );
+    assert_in_order(&body, RELEASE_STAGING_STEPS, "the release staging");
     assert!(
         body.contains("cd -- \"${clone_root}\""),
         "release-plz runs from the isolated clone"
     );
-    assert_eq!(
-        joined
-            .matches("RELEASE_STAGING_SUBJECT=\"chore: stage the release-plz update\"")
-            .count(),
-        1,
-        "the proof names exactly one release-staging commit subject"
+    assert_exactly_once(
+        joined,
+        "RELEASE_STAGING_SUBJECT=\"chore: stage the release-plz update\"",
+        "the release-staging commit subject",
     );
-    assert_eq!(
-        joined
-            .matches("isolated_commit \"${RELEASE_STAGING_SUBJECT}\"")
-            .count(),
-        1,
-        "that subject is committed exactly once, and only after release-plz wrote it"
+    assert_exactly_once(
+        joined,
+        "isolated_commit \"${RELEASE_STAGING_SUBJECT}\"",
+        "the commit that carries that subject, written only after release-plz did",
     );
 }
 
@@ -215,25 +224,16 @@ fn assert_release_update_precedes_packaging(joined: &str) {
 /// run owns.
 fn assert_archive_packaging(joined: &str) {
     let body = function_body(joined, "package_archives");
-    let mut previous = 0;
-    for step in ARCHIVE_PACKAGING_STEPS {
-        let offset = offset_of(&body, step);
-        assert!(
-            offset > previous,
-            "the packaging step [{step}] runs out of order"
-        );
-        previous = offset;
-    }
+    assert_in_order(&body, ARCHIVE_PACKAGING_STEPS, "the archive packaging");
     assert!(
         body.contains("for name in \"${release_order[@]}\""),
         "packaging follows the release order"
     );
-    for refusal in ARCHIVE_IDENTITY_REFUSALS {
-        assert!(
-            joined.contains(refusal),
-            "the archive identity check is missing [{refusal}]"
-        );
-    }
+    assert_contains_all(
+        &function_body(joined, "remove_prior_archive"),
+        ARCHIVE_IDENTITY_REFUSALS,
+        "the archive identity check",
+    );
     assert_packaging_is_one_workspace_invocation(joined);
 }
 
@@ -301,17 +301,6 @@ fn assert_generated_workspace(joined: &str) {
         "a patch-set check that reads the value that wrote the manifest \
          compares that manifest against itself"
     );
-    let verification = function_body(joined, "verify_packaged_graph");
-    for check in [
-        "assert_no_unused_patch",
-        "assert_patch_set_is_exact",
-        "assert_packaged_graph_shape",
-    ] {
-        assert!(
-            verification.contains(check),
-            "the packaged graph is not proved by [{check}]"
-        );
-    }
 }
 
 /// Every member of the generated workspace is an archive this run extracted,
@@ -325,63 +314,54 @@ fn assert_generated_workspace(joined: &str) {
 /// consumer receives.
 fn assert_members_are_extracted_archives(joined: &str) {
     let manifest = function_body(joined, "write_archive_manifest");
-    let open = offset_of(&manifest, MEMBER_LIST_OPEN) + MEMBER_LIST_OPEN.len();
-    let close = offset_of(&manifest, MEMBER_LIST_CLOSE);
+    let subject = "the generated workspace member list";
+    let open = offset_of(&manifest, MEMBER_LIST_OPEN, subject) + MEMBER_LIST_OPEN.len();
+    let close = offset_of(&manifest, MEMBER_LIST_CLOSE, subject);
     assert!(
         open < close,
         "the member list is filled before it is closed"
     );
     let members = &manifest[open..close];
-    assert_eq!(
-        members.matches("printf").count(),
-        1,
-        "exactly one line may name a workspace member"
-    );
-    assert_eq!(
-        members.matches(ARCHIVE_MEMBER_ENTRY).count(),
-        1,
-        "that line names an extracted archive directory"
+    assert_exactly_once(members, "printf", "the line that names a workspace member");
+    assert_exactly_once(
+        members,
+        ARCHIVE_MEMBER_ENTRY,
+        "the extracted archive directory that line names",
     );
     assert!(
         members.contains("for name in \"${release_order[@]}\"; do"),
         "the members are the release order and nothing beside it"
     );
     assert!(
-        members.contains("version=\"$(staged_version \"${name}\")\""),
+        members.contains("read_staged_version \"${name}\""),
         "each member directory carries the version release-plz staged"
     );
-    let extraction = function_body(joined, "extract_archive");
-    for requirement in ARCHIVE_MEMBER_EXTRACTION {
-        assert!(
-            extraction.contains(requirement),
-            "an extracted member is not proved to be its own archive by [{requirement}]"
-        );
-    }
+    assert_contains_all(
+        &function_body(joined, "extract_archive"),
+        ARCHIVE_MEMBER_EXTRACTION,
+        "an extracted member proved to be its own archive",
+    );
 }
 
 /// The packaged graph is locked, read, refused for every wrong shape, and only
 /// then compiled.
+///
+/// The order is read inside `verify_packaged_graph`, which is where the three
+/// refusals and the compile are called. Their messages live in the functions
+/// those calls name, so an order taken over the whole script would compare the
+/// line a refusal was written on against the line the compile was written on and
+/// hold whatever order they ran in.
 fn assert_packaged_graph_verification(joined: &str) {
-    let mut previous = 0;
-    for command in ARCHIVE_GRAPH_COMMANDS {
-        let offset = offset_of(joined, command);
+    let body = function_body(joined, "verify_packaged_graph");
+    let subject = "the packaged-graph verification";
+    assert_in_order(&body, ARCHIVE_GRAPH_COMMANDS, subject);
+    assert_contains_all(joined, GRAPH_REFUSALS, "the packaged graph refusals");
+    assert_contains_all(&body, GRAPH_REFUSAL_CHECKS, subject);
+    let check = offset_of(&body, ARCHIVE_GRAPH_COMMANDS[2], subject);
+    for refusal in GRAPH_REFUSAL_CHECKS {
         assert!(
-            offset > previous,
-            "the packaged-graph command [{command}] runs out of order"
-        );
-        previous = offset;
-    }
-    for refusal in GRAPH_REFUSALS {
-        assert!(
-            joined.contains(refusal),
-            "the packaged graph does not refuse [{refusal}]"
-        );
-    }
-    let check = offset_of(joined, ARCHIVE_GRAPH_COMMANDS[2]);
-    for refusal in GRAPH_REFUSALS {
-        assert!(
-            offset_of(joined, refusal) < check,
-            "[{refusal}] must be refused before the packaged check runs"
+            offset_of(&body, refusal, subject) < check,
+            "[{refusal}] must run before the packaged check"
         );
     }
 }
@@ -389,6 +369,7 @@ fn assert_packaged_graph_verification(joined: &str) {
 /// The proof owns one staging root, releases it on every path, classifies
 /// through the one tracked owner, and joins the ShellCheck inventory once.
 fn assert_package_script_ownership(source: &str, joined: &str) {
+    let subject = "the proof's ownership of its staging root";
     assert!(
         source.contains(". \"${script_dir}/cargo_infrastructure.sh\""),
         "the packaged-workspace proof classifies through the tracked owner"
@@ -404,6 +385,7 @@ fn assert_package_script_ownership(source: &str, joined: &str) {
     let staging_root = offset_of(
         joined,
         "mktemp -d \"${TMPDIR:-/tmp}/${STAGING_PREFIX}.XXXXXX\"",
+        subject,
     );
     for handler in [
         "trap 'cleanup' EXIT",
@@ -412,7 +394,7 @@ fn assert_package_script_ownership(source: &str, joined: &str) {
         "trap 'interrupted 15' TERM",
     ] {
         assert!(
-            offset_of(joined, handler) < staging_root,
+            offset_of(joined, handler, subject) < staging_root,
             "[{handler}] must be installed before the staging root exists"
         );
     }
@@ -431,31 +413,27 @@ fn assert_package_script_ownership(source: &str, joined: &str) {
 ///
 /// Steps 6 and 7 add shell surfaces outside `.github/scripts` — the five fake
 /// tools their lifecycle and budget rows install on `PATH` — and a fault
-/// injector nobody lints is a fault injector nobody can trust. Requiring the
-/// subject list to equal the tracked inventory keeps that true for the next
-/// script too, rather than for these five.
+/// injector nobody lints is a fault injector nobody can trust. The subject list
+/// must equal the tracked inventory, which is duplicate-free, so every script
+/// including this proof and the tracked classifier is a subject exactly once,
+/// and the next script added is too.
 fn assert_shellcheck_covers_every_tracked_script() {
     let wrapper = read_repository_file(".github/scripts/run_shellcheck.sh");
-    let subjects: Box<[Box<str>]> = wrapper
+    let mut subjects: Box<[Box<str>]> = wrapper
         .lines()
         .map(|line| line.trim().trim_end_matches('\\').trim())
         .filter(|token| token.ends_with(".sh"))
         .map(Box::from)
         .collect();
-    let mut sorted = subjects.clone();
-    sorted.sort();
+    subjects.sort();
     let mut tracked = tracked_shell_scripts();
     tracked.sort();
-    assert_eq!(
-        sorted, tracked,
-        "the pinned ShellCheck run must lint exactly the tracked shell scripts"
+    assert!(
+        !tracked.is_empty(),
+        "this repository tracks shell scripts, so the inventory cannot be empty"
     );
     assert_eq!(
-        subjects
-            .iter()
-            .filter(|subject| subject.as_ref() == PACKAGED_WORKSPACE_SCRIPT)
-            .count(),
-        1,
-        "the packaged-workspace proof is a ShellCheck subject exactly once"
+        subjects, tracked,
+        "the pinned ShellCheck run must lint exactly the tracked shell scripts"
     );
 }

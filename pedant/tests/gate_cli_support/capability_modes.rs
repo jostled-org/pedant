@@ -102,13 +102,7 @@ pub(crate) fn test_gate_cli_json_format() {
 
     // The gate receives the flat profile and applies no symbol policy, so no
     // symbol field may reach its published JSON.
-    for field in ["\"symbols\"", "\"symbol_attribution\""] {
-        assert!(
-            !run.stdout.contains(field),
-            "gate JSON must not carry {field}:\n{}",
-            run.stdout
-        );
-    }
+    crate::common::assert_no_symbol_fields(&run.stdout, "gate JSON");
 }
 
 pub(crate) fn test_gate_cli_warn_only_exit_zero() {

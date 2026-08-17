@@ -1,8 +1,12 @@
 //! Behavioral and structural proofs for the publication workflow.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output};
+
+use crate::packaged_workspace_claims::{
+    function_body, offset_of, read_repository_file, repository_root,
+};
 
 const SHELLCHECK_VERSION: &str = "0.11.0";
 const SHELLCHECK_DIGEST: &str = "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198";
@@ -15,11 +19,13 @@ const CARGO_INFRASTRUCTURE_SCRIPT: &str = ".github/scripts/cargo_infrastructure.
 ///
 /// `cargo_classify`, `cargo_record`, `cargo_run`, and `cargo_worst` are the API
 /// the ignored lifecycle runners already call; `cargo_classify_output` is the
-/// same decision for a transcript a caller holds rather than a file it wrote.
-/// A sixth name would be a second place for a runner to look.
+/// same decision for a transcript a caller holds rather than a file it wrote,
+/// and `cargo_receipt` is the one way a capture reaches a caller's output
+/// directory. A seventh name would be a second place for a runner to look.
 const CLASSIFIER_API: &[&str] = &[
     "cargo_classify",
     "cargo_classify_output",
+    "cargo_receipt",
     "cargo_record",
     "cargo_run",
     "cargo_worst",
@@ -50,18 +56,6 @@ const INFRASTRUCTURE_SIGNATURES: &[&str] = &[
 /// Flags that would fold case and let a near miss claim an absent machine.
 const CASE_FOLDING_FLAGS: &[&str] = &[" -i", " --ignore-case", " -S", " --smart-case"];
 
-pub(crate) fn repository_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("pedant-core has a workspace parent")
-        .to_path_buf()
-}
-
-pub(crate) fn read_repository_file(path: &str) -> String {
-    fs::read_to_string(repository_root().join(path))
-        .unwrap_or_else(|error| panic!("failed to read {path}: {error}"))
-}
-
 fn write_fixture_file(root: &Path, path: &str, contents: &str) {
     let destination = root.join(path);
     fs::create_dir_all(
@@ -84,29 +78,6 @@ fn run_git(root: &Path, arguments: &[&str]) {
         "git {arguments:?} failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-}
-
-/// Every shell script this repository tracks, in Git's own order.
-///
-/// Git is asked rather than the filesystem walked, because `tracked` is the
-/// whole claim: `docs/` holds ignored lifecycle adapters that this repository
-/// does not own and must not lint, and a filesystem walk would sweep them in.
-pub(crate) fn tracked_shell_scripts() -> Box<[Box<str>]> {
-    let output = Command::new("git")
-        .args(["ls-files", "-z", "--", "*.sh"])
-        .current_dir(repository_root())
-        .output()
-        .expect("git is available");
-    assert!(
-        output.status.success(),
-        "git ls-files failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    String::from_utf8_lossy(&output.stdout)
-        .split('\0')
-        .filter(|path| !path.is_empty())
-        .map(Box::from)
-        .collect()
 }
 
 fn commit_all(root: &Path, message: &str) {
@@ -151,12 +122,15 @@ fn cargo_infrastructure_classifier_is_complete_and_fail_closed() {
     assert_classifier_api(&source);
     assert_signature_table(&source);
     assert_fail_closed_lifecycle(&source);
-    assert_shellcheck_registration();
 }
 
 /// The tracked owner defines exactly the compatible API and nothing beside it.
+///
+/// That this file is a ShellCheck subject exactly once is
+/// [`crate::packaged_workspace`]'s claim, which requires the wrapper's whole
+/// subject list to equal the duplicate-free tracked inventory.
 fn assert_classifier_api(source: &str) {
-    let mut defined: Vec<Box<str>> = source
+    let mut defined: Box<[Box<str>]> = source
         .lines()
         .filter_map(|line| line.strip_suffix("() {"))
         .map(Box::from)
@@ -164,8 +138,7 @@ fn assert_classifier_api(source: &str) {
     defined.sort();
     let expected: Box<[Box<str>]> = CLASSIFIER_API.iter().map(|name| (*name).into()).collect();
     assert_eq!(
-        defined.into_boxed_slice(),
-        expected,
+        defined, expected,
         "the tracked classifier's function inventory changed"
     );
     assert!(
@@ -240,22 +213,28 @@ fn assert_fail_closed_lifecycle(source: &str) {
         function_body(source, "cargo_worst").contains("${cargo_infrastructure_worst}"),
         "the aggregate is reported from the recorded worst status"
     );
+    assert!(
+        function_body(source, "cargo_receipt").contains("${PROOF_OUTPUT_DIR}/$1.log"),
+        "one owner copies an indexed capture, named for the label it was handed"
+    );
     assert_run_owns_its_capture(&function_body(source, "cargo_run"), immediate_exit);
 }
 
-/// `cargo_run` allocates before it runs, copies one indexed receipt, and
-/// removes its capture before any status can leave the shell.
+/// `cargo_run` allocates before it runs, leaves its indexed receipt through the
+/// one owner of that copy, and removes its capture before any status can leave
+/// the shell.
 fn assert_run_owns_its_capture(run: &str, immediate_exit: &str) {
-    let allocation = offset_of(run, "mktemp");
-    let invocation = offset_of(run, "\"$@\"");
-    let removal = offset_of(run, "rm -f");
-    let record = offset_of(run, "cargo_record");
+    let subject = "cargo_run's ownership of its capture";
+    let allocation = offset_of(run, "mktemp", subject);
+    let invocation = offset_of(run, "\"$@\"", subject);
+    let removal = offset_of(run, "rm -f", subject);
+    let record = offset_of(run, "cargo_record", subject);
     assert!(
         run.contains(&format!("|| {immediate_exit}")),
         "an unallocatable capture is an unavailable machine"
     );
     assert!(
-        run.contains("${PROOF_OUTPUT_DIR}/${label}.log"),
+        run.contains("cargo_receipt \"${label}\""),
         "an indexed run leaves one named receipt"
     );
     assert!(
@@ -266,35 +245,6 @@ fn assert_run_owns_its_capture(run: &str, immediate_exit: &str) {
         removal < record,
         "the capture is removed before any status leaves the shell"
     );
-}
-
-/// The tracked owner joins the ShellCheck subject inventory exactly once.
-fn assert_shellcheck_registration() {
-    let wrapper = read_repository_file(".github/scripts/run_shellcheck.sh");
-    assert_eq!(
-        wrapper.matches(CARGO_INFRASTRUCTURE_SCRIPT).count(),
-        1,
-        "the tracked classifier is a ShellCheck subject exactly once"
-    );
-}
-
-/// One shell function's body, between its opening line and its closing brace.
-pub(crate) fn function_body(source: &str, name: &str) -> Box<str> {
-    let opening: Box<str> = format!("\n{name}() {{\n").into();
-    let start = source
-        .find(&*opening)
-        .unwrap_or_else(|| panic!("{name} should be defined"))
-        + opening.len();
-    let length = source[start..]
-        .find("\n}\n")
-        .unwrap_or_else(|| panic!("{name} should have a closing brace"));
-    source[start..start + length].into()
-}
-
-/// Where one required fragment starts inside a function body.
-pub(crate) fn offset_of(body: &str, fragment: &str) -> usize {
-    body.find(fragment)
-        .unwrap_or_else(|| panic!("the body should contain {fragment}"))
 }
 
 /// The packaged-workspace proof stages the release finalization will squash,

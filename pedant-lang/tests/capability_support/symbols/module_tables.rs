@@ -1,16 +1,19 @@
 //! Sources that put a capability at module scope, with callables around it.
 //!
 //! A projection that hoisted the module's capability into a neighboring
-//! callable disagrees with these tables.
-//! [`symbol_cases`](crate::symbol_cases) asserts them.
+//! callable disagrees with these tables. [`cases`](super::cases) asserts them.
+//!
+//! Each family list below says where that source's families reach a callable.
+//! A family written only at module scope is listed as unowned, and that is the
+//! claim: no callable beside it inherits the capability.
 
 use pedant_types::{Capability, CapabilitySymbolKind, FindingOrigin};
 
-use crate::symbol_model::{Row, owned_by};
+use super::model::{Family, Row, owned_by};
 // Only the Go source states its module-scope capability as a string literal;
 // every other backend states both of its rows outright.
 #[cfg(feature = "ts-go")]
-use crate::symbol_model::literal_row;
+use super::model::literal_row;
 
 #[cfg(feature = "ts-python")]
 pub(crate) const PYTHON_MODULE_SOURCE: &str = concat!(
@@ -25,6 +28,15 @@ pub(crate) const PYTHON_MODULE_SOURCE: &str = concat!(
     "def gamma():\n",          // 9
     "    pass\n",              // 10
 );
+
+/// Python writes both its imports as the same family: one at module scope, one
+/// inside `beta`, so the family reaches a callable here and the row table alone
+/// carries which of the two did.
+#[cfg(feature = "ts-python")]
+pub(crate) const PYTHON_MODULE_FAMILIES: [Family; 1] = [Family {
+    name: "import",
+    owned: true,
+}];
 
 #[cfg(feature = "ts-python")]
 pub(crate) const PYTHON_MODULE_ROWS: [Row; 2] = [
@@ -60,6 +72,21 @@ pub(crate) const JAVASCRIPT_MODULE_SOURCE: &str = concat!(
     "\n",                                       // 8
     "function gamma() {}\n",                    // 9
 );
+
+/// The ES `import` is module-level by grammar; the `require` call sits inside
+/// `beta`, so the two families split cleanly across the boundary this case is
+/// about.
+#[cfg(any(feature = "ts-javascript", feature = "ts-typescript"))]
+pub(crate) const JS_MODULE_FAMILIES: [Family; 2] = [
+    Family {
+        name: "import",
+        owned: false,
+    },
+    Family {
+        name: "require",
+        owned: true,
+    },
+];
 
 /// The flat sequence both JavaScript-family module sources produce.
 #[cfg(any(feature = "ts-javascript", feature = "ts-typescript"))]
@@ -100,6 +127,20 @@ pub(crate) const GO_MODULE_SOURCE: &str = concat!(
     "func gamma() {}\n",                         // 12
 );
 
+/// A Go import declaration is module-level by grammar; the endpoint literal
+/// sits inside `beta`.
+#[cfg(feature = "ts-go")]
+pub(crate) const GO_MODULE_FAMILIES: [Family; 2] = [
+    Family {
+        name: "import",
+        owned: false,
+    },
+    Family {
+        name: "string-literal",
+        owned: true,
+    },
+];
+
 #[cfg(feature = "ts-go")]
 pub(crate) const GO_MODULE_ROWS: [Row; 2] = [
     Row {
@@ -135,6 +176,21 @@ pub(crate) const BASH_MODULE_SOURCE: &str = concat!(
     "  echo gamma\n",                   // 12
     "}\n",                              // 13
 );
+
+/// A bash command can sit inside a function — the family case proves that — so
+/// `command` is listed unowned here because this source writes its `curl` at
+/// module scope on purpose, and no function below it may claim the capability.
+#[cfg(feature = "ts-bash")]
+pub(crate) const BASH_MODULE_FAMILIES: [Family; 2] = [
+    Family {
+        name: "command",
+        owned: false,
+    },
+    Family {
+        name: "export",
+        owned: true,
+    },
+];
 
 #[cfg(feature = "ts-bash")]
 pub(crate) const BASH_MODULE_ROWS: [Row; 2] = [

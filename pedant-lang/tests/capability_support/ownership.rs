@@ -38,6 +38,10 @@ const MODULE_INVENTORY: &[&str] = &[
 ];
 
 /// The four structured backends: each binds one session and hands it on.
+///
+/// Closed against discovery below rather than trusted: a fifth backend that
+/// binds a session or seals one is required to be listed here, so it cannot
+/// escape the per-backend counts by simply not being named.
 const STRUCTURED_BACKENDS: &[&str] = &["bash.rs", "go.rs", "javascript.rs", "python.rs"];
 
 /// The owners that must stay outside structured attribution entirely.
@@ -58,13 +62,17 @@ const BOUND_PARSE: &str = "parse_bound(";
 const RAW_PARSE_ROUTES: &[&str] = &["parse(", "Parser", "root_node("];
 
 /// The one call that hands a backend's own session to attribution.
-const SEAL_CALL: &str = "attribution::seal(bound";
+const SEAL_CALL: &str = "attribution::symbols::seal(bound";
 
 /// The one signature that carries a session back out of detection.
 const SESSION_RETURN: &str = "-> Option<ParsedSyntax<'source>>";
 
 /// The one question a bound session answers for attribution.
-const ANCHOR_QUERY: &str = "enclosing_unit_anchor(";
+///
+/// It is the batch form: every finding's location goes over in one call, so the
+/// source is indexed once and its tree walked once per analysis rather than
+/// once per finding.
+const ANCHOR_QUERY: &str = "enclosing_unit_anchors(";
 
 /// Routes no module in this crate may name.
 ///
@@ -114,8 +122,24 @@ fn structured_analyzers_use_one_bound_parse_session() {
     assert_no_raw_parser_or_forbidden_route(&closure);
 }
 
-/// Each structured backend binds one session and hands that one on.
+/// The backends are exactly the modules that bind and seal a session, and each
+/// binds one and hands that one on.
+///
+/// The two derived sets close the hand-written list: a fifth backend added to
+/// the crate arrives in both of them and fails here, rather than skipping every
+/// count below because nobody added its name.
 fn assert_backends_bind_one_session(closure: &Closure) {
+    assert_eq!(
+        &*members_naming(closure, BOUND_PARSE),
+        STRUCTURED_BACKENDS,
+        "the modules that bind a parse session must be exactly the structured backends"
+    );
+    assert_eq!(
+        &*members_naming(closure, SEAL_CALL),
+        STRUCTURED_BACKENDS,
+        "the modules that hand a session to attribution must be exactly the structured backends"
+    );
+
     for backend in STRUCTURED_BACKENDS {
         let code = member(closure, backend);
         assert_eq!(
@@ -155,16 +179,20 @@ fn assert_projection_consumes_the_same_session(closure: &Closure) {
         "{PROJECTION_MODULE} must bind no parse session of its own"
     );
 
-    let asking: Box<[&str]> = closure
-        .iter()
-        .filter(|(_, code)| code.occurrences(ANCHOR_QUERY) > 0)
-        .map(|(label, _)| &**label)
-        .collect();
     assert_eq!(
-        &*asking,
+        &*members_naming(closure, ANCHOR_QUERY),
         &[PROJECTION_MODULE],
         "only {PROJECTION_MODULE} may ask a session for an anchor"
     );
+}
+
+/// Every discovered module whose code names `token`, in path order.
+fn members_naming<'closure>(closure: &'closure Closure, token: &str) -> Box<[&'closure str]> {
+    closure
+        .iter()
+        .filter(|(_, code)| code.occurrences(token) > 0)
+        .map(|(label, _)| &**label)
+        .collect()
 }
 
 /// The manifest and direct-Rust owners reach no parser and no attribution.
@@ -208,8 +236,9 @@ type Closure = BTreeMap<Box<str>, Code>;
 ///
 /// Every claim above counts tokens, and a doc comment naming `parse_bound` is
 /// prose rather than a call, so the comments come out before anything is
-/// counted.
-struct Code(String);
+/// counted. Filled once at construction and only ever read afterwards, so it
+/// owns exactly the bytes it holds.
+struct Code(Box<str>);
 
 impl Code {
     fn read(path: &Path) -> Self {
@@ -220,7 +249,7 @@ impl Code {
             code.push_str(line);
             code.push('\n');
         }
-        Self(code)
+        Self(code.into_boxed_str())
     }
 
     fn occurrences(&self, token: &str) -> usize {
@@ -253,7 +282,7 @@ fn discover_closure() -> Closure {
             continue;
         }
         let code = Code::read(&path);
-        for name in declared_modules(&code).iter() {
+        for name in declared_modules(&code, &path).iter() {
             let child = resolve_module(&path, name)
                 .unwrap_or_else(|| panic!("`mod {name};` in {} names no file", path.display()));
             pending.push(child);
@@ -267,11 +296,34 @@ fn discover_closure() -> Closure {
 ///
 /// An inline `mod name { … }` body is already part of its file, so it adds no
 /// member and its opening brace keeps it out of this scan.
-fn declared_modules(code: &Code) -> Box<[Box<str>]> {
+///
+/// A line that states a `mod` declaration this scanner cannot name is a
+/// refusal, not a skip, for the same reason an unresolvable `mod` is: a
+/// trailing comment or a same-line attribute would otherwise drop the module
+/// and everything it holds out of every scan above, while the hand-written
+/// inventory still matched.
+fn declared_modules(code: &Code, path: &Path) -> Box<[Box<str>]> {
     code.0
         .lines()
-        .filter_map(|line| module_name(line.trim()))
+        .map(str::trim)
+        .filter(|line| declares_module(line))
+        .map(|line| {
+            module_name(line).unwrap_or_else(|| {
+                panic!(
+                    "`{line}` in {} states a module this scan cannot name",
+                    path.display()
+                )
+            })
+        })
         .collect()
+}
+
+/// Whether a line states a file-backed `mod` declaration in any spelling.
+///
+/// Deliberately wider than [`module_name`] accepts: this is the net that turns
+/// a declaration the namer cannot read into a failure rather than a silence.
+fn declares_module(line: &str) -> bool {
+    line.contains("mod ") && line.ends_with(';')
 }
 
 /// The module a `mod name;` line declares, whatever its visibility.

@@ -4,6 +4,9 @@
 //! process guard, and every assertion body lives in `gate_cli_support/`, so
 //! this file registers tests and delegates.
 
+#[path = "common.rs"]
+mod common;
+
 #[path = "package_support/process_guard.rs"]
 mod process_guard;
 

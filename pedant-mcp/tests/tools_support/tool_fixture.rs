@@ -33,3 +33,37 @@ pub fn result_text(result: &rmcp::model::CallToolResult) -> String {
 pub fn is_error(result: &rmcp::model::CallToolResult) -> bool {
     result.is_error == Some(true)
 }
+
+/// Assert a capability payload carries no symbol evidence.
+///
+/// 4.T14 (Invariant 14): the MCP index takes the flat projection from each
+/// analysis, so a finding keeps its exact current fields and neither symbol name
+/// reaches the protocol. Two properties say that: no finding object holds a
+/// `symbols` or `symbol_attribution` key, and neither name appears anywhere in
+/// the serialized text, which also catches a nested carrier no key check reads.
+///
+/// Every capability case asks the same question of the same tool, so the two
+/// properties are stated once. `subject` names the payload under test, because
+/// the cases differ in which findings they drove the tool to answer with.
+pub fn assert_no_symbol_evidence(text: &str, subject: &str) {
+    let findings: Vec<serde_json::Value> =
+        serde_json::from_str(text).expect("the payload is a flat finding array");
+    for finding in &findings {
+        let fields: Vec<&str> = finding
+            .as_object()
+            .expect("each finding is an object")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert!(
+            !fields.contains(&"symbols") && !fields.contains(&"symbol_attribution"),
+            "a {subject} finding must carry no symbol field: {fields:?}"
+        );
+    }
+    for field in ["\"symbols\"", "\"symbol_attribution\""] {
+        assert!(
+            !text.contains(field),
+            "the {subject} payload must not carry {field}: {text}"
+        );
+    }
+}

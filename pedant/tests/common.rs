@@ -40,6 +40,20 @@ pub fn run_pedant_in(
     }
 }
 
+/// The published capability wire shapes carry no lexical symbol data: symbol
+/// evidence is a library projection, not an operator or persisted surface.
+///
+/// `subject` names the payload under test, so a failure says which surface
+/// leaked.
+pub fn assert_no_symbol_fields(payload: &str, subject: &str) {
+    for field in ["\"symbols\"", "\"symbol_attribution\""] {
+        assert!(
+            !payload.contains(field),
+            "{subject} must not carry {field}: {payload}"
+        );
+    }
+}
+
 pub fn run_subcommand(
     command: &str,
     args: &[&str],

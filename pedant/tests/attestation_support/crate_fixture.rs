@@ -54,20 +54,34 @@ impl CrateFixture {
         path
     }
 
+    /// One path inside the crate, as the CLI argument that names it.
+    pub(crate) fn argument(&self, relative: &str) -> Box<str> {
+        self.root
+            .path()
+            .join(relative)
+            .to_str()
+            .expect("a temporary path is valid UTF-8")
+            .into()
+    }
+
     /// Run one `pedant` subcommand against a path inside the crate.
     pub(crate) fn run(&self, subcommand: &str, relative: &str) -> Output {
-        let path = self.root.path().join(relative);
-        let argument = path.to_str().expect("a temporary path is valid UTF-8");
-        common::run_subcommand(subcommand, &[argument], None)
+        let argument = self.argument(relative);
+        common::run_subcommand(subcommand, &[argument.as_ref()], None)
     }
 
     /// Run `attestation` against a path inside the crate, naming the package.
     pub(crate) fn attest(&self, relative: &str) -> Output {
-        let path = self.root.path().join(relative);
-        let argument = path.to_str().expect("a temporary path is valid UTF-8");
+        let argument = self.argument(relative);
         common::run_subcommand(
             "attestation",
-            &[argument, "--crate-name", "test", "--crate-version", "0.1.0"],
+            &[
+                argument.as_ref(),
+                "--crate-name",
+                "test",
+                "--crate-version",
+                "0.1.0",
+            ],
             None,
         )
     }

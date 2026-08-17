@@ -165,7 +165,11 @@ fn snapshot_capability_projection_reuses_stored_file_ir() {
 /// stored `FileIr` projects, and its bytes carry no symbol field.
 #[cfg(feature = "resolution-test-support")]
 fn assert_persisted_profile_is_flat_and_exact(baselines: &baseline_store::BaselineStore) {
-    let attestation = baselines.read("reused", "0.4.0");
+    // One read, because both claims are about the same bytes: what they parse
+    // to, and what they must not hold.
+    let raw = baselines.raw("reused", "0.4.0");
+    let attestation: pedant_types::AttestationContent = serde_json::from_str(&raw)
+        .unwrap_or_else(|error| panic!("the written attestation should parse: {error}: {raw}"));
     let completeness = attestation
         .analysis_completeness
         .expect("a snapshot-backed attestation records its completeness");
@@ -191,7 +195,6 @@ fn assert_persisted_profile_is_flat_and_exact(baselines: &baseline_store::Baseli
         "the persisted flat profile is exactly what the stored IR projects"
     );
 
-    let raw = baselines.raw("reused", "0.4.0");
     for field in ["\"symbols\"", "\"symbol_attribution\""] {
         assert!(
             !raw.contains(field),

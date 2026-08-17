@@ -88,9 +88,9 @@ pub(crate) fn analyze(
     detect_string_literal_findings(path, &literals, language, &mut findings);
 
     #[cfg(any(feature = "ts-javascript", feature = "ts-typescript"))]
-    let analysis = attribution::seal(bound, language, findings.into_boxed_slice());
+    let analysis = attribution::symbols::seal(bound, language, findings.into_boxed_slice());
     #[cfg(not(any(feature = "ts-javascript", feature = "ts-typescript")))]
-    let analysis = attribution::unavailable(findings.into_boxed_slice());
+    let analysis = attribution::envelope::unavailable(findings.into_boxed_slice());
     analysis
 }
 

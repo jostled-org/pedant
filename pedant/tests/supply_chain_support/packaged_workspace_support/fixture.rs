@@ -10,11 +10,26 @@
 //! Nothing here asserts. [`super`] owns what a row requires; this owns what a
 //! row is given.
 
+use std::fmt::Write as _;
 use std::path::Path;
 
-use crate::fake_cargo::make_executable;
+use crate::fake_cargo::write_executable;
 use crate::fixtures::write;
 use crate::process_guard::{Completed, Run, execute};
+
+/// The Git environment every command this tree starts must run under.
+///
+/// Both configuration files are redirected to `/dev/null`, so nothing the
+/// operator set globally reaches the fixture's four commands or the clone,
+/// commit and `log` the proof drives through them. A `commit.gpgsign` would
+/// block or fail the fixture commit, a `core.hooksPath` would run the
+/// operator's hooks inside it, and a `log.showSignature` would insert lines
+/// into the `git log --format='package onto %s'` reading
+/// [`super::verdict`] compares the packaged history against.
+pub(super) const ISOLATED_GIT: &[(&str, &str)] = &[
+    ("GIT_CONFIG_GLOBAL", "/dev/null"),
+    ("GIT_CONFIG_SYSTEM", "/dev/null"),
+];
 
 /// The fixture's release order, which its `release-plz.toml` states and the
 /// script must read rather than assume.
@@ -117,14 +132,15 @@ fn release_plz_manifest() -> Box<str> {
 fn package_manifest(name: &str, version: &str) -> Box<str> {
     let mut manifest =
         format!("[package]\nname = \"{name}\"\nversion = \"{version}\"\nedition = \"2024\"\n");
-    let edges: Box<[&(&str, &str)]> = FIRST_PARTY_EDGES
+    let mut edges = FIRST_PARTY_EDGES
         .iter()
         .filter(|(consumer, _)| *consumer == name)
-        .collect();
-    if !edges.is_empty() {
+        .peekable();
+    if edges.peek().is_some() {
         manifest.push_str("\n[dependencies]\n");
-        for (_, dependency) in edges.iter() {
-            manifest.push_str(&format!("{dependency} = \"{version}\"\n"));
+        for (_, dependency) in edges {
+            writeln!(manifest, "{dependency} = \"{version}\"")
+                .expect("a manifest in memory always accepts one more line");
         }
     }
     manifest.into()
@@ -245,8 +261,10 @@ pub(super) fn planted_state(base: &str) -> Box<[Box<str>]> {
 /// `Command` here would let a wedged Git hang a case that owns every other
 /// child it starts.
 fn git(cwd: &Path, arguments: &[&str]) -> Completed {
-    let completed = execute(&Run::program("git", cwd, arguments))
-        .unwrap_or_else(|failure| panic!("the guard failed: {failure}"));
+    let mut run = Run::program("git", cwd, arguments);
+    run.env = ISOLATED_GIT;
+    let completed = execute(&run)
+        .unwrap_or_else(|failure| panic!("git {arguments:?}: the guard failed: {failure}"));
     assert!(
         completed.success(),
         "git {arguments:?} failed: {}",
@@ -274,11 +292,6 @@ pub(super) fn write_fake_tools(tools: &Path) {
         FAKE_SEMVER_CHECKS,
     );
     write_executable(&tools.join("bodies/release-plz"), FAKE_RELEASE_PLZ);
-}
-
-fn write_executable(path: &Path, body: &str) {
-    write(path, body);
-    make_executable(path);
 }
 
 /// The stand-in Cargo, which implements the proof's whole operation protocol.

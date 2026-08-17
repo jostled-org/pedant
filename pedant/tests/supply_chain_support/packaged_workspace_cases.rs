@@ -45,12 +45,12 @@ mod graph_cases;
 #[path = "packaged_workspace_support/budget_cases.rs"]
 mod budget_cases;
 
-use crate::cargo_classifier_cases::{INFRASTRUCTURE_MATCHES, redacted};
+use crate::cargo_classifier_cases::INFRASTRUCTURE_MATCHES;
 use row::{Fault, ORDINARY_STATUS, PINNED_BINARIES, RowRoot};
 use verdict::{
-    INFRASTRUCTURE_STATUS, REFUSED_STATUS, SIGNALLED_STATUS, assert_caller_repository_is_untouched,
-    assert_no_staging_root, assert_refusal, assert_row_is_clean, assert_tool_root_matches_the_row,
-    expected_operations, tool_stage_operations,
+    INFRASTRUCTURE_STATUS, SIGNALLED_STATUS, assert_refusal, assert_refused_before_anything_ran,
+    assert_row_is_clean, assert_stated_cost_shape, expected_operations, tool_stage_operations,
+    warm_the_tool_root,
 };
 
 /// An argument list that names a tool stage and then keeps talking.
@@ -65,6 +65,14 @@ const OVERLONG_STAGE: &[&str] = &[
 /// A near miss rather than nonsense, because the name a caller gets wrong is
 /// the one that looks right.
 const UNKNOWN_TOOL_STAGE: &[&str] = &["--install-tools", "cargo-semver-checksum"];
+
+/// How many signatures the classifier states, so a table that lost a row is a
+/// failure rather than a shorter loop.
+///
+/// Two tables meet here and equality between them is not the claim: emptying
+/// the one that lives in [`crate::cargo_classifier_cases`] would leave the two
+/// agreeing and every row below unrun.
+const INFRASTRUCTURE_SIGNATURES: usize = 9;
 
 /// Which Cargo operation carries each signature, so classification is proved at
 /// every stage the script runs rather than only at the cheapest one.
@@ -91,8 +99,13 @@ fn packaged_workspace_cleanup_is_bounded_on_success_failure_infrastructure_and_i
     unknown_tool_name_is_refused_before_anything_runs(&RowRoot::new());
     ordinary_failure_keeps_its_status(&RowRoot::new());
     assert_eq!(
-        INFRASTRUCTURE_OPERATIONS.len(),
         INFRASTRUCTURE_MATCHES.len(),
+        INFRASTRUCTURE_SIGNATURES,
+        "every classifier signature must still be stated"
+    );
+    assert_eq!(
+        INFRASTRUCTURE_OPERATIONS.len(),
+        INFRASTRUCTURE_SIGNATURES,
         "every classifier signature must still have a row"
     );
     for (sample, operation) in INFRASTRUCTURE_MATCHES
@@ -131,13 +144,7 @@ fn successful_proof_drives_every_operation_in_order(root: &RowRoot) {
         expected_operations(),
         "{label}: the proof drove the tools in the wrong order"
     );
-    assert!(
-        completed
-            .stdout
-            .contains("packaged workspace proof: stage=verify state=cold"),
-        "{label}: the proof must state its own cost: {}",
-        redacted(&completed.transcript())
-    );
+    assert_stated_cost_shape(label, &completed, "verify", "cold");
 }
 
 /// The tool stage builds the one tool it was named, proves that build's
@@ -159,13 +166,7 @@ fn tool_stage_builds_only_the_tool_it_was_named(root: &RowRoot) {
         tool_stage_operations("cargo-semver-checks"),
         "{label}: the tool stage must build and prove one tool, and nothing else"
     );
-    assert!(
-        completed
-            .stdout
-            .contains("packaged workspace proof: stage=install state=cold"),
-        "{label}: the tool stage must state its own cost: {}",
-        redacted(&completed.transcript())
-    );
+    assert_stated_cost_shape(label, &completed, "install", "cold");
 }
 
 /// A stage invocation that keeps talking past its two words is refused before
@@ -178,30 +179,12 @@ fn overlong_stage_is_refused_before_anything_runs(root: &RowRoot) {
     let label = "a tool stage carrying a third argument";
     let completed = root.run_stage(&Fault::None, OVERLONG_STAGE);
 
-    assert!(
-        !completed.timed_out(),
-        "{label}: the row outlived its budget: {}",
-        redacted(&completed.transcript())
-    );
-    assert_eq!(
-        completed.code(),
-        Some(REFUSED_STATUS),
-        "{label}: unexpected exit status: {}",
-        redacted(&completed.transcript())
-    );
+    assert_refused_before_anything_ran(root, label, &completed, &[]);
     assert_refusal(
         label,
         &completed,
         "unknown arguments [--install-tools cargo-semver-checks --and-skip-the-check]",
     );
-    assert_eq!(
-        root.operations(),
-        Box::default(),
-        "{label}: the proof drove a tool for an argument list it had already refused"
-    );
-    assert_tool_root_matches_the_row(root, label, &[]);
-    assert_no_staging_root(root, label);
-    assert_caller_repository_is_untouched(root, label);
 }
 
 /// A tool stage naming a tool this proof does not pin is refused before any
@@ -216,43 +199,16 @@ fn overlong_stage_is_refused_before_anything_runs(root: &RowRoot) {
 /// counted the words. Zero operations is what tells the two apart.
 fn unknown_tool_name_is_refused_before_anything_runs(root: &RowRoot) {
     let label = "a tool stage naming a tool the proof does not pin";
-    let fault = Fault::None;
-    let warmed = root.run(&fault);
-    assert_row_is_clean(
-        root,
-        "the cold proof before it",
-        &warmed,
-        0,
-        fault.surviving_tool_builds(),
-    );
-    root.clear_record();
+    warm_the_tool_root(root);
 
-    let completed = root.run_stage(&fault, UNKNOWN_TOOL_STAGE);
+    let completed = root.run_stage(&Fault::None, UNKNOWN_TOOL_STAGE);
 
-    assert!(
-        !completed.timed_out(),
-        "{label}: the row outlived its budget: {}",
-        redacted(&completed.transcript())
-    );
-    assert_eq!(
-        completed.code(),
-        Some(REFUSED_STATUS),
-        "{label}: unexpected exit status: {}",
-        redacted(&completed.transcript())
-    );
+    assert_refused_before_anything_ran(root, label, &completed, PINNED_BINARIES);
     assert_refusal(
         label,
         &completed,
         "unknown arguments [--install-tools cargo-semver-checksum]",
     );
-    assert_eq!(
-        root.operations(),
-        Box::default(),
-        "{label}: the proof moved state for a tool name it was always going to refuse"
-    );
-    assert_tool_root_matches_the_row(root, label, PINNED_BINARIES);
-    assert_no_staging_root(root, label);
-    assert_caller_repository_is_untouched(root, label);
 }
 
 /// A Cargo operation that fails for an ordinary reason keeps its exact status,

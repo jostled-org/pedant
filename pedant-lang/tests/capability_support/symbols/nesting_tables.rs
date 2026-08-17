@@ -1,12 +1,22 @@
 //! Sources that declare one name twice and nest one callable inside another.
 //!
 //! A projection that keyed symbols by name, or that credited the outer
-//! declaration, disagrees with these tables.
-//! [`symbol_cases`](crate::symbol_cases) asserts them.
+//! declaration, disagrees with these tables. [`cases`](super::cases) asserts
+//! them.
 
 use pedant_types::CapabilitySymbolKind;
 
-use crate::symbol_model::{Row, literal_row, owned_by};
+use super::model::{Family, Row, literal_row, owned_by};
+
+/// The one family every nesting source states: a URL in a string literal, and
+/// every one of them inside a callable.
+///
+/// Nesting is the subject here, so each source states one family and states it
+/// several times over, at different depths and under repeated names.
+pub(crate) const NESTED_FAMILIES: [Family; 1] = [Family {
+    name: "string-literal",
+    owned: true,
+}];
 
 #[cfg(feature = "ts-python")]
 pub(crate) const PYTHON_NESTED_SOURCE: &str = concat!(

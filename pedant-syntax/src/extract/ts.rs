@@ -27,19 +27,23 @@ struct Declaration<'t> {
 ///
 /// A missing tree or an error-bearing root is parser failure: nothing is
 /// offered, even where recovery left a recognized declaration in the tree.
+///
+/// The parse binds a session rather than taking a bare tree, so this route and
+/// the session's own answer read the same error rule from
+/// [`ParsedSyntax::has_errors`](crate::tree_sitter::ParsedSyntax::has_errors)
+/// and neither can drift from the other.
 pub(crate) fn collect<'s>(
     source: &'s str,
     language: SyntaxLanguage,
     selector: &mut UnitSelector<'s>,
 ) {
-    let Some(tree) = crate::tree_sitter::parse(source.as_bytes(), language) else {
+    let Some(parsed) = crate::tree_sitter::parse_bound(source, language) else {
         return;
     };
-    let root = tree.root_node();
-    if root.has_error() {
+    if parsed.has_errors() {
         return;
     }
-    offer_declarations(root, source, language, selector);
+    offer_declarations(parsed.root(), source, language, selector);
 }
 
 /// Offer every recognized declaration beneath `root` to `selector`.

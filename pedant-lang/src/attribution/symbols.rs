@@ -2,11 +2,15 @@
 //!
 //! The session is the backend's own: it produced the structured findings and it
 //! answers the declaration questions here, so one source is parsed once.
+//!
+//! It is also asked once. Every finding's location goes over in a single batch
+//! query, so the source is indexed once and the tree is walked once for the
+//! whole file rather than once per finding.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use pedant_syntax::tree_sitter::ParsedSyntax;
+use pedant_syntax::tree_sitter::{ParsedSyntax, SourceUnitAnchor};
 use pedant_syntax::{Location, SourceUnitKind};
 use pedant_types::{
     CapabilityAnalysis, CapabilityFinding, CapabilityProfile, CapabilitySymbol,
@@ -51,13 +55,17 @@ struct CallableOwner {
 
 /// One callable and the flat positions of the findings it owns.
 ///
-/// The kind and name ride along from the first anchor that named this
-/// declaration, because re-asking the session for them would be a second query
-/// answering what the first already did.
+/// The kind, the name, and the file ride along from the first finding that
+/// named this declaration, because re-asking for them would be a second query
+/// answering what the first already did. The file is one `Arc` clone per
+/// callable, shared with the flat profile rather than reallocated.
 struct Attributed {
     kind: CapabilitySymbolKind,
     name: Box<str>,
-    /// Flat positions of this callable's findings, in detection order.
+    file: Arc<str>,
+    /// Flat positions of this callable's findings, in detection order. Never
+    /// empty: the entry is created by the same expression that pushes the first
+    /// position.
     positions: Vec<usize>,
 }
 
@@ -69,11 +77,16 @@ fn symbol_profiles(
 ) -> Box<[SymbolCapabilityProfile]> {
     grouped_by_callable(parsed, findings)
         .into_iter()
-        .filter_map(|(declaration, owned)| profile_for(declaration, owned, language, findings))
+        .map(|(declaration, owned)| profile_for(declaration, owned, language, findings))
         .collect()
 }
 
 /// Flat positions of the attributed findings, keyed by owning callable.
+///
+/// One batch query answers for every finding at once, so the session indexes
+/// its source once and walks its tree once however many findings arrive. The
+/// answers come back in the order the locations went over, which is detection
+/// order, so a slot's index is its finding's flat position.
 ///
 /// A `BTreeMap` puts the callables in declaration order, because the key opens
 /// with the declaration's own position. Evidence at module scope, inside a
@@ -83,9 +96,16 @@ fn grouped_by_callable(
     parsed: &ParsedSyntax<'_>,
     findings: &[CapabilityFinding],
 ) -> BTreeMap<Declaration, Attributed> {
+    let at: Box<[Location]> = findings
+        .iter()
+        .map(|finding| Location {
+            line: finding.location.line,
+            column: Some(finding.location.column),
+        })
+        .collect();
     let mut grouped: BTreeMap<Declaration, Attributed> = BTreeMap::new();
-    for (position, finding) in findings.iter().enumerate() {
-        let Some(owner) = callable_owner(parsed, finding) else {
+    for (position, anchor) in parsed.enclosing_unit_anchors(&at).into_iter().enumerate() {
+        let Some(owner) = anchor.and_then(callable_owner) else {
             continue;
         };
         grouped
@@ -93,6 +113,7 @@ fn grouped_by_callable(
             .or_insert_with(|| Attributed {
                 kind: owner.kind,
                 name: owner.name,
+                file: Arc::clone(&findings[position].location.file),
                 positions: Vec::new(),
             })
             .positions
@@ -101,18 +122,13 @@ fn grouped_by_callable(
     grouped
 }
 
-/// The named function or method containing one finding, if any.
+/// The named function or method one anchor names, if any.
 ///
 /// Only a named [`SourceUnitKind::Function`] or [`SourceUnitKind::Method`]
 /// carries a capability symbol. A class, a type, an enum, and an unnamed
 /// declaration are lexical owners the model states no symbol for, so their
 /// findings stay flat evidence.
-fn callable_owner(parsed: &ParsedSyntax<'_>, finding: &CapabilityFinding) -> Option<CallableOwner> {
-    let at = Location {
-        line: finding.location.line,
-        column: Some(finding.location.column),
-    };
-    let anchor = parsed.enclosing_unit_anchor(at)?;
+fn callable_owner(anchor: SourceUnitAnchor) -> Option<CallableOwner> {
     let kind = match anchor.kind {
         SourceUnitKind::Function => CapabilitySymbolKind::Function,
         SourceUnitKind::Method => CapabilitySymbolKind::Method,
@@ -124,10 +140,22 @@ fn callable_owner(parsed: &ParsedSyntax<'_>, finding: &CapabilityFinding) -> Opt
         | SourceUnitKind::Impl
         | SourceUnitKind::Class => return None,
     };
+    // An absent name is a legitimate answer: an anonymous callable owns its
+    // findings lexically and carries no symbol.
+    let name = anchor.name?;
+    // An absent column is not. An anchor's start comes from a byte offset, so
+    // it always carries one; reporting "no callable owner" for a broken
+    // invariant would drop the finding while still claiming a complete
+    // attribution.
+    debug_assert!(
+        anchor.start.column.is_some(),
+        "an anchor's start carries a column"
+    );
+    let column = anchor.start.column?;
     Some(CallableOwner {
-        declaration: (anchor.start.line, anchor.start.column?),
+        declaration: (anchor.start.line, column),
         kind,
-        name: anchor.name?,
+        name,
     })
 }
 
@@ -135,29 +163,31 @@ fn callable_owner(parsed: &ParsedSyntax<'_>, finding: &CapabilityFinding) -> Opt
 ///
 /// The clones are fixed-size records: their file and evidence payloads are
 /// `Arc<str>` values shared with the flat profile, so grouping allocates no
-/// string. The declaration's file comes from the group's own first finding,
-/// which shares that same `Arc<str>`. A group with no member states no
-/// callable, so every emitted profile is non-empty.
+/// string. The declaration's file is the one its group's first finding named,
+/// carried on the group since it was opened.
 fn profile_for(
     declaration: Declaration,
     owned: Attributed,
     language: Language,
     findings: &[CapabilityFinding],
-) -> Option<SymbolCapabilityProfile> {
+) -> SymbolCapabilityProfile {
     let members: Box<[CapabilityFinding]> = owned
         .positions
         .iter()
         .map(|&position| findings[position].clone())
         .collect();
-    let file = Arc::clone(&members.first()?.location.file);
     let (line, column) = declaration;
-    Some(SymbolCapabilityProfile {
+    SymbolCapabilityProfile {
         symbol: CapabilitySymbol {
             language,
             kind: owned.kind,
             name: owned.name,
-            declaration: SourceLocation { file, line, column },
+            declaration: SourceLocation {
+                file: owned.file,
+                line,
+                column,
+            },
         },
         profile: CapabilityProfile { findings: members },
-    })
+    }
 }

@@ -94,7 +94,11 @@ impl<'s> SourceIndex<'s> {
             return None;
         }
         let line = self.line_of(offset);
-        let start = *self.line_starts.get(line.checked_sub(1)?)?;
+        // The line's own start, read from the one call that owns that answer.
+        // Deriving it from `line_starts` here would state the one-based-to-index
+        // conversion a second time, and its two absences are unreachable
+        // besides: `line_of` returns a partition point of at least one.
+        let start = self.line_extent(line)?.start;
         Some(Location {
             line,
             column: Some(offset - start + 1),

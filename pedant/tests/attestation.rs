@@ -119,7 +119,10 @@ fn test_attestation_cli_output_structure() {
         "`fn main() {{}}` exercises no capability: {:?}",
         attestation.profile.findings
     );
-    assert_no_symbol_fields(&output.stdout);
+    common::assert_no_symbol_fields(
+        &String::from_utf8_lossy(&output.stdout),
+        "the attestation payload",
+    );
 }
 
 #[test]
@@ -188,19 +191,10 @@ fn test_capabilities_flag_unchanged() {
         )],
         "the capability CLI prints exactly the flat profile it always did"
     );
-    assert_no_symbol_fields(&output.stdout);
-}
-
-/// The published capability wire shapes carry no lexical symbol data: symbol
-/// evidence is a library projection, not an operator or persisted surface.
-fn assert_no_symbol_fields(payload: &[u8]) {
-    let text = String::from_utf8_lossy(payload);
-    for field in ["\"symbols\"", "\"symbol_attribution\""] {
-        assert!(
-            !text.contains(field),
-            "output must not carry {field}: {text}"
-        );
-    }
+    common::assert_no_symbol_fields(
+        &String::from_utf8_lossy(&output.stdout),
+        "the capability payload",
+    );
 }
 
 #[test]
@@ -347,12 +341,13 @@ fn test_semantic_attestation_tier() {
     let fixture = CrateFixture::new(
         "[package]\nname = \"tier-test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[workspace]\n",
     );
-    let lib_path = fixture.write("src/lib.rs", "pub fn f() {}\n");
+    fixture.write("src/lib.rs", "pub fn f() {}\n");
+    let lib_argument = fixture.argument("src/lib.rs");
 
     let output = common::run_subcommand(
         "attestation",
         &[
-            lib_path.to_str().expect("a temporary path is valid UTF-8"),
+            lib_argument.as_ref(),
             "--semantic",
             "--crate-name",
             "tier-test",

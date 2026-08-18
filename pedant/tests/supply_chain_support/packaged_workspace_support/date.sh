@@ -9,7 +9,8 @@
 set -eu
 
 if [ "${1:-}" != "+%s" ] || [ -z "${FAKE_DATE_JUMP_SECONDS:-}" ]; then
-    exec command -p date "$@"
+    command -p date "$@"
+    exit 0
 fi
 
 # The first reading starts the stage's clock and is kept, so every later one is

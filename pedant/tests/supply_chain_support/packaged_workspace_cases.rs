@@ -36,6 +36,23 @@ mod row;
 #[path = "packaged_workspace_support/verdict.rs"]
 mod verdict;
 
+/// Linux `/bin/sh` does not guarantee that `exec` can dispatch the `command`
+/// shell builtin. The budget fakes must delegate through the builtin itself,
+/// or every packaged-workspace row exits 127 before reaching its subject.
+#[test]
+fn fake_budget_tools_do_not_exec_a_shell_builtin() {
+    for (name, source) in [("date", fixture::FAKE_DATE), ("du", fixture::FAKE_DU)] {
+        assert!(
+            !source.contains("exec command"),
+            "the fake {name} tool must not exec the command builtin"
+        );
+        assert!(
+            source.contains(&format!("command -p {name}")),
+            "the fake {name} tool must delegate through the portable command builtin"
+        );
+    }
+}
+
 /// The packaged graphs the proof has to refuse. Same `#[path]` reason.
 #[path = "packaged_workspace_support/graph_cases.rs"]
 mod graph_cases;

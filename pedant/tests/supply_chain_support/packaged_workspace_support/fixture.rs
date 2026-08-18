@@ -304,11 +304,11 @@ const FAKE_CARGO: &str = include_str!("cargo.sh");
 
 /// The stand-in clock, which reports the real time until a row asks it to jump
 /// past a runtime budget.
-const FAKE_DATE: &str = include_str!("date.sh");
+pub(super) const FAKE_DATE: &str = include_str!("date.sh");
 
 /// The stand-in sizer, which measures for real until a row asks it to report a
 /// target root or staging root over budget.
-const FAKE_DU: &str = include_str!("du.sh");
+pub(super) const FAKE_DU: &str = include_str!("du.sh");
 
 /// The stand-in cargo-semver-checks, which only has to be the pinned version.
 const FAKE_SEMVER_CHECKS: &str = include_str!("cargo-semver-checks.sh");

@@ -39,4 +39,5 @@ elif [ -n "${FAKE_DU_STAGING_KIB:-}" ]; then
     report "${FAKE_DU_STAGING_KIB}"
 fi
 
-exec command -p du "$@"
+command -p du "$@"
+exit 0

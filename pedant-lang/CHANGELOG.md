@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0](https://github.com/jostled-org/pedant/compare/pedant-lang-v0.6.0...pedant-lang-v0.7.0) - 2026-08-18
+
+### Added
+
+- *(lang)* [**breaking**] attribute non-Rust capability findings to their callables
+
+### Other
+
+- give each attribution rule one owner and one query
+
 ## [0.5.0](https://github.com/jostled-org/pedant/compare/pedant-lang-v0.4.0...pedant-lang-v0.5.0) - 2026-08-02
 
 ### Added

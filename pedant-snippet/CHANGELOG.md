@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/jostled-org/pedant/compare/pedant-snippet-v0.3.0...pedant-snippet-v0.4.0) - 2026-08-18
+
+### Added
+
+- [**breaking**] implement module-boundary-integrity
+
 ## [0.2.0](https://github.com/jostled-org/pedant/compare/pedant-snippet-v0.1.0...pedant-snippet-v0.2.0) - 2026-08-02
 
 ### Fixed

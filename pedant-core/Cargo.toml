@@ -1,6 +1,6 @@
 [package]
 name = "pedant-core"
-version = "0.21.2"
+version = "0.22.0"
 edition = "2024"
 rust-version = "1.96"
 description = "Analysis engine for pedant: IR extraction, style checks, and capability detection"
@@ -42,7 +42,7 @@ semver = "1"
 serde = { version = "1", features = ["derive", "rc"], optional = true }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = "1"
-pedant-types = { version = "0.15.0", path = "../pedant-types" }
+pedant-types = { version = "0.15.1", path = "../pedant-types" }
 thiserror = "2"
 sha2 = "0.11"
 ra_ap_ide = { version = "0.0.342", optional = true }

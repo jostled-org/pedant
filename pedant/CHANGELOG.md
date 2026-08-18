@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.28.0](https://github.com/jostled-org/pedant/compare/pedant-v0.27.5...pedant-v0.28.0) - 2026-08-18
+
+### Added
+
+- *(lang)* [**breaking**] attribute non-Rust capability findings to their callables
+- *(core)* [**breaking**] attribute Rust capability findings to their callables
+- [**breaking**] implement module-boundary-integrity
+
+### Fixed
+
+- *(ci)* make packaged budget fakes portable
+
+### Other
+
+- give each attribution rule one owner and one query
+- *(release)* name the packaged row's process claim after the guard
+- *(release)* prove exact packaged budget mapping
+- *(ci)* preserve packaged proof identities and cleanup bounds
+- split the packaged workspace proof into tool and release stages
+- *(ci)* prove the packaged graph refuses every unreleaseable shape
+- prove the packaged release archives compile together
+- *(pedant)* create fixture directories on demand
+- add tracked cargo infrastructure classifier
+
 ## [0.27.5](https://github.com/jostled-org/pedant/compare/pedant-v0.27.4...pedant-v0.27.5) - 2026-08-13
 
 ### Fixed

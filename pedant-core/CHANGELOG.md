@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.0](https://github.com/jostled-org/pedant/compare/pedant-core-v0.21.2...pedant-core-v0.22.0) - 2026-08-18
+
+### Added
+
+- *(lang)* [**breaking**] attribute non-Rust capability findings to their callables
+- *(core)* [**breaking**] attribute Rust capability findings to their callables
+- [**breaking**] implement module-boundary-integrity
+
+### Other
+
+- give each attribution rule one owner and one query
+- *(release)* prove one workspace-wide packaging invocation
+- *(release)* prove absolute packaged target roots
+- *(release)* prove packaged members are extracted archives
+- *(release)* prove exact packaged budget mapping
+- split the packaged workspace proof into tool and release stages
+- *(ci)* prove the packaged graph refuses every unreleaseable shape
+- prove the packaged release archives compile together
+- add tracked cargo infrastructure classifier
+
 ## [0.21.2](https://github.com/jostled-org/pedant/compare/pedant-core-v0.21.1...pedant-core-v0.21.2) - 2026-08-13
 
 ### Fixed

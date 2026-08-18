@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/jostled-org/pedant/compare/pedant-graph-v0.2.0...pedant-graph-v0.3.0) - 2026-08-18
+
+### Added
+
+- [**breaking**] implement module-boundary-integrity
+
 ## [0.2.0](https://github.com/jostled-org/pedant/compare/pedant-graph-v0.1.2...pedant-graph-v0.2.0) - 2026-08-14
 
 ### Added

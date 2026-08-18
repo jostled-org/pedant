@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0](https://github.com/jostled-org/pedant/compare/pedant-mcp-v0.13.5...pedant-mcp-v0.14.0) - 2026-08-18
+
+### Added
+
+- *(lang)* [**breaking**] attribute non-Rust capability findings to their callables
+- *(core)* [**breaking**] attribute Rust capability findings to their callables
+- [**breaking**] implement module-boundary-integrity
+
+### Other
+
+- give each attribution rule one owner and one query
+- *(mcp)* prove the watcher reindexes an edit to a live source
+- *(mcp)* prove indexed attribution status comes from language analysis
+
 ## [0.13.5](https://github.com/jostled-org/pedant/compare/pedant-mcp-v0.13.4...pedant-mcp-v0.13.5) - 2026-08-13
 
 ### Fixed

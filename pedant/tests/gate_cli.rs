@@ -34,6 +34,9 @@ mod ownership;
 #[path = "gate_cli_support/project.rs"]
 mod project;
 
+#[path = "gate_cli_support/release_ownership.rs"]
+mod release_ownership;
+
 #[path = "gate_cli_support/topology.rs"]
 mod topology;
 

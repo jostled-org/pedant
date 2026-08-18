@@ -28,6 +28,7 @@ const GATE_SUPPORT_MODULES: &[&str] = &[
     "output.rs",
     "ownership.rs",
     "project.rs",
+    "release_ownership.rs",
     "semantic.rs",
     "topology.rs",
 ];
@@ -381,7 +382,11 @@ pub(crate) fn repository_boundaries_are_exact() {
     );
 
     production_source_holds_no_tests();
-    dependency_edge_is_versioned_and_ordered();
+    crate::release_ownership::dependency_edge_is_versioned_and_ordered(
+        &read(&manifest_dir().join("Cargo.toml")),
+        &read(&workspace_root().join("pedant-graph/Cargo.toml")),
+        &read(&workspace_root().join("release-plz.toml")),
+    );
     graph_holds_no_policy_owner();
     release_only_manifest_check_is_release_only();
 }
@@ -414,37 +419,6 @@ fn collect_sources(root: &Path, found: &mut Vec<PathBuf>) {
             (false, false) => (),
         }
     }
-}
-
-/// The one new first-party edge is a versioned normal path dependency, and the
-/// graph still releases before the CLI.
-fn dependency_edge_is_versioned_and_ordered() {
-    let manifest = read(&manifest_dir().join("Cargo.toml"));
-    let edges: Vec<&str> = manifest
-        .lines()
-        .filter(|line| line.trim_start().starts_with("pedant-graph = "))
-        .collect();
-    assert_eq!(
-        edges,
-        ["pedant-graph = { version = \"0.2.0\", path = \"../pedant-graph\" }"],
-        "exactly one versioned path edge to the graph package"
-    );
-    let (normal, rest) = manifest
-        .split_once("[dev-dependencies]")
-        .expect("the manifest states development dependencies");
-    assert!(
-        normal.contains("pedant-graph = ") && !rest.contains("pedant-graph = "),
-        "the graph edge is a normal dependency"
-    );
-
-    let order = read(&workspace_root().join("release-plz.toml"));
-    let graph = order
-        .find("name = \"pedant-graph\"")
-        .expect("the graph package is released");
-    let cli = order
-        .find("name = \"pedant\"\n")
-        .expect("the CLI package is released");
-    assert!(graph < cli, "the graph publishes before the CLI package");
 }
 
 /// Policy vocabulary the topology library may not own.

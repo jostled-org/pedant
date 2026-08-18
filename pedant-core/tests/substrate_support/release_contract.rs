@@ -10,6 +10,7 @@
 //! model. None builds, spawns, or reads outside the repository.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 
 use crate::resolution::authority_scan::read_text;
 
@@ -143,6 +144,42 @@ fn published_versions_and_requirements_form_releaseable_graph() {
             );
         }
     }
+}
+
+#[test]
+fn main_package_changelog_has_one_root_authority() {
+    let release = parse_toml("release-plz.toml");
+    let pedant = release
+        .get("package")
+        .and_then(toml::Value::as_array)
+        .expect("release-plz.toml declares packages")
+        .iter()
+        .find(|entry| entry.get("name").and_then(toml::Value::as_str) == Some("pedant"))
+        .expect("release-plz.toml declares the main package");
+    assert_eq!(
+        pedant.get("changelog_path").and_then(toml::Value::as_str),
+        Some("./CHANGELOG.md"),
+        "release-plz updates the repository changelog for the main package"
+    );
+
+    let manifest = parse_toml("pedant/Cargo.toml");
+    let version = declared_version(&manifest, "pedant");
+    let changelog = read_text("CHANGELOG.md");
+    let release_heading = format!("## [{version}](");
+    assert!(
+        changelog
+            .lines()
+            .any(|line| line.starts_with(&release_heading)),
+        "the repository changelog includes the current main-package release"
+    );
+    assert!(
+        !Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("pedant-core is inside the workspace root")
+            .join("pedant/CHANGELOG.md")
+            .exists(),
+        "a second main-package changelog would drift from the root authority"
+    );
 }
 
 #[test]

@@ -27,3 +27,4 @@ name = "pedant-mcp"
 
 [[package]]
 name = "pedant"
+changelog_path = "./CHANGELOG.md"

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.28.1](https://github.com/jostled-org/pedant/compare/pedant-v0.28.0...pedant-v0.28.1) - 2026-08-18
+
+### Fixed
+
+- *(ci)* track release-managed graph version
+
 ## [0.28.0](https://github.com/jostled-org/pedant/compare/pedant-v0.27.5...pedant-v0.28.0) - 2026-08-18
 
 ### Added

@@ -1,6 +1,6 @@
 //! Typed failures returned while resolving a snapshot into a report.
 
-use pedant_types::ResolutionReportError;
+use pedant_types::{ReferenceKind, ResolutionReportError, SymbolKind};
 
 use crate::resolution::rust::warning::RustResolutionWarning;
 
@@ -21,6 +21,27 @@ pub enum RustResolutionError {
     UnknownFile {
         /// The repository-relative path the site named.
         file: Box<str>,
+    },
+    /// A report definition states a kind no Rust resolution emits.
+    ///
+    /// The shared report vocabulary is one closed set for every language it
+    /// carries. A Rust resolution states the Rust subset of it, and a report
+    /// naming another language's kind describes something this snapshot's
+    /// sources cannot declare.
+    #[error("definition {definition} states {kind:?}, which no Rust resolution emits")]
+    UnsupportedDefinitionKind {
+        /// The report-local definition identifier that states it.
+        definition: u32,
+        /// The kind outside the Rust subset.
+        kind: SymbolKind,
+    },
+    /// A report reference states a kind no Rust resolution emits.
+    #[error("reference {reference} states {kind:?}, which no Rust resolution emits")]
+    UnsupportedReferenceKind {
+        /// The report-local reference identifier that states it.
+        reference: u32,
+        /// The kind outside the Rust subset.
+        kind: ReferenceKind,
     },
     /// A site's coordinate does not exist in the exact snapshotted source.
     #[error("{file}:{line}:{column} is not a coordinate of the snapshotted source")]

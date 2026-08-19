@@ -15,8 +15,9 @@ use crate::resolution::report_views::{
     render_targets, render_units, target_for,
 };
 use crate::resolution::syntactic_asserts::{
-    assert_binding_refused, assert_coordinate_accepted, assert_coordinate_refused, resolution_json,
-    resolve_library, resolve_with_snapshot, span_at, span_between,
+    assert_binding_refused, assert_coordinate_accepted, assert_coordinate_refused,
+    assert_go_only_kinds_are_refused, resolution_json, resolve_library, resolve_with_snapshot,
+    span_at, span_between,
 };
 use crate::resolution::syntactic_expectations::{
     CONDITION_CASES, CONDITION_CONTROL, CORPUS_BINDINGS, CORPUS_DEFINITIONS, CORPUS_RECORDS,
@@ -101,6 +102,23 @@ fn target_resolution_rejects_mapping_file_and_coordinate_mismatch() {
         "a multiline span whose end line is past the end of the source",
         span_between("src/lib.rs", (1, 0), (99, 0)),
     );
+}
+
+/// The shared report vocabulary carries every language's kinds; a Rust
+/// resolution carries only the Rust subset of them.
+///
+/// The wrapper is the one boundary a Rust report leaves the resolver through,
+/// so the subset is proved there rather than trusted of every producer. Each
+/// row states a coordinate-valid report whose only unusual property is its
+/// kind, and the control rows state the same shape with a Rust kind.
+#[test]
+fn rust_resolution_rejects_go_only_kinds() {
+    let tmp = fixture::build_repository(NON_ASCII_CRLF, false);
+    let project = fixture::load_default(&tmp);
+    let snapshot = project
+        .snapshot_resolution(app_library(&project))
+        .expect("the fixture snapshots");
+    assert_go_only_kinds_are_refused(&snapshot, &span_between("src/lib.rs", (1, 0), (4, 4)));
 }
 
 #[cfg(feature = "resolution-test-support")]

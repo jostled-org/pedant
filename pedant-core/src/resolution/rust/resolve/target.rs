@@ -3,16 +3,22 @@
 //!
 //! A report is only meaningful beside the snapshot it describes, so every
 //! resolver entry point returns this wrapper and nothing else. Construction
-//! rebinds the report's units to snapshot units by their stable keys and proves
-//! every site coordinate exists in the exact snapshotted source; a report built
-//! against another snapshot cannot pass.
+//! rebinds the report's units to snapshot units by their stable keys, proves
+//! every site names a kind a Rust resolution emits, and proves every site
+//! coordinate exists in the exact snapshotted source; a report built against
+//! another snapshot cannot pass.
+//!
+//! The kind check is what makes the shared report vocabulary safe to widen. It
+//! is one closed set across every language a report can carry, and each
+//! language's wrapper states its own subset of it here, so adding a kind for
+//! one language cannot quietly become a kind another one accepts.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use pedant_types::{
-    ResolutionReport, ResolutionUnit, ResolutionUnitId, SourceSpan, SymbolDefinition,
-    SymbolReference,
+    ReferenceKind, ResolutionReport, ResolutionUnit, ResolutionUnitId, SourceSpan,
+    SymbolDefinition, SymbolKind, SymbolReference,
 };
 
 use crate::resolution::rust::fingerprint::RustSnapshotFingerprint;
@@ -94,6 +100,8 @@ impl RustTargetResolution {
         report: ResolutionReport,
     ) -> Result<Self, RustResolutionError> {
         let units = bind_units(snapshot, report.units())?;
+        validate_definition_kinds(&report)?;
+        validate_reference_kinds(&report)?;
         validate_sites(snapshot, &report)?;
         Ok(Self {
             root_target: snapshot.root_target(),
@@ -196,6 +204,74 @@ fn bind_unit(
         package: found.package(),
         target: found.target(),
     })
+}
+
+/// Prove every definition names a kind a Rust resolution emits.
+fn validate_definition_kinds(report: &ResolutionReport) -> Result<(), RustResolutionError> {
+    match report
+        .definitions()
+        .iter()
+        .find(|definition| !is_rust_definition_kind(definition.kind()))
+    {
+        None => Ok(()),
+        Some(definition) => Err(RustResolutionError::UnsupportedDefinitionKind {
+            definition: definition.id().index(),
+            kind: definition.kind(),
+        }),
+    }
+}
+
+/// Prove every reference names a kind a Rust resolution emits.
+fn validate_reference_kinds(report: &ResolutionReport) -> Result<(), RustResolutionError> {
+    match report
+        .references()
+        .iter()
+        .find(|reference| !is_rust_reference_kind(reference.kind()))
+    {
+        None => Ok(()),
+        Some(reference) => Err(RustResolutionError::UnsupportedReferenceKind {
+            reference: reference.id().index(),
+            kind: reference.kind(),
+        }),
+    }
+}
+
+/// Whether one definition kind is a kind a Rust resolution emits.
+///
+/// Every variant of the shared vocabulary is named. A kind added for another
+/// language is therefore a compile error here rather than a value this
+/// boundary admits by falling through a wildcard, and a Rust kind cannot be
+/// dropped from the subset without one.
+fn is_rust_definition_kind(kind: SymbolKind) -> bool {
+    match kind {
+        SymbolKind::Module
+        | SymbolKind::Function
+        | SymbolKind::Method
+        | SymbolKind::Struct
+        | SymbolKind::Enum
+        | SymbolKind::Union
+        | SymbolKind::Trait
+        | SymbolKind::TypeAlias
+        | SymbolKind::Constant
+        | SymbolKind::Static => true,
+        SymbolKind::Package
+        | SymbolKind::Interface
+        | SymbolKind::DefinedType
+        | SymbolKind::Variable
+        | SymbolKind::Field => false,
+    }
+}
+
+/// Whether one reference kind is a kind a Rust resolution emits.
+fn is_rust_reference_kind(kind: ReferenceKind) -> bool {
+    match kind {
+        ReferenceKind::Module
+        | ReferenceKind::Import
+        | ReferenceKind::Call
+        | ReferenceKind::Type
+        | ReferenceKind::Implementation => true,
+        ReferenceKind::Value => false,
+    }
 }
 
 /// Prove every stated coordinate against the exact snapshotted source.

@@ -84,10 +84,11 @@ impl Vocabulary {
         }
     }
 
-    /// The node kind one Rust definition takes.
-    pub(crate) fn definition(&self, kind: SymbolKind) -> GraphNodeKind {
-        let (category, declaration) = self.declared(kind);
-        category.node(Arc::clone(declaration))
+    /// The node kind one Rust definition takes, or `None` for a kind no Rust
+    /// report states.
+    pub(crate) fn definition(&self, kind: SymbolKind) -> Option<GraphNodeKind> {
+        let (category, declaration) = self.declared(kind)?;
+        Some(category.node(Arc::clone(declaration)))
     }
 
     /// Whether one held node kind is the kind this vocabulary states for
@@ -98,27 +99,36 @@ impl Vocabulary {
     /// token and drop it again for every answer, on the one path whose purpose
     /// is to cost less than deriving the projection would.
     pub(crate) fn states_definition(&self, held: &GraphNodeKind, kind: SymbolKind) -> bool {
-        DefinitionCategory::stated(held) == Some(self.declared(kind))
+        self.declared(kind)
+            .is_some_and(|stated| DefinitionCategory::stated(held) == Some(stated))
     }
 
-    /// The category and declaration token one Rust definition kind takes.
+    /// The category and declaration token one Rust definition kind takes, or
+    /// `None` for a kind no Rust report states.
     ///
-    /// Every `SymbolKind` a Rust report emits is named, so a new one is a
-    /// compile error here rather than a silent fallback category. This is the
-    /// one statement of the vocabulary: minting a kind and comparing one both
-    /// read it.
-    fn declared(&self, kind: SymbolKind) -> (DefinitionCategory, &Arc<str>) {
+    /// Every `SymbolKind` is named, so a new one is a compile error here rather
+    /// than a silent fallback category. The kinds another language owns are
+    /// named too, and answer `None`: giving one of them a Rust token would let
+    /// this projection state a node for a definition the Rust resolver refuses
+    /// to emit at all. This is the one statement of the vocabulary — minting a
+    /// kind and comparing one both read it.
+    fn declared(&self, kind: SymbolKind) -> Option<(DefinitionCategory, &Arc<str>)> {
         match kind {
-            SymbolKind::Module => (DefinitionCategory::Container, &self.module_level),
-            SymbolKind::Function => (DefinitionCategory::Function, &self.function),
-            SymbolKind::Method => (DefinitionCategory::Function, &self.method),
-            SymbolKind::Struct => (DefinitionCategory::Type, &self.structure),
-            SymbolKind::Enum => (DefinitionCategory::Type, &self.enumeration),
-            SymbolKind::Union => (DefinitionCategory::Type, &self.union),
-            SymbolKind::Trait => (DefinitionCategory::Type, &self.trait_declaration),
-            SymbolKind::TypeAlias => (DefinitionCategory::Type, &self.type_alias),
-            SymbolKind::Constant => (DefinitionCategory::Value, &self.constant),
-            SymbolKind::Static => (DefinitionCategory::Value, &self.static_declaration),
+            SymbolKind::Module => Some((DefinitionCategory::Container, &self.module_level)),
+            SymbolKind::Function => Some((DefinitionCategory::Function, &self.function)),
+            SymbolKind::Method => Some((DefinitionCategory::Function, &self.method)),
+            SymbolKind::Struct => Some((DefinitionCategory::Type, &self.structure)),
+            SymbolKind::Enum => Some((DefinitionCategory::Type, &self.enumeration)),
+            SymbolKind::Union => Some((DefinitionCategory::Type, &self.union)),
+            SymbolKind::Trait => Some((DefinitionCategory::Type, &self.trait_declaration)),
+            SymbolKind::TypeAlias => Some((DefinitionCategory::Type, &self.type_alias)),
+            SymbolKind::Constant => Some((DefinitionCategory::Value, &self.constant)),
+            SymbolKind::Static => Some((DefinitionCategory::Value, &self.static_declaration)),
+            SymbolKind::Package
+            | SymbolKind::Interface
+            | SymbolKind::DefinedType
+            | SymbolKind::Variable
+            | SymbolKind::Field => None,
         }
     }
 }
@@ -165,16 +175,20 @@ impl DefinitionCategory {
     }
 }
 
-/// What one Rust reference denotes at the graph layer.
+/// What one Rust reference denotes at the graph layer, or `None` for a kind no
+/// Rust report states.
 ///
 /// A module declaration and a type mention are both general source relations
-/// here, so five consumed kinds become four graph kinds.
-pub(crate) fn reference_kind(kind: ReferenceKind) -> GraphReferenceKind {
+/// here, so five consumed kinds become four graph kinds. A value reference is
+/// another language's vocabulary and is refused for the reason
+/// [`Vocabulary::declared`] gives.
+pub(crate) fn reference_kind(kind: ReferenceKind) -> Option<GraphReferenceKind> {
     match kind {
-        ReferenceKind::Call => GraphReferenceKind::Call,
-        ReferenceKind::Import => GraphReferenceKind::Import,
-        ReferenceKind::Implementation => GraphReferenceKind::Implementation,
-        ReferenceKind::Module | ReferenceKind::Type => GraphReferenceKind::Reference,
+        ReferenceKind::Call => Some(GraphReferenceKind::Call),
+        ReferenceKind::Import => Some(GraphReferenceKind::Import),
+        ReferenceKind::Implementation => Some(GraphReferenceKind::Implementation),
+        ReferenceKind::Module | ReferenceKind::Type => Some(GraphReferenceKind::Reference),
+        ReferenceKind::Value => None,
     }
 }
 

@@ -80,6 +80,23 @@ pub enum GraphBuildError {
         /// The report-local definition identifier that named nothing.
         definition: u32,
     },
+    /// A report definition states a kind no Rust projection has a node for.
+    ///
+    /// The shared report vocabulary carries every language's kinds. A Rust
+    /// resolution is validated against the Rust subset before it is published,
+    /// so this refusal answers a report that reached the projection without
+    /// that validation rather than a repository that declares something new.
+    #[error("definition {definition} states a kind no Rust projection names")]
+    UnnamedDefinitionKind {
+        /// The report-local definition identifier whose kind has no node.
+        definition: u32,
+    },
+    /// A report reference states a kind no Rust projection has a record for.
+    #[error("reference {reference} states a kind no Rust projection names")]
+    UnnamedReferenceKind {
+        /// The report-local reference identifier whose kind has no record.
+        reference: u32,
+    },
     /// An edge was produced for a reference record this graph does not hold.
     #[error("reference {reference} has no record in this graph")]
     MissingReferenceRecord {

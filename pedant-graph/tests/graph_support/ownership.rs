@@ -15,171 +15,12 @@ use super::surface::{
     declared_error_variants, declared_items, derived_paths, public_constructors, public_fields,
 };
 
-/// The entry points a pure projection may never reach.
-///
-/// Each is the exact production spelling a widening change would introduce.
-const FORBIDDEN_ENTRY_POINTS: &[&str] = &[
-    "RustProject::load",
-    "snapshot_resolution",
-    "snapshot_target",
-    "snapshot_package",
-    "SemanticContext",
-    "RustResolver",
-    "resolve_syntactic",
-    "resolve_semantic",
-    "syn::parse_file",
-    "parse_source",
-    "std::fs",
-    "std::process",
-    "Command::new",
-    "include_str!",
-];
-
-/// Spellings that would let a production path abort instead of refuse.
-///
-/// Every source is scanned for every spelling, because a crate that keeps none
-/// of them anywhere costs nothing to hold to that rule and a check narrowed to
-/// three files would miss the fourth.
-const PANIC_SPELLINGS: &[&str] = &["unwrap(", "expect(", "panic!", "unreachable!", "todo!"];
-
-/// The sole assembly-state construction site, in source spelling.
-///
-/// The parsed body renders `::` with spaces around it, so the token form is
-/// derived from this one constant rather than written a second time.
-const STATE_CONSTRUCTOR: &str = "ProjectionState::new";
-
-/// The exact signature the sole projection-state constructor declares.
-const STATE_CONSTRUCTOR_SIGNATURE: &str =
-    "pub(crate) fn new(limits: GraphLimits, capacity: ProjectionCapacity)";
-
-/// The sole checked insertion owner every minted identity passes through.
-const INSERTION_OWNER: &str = "fn admit";
-
-/// Every `GraphBuildError` variant, beside the exact sources allowed to build
-/// it, in the order [`SOURCES`] lists them.
-///
-/// Every variant has exactly one owning source. Two are the store's own —
-/// `src/graph.rs` refuses an edge whose record it does not hold and refuses a
-/// collection at its ceiling — and the validation owner states every other, so
-/// a projection pass or an index table that built a refusal of its own fails
-/// here rather than stating a join nothing else checks.
-const ERROR_OWNERS: &[(&str, &[&str])] = &[
-    (
-        "GraphBuildError::RootTargetMismatch",
-        &["src/rust/validation.rs"],
-    ),
-    (
-        "GraphBuildError::SnapshotFingerprintMismatch",
-        &["src/rust/validation.rs"],
-    ),
-    (
-        "GraphBuildError::MissingUnitBinding",
-        &["src/rust/validation.rs"],
-    ),
-    (
-        "GraphBuildError::DanglingUnitBinding",
-        &["src/rust/validation.rs"],
-    ),
-    (
-        "GraphBuildError::SharedUnitBinding",
-        &["src/rust/validation.rs"],
-    ),
-    (
-        "GraphBuildError::MissingDependencyUnit",
-        &["src/rust/validation.rs"],
-    ),
-    (
-        "GraphBuildError::MissingSourceNode",
-        &["src/rust/validation.rs"],
-    ),
-    (
-        "GraphBuildError::RepeatedUnitSource",
-        &["src/rust/validation.rs"],
-    ),
-    (
-        "GraphBuildError::ReferenceRecordMismatch",
-        &["src/rust/validation.rs"],
-    ),
-    (
-        "GraphBuildError::MissingDefinitionNode",
-        &["src/rust/validation.rs"],
-    ),
-    (
-        "GraphBuildError::MissingReferenceRecord",
-        // The store refuses an edge whose record it does not hold; the
-        // validation owner refuses a plan whose report-order slot names no
-        // reference at all. Both are the same claim about a record that answers
-        // for nothing, one made at the store and one made before it.
-        &["src/graph.rs", "src/rust/validation.rs"],
-    ),
-    (
-        "GraphBuildError::UnknownContainmentNode",
-        &["src/rust/validation.rs"],
-    ),
-    (
-        "GraphBuildError::MultiplyContained",
-        &["src/rust/validation.rs"],
-    ),
-    (
-        "GraphBuildError::UnparentedNode",
-        &["src/rust/validation.rs"],
-    ),
-    (
-        "GraphBuildError::RootHasParent",
-        &["src/rust/validation.rs"],
-    ),
-    (
-        "GraphBuildError::ContainmentCycle",
-        &["src/rust/validation.rs"],
-    ),
-    ("GraphBuildError::CapacityExceeded", &["src/graph.rs"]),
-];
-
-/// The validators the planner must reach, in the order it reaches them.
-const PLANNED_VALIDATORS: &[&str] = &[
-    "check_root_target",
-    "check_snapshot_identity",
-    "resolved_references",
-    "stated_binding",
-    "snapshot_instance",
-    "distinct_binding",
-    "definition_identity",
-    "definition_fragment",
-    "placed_slot",
-    "dependency_unit",
-];
-
-/// The validators the planner reaches through the identity table it derives.
-const IDENTIFIED_VALIDATORS: &[&str] = &["instantiated_source"];
-
-/// The validator the source placement must reach before it states a source.
-///
-/// A unit that instantiates one path twice would mint a second file node for a
-/// source the placement then holds no records for, so the repeat is refused
-/// where the unit's own sources are read.
-const PLACED_VALIDATORS: &[&str] = &["distinct_source"];
-
-/// The validator the assembly tables must reach before a binding is dropped.
-const BOUND_VALIDATORS: &[&str] = &["unit_scope"];
-
-/// The validators the claim owner must reach before it states a key.
-///
-/// A claim names a fragment, the unit that placed it, and the bytes it was
-/// derived from. Each of those is a join, and a claim that read one without
-/// proving it could answer a later build for a source this snapshot never had.
-const CLAIMED_VALIDATORS: &[&str] = &["planned_unit", "source_digest"];
-
-/// The validators the assembler must reach before it seals a graph.
-const ASSEMBLED_VALIDATORS: &[&str] = &[
-    "planned_definition",
-    "planned_reference",
-    "fragment_source",
-    "fragment_unit",
-    "unit_container",
-    "source_node",
-    "definition_node",
-    "check_containment_forest",
-];
+use super::ownership_model::{
+    ASSEMBLED_VALIDATORS, BOUND_VALIDATORS, CLAIMED_VALIDATORS, CONTAINMENT_OWNER,
+    CONTAINMENT_VALIDATORS, ERROR_OWNERS, FORBIDDEN_ENTRY_POINTS, IDENTIFIED_VALIDATORS,
+    INSERTION_OWNER, PANIC_SPELLINGS, PLACED_VALIDATORS, PLANNED_VALIDATORS, PROJECTED_VALIDATORS,
+    STATE_CONSTRUCTOR, STATE_CONSTRUCTOR_SIGNATURE, VALIDATION_OWNER,
+};
 
 /// The discovered source set equals the model, is non-empty, and names no
 /// loader, snapshot, parser, semantic, or resolver entry point.
@@ -353,15 +194,33 @@ pub fn assert_one_checked_insertion_owner() {
 /// every error variant is built only by the source that owns it, and no
 /// production source can abort instead of refusing.
 pub fn assert_defensive_paths_are_wired() {
-    for (reader, validators) in [
-        ("src/rust/projection.rs", PLANNED_VALIDATORS),
-        ("src/rust/identity.rs", IDENTIFIED_VALIDATORS),
-        ("src/rust/fragment.rs", PLACED_VALIDATORS),
-        ("src/rust/index.rs", BOUND_VALIDATORS),
-        ("src/rust/claim.rs", CLAIMED_VALIDATORS),
-        ("src/rust/assembly.rs", ASSEMBLED_VALIDATORS),
+    for (owner, reader, validators) in [
+        (
+            VALIDATION_OWNER,
+            "src/rust/projection.rs",
+            PLANNED_VALIDATORS,
+        ),
+        (
+            VALIDATION_OWNER,
+            "src/rust/identity.rs",
+            IDENTIFIED_VALIDATORS,
+        ),
+        (VALIDATION_OWNER, "src/rust/source.rs", PROJECTED_VALIDATORS),
+        (VALIDATION_OWNER, "src/rust/fragment.rs", PLACED_VALIDATORS),
+        (VALIDATION_OWNER, "src/rust/index.rs", BOUND_VALIDATORS),
+        (VALIDATION_OWNER, "src/rust/claim.rs", CLAIMED_VALIDATORS),
+        (
+            VALIDATION_OWNER,
+            "src/rust/assembly.rs",
+            ASSEMBLED_VALIDATORS,
+        ),
+        (
+            CONTAINMENT_OWNER,
+            "src/rust/assembly.rs",
+            CONTAINMENT_VALIDATORS,
+        ),
     ] {
-        assert_validators_are_reached(reader, validators);
+        assert_validators_are_reached(owner, reader, validators);
     }
     let entry = function_body("src/rust/assembly.rs", "assemble");
     let finish = position_of(&entry, "state . finish", "the assembler");
@@ -408,8 +267,8 @@ pub fn assert_defensive_paths_are_wired() {
 /// is still bound on both sides — by the opening parenthesis or by the opening
 /// angle bracket — so a longer name that merely starts with a modelled one
 /// answers for neither.
-fn assert_validators_are_reached(reader: &str, validators: &[&str]) {
-    let validation = source("src/rust/validation.rs");
+fn assert_validators_are_reached(owner: &str, reader: &str, validators: &[&str]) {
+    let validation = source(owner);
     let text = source(reader);
     for validator in validators {
         let declarations = [
@@ -420,7 +279,7 @@ fn assert_validators_are_reached(reader: &str, validators: &[&str]) {
             declarations
                 .iter()
                 .any(|declaration| validation.contains(declaration)),
-            "{validator} is not declared by the validation owner"
+            "{validator} is not declared by {owner}"
         );
         assert!(
             text.contains(validator),

@@ -10,6 +10,16 @@ use super::id::{DefinitionId, ResolutionUnitId};
 use super::span::SourceSpan;
 
 /// The closed vocabulary of definitions a report emits.
+///
+/// The set is shared by every language a report can carry, and no variant is
+/// admitted by all of them. A consumer bound to one language proves the subset
+/// it accepts at its own validation boundary; nothing here widens what a
+/// language may state.
+///
+/// New variants are appended rather than inserted. The derived order is what
+/// the validator's sorted collections and a consumer's comparisons read, so a
+/// variant placed among the published ones would reorder reports nothing else
+/// changed.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum SymbolKind {
@@ -33,6 +43,17 @@ pub enum SymbolKind {
     Constant,
     /// A static.
     Static,
+    /// A package: the namespace a group of sources compile into together.
+    Package,
+    /// An interface: a named method set a concrete type may satisfy
+    /// structurally.
+    Interface,
+    /// A defined type: a named type declared over an underlying one.
+    DefinedType,
+    /// A variable: a named, mutable binding at package or local scope.
+    Variable,
+    /// A field: a named member declared inside a type.
+    Field,
 }
 
 /// One definition site inside one resolution unit.

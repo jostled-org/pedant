@@ -86,7 +86,7 @@ fn projected_definition(
     Ok(DefinitionProjection {
         identity: Arc::clone(validation::definition_identity(stated.table, at)?),
         language: definition.language(),
-        kind: stated.vocabulary.definition(definition.kind()),
+        kind: validation::definition_kind(stated.vocabulary, definition)?,
         parent: projected_join(
             stated.table,
             definition.parent().map(|parent| parent.index()),
@@ -113,7 +113,7 @@ fn projected_reference(
     reported: (&SymbolReference, &ResolutionRecord),
 ) -> Result<ReferenceProjection, GraphBuildError> {
     let (reference, record) = reported;
-    let kind = mapping::reference_kind(reference.kind());
+    let kind = validation::reference_kind(reference)?;
     Ok(ReferenceProjection {
         language: reference.language(),
         kind,
@@ -216,7 +216,11 @@ fn states_reference(
     reported: (&SymbolReference, &ResolutionRecord),
 ) -> bool {
     let (reference, record) = reported;
-    let kind = mapping::reference_kind(reference.kind());
+    // A kind this projection does not name is never a match: the source is
+    // derived again, and the derivation states the refusal that kind earns.
+    let Some(kind) = mapping::reference_kind(reference.kind()) else {
+        return false;
+    };
     held.language == reference.language()
         && held.kind == kind
         && *held.text == *reference.text()

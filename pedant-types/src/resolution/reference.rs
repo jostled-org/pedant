@@ -10,6 +10,9 @@ use super::id::{DefinitionId, ReferenceId, ResolutionUnitId};
 use super::span::SourceSpan;
 
 /// The closed vocabulary of references a report emits.
+///
+/// Shared across languages, and appended to rather than inserted into, for the
+/// reasons [`super::SymbolKind`] states.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum ReferenceKind {
@@ -23,6 +26,9 @@ pub enum ReferenceKind {
     Type,
     /// An implementation naming its type or its trait.
     Implementation,
+    /// A value read or written by name, in a position that calls nothing and
+    /// names no type.
+    Value,
 }
 
 /// One reference site inside one resolution unit.

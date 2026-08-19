@@ -11,9 +11,9 @@
 //! `conflicting-module-root` rule rejects beside `serialization.rs`. A sibling
 //! directory satisfies both rules.
 //!
-//! The five resolution predicates below stay at this root, unlike every other
-//! case: Step 1.6 selects them by bare name and the Step 7 owner-registration
-//! table lists them unqualified, so a module path would rename them.
+//! The resolution predicates below stay at this root, unlike every other case:
+//! a plan step selects them by bare name and the owner-registration tables list
+//! them unqualified, so a module path would rename them.
 
 /// The one valid resolution report every resolution case starts from.
 #[path = "serialization_support/resolution_fixture.rs"]
@@ -30,6 +30,10 @@ mod resolution_case_model;
 /// Every malformed wire report and its exact refusal.
 #[path = "serialization_support/resolution_cases.rs"]
 mod resolution_cases;
+
+/// The published Rust report's exact bytes.
+#[path = "serialization_support/resolution_wire_bytes.rs"]
+mod resolution_wire_bytes;
 
 /// Every malformed report a writer can state, and the refusal `finish` owes.
 #[path = "serialization_support/resolution_builder_cases.rs"]
@@ -192,4 +196,19 @@ fn resolution_report_enforces_unit_parent_candidate_and_certainty_rules() {
 #[test]
 fn rust_language_serializes_as_rust_and_resolution_records_use_it() {
     resolution_asserts::every_record_spells_its_language_rust();
+}
+
+/// The shared report vocabulary is one closed set for every language it
+/// carries, so the Go definition and reference kinds have exact wire spellings
+/// here and the published Rust ones keep theirs in place.
+#[test]
+fn go_resolution_vocabulary_has_exact_wire_spellings() {
+    enum_spelling_cases::assert_resolution_vocabulary_spellings();
+}
+
+/// Widening that vocabulary changes no byte of a report a Rust resolver
+/// already published.
+#[test]
+fn legacy_rust_resolution_wire_bytes_stay_exact() {
+    resolution_wire_bytes::assert_legacy_rust_report_bytes_stay_exact();
 }

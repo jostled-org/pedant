@@ -14,28 +14,21 @@ use pedant_core::resolution::rust::{
     RustResolutionSnapshot, RustResolutionUnit, RustSnapshotEdge, RustSnapshotUnitId,
     RustTargetResolution, RustUnitBinding,
 };
-use pedant_types::{ResolutionRecord, ResolutionReport, ResolutionUnit, SymbolReference};
+use pedant_types::{
+    ResolutionRecord, ResolutionReport, ResolutionUnit, SymbolDefinition, SymbolReference,
+};
 
-use crate::containment::ContainmentEdge;
 use crate::error::GraphBuildError;
 use crate::id::{GraphNodeId, index_of, position};
+use crate::node::GraphNodeKind;
+use crate::reference::GraphReferenceKind;
 
 use super::fragment::{
     DefinitionProjection, FragmentSlot, ProjectionPlan, ReferenceProjection, SourceSet, UnitPlan,
 };
 use super::identity::{DefinitionIdentity, DefinitionTable, SourceIdentity};
 use super::index::{ProjectionState, SourceScope};
-
-/// Where one node stands in the containment ancestor walk.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Visit {
-    /// Not yet reached.
-    Pending,
-    /// On the chain currently being walked.
-    Active,
-    /// Proved acyclic by an earlier walk.
-    Done,
-}
+use super::mapping::{self, Vocabulary};
 
 /// Both values must have been requested for the same Cargo target.
 pub(crate) fn check_root_target(
@@ -256,6 +249,32 @@ pub(crate) fn planned_definition(
         .ok_or(GraphBuildError::MissingDefinitionNode { definition })
 }
 
+/// The node kind one report definition takes in a Rust projection.
+///
+/// The refusal names the report-local definition whose kind this projection has
+/// no node for. `RustTargetResolution` proves the Rust subset before it
+/// publishes a report, so this answers only for a report that reached the
+/// projection without that proof.
+pub(crate) fn definition_kind(
+    vocabulary: &Vocabulary,
+    definition: &SymbolDefinition,
+) -> Result<GraphNodeKind, GraphBuildError> {
+    vocabulary
+        .definition(definition.kind())
+        .ok_or(GraphBuildError::UnnamedDefinitionKind {
+            definition: definition.id().index(),
+        })
+}
+
+/// What one report reference denotes in a Rust projection.
+pub(crate) fn reference_kind(
+    reference: &SymbolReference,
+) -> Result<GraphReferenceKind, GraphBuildError> {
+    mapping::reference_kind(reference.kind()).ok_or(GraphBuildError::UnnamedReferenceKind {
+        reference: reference.id().index(),
+    })
+}
+
 /// The reference one report-order slot of a plan states.
 pub(crate) fn planned_reference(
     plan: &ProjectionPlan,
@@ -338,162 +357,4 @@ pub(crate) fn definition_node(
     state
         .definition(identity)
         .ok_or(GraphBuildError::MissingDefinitionNode { definition: stated })
-}
-
-/// Containment must be one forest whose roots are exactly the unit containers.
-///
-/// Four rules over the stated edges: every edge names nodes this graph holds,
-/// no node is contained twice, every node below the unit containers is
-/// contained once, and no chain returns to itself. The unit containers are the
-/// first `units` nodes the assembly minted, so a node is a root exactly when
-/// its position is below that count.
-pub(crate) fn check_containment_forest(
-    state: &ProjectionState,
-    units: usize,
-) -> Result<(), GraphBuildError> {
-    let parents = stated_parents(state)?;
-    check_every_node_is_parented(&parents, units)?;
-    check_no_unit_root_is_contained(&parents, units)?;
-    check_acyclic(&parents)
-}
-
-/// One parent slot per node, refusing the second edge that claims a child.
-fn stated_parents(state: &ProjectionState) -> Result<Box<[Option<GraphNodeId>]>, GraphBuildError> {
-    let mut parents: Vec<Option<GraphNodeId>> = vec![None; state.node_count()];
-    for edge in state.containment() {
-        let slot = parent_slot(&mut parents, edge)?;
-        match slot {
-            Some(existing) => {
-                return Err(GraphBuildError::MultiplyContained {
-                    parent: existing.index(),
-                    child: edge.child().index(),
-                });
-            }
-            None => *slot = Some(edge.parent()),
-        }
-    }
-    Ok(parents.into_boxed_slice())
-}
-
-/// The slot one containment edge's child owns.
-fn parent_slot<'a>(
-    parents: &'a mut [Option<GraphNodeId>],
-    edge: &ContainmentEdge,
-) -> Result<&'a mut Option<GraphNodeId>, GraphBuildError> {
-    let child = edge.child();
-    parents
-        .get_mut(index_of(child.index()))
-        .ok_or(GraphBuildError::UnknownContainmentNode {
-            node: child.index(),
-        })
-}
-
-/// Every node below the unit containers states a parent.
-fn check_every_node_is_parented(
-    parents: &[Option<GraphNodeId>],
-    units: usize,
-) -> Result<(), GraphBuildError> {
-    parents
-        .iter()
-        .enumerate()
-        .skip(units)
-        .find(|(_, parent)| parent.is_none())
-        .map_or(Ok(()), |(index, _)| {
-            Err(GraphBuildError::UnparentedNode {
-                node: position(index),
-            })
-        })
-}
-
-/// No unit container is contained by anything.
-fn check_no_unit_root_is_contained(
-    parents: &[Option<GraphNodeId>],
-    units: usize,
-) -> Result<(), GraphBuildError> {
-    parents
-        .iter()
-        .enumerate()
-        .take(units)
-        .find_map(|(index, parent)| parent.map(|held| (index, held)))
-        .map_or(Ok(()), |(index, parent)| {
-            Err(GraphBuildError::RootHasParent {
-                root: position(index),
-                parent: parent.index(),
-            })
-        })
-}
-
-/// No containment chain returns to a node it already visited.
-fn check_acyclic(parents: &[Option<GraphNodeId>]) -> Result<(), GraphBuildError> {
-    let mut visits = vec![Visit::Pending; parents.len()];
-    let mut chain: Vec<usize> = Vec::new();
-    for start in 0..parents.len() {
-        walk_ancestors(parents, &mut visits, &mut chain, start)?;
-    }
-    Ok(())
-}
-
-fn walk_ancestors(
-    parents: &[Option<GraphNodeId>],
-    visits: &mut [Visit],
-    chain: &mut Vec<usize>,
-    start: usize,
-) -> Result<(), GraphBuildError> {
-    match visit_of(visits, start)? {
-        Visit::Pending => (),
-        Visit::Active | Visit::Done => return Ok(()),
-    }
-    chain.clear();
-    let mut current = Some(start);
-    let mut cycle = None;
-    while let Some(index) = current {
-        let visit = visit_of(visits, index)?;
-        cycle = (visit == Visit::Active).then_some(index);
-        match visit {
-            Visit::Pending => (),
-            Visit::Active | Visit::Done => break,
-        }
-        mark(visits, index, Visit::Active)?;
-        chain.push(index);
-        current = parents
-            .get(index)
-            .and_then(|parent| *parent)
-            .map(|parent| index_of(parent.index()));
-    }
-    for index in chain.drain(..) {
-        mark(visits, index, Visit::Done)?;
-    }
-    match cycle {
-        Some(index) => Err(GraphBuildError::ContainmentCycle {
-            node: position(index),
-        }),
-        None => Ok(()),
-    }
-}
-
-/// Where the walk left one node.
-///
-/// A position outside the node set is a stated parent this graph holds no node
-/// for, which is the one join a walk that answered `Done` would accept in
-/// silence.
-fn visit_of(visits: &[Visit], index: usize) -> Result<Visit, GraphBuildError> {
-    visits
-        .get(index)
-        .copied()
-        .ok_or(GraphBuildError::UnknownContainmentNode {
-            node: position(index),
-        })
-}
-
-/// Record where the walk left one node.
-fn mark(visits: &mut [Visit], index: usize, visit: Visit) -> Result<(), GraphBuildError> {
-    match visits.get_mut(index) {
-        Some(slot) => {
-            *slot = visit;
-            Ok(())
-        }
-        None => Err(GraphBuildError::UnknownContainmentNode {
-            node: position(index),
-        }),
-    }
 }

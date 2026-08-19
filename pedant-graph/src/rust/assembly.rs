@@ -13,6 +13,7 @@ use crate::graph::CodeGraph;
 use crate::id::{GraphNodeId, GraphReferenceId, position};
 use crate::limits::GraphLimits;
 
+use super::containment_check;
 use super::fragment::{FragmentSlot, ProjectionPlan, ReferenceProjection};
 use super::index::ProjectionState;
 use super::validation;
@@ -38,7 +39,7 @@ pub(crate) fn assemble(
     assemble_sources(&mut state, plan)?;
     assemble_definitions(&mut state, plan)?;
     assemble_containment(&mut state, plan)?;
-    validation::check_containment_forest(&state, units)?;
+    containment_check::check_containment_forest(&state, units)?;
     let references = assemble_references(&mut state, plan)?;
     assemble_dependencies(&mut state, plan)?;
     assemble_candidates(&mut state, &references)?;

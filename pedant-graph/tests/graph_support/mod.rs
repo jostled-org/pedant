@@ -94,6 +94,8 @@ pub mod inventory;
 pub mod isolation;
 /// Structural ownership of this crate's own production sources.
 pub mod ownership;
+/// The written-down model those ownership cases are read against.
+pub mod ownership_model;
 /// One syntactic report restated at the semantic tier.
 pub mod promotion;
 /// Comparable text taken from the public reading surface.

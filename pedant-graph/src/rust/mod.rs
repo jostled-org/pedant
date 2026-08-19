@@ -6,6 +6,8 @@ mod assembly;
 mod cache;
 /// The claim one retained source-unit projection answers for.
 mod claim;
+/// Containment as one acyclic forest of unit-rooted trees.
+mod containment_check;
 /// The two public entry points.
 mod entry;
 /// The graph-neutral projection one plan is made of.

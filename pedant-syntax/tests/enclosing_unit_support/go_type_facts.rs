@@ -113,8 +113,8 @@ const DECLARED_RESULTS: &[&str] = &[
     "serve|-|-|false",
 ];
 
-/// 2.T1 (Invariants 1-3): one bounded inventory states the written type, the
-/// initializer, and the declared result of every name the source binds.
+/// 5.T9 (Invariants 1-3): one bounded inventory states the written type, the
+/// initializer, and the declared result of every name Step 5 resolves.
 #[test]
 fn go_file_facts_state_every_written_type_and_initializer() {
     let facts = complete_facts();

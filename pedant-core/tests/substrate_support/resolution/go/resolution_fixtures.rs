@@ -71,7 +71,11 @@ pub const CALL_SHAPES: &[FixtureFile] = &[
     ),
     (
         "repo/calls.go",
-        "package app\n\nimport (\n\t\"fmt\"\n\t\"x/util\"\n)\n\ntype Label string\n\nfunc Local() string {\n\treturn \"local\"\n}\n\nfunc Direct() string {\n\treturn Local()\n}\n\nfunc Qualified() string {\n\treturn util.Name()\n}\n\nfunc External() string {\n\treturn fmt.Sprint(\"external\")\n}\n\nfunc Convert(raw string) Label {\n\treturn Label(raw)\n}\n\nfunc Indirect(fn func() string) string {\n\treturn fn()\n}\n\nfunc Closure() string {\n\tfn := Local\n\treturn fn()\n}\n",
+        "package app\n\nimport (\n\t\"fmt\"\n\t\"x/util\"\n)\n\ntype Label string\n\nfunc Local() string {\n\treturn \"local\"\n}\n\nfunc Direct() string {\n\treturn Local()\n}\n\nfunc Qualified() string {\n\treturn util.Name()\n}\n\nfunc External() string {\n\treturn fmt.Sprint(\"external\")\n}\n\nfunc Convert(raw string) Label {\n\treturn Label(raw)\n}\n\nfunc Indirect(fn func() string) string {\n\treturn fn()\n}\n\nfunc Closure() string {\n\tfn := Local\n\treturn fn()\n}\n\nfunc Missing() string {\n\treturn DoesNotExist()\n}\n",
+    ),
+    (
+        "repo/kinds.go",
+        "package app\n\ntype Code int\n\ntype CodeAlias = Code\n\nconst DefaultCode Code = 0\n\nvar CurrentCode Code\n\nfunc ConvertAlias(raw Code) CodeAlias {\n\treturn CodeAlias(raw)\n}\n",
     ),
 ];
 
@@ -122,7 +126,7 @@ pub const METHOD_SETS: &[FixtureFile] = &[
     ),
     (
         "repo/receivers.go",
-        "package app\n\nfunc Literal() string {\n\tn := Node{}\n\treturn n.Label()\n}\n\nfunc Address() string {\n\tn := &Node{}\n\treturn n.Ping()\n}\n\nfunc Result() string {\n\tn := NewNode()\n\treturn n.Label()\n}\n\nfunc Converted(raw Node) string {\n\tn := Node(raw)\n\treturn n.Label()\n}\n\nfunc Declared() string {\n\tvar n Node\n\treturn n.Label()\n}\n\nfunc Indexed(all []Node) string {\n\treturn all[0].Label()\n}\n\nfunc Renamed() string {\n\tn := Node{}\n\tn.Rename(\"next\")\n\treturn n.Label()\n}\n\nfunc Pointed() string {\n\tn := NewNode()\n\tn.Rename(\"next\")\n\treturn n.Label()\n}\n\nfunc Dereferenced() string {\n\tn := NewNode()\n\treturn (*n).Label()\n}\n\nfunc Addressed() string {\n\tn := Node{}\n\treturn (&n).Ping()\n}\n\nfunc Promoted() string {\n\tn := Node{}\n\treturn n.Trace()\n}\n",
+        "package app\n\nfunc Literal() string {\n\tn := Node{}\n\treturn n.Label()\n}\n\nfunc Address() string {\n\tn := &Node{}\n\treturn n.Ping()\n}\n\nfunc Result() string {\n\tn := NewNode()\n\treturn n.Label()\n}\n\nfunc Converted(raw Node) string {\n\tn := Node(raw)\n\treturn n.Label()\n}\n\nfunc Declared() string {\n\tvar n Node\n\treturn n.Label()\n}\n\nfunc Indexed(all []Node) string {\n\treturn all[0].Label()\n}\n\nfunc Renamed() string {\n\tn := Node{}\n\tn.Rename(\"next\")\n\treturn n.Label()\n}\n\nfunc Pointed() string {\n\tn := NewNode()\n\tn.Rename(\"next\")\n\treturn n.Label()\n}\n\nfunc Dereferenced() string {\n\tn := NewNode()\n\treturn (*n).Label()\n}\n\nfunc Addressed() string {\n\tn := Node{}\n\treturn (&n).Ping()\n}\n\nfunc Promoted() string {\n\tn := Node{}\n\treturn n.Trace()\n}\n\nfunc MissingMember() string {\n\tvar n Node\n\treturn n.Absent()\n}\n",
     ),
     (
         "repo/plat_linux.go",

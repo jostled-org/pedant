@@ -169,6 +169,17 @@ test_step_one_owns_the_repository_verifier_harness() {
     esac
 }
 
+# Step 5 consumes the written type and initializer facts while resolving calls
+# and concrete receivers. The predicate that states that complete input must be
+# selected exactly, not reached only as a side effect of the syntax root.
+test_step_five_owns_the_go_type_fact_contract() {
+    run_verifier "${GO_PLAN}" 5 VERIFY_STEP_LIST_ONLY=1
+    case "$(commands_of "${ROW_OUTPUT}")" in
+        *"pedant-syntax enclosing_unit ts-go go_file_facts_state_every_written_type_and_initializer"*) ;;
+        *) fail "Go step 5 must select the written type and initializer fact contract" ;;
+    esac
+}
+
 # The lint gate is derived from each step's specifications rather than written
 # beside them. A derivation that dropped a package would leave a crate the step
 # tests unlinted, which is the same silent narrowing by another route.
@@ -263,6 +274,7 @@ test_step_one_lists_its_own_predicates
 test_step_one_covers_the_graph_crate_it_changes
 test_step_one_owns_the_exact_test_harness
 test_step_one_owns_the_repository_verifier_harness
+test_step_five_owns_the_go_type_fact_contract
 test_every_go_step_lints_every_package_it_tests
 test_an_unrelated_valid_plan_keeps_generic_routing
 test_an_unrelated_plan_at_a_high_step_still_routes

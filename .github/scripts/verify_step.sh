@@ -253,6 +253,7 @@ exact pedant-core substrate ${core_go} go_concrete_method_sets_resolve_unique_an
 exact pedant-core substrate ${core_go} go_project_resolution_validates_every_snapshot_binding_and_kind
 exact pedant-core substrate ${core_go} go_resolution_limits_refuse_every_first_excess
 exact pedant-core substrate ${core_go} go_resolution_limit_checks_dominate_candidate_retention
+exact pedant-syntax enclosing_unit ts-go go_file_facts_state_every_written_type_and_initializer
 root pedant-core substrate ${core_go}
 root pedant-syntax enclosing_unit ts-go
 root pedant-lang capability ts-go

@@ -61,6 +61,21 @@ const BYTE_CONSUMER: &str = "pedant-core/src/resolution/rust/resolve/claim.rs";
 /// The one owner that completes a snapshot and computes its identity there.
 const COMPLETION_ADAPTER: &str = "pedant-core/src/resolution/rust/snapshot/resolution.rs";
 
+/// The Go half of the same three roles.
+///
+/// Go states its own claims and hashes them through the same framing owner, so
+/// the sole-site rule has to hold over both trees: a second hashing rule kept
+/// out of the Rust tree could otherwise simply be written in the Go one, and
+/// every Go coverage row would then perturb and hash entirely inside the proof
+/// boundary.
+const GO_FINGERPRINT_OWNER: &str = "pedant-core/src/resolution/go/fingerprint.rs";
+
+/// The one Go proof boundary allowed to delegate straight into that computation.
+const GO_PROOF_BUILDER: &str = "pedant-core/src/resolution/go/test_support.rs";
+
+/// The one Go owner that completes a snapshot and retains its identity.
+const GO_COMPLETION_ADAPTER: &str = "pedant-core/src/resolution/go/snapshot.rs";
+
 /// The two public owners that must retain the value.
 const RETAINED_OWNERS: &[&str] = &[
     COMPLETION_ADAPTER,
@@ -102,6 +117,7 @@ const CLAIM_ADAPTERS: &[(&str, &[&str])] = &[
 
 /// The trees a second snapshot-fingerprint hashing implementation could hide in.
 const HASHING_SCOPE: &[&str] = &[
+    "pedant-core/src/resolution/go/",
     "pedant-core/src/resolution/rust/resolve/",
     "pedant-core/src/resolution/rust/snapshot/",
     "pedant-core/src/resolution/rust/test_support/",
@@ -224,7 +240,11 @@ fn snapshot_fingerprint_production_claim_mapping_is_complete() {
 ///
 /// A search over the whole file passes for a fragment that moved into a
 /// neighbouring helper, which is the refactor these mappings must not survive.
-fn function_text<'a>(source: &'a str, subject: &str, signature: &str) -> &'a str {
+///
+/// Shared with the Go claim-mapping proof: both languages state their own
+/// adapter tables, and one reader serves both rather than two that could
+/// disagree about where a function body ends.
+pub(crate) fn function_text<'a>(source: &'a str, subject: &str, signature: &str) -> &'a str {
     let start = source
         .find(signature)
         .unwrap_or_else(|| panic!("{subject} states {signature}"));
@@ -345,6 +365,16 @@ fn assert_sole_hash_sites(sources: &[Source]) {
         "fn bytes(&self) -> &[u8; 32]",
         &[FINGERPRINT_OWNER],
     );
+    assert_sole_site(
+        sources,
+        "GoSnapshotFingerprint::from_claims",
+        &[GO_FINGERPRINT_OWNER, GO_PROOF_BUILDER],
+    );
+    assert_sole_site(
+        sources,
+        "fn from_claims(claims: &GoSnapshotClaims<'_>)",
+        &[GO_FINGERPRINT_OWNER],
+    );
 }
 
 /// No source in the hashing scope carries a second hasher.
@@ -399,6 +429,24 @@ fn assert_framing_delegation_and_retention(sources: &[Source]) {
             "{retained} must retain the value"
         );
     }
+
+    let go = sources
+        .iter()
+        .find(|source| &*source.path == GO_FINGERPRINT_OWNER)
+        .unwrap_or_else(|| panic!("{GO_FINGERPRINT_OWNER} is a scanned first-party source"));
+    assert!(
+        go.text.contains("ClaimDigest::new()"),
+        "{GO_FINGERPRINT_OWNER} must build its identity through the one framing owner"
+    );
+    assert!(
+        read_text(GO_PROOF_BUILDER)
+            .contains("GoSnapshotFingerprint::from_claims(&GoSnapshotClaims {"),
+        "the Go proof builder must delegate straight into the production constructor"
+    );
+    assert!(
+        read_text(GO_COMPLETION_ADAPTER).contains("GoSnapshotFingerprint"),
+        "{GO_COMPLETION_ADAPTER} must retain the value"
+    );
 }
 
 /// Each marker is named by exactly the sources allowed to name it.

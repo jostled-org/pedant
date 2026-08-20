@@ -20,10 +20,19 @@ const STORE: &str = "store.rs";
 const WALK: &str = "discovery.rs";
 const CONSTRUCTOR: &str = "unit_table.rs";
 
-/// The store's one interning body, and the two bodies it drives.
+/// The store's one interning body, and the three bodies it drives.
 const INTERN: &str = "intern";
 const BYTE_CHECK: &str = "checked_byte_length";
 const READER: &str = "read_and_walk";
+const EXTRACTION: &str = "extract";
+
+/// The fact ceilings the snapshot converts, the two walks they bound, and the
+/// digest and inventory those walks pay for.
+const FACT_CEILINGS: &str = "fact_limits";
+const PARSE_ROUTE: &str = "parse_bound";
+const FACT_WALK: &str = "go_file_facts";
+const SOURCE_DIGEST: &str = "digest_bytes";
+const INVENTORY: &str = "conditions_of";
 
 /// The ceilings the store owns.
 const SOURCE_CHECK: &str = "check_source_capacity";
@@ -55,11 +64,13 @@ const FILE_READ: &str = "read";
 const DIRECTORY_READ: &str = "read_dir";
 
 /// 4.T8 (Invariants 4, 5): canonical confinement dominates every source read,
-/// the directory-entry check dominates package-walk retention, and every
+/// the directory-entry check dominates package-walk retention, the fact
+/// ceilings dominate the one parse and the one fact walk they bound, and every
 /// source, byte, and unit ceiling dominates the table it pays for.
 #[test]
 fn go_snapshot_limit_checks_dominate_source_and_unit_retention() {
     assert_store_checks_dominate_retention();
+    assert_fact_ceilings_dominate_the_walk_they_bound();
     assert_walk_confines_and_budgets_before_retention();
     assert_unit_check_dominates_unit_retention();
     assert_single_site(SOURCE_CHECK, STORE);
@@ -68,11 +79,55 @@ fn go_snapshot_limit_checks_dominate_source_and_unit_retention() {
     assert_single_site(UNIT_CHECK, CONSTRUCTOR);
     assert_single_site(BUDGET_CHECK, WALK);
     assert_single_site(DIRECTORY_READ, WALK);
+    assert_single_site(FACT_CEILINGS, STORE);
+    assert_single_site(PARSE_ROUTE, STORE);
+    assert_single_site(FACT_WALK, STORE);
+    assert_single_snapshot_site(SOURCE_DIGEST, STORE);
     assert_single_snapshot_site(FILE_READ, STORE);
     assert_single_retention_site(SOURCE_RETENTION, STORE);
     assert_single_retention_site(INDEX_RETENTION, STORE);
     assert_single_retention_site(UNIT_RETENTION, CONSTRUCTOR);
     assert_single_retention_site(DIRECTORY_RETENTION, WALK);
+}
+
+/// The snapshot converts its own fact ceilings, hands them to the one bounded
+/// walk, and keeps nothing the walk produced until it has returned.
+///
+/// The other ceilings are checked in the body that grows a table. The two fact
+/// ceilings are not: they are spent inside `pedant-syntax`, which owns the
+/// order proof for descent and insertion. What this owner has to state instead
+/// is that they reach that walk at all, and that the parse, the walk, and the
+/// retention run in that order — an extraction that digested and stored the
+/// source first would be bounded by nothing this snapshot configured.
+fn assert_fact_ceilings_dominate_the_walk_they_bound() {
+    let store = parsed(STORE);
+    let reader = &method(&store, READER).block;
+    let converted = statement_naming(reader, FACT_CEILINGS).unwrap_or_else(|| {
+        panic!("`{READER}` should convert its ceilings through `{FACT_CEILINGS}`")
+    });
+    let retained = statement_naming(reader, SOURCE_DIGEST).unwrap_or_else(|| {
+        panic!("`{READER}` should mint the entry it keeps through `{SOURCE_DIGEST}`")
+    });
+    assert!(
+        converted < retained,
+        "`{READER}` must bound its walk (statement {converted}) before it mints a stored source (statement {retained})"
+    );
+
+    let extraction = &free(&store, EXTRACTION).block;
+    let parse = statement_naming(extraction, PARSE_ROUTE)
+        .unwrap_or_else(|| panic!("`{EXTRACTION}` should parse through `{PARSE_ROUTE}`"));
+    let walk = statement_naming(extraction, FACT_WALK)
+        .unwrap_or_else(|| panic!("`{EXTRACTION}` should walk through `{FACT_WALK}`"));
+    let inventory = statement_naming(extraction, INVENTORY)
+        .unwrap_or_else(|| panic!("`{EXTRACTION}` should state the retained inventory"));
+    assert!(
+        parse < walk,
+        "`{EXTRACTION}` must parse once (statement {parse}) before it walks for facts (statement {walk})"
+    );
+    assert!(
+        walk < inventory,
+        "`{EXTRACTION}` must walk under its ceilings (statement {walk}) before it retains an inventory (statement {inventory})"
+    );
 }
 
 /// The store checks its count before it grows, and its bytes before it reads.

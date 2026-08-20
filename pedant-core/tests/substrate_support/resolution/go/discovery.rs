@@ -12,8 +12,8 @@ use pedant_core::resolution::go::{GoProject, GoResolutionLimits, GoSnapshotError
 
 use crate::resolution::fixture::{FixtureFile, build_repository, repository_root};
 use crate::resolution::go::fixture::snapshot_default;
-use crate::resolution::go::snapshot_fixtures::RESERVED_TREES;
-use crate::resolution::go::snapshot_views::{source_paths, units};
+use crate::resolution::go::snapshot_fixtures::{REPLACED_MODULE, RESERVED_TREES};
+use crate::resolution::go::snapshot_views::{edges, modules, source_paths, units};
 use crate::resolution::go::views::borrowed;
 
 /// The only sources [`RESERVED_TREES`] admits: the ordinary one and the
@@ -23,6 +23,19 @@ const ADMITTED_SOURCES: &[&str] = &["main.go", "zz_generated.go"];
 /// The single unit those two sources form.
 const ADMITTED_UNITS: &[&str] =
     &["example.com/reserved|production|example.com/reserved|main||main.go,zz_generated.go"];
+
+/// Every module, unit, and edge [`REPLACED_MODULE`] states: an admitted local
+/// replacement is a second module beside the main one, not a directory folded
+/// into it.
+const REPLACED_MODULES: &[&str] = &[
+    "example.com/root||go.mod|0",
+    "example.com/lib|local/lib|local/lib/go.mod|1",
+];
+const REPLACED_UNITS: &[&str] = &[
+    "example.com/root|production|example.com/root|root||root.go",
+    "example.com/lib|production|example.com/lib|lib|local/lib|local/lib/lib.go",
+];
+const REPLACED_EDGES: &[&str] = &["example.com/root|example.com/lib|example.com/lib|v1.0.0"];
 
 /// The out-of-root sentinel every escape row points at and none may read.
 const SENTINEL: &str = "outside/secret.go";
@@ -36,8 +49,9 @@ const ESCAPE_BASE: &[FixtureFile] = &[
 ];
 
 /// 4.T3 (Invariants 4, 6): package discovery admits generated Go sources,
-/// excludes every reserved tree and unadmitted nested module, and refuses any
-/// path that resolves outside the repository root.
+/// excludes every reserved tree and unadmitted nested module, keeps an admitted
+/// local replacement a separate module, and refuses any path that resolves
+/// outside the repository root.
 #[test]
 fn go_package_discovery_excludes_reserved_trees_and_retains_generated_go_sources() {
     let (tree, snapshot) = snapshot_default(RESERVED_TREES);
@@ -49,12 +63,41 @@ fn go_package_discovery_excludes_reserved_trees_and_retains_generated_go_sources
     assert_eq!(&*borrowed(&units(&snapshot)), ADMITTED_UNITS);
     drop(tree);
 
+    assert_admitted_replacement_is_a_separate_module();
+
     assert_escape_is_refused_unread("a symlinked source", |root| {
         symlink(&root.join("../outside/secret.go"), &root.join("link.go"));
     });
     assert_escape_is_refused_unread("a symlinked directory", |root| {
         symlink(&root.join("../outside"), &root.join("linked"));
     });
+}
+
+/// A nested `go.mod` the root manifest replaces into is walked as its own
+/// module, so its packages and the dependency edge that reached it are stated
+/// beside the main module's rather than merged into them.
+fn assert_admitted_replacement_is_a_separate_module() {
+    let (tree, snapshot) = snapshot_default(REPLACED_MODULE);
+
+    assert_eq!(&*borrowed(&modules(&snapshot)), REPLACED_MODULES);
+    assert_eq!(&*borrowed(&units(&snapshot)), REPLACED_UNITS);
+    assert_eq!(&*borrowed(&edges(&snapshot)), REPLACED_EDGES);
+    assert_eq!(
+        snapshot
+            .module(snapshot.root_module())
+            .expect("the snapshot answers for its own root module")
+            .path(),
+        "example.com/root",
+        "the main module is the snapshot's root module"
+    );
+
+    let root = snapshot.root().to_path_buf();
+    drop(snapshot);
+    drop(tree);
+    assert!(
+        !root.exists(),
+        "the fixture is released with the temporary directory"
+    );
 }
 
 /// One linked escape refuses the snapshot, and the sentinel behind it is never

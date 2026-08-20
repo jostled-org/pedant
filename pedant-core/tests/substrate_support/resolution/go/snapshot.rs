@@ -8,8 +8,8 @@
 //! stored once.
 
 use crate::resolution::go::fixture::snapshot_default;
-use crate::resolution::go::snapshot_fixtures::{PACKAGE_CONTEXTS, REPLACED_MODULE};
-use crate::resolution::go::snapshot_views::{edges, modules, source_facts, source_paths, units};
+use crate::resolution::go::snapshot_fixtures::PACKAGE_CONTEXTS;
+use crate::resolution::go::snapshot_views::{source_facts, source_paths, units};
 use crate::resolution::go::views::borrowed;
 
 /// Every package unit [`PACKAGE_CONTEXTS`] states.
@@ -30,17 +30,6 @@ const CONTEXT_FACTS: &[&str] = &[
     "app_test.go|app|Function:probe|",
     "util/util.go|util|Function:Name|",
 ];
-
-/// Every module, unit, edge, and source [`REPLACED_MODULE`] states.
-const REPLACED_MODULES: &[&str] = &[
-    "example.com/root||go.mod|0",
-    "example.com/lib|local/lib|local/lib/go.mod|1",
-];
-const REPLACED_UNITS: &[&str] = &[
-    "example.com/root|production|example.com/root|root||root.go",
-    "example.com/lib|production|example.com/lib|lib|local/lib|local/lib/lib.go",
-];
-const REPLACED_EDGES: &[&str] = &["example.com/root|example.com/lib|example.com/lib|v1.0.0"];
 
 /// 4.T2 (Invariant 11): a file shared by two package contexts keeps one store
 /// entry and one fact inventory while both contexts instantiate it.
@@ -102,32 +91,4 @@ fn go_shared_source_has_one_store_entry_and_two_unit_instances() {
     }
 
     drop(tree);
-}
-
-/// 4.T2 (Invariant 11): an admitted local replacement is a second snapshot
-/// module whose packages and dependency edge are stated beside the main
-/// module's.
-#[test]
-fn go_snapshot_states_admitted_modules_units_and_local_edges() {
-    let (tree, snapshot) = snapshot_default(REPLACED_MODULE);
-
-    assert_eq!(&*borrowed(&modules(&snapshot)), REPLACED_MODULES);
-    assert_eq!(&*borrowed(&units(&snapshot)), REPLACED_UNITS);
-    assert_eq!(&*borrowed(&edges(&snapshot)), REPLACED_EDGES);
-    assert_eq!(
-        snapshot
-            .module(snapshot.root_module())
-            .expect("the snapshot answers for its own root module")
-            .path(),
-        "example.com/root",
-        "the main module is the snapshot's root module"
-    );
-
-    let root = snapshot.root().to_path_buf();
-    drop(snapshot);
-    drop(tree);
-    assert!(
-        !root.exists(),
-        "the fixture is released with the temporary directory"
-    );
 }

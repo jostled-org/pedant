@@ -7,7 +7,9 @@
 //! source a snapshot admits is readable, UTF-8, completely parsed, and states a
 //! package clause its directory agrees with.
 
-use pedant_core::resolution::go::{GoResolutionLimits, GoSnapshotError};
+use pedant_core::resolution::go::{GoResolutionLimits, GoSnapshotError, GoSourceDefect};
+use pedant_syntax::SyntaxLanguage;
+use pedant_syntax::tree_sitter::parse_bound;
 
 use crate::resolution::fixture::{FixtureFile, build_repository, repository_root};
 use crate::resolution::go::fixture::{snapshot, snapshot_refusal};
@@ -29,7 +31,7 @@ const ROWS: &[RecoveryRow] = &[
             ("repo/go.mod", "module example.com/broken\n"),
             ("repo/broken.go", "package broken\n\nfunc Run( {\n"),
         ],
-        variant: "IncompleteSource",
+        variant: "IncompleteSource:Recovered",
         message: "the parser recovered from a syntax error",
     },
     RecoveryRow {
@@ -87,6 +89,7 @@ fn go_capability_fallback_and_snapshot_recovery_contract_is_exact() {
 
     assert_non_utf8_source_is_refused();
     assert_unreadable_source_is_refused();
+    assert_the_parser_failed_defect_is_unreachable();
 
     let (tree, taken) = snapshot(MINIMAL, GoResolutionLimits::default());
     assert!(
@@ -94,6 +97,36 @@ fn go_capability_fallback_and_snapshot_recovery_contract_is_exact() {
         "the complete baseline still snapshots: {taken:?}"
     );
     drop(tree);
+}
+
+/// No fixture can state the parser-failed defect, and the claim is that fact
+/// rather than a missing row.
+///
+/// `parse_bound` answers `None` for two absences: a grammar this build does not
+/// link, and a linked grammar that produced no tree. A `go-resolution` build
+/// links the Go grammar, and tree-sitter answers every readable UTF-8 source
+/// with a tree — a source it cannot make sense of comes back recovered, not
+/// absent. So `Unparsed` guards the grammar-absent build the snapshot path
+/// never runs in, and `Recovered` is the incomplete-parse refusal a Go build
+/// reaches. Both halves are required here: every source a row states binds a
+/// tree, and the two defects stay distinguishable, so a defect that later
+/// became reachable could not pass as the one already proven.
+fn assert_the_parser_failed_defect_is_unreachable() {
+    let stated = ROWS
+        .iter()
+        .flat_map(|row| row.files.iter().map(move |file| (row.subject, file)))
+        .filter(|(_, (path, _))| path.ends_with(".go"));
+    for (subject, (path, text)) in stated {
+        assert!(
+            parse_bound(text, SyntaxLanguage::Go).is_some(),
+            "{subject}: {path} binds a tree, so its refusal is the recovered defect"
+        );
+    }
+    assert_ne!(
+        GoSourceDefect::Unparsed.to_string(),
+        GoSourceDefect::Recovered.to_string(),
+        "the two incomplete-parse defects must state different causes"
+    );
 }
 
 /// A source that is not UTF-8 is refused before its bytes become text.
@@ -158,6 +191,10 @@ fn refusal_at(tree: &tempfile::TempDir) -> GoSnapshotError {
 
 /// The variant name one refusal carries, so a row states the shape it is owed
 /// rather than only the words it renders.
+///
+/// The incomplete-source variant carries its defect too. One variant covers
+/// both an unparsed source and a recovered one, and a row that could not tell
+/// them apart would accept either for the other.
 fn variant_of(error: &GoSnapshotError) -> &'static str {
     match error {
         GoSnapshotError::OutOfRoot { .. } => "OutOfRoot",
@@ -165,7 +202,14 @@ fn variant_of(error: &GoSnapshotError) -> &'static str {
         GoSnapshotError::DirectoryRead { .. } => "DirectoryRead",
         GoSnapshotError::SourceRead { .. } => "SourceRead",
         GoSnapshotError::NonUtf8Source { .. } => "NonUtf8Source",
-        GoSnapshotError::IncompleteSource { .. } => "IncompleteSource",
+        GoSnapshotError::IncompleteSource {
+            defect: GoSourceDefect::Unparsed,
+            ..
+        } => "IncompleteSource:Unparsed",
+        GoSnapshotError::IncompleteSource {
+            defect: GoSourceDefect::Recovered,
+            ..
+        } => "IncompleteSource:Recovered",
         GoSnapshotError::MissingPackageClause { .. } => "MissingPackageClause",
         GoSnapshotError::ConflictingPackageClause { .. } => "ConflictingPackageClause",
         GoSnapshotError::FactExtraction { .. } => "FactExtraction",

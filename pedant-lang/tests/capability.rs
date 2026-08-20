@@ -32,6 +32,11 @@ mod javascript_cases;
 #[path = "capability_support/go_cases.rs"]
 mod go_cases;
 
+/// What Go capability analysis publishes once one fact inventory owns the
+/// grammar, in every configuration.
+#[path = "capability_support/go_fact_cases.rs"]
+mod go_fact_cases;
+
 /// What the Bash scanner reports, at the regex tier.
 #[path = "capability_support/bash_cases.rs"]
 mod bash_cases;
@@ -74,6 +79,10 @@ mod availability_cases;
 /// own tracked source.
 #[path = "capability_support/ownership.rs"]
 mod ownership;
+
+/// Who owns the Go grammar, proven from the same tracked source.
+#[path = "capability_support/go_ownership.rs"]
+mod go_ownership;
 
 /// `pedant-lang` remains the non-Rust capability backend: asked directly about
 /// `Language::Rust` it returns an empty profile rather than guessing with

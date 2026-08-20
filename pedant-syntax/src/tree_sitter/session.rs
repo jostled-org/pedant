@@ -107,6 +107,36 @@ impl<'source> ParsedSyntax<'source> {
         selector.finish_anchors()
     }
 
+    /// Every structured Go grammar fact this session's source states.
+    ///
+    /// Walks the bound tree once and parses nothing. The bound grammar must be
+    /// Go: a session of any other language states no Go fact and returns
+    /// [`GoFactError::LanguageMismatch`](crate::go::GoFactError::LanguageMismatch),
+    /// rather than an empty inventory a
+    /// caller could read as "this Go file declares nothing".
+    ///
+    /// Both ceilings in `limits` refuse before the state they would pay for is
+    /// retained, so a lowered ceiling returns an error and no inventory. The
+    /// result carries the same recovery answer [`Self::has_errors`] gives, so a
+    /// consumer that rejects incomplete source reads one value rather than
+    /// pairing two.
+    #[cfg(feature = "ts-go")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "ts-go")))]
+    pub fn go_file_facts(
+        &self,
+        limits: crate::go::GoFactLimits,
+    ) -> Result<crate::go::GoFileFacts<'source>, crate::go::GoFactError> {
+        match self.language {
+            SyntaxLanguage::Go => crate::go::GoFileFacts::extract(
+                self.tree.root_node(),
+                self.source,
+                self.has_errors(),
+                limits,
+            ),
+            language => Err(crate::go::GoFactError::LanguageMismatch { language }),
+        }
+    }
+
     /// The narrowest recognized declaration containing `at`.
     ///
     /// One slot of [`Self::enclosing_unit_anchors`], which owns the whole rule:

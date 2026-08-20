@@ -28,4 +28,13 @@ pub(crate) mod envelope;
     feature = "ts-go",
     feature = "ts-bash"
 ))]
+pub(crate) mod anchors;
+
+#[cfg(any(
+    feature = "ts-python",
+    feature = "ts-javascript",
+    feature = "ts-typescript",
+    feature = "ts-go",
+    feature = "ts-bash"
+))]
 pub(crate) mod symbols;

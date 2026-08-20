@@ -12,11 +12,11 @@ keywords = ["parser", "tree-sitter", "syntax", "extraction", "static-analysis"]
 [features]
 default = []
 rust = ["dep:syn", "dep:proc-macro2"]
-ts-python = ["_ts", "dep:tree-sitter-python"]
-ts-javascript = ["_ts", "dep:tree-sitter-javascript"]
-ts-typescript = ["_ts", "dep:tree-sitter-typescript"]
+ts-python = ["_ts_generic", "dep:tree-sitter-python"]
+ts-javascript = ["_ts_generic", "dep:tree-sitter-javascript"]
+ts-typescript = ["_ts_generic", "dep:tree-sitter-typescript"]
 ts-go = ["_ts", "dep:tree-sitter-go"]
-ts-bash = ["_ts", "dep:tree-sitter-bash"]
+ts-bash = ["_ts_generic", "dep:tree-sitter-bash"]
 # Internal, and never selected on its own: it means "this build links at least
 # one grammar", so every `ts-*` feature enables it. The shared tree-sitter
 # module, the traversal, and the tree-sitter arm of backend dispatch gate on
@@ -25,6 +25,13 @@ ts-bash = ["_ts", "dep:tree-sitter-bash"]
 # recognizer with no language to recognize, which is a dead-code error, not a
 # supported configuration.
 _ts = ["dep:tree-sitter"]
+# Internal, and never selected on its own: it means "this build links at least
+# one grammar the shared declaration recognizer answers for". Go is the one
+# grammar it excludes, because Go declarations belong to the `go` fact
+# inventory and the recognizer states none of them. A build whose only grammar
+# is Go therefore compiles no generic recognizer at all, rather than one with
+# no language left to recognize.
+_ts_generic = ["_ts"]
 
 [dependencies]
 pedant-types = { version = "0.15.1", path = "../pedant-types" }

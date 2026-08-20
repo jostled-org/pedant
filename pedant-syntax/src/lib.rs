@@ -12,6 +12,9 @@
 
 mod classify;
 mod extract;
+#[cfg(feature = "ts-go")]
+#[cfg_attr(docsrs, doc(cfg(feature = "ts-go")))]
+pub mod go;
 mod language;
 mod location;
 mod span;

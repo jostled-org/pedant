@@ -1,25 +1,23 @@
-//! Go capability detection via source-text scanning.
+//! Go capability detection over one bounded fact inventory.
 //!
-//! When the `ts-go` feature is enabled, import and call-site detection uses
-//! tree-sitter for structured AST extraction. This resolves qualified calls
-//! (`os.Open`) to their imported package accurately. Falls back to regex
-//! when disabled.
+//! When the `ts-go` feature is enabled, import and call-site detection reads
+//! the [`GoFileFacts`](pedant_syntax::go::GoFileFacts) inventory
+//! `pedant-syntax` extracts from one bound parse session. That inventory is the
+//! workspace's sole Go grammar mapping, so this module states no node kind of
+//! its own and cannot drift from the resolver that reads the same facts. A
+//! build without the grammar falls back to the text tier.
 
-#[cfg(feature = "ts-go")]
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
-// Grammar selection, traversal, and the node type the AST signatures below name
-// all come from `pedant-syntax`, which owns the grammar and the parser version.
-// Naming the node type through a second `tree-sitter` dependency here would pin
-// the same crate twice. One gated import serves the whole module: every helper
-// below sits under the same feature, so repeating the `use` inside each one
-// restates that gate without narrowing anything.
+// The inventory, its compatibility ceiling, and the reference shape this
+// module reads all come from `pedant-syntax`, which owns the grammar and the
+// parser version. One gated import serves the whole module: every helper below
+// sits under the same feature, so repeating the `use` inside each one restates
+// that gate without narrowing anything.
 #[cfg(feature = "ts-go")]
-use pedant_syntax::{
-    SyntaxLanguage,
-    tree_sitter::{self, ParsedSyntax, node_text, parse_bound, walk_descendants},
-};
+use pedant_syntax::go::{GoFactLimits, GoFileFacts, GoReferenceFact, GoReferenceKind};
+#[cfg(feature = "ts-go")]
+use pedant_syntax::{SyntaxLanguage, tree_sitter::parse_bound};
 use pedant_types::{
     Capability, CapabilityAnalysis, CapabilityFinding, FindingOrigin, Language, SourceLocation,
 };
@@ -61,7 +59,7 @@ const CALL_SITE_PATTERNS: &[(&str, Capability, &str)] = &[
 
 /// Analyze Go source for capabilities, and attribute them to callables.
 ///
-/// The structured tier binds one parse session, uses it for detection, and
+/// The structured tier extracts one fact inventory, uses it for detection, and
 /// hands it to attribution. A build without the grammar, and a parser that
 /// produced no tree, take the text tier and report attribution as unavailable.
 pub(crate) fn analyze(path: &Arc<str>, source: &str) -> CapabilityAnalysis {
@@ -70,7 +68,7 @@ pub(crate) fn analyze(path: &Arc<str>, source: &str) -> CapabilityAnalysis {
     #[cfg(feature = "ts-go")]
     let bound = ts_analyze(path, source, &mut findings);
 
-    // No grammar in this build, so no session can exist and the text tier is
+    // No grammar in this build, so no inventory can exist and the text tier is
     // the only path.
     #[cfg(not(feature = "ts-go"))]
     let bound: Option<()> = None;
@@ -150,14 +148,17 @@ fn try_emit_import(
     findings: &mut Vec<CapabilityFinding>,
 ) {
     if let Some(pkg) = extract_go_package_path(text) {
-        emit_import_findings(path, pkg, line_num, findings);
+        // The text tier reads whole lines, so it can name the line an import
+        // sits on but not the column its specification opens at.
+        emit_import_findings(path, pkg, line_num + 1, 1, findings);
     }
 }
 
 fn emit_import_findings(
     path: &Arc<str>,
     pkg: &str,
-    line_num: usize,
+    line: usize,
+    column: usize,
     findings: &mut Vec<CapabilityFinding>,
 ) {
     for &(pattern, capability) in IMPORT_PATTERNS {
@@ -166,8 +167,8 @@ fn emit_import_findings(
                 capability,
                 location: SourceLocation {
                     file: Arc::clone(path),
-                    line: line_num + 1,
-                    column: 1,
+                    line,
+                    column,
                 },
                 evidence: Arc::from(pkg),
                 origin: Some(FindingOrigin::Import),
@@ -180,38 +181,36 @@ fn emit_import_findings(
     }
 }
 
-// ── Tree-sitter structured extraction ──────────────────────────────────
+// ── Structured detection over one fact inventory ───────────────────────
 
-/// Detect through the Go grammar, returning the session that did it.
+/// Detect through the Go fact inventory, returning the inventory that did it.
 ///
 /// `None` means no tree: the caller owes the file its text-tier scan. The
-/// session travels back rather than dying here, because attribution asks it the
-/// same questions detection just did.
+/// inventory travels back rather than dying here, because attribution asks it
+/// the same declaration questions detection just did.
 #[cfg(feature = "ts-go")]
 fn ts_analyze<'source>(
     path: &Arc<str>,
     source: &'source str,
     findings: &mut Vec<CapabilityFinding>,
-) -> Option<ParsedSyntax<'source>> {
+) -> Option<GoFileFacts<'source>> {
     let parsed = parse_bound(source, SyntaxLanguage::Go)?;
-    let bytes = source.as_bytes();
-    let root = parsed.root();
+    let facts = parsed.go_file_facts(GoFactLimits::UNBOUNDED).ok()?;
 
-    // Phase 1: extract imports and build package-name → path map.
-    let mut pkg_map = BTreeMap::new();
-    ts_extract_imports(root, bytes, path, findings, &mut pkg_map);
+    // Phase 1: import-level capabilities, in the order the file states them.
+    detect_fact_imports(path, &facts, findings);
 
-    // Phase 2: detect qualified calls by resolving selector expressions against
-    // imports, plus regex call-site fallback for bare patterns without imports.
-    ts_detect_qualified_calls(root, bytes, path, &pkg_map, findings);
+    // Phase 2: qualified calls resolved against those same imports, plus the
+    // text-tier scan for bare patterns no import introduced.
+    detect_fact_calls(path, &facts, findings);
     detect_call_sites(path, source, CALL_SITE_PATTERNS, Language::Go, findings);
     dedup_call_findings(findings);
 
-    Some(parsed)
+    Some(facts)
 }
 
-/// Remove duplicate call-site findings at the same location (tree-sitter and
-/// regex may both fire for the same qualified call).
+/// Remove duplicate call-site findings at the same location (the fact tier and
+/// the text tier may both fire for the same qualified call).
 #[cfg(feature = "ts-go")]
 fn dedup_call_findings(findings: &mut Vec<CapabilityFinding>) {
     findings.sort_by(|a, b| {
@@ -228,124 +227,86 @@ fn dedup_call_findings(findings: &mut Vec<CapabilityFinding>) {
     });
 }
 
-/// Extract Go imports from tree-sitter AST and build a local-name → package-path map.
+/// Emit an import-level finding for every import the inventory states.
 #[cfg(feature = "ts-go")]
-fn ts_extract_imports(
-    root: tree_sitter::Node<'_>,
-    source: &[u8],
+fn detect_fact_imports(
     path: &Arc<str>,
+    facts: &GoFileFacts<'_>,
     findings: &mut Vec<CapabilityFinding>,
-    pkg_map: &mut BTreeMap<Box<str>, Box<str>>,
 ) {
-    walk_descendants(root, |node| {
-        if node.kind() != "import_spec" {
-            return;
-        }
-        let path_node = match node.child_by_field_name("path") {
-            Some(n) => n,
-            None => return,
-        };
-        let raw_path = node_text(path_node, source);
-        let pkg_path = raw_path.trim_matches('"');
-
-        // Determine local name: explicit alias or last segment of path.
-        let alias_text = node
-            .child_by_field_name("name")
-            .map(|n| node_text(n, source));
-        // Blank and dot imports don't create a usable local name.
-        if matches!(alias_text, Some("_" | ".")) {
-            return;
-        }
-        let local_name = match alias_text {
-            Some(name) => Box::from(name),
-            None => Box::from(pkg_path.rsplit('/').next().unwrap_or(pkg_path)),
-        };
-
-        pkg_map.insert(local_name, Box::from(pkg_path));
-
-        // Emit import-level capability findings.
-        let pos = node.start_position();
-        for &(pattern, capability) in IMPORT_PATTERNS {
-            if matches_module_prefix(pkg_path, pattern) {
-                findings.push(CapabilityFinding {
-                    capability,
-                    location: SourceLocation {
-                        file: Arc::clone(path),
-                        line: pos.row + 1,
-                        column: pos.column + 1,
-                    },
-                    evidence: Arc::from(pkg_path),
-                    origin: Some(FindingOrigin::Import),
-                    language: Some(Language::Go),
-                    execution_context: None,
-                    reachable: None,
-                });
-                break;
-            }
-        }
-    });
+    for import in facts.imports() {
+        let span = import.span();
+        emit_import_findings(
+            path,
+            import.path(),
+            span.start_line() + 1,
+            span.start_column() + 1,
+            findings,
+        );
+    }
 }
 
-/// Detect qualified calls by resolving `pkg.Func()` against the import map.
+/// Emit a call-site finding for every qualified call the inventory states.
 #[cfg(feature = "ts-go")]
-fn ts_detect_qualified_calls(
-    root: tree_sitter::Node<'_>,
-    source: &[u8],
+fn detect_fact_calls(
     path: &Arc<str>,
-    pkg_map: &BTreeMap<Box<str>, Box<str>>,
+    facts: &GoFileFacts<'_>,
     findings: &mut Vec<CapabilityFinding>,
 ) {
-    walk_descendants(root, |node| {
-        if node.kind() != "call_expression" {
-            return;
+    for reference in facts.references() {
+        let Some(qualified) = qualified_call(facts, reference) else {
+            continue;
+        };
+        emit_call_finding(path, &qualified, reference, findings);
+    }
+}
+
+/// The `package.Method(` fragment one reference states, resolved through the
+/// file's own imports.
+///
+/// The first import binding the receiver name wins. Go forbids two imports
+/// binding one name in a file, so the choice only arises for source that would
+/// not compile.
+#[cfg(feature = "ts-go")]
+fn qualified_call(facts: &GoFileFacts<'_>, reference: &GoReferenceFact<'_>) -> Option<String> {
+    if reference.kind() != GoReferenceKind::QualifiedCall {
+        return None;
+    }
+    let receiver = reference.qualifier()?;
+    let imported = facts
+        .imports()
+        .iter()
+        .find(|import| import.local_name() == Some(receiver))?
+        .path();
+    let last_segment = imported.rsplit('/').next().unwrap_or(imported);
+    Some(format!("{last_segment}.{}(", reference.name()))
+}
+
+/// Emit the capability a resolved qualified call names, if it names one.
+#[cfg(feature = "ts-go")]
+fn emit_call_finding(
+    path: &Arc<str>,
+    qualified: &str,
+    reference: &GoReferenceFact<'_>,
+    findings: &mut Vec<CapabilityFinding>,
+) {
+    for &(pattern, capability, evidence) in CALL_SITE_PATTERNS {
+        if qualified == pattern {
+            let span = reference.span();
+            findings.push(CapabilityFinding {
+                capability,
+                location: SourceLocation {
+                    file: Arc::clone(path),
+                    line: span.start_line() + 1,
+                    column: span.start_column() + 1,
+                },
+                evidence: Arc::from(evidence),
+                origin: Some(FindingOrigin::CodeSite),
+                language: Some(Language::Go),
+                execution_context: None,
+                reachable: None,
+            });
+            break;
         }
-        let func = match node.child_by_field_name("function") {
-            Some(f) => f,
-            None => return,
-        };
-        if func.kind() != "selector_expression" {
-            return;
-        }
-        let operand = match func.child_by_field_name("operand") {
-            Some(o) => o,
-            None => return,
-        };
-        let field = match func.child_by_field_name("field") {
-            Some(f) => f,
-            None => return,
-        };
-
-        let receiver = node_text(operand, source);
-        let method = node_text(field, source);
-
-        // Resolve receiver to package path via import map.
-        let pkg_path = match pkg_map.get(receiver) {
-            Some(pkg_path) => pkg_path.as_ref(),
-            None => return,
-        };
-
-        // Build qualified call pattern: "pkg_last_segment.Method("
-        let last_segment = pkg_path.rsplit('/').next().unwrap_or(pkg_path);
-        let qualified = format!("{last_segment}.{method}(");
-
-        for &(pattern, capability, evidence) in CALL_SITE_PATTERNS {
-            if qualified == pattern {
-                let pos = node.start_position();
-                findings.push(CapabilityFinding {
-                    capability,
-                    location: SourceLocation {
-                        file: Arc::clone(path),
-                        line: pos.row + 1,
-                        column: pos.column + 1,
-                    },
-                    evidence: Arc::from(evidence),
-                    origin: Some(FindingOrigin::CodeSite),
-                    language: Some(Language::Go),
-                    execution_context: None,
-                    reachable: None,
-                });
-                break;
-            }
-        }
-    });
+    }
 }

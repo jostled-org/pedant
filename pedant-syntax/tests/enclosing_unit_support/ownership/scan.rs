@@ -20,6 +20,8 @@ pub(super) struct SourceScan {
     /// Path calls keyed by their last two segments, `Owner::method`.
     associated: BTreeMap<Box<str>, usize>,
     fields: BTreeMap<Box<str>, usize>,
+    /// String literals, which is how a grammar node kind is written down.
+    literals: BTreeMap<Box<str>, usize>,
     pub(super) try_expressions: usize,
 }
 
@@ -33,6 +35,14 @@ impl SourceScan {
     pub(super) fn of_block(block: &syn::Block) -> Self {
         let mut scan = Self::default();
         scan.visit_block(block);
+        scan
+    }
+
+    /// One statement of a body, so a claim can compare where two routes sit.
+    #[cfg(feature = "ts-go")]
+    pub(super) fn of_statement(statement: &syn::Stmt) -> Self {
+        let mut scan = Self::default();
+        scan.visit_stmt(statement);
         scan
     }
 
@@ -71,6 +81,14 @@ impl SourceScan {
 
     pub(super) fn reads(&self, field: &str) -> bool {
         self.fields.contains_key(field)
+    }
+
+    /// Whether a source writes `literal` down.
+    ///
+    /// A grammar node kind is a string, so a claim about who may recognize a
+    /// language reads literals rather than identifiers.
+    pub(super) fn quotes(&self, literal: &str) -> bool {
+        self.literals.contains_key(literal)
     }
 
     /// Count one path call by its last segment, and again by the owner that
@@ -123,10 +141,30 @@ impl<'ast> Visit<'ast> for SourceScan {
         syn::visit::visit_expr_method_call(self, node);
     }
 
+    fn visit_lit_str(&mut self, node: &'ast syn::LitStr) {
+        *self
+            .literals
+            .entry(node.value().into_boxed_str())
+            .or_default() += 1;
+    }
+
     fn visit_expr_try(&mut self, node: &'ast syn::ExprTry) {
         self.try_expressions += 1;
         syn::visit::visit_expr_try(self, node);
     }
+}
+
+/// The index of the first statement in `block` that reaches `token`.
+///
+/// A claim about order rather than about presence: two routes counted in the
+/// same body prove nothing about which of them ran first, and only a body whose
+/// statements are compared can state that the check dominates the spend.
+#[cfg(feature = "ts-go")]
+pub(super) fn statement_naming(block: &syn::Block, token: &str) -> Option<usize> {
+    block
+        .stmts
+        .iter()
+        .position(|statement| SourceScan::of_statement(statement).reaches(token) > 0)
 }
 
 /// The free function one file declares under `name`.

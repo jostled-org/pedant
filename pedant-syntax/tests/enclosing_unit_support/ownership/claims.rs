@@ -24,6 +24,20 @@ const MODULE_INVENTORY: &[&str] = &[
     "extract/rust.rs",
     "extract/select.rs",
     "extract/ts.rs",
+    "go/binding.rs",
+    "go/condition.rs",
+    "go/context.rs",
+    "go/declaration.rs",
+    "go/error.rs",
+    "go/facts.rs",
+    "go/frame.rs",
+    "go/import.rs",
+    "go/limits.rs",
+    "go/mod.rs",
+    "go/reference.rs",
+    "go/scope.rs",
+    "go/span.rs",
+    "go/walk.rs",
     "language.rs",
     "lib.rs",
     "location.rs",
@@ -46,6 +60,25 @@ const PARSER_TYPE: &str = "Parser";
 
 /// The shared declaration recognizer a session delegates to.
 const RECOGNIZER: &str = "offer_declarations";
+
+/// The module holding the shared declaration recognizer.
+const RECOGNIZER_MODULE: &str = "extract/ts.rs";
+
+/// Go grammar node kinds only the fact inventory may write down.
+///
+/// Each is a kind the shared recognizer never names for another language, so a
+/// module outside `go/` quoting one is a second Go grammar mapping — exactly
+/// what one fact authority exists to prevent. `type_spec` is the regression
+/// this list was written for: the recognizer used to classify it itself.
+const GO_GRAMMAR: &[&str] = &[
+    "package_clause",
+    "import_spec",
+    "selector_expression",
+    "method_declaration",
+    "type_spec",
+    "field_declaration",
+    "method_elem",
+];
 
 /// The shared checked source index, reached through the one selector route
 /// that resolves a whole batch of locations against a single index.
@@ -89,6 +122,37 @@ fn parsed_syntax_attribution_owner_inventory_is_exact() {
     assert_parser_is_owned_once(&discovered);
     assert_session_parses_nothing(&discovered);
     assert_session_delegates_once(&discovered);
+    assert_go_grammar_is_owned_by_the_fact_inventory(&discovered);
+}
+
+/// The Go grammar is written down inside the fact inventory and nowhere else.
+///
+/// The recognizer is named on its own as well as filtered out of the closure,
+/// because it is the module that used to hold a Go matcher: a claim that only
+/// says "some module outside `go/`" would still pass if the matcher came back
+/// to the one place it was removed from.
+fn assert_go_grammar_is_owned_by_the_fact_inventory(closure: &[Member]) {
+    for kind in GO_GRAMMAR {
+        let naming: Box<[&str]> = closure
+            .iter()
+            .filter(|member| member.scan.quotes(kind))
+            .map(|member| member.label.as_ref())
+            .collect();
+        assert!(
+            naming.iter().all(|label| label.starts_with("go/")),
+            "only the Go fact inventory may name `{kind}`, but {naming:?} do"
+        );
+    }
+
+    let recognizer = member(closure, RECOGNIZER_MODULE);
+    let quoted: Box<[&&str]> = GO_GRAMMAR
+        .iter()
+        .filter(|kind| recognizer.scan.quotes(kind))
+        .collect();
+    assert!(
+        quoted.is_empty(),
+        "{RECOGNIZER_MODULE} must recognize no Go declaration, but names {quoted:?}"
+    );
 }
 
 /// One module builds parsers, and it builds exactly one.

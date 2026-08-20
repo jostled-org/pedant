@@ -1,16 +1,17 @@
-//! Classifying flat findings against one bound parse session.
+//! Classifying flat findings against one declaration authority.
 //!
-//! The session is the backend's own: it produced the structured findings and it
-//! answers the declaration questions here, so one source is parsed once.
+//! The authority is the backend's own: it produced the structured findings and
+//! it answers the declaration questions here, so one source is parsed once and
+//! its declarations are read once.
 //!
 //! It is also asked once. Every finding's location goes over in a single batch
-//! query, so the source is indexed once and the tree is walked once for the
-//! whole file rather than once per finding.
+//! query, so the source is indexed once and read once for the whole file rather
+//! than once per finding.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use pedant_syntax::tree_sitter::{ParsedSyntax, SourceUnitAnchor};
+use pedant_syntax::tree_sitter::SourceUnitAnchor;
 use pedant_syntax::{Location, SourceUnitKind};
 use pedant_types::{
     CapabilityAnalysis, CapabilityFinding, CapabilityProfile, CapabilitySymbol,
@@ -18,22 +19,23 @@ use pedant_types::{
     SymbolCapabilityProfile,
 };
 
+use super::anchors::DeclarationAnchors;
 use super::envelope::{seal_with, unavailable};
 
-/// Seal one structured analysis against the session that produced it.
+/// Seal one structured analysis against the authority that produced it.
 ///
-/// `session` is absent when this build links no grammar for the source and when
-/// the parser produced no tree. An error-bearing recovery tree is present but
-/// incomplete: its findings stay, and attribution does not run. Both report
+/// `authority` is absent when this build links no grammar for the source and
+/// when the parser produced no tree. An error-bearing recovery tree is present
+/// but incomplete: its findings stay, and attribution does not run. Both report
 /// [`SymbolAttributionStatus::Unavailable`].
-pub(crate) fn seal(
-    session: Option<ParsedSyntax<'_>>,
+pub(crate) fn seal<A: DeclarationAnchors>(
+    authority: Option<A>,
     language: Language,
     findings: Box<[CapabilityFinding]>,
 ) -> CapabilityAnalysis {
-    match session.filter(|parsed| !parsed.has_errors()) {
-        Some(parsed) => {
-            let symbols = symbol_profiles(&parsed, language, &findings);
+    match authority.filter(|held| !held.has_errors()) {
+        Some(held) => {
+            let symbols = symbol_profiles(&held, language, &findings);
             seal_with(findings, SymbolAttributionStatus::Complete, symbols)
         }
         None => unavailable(findings),
@@ -70,12 +72,12 @@ struct Attributed {
 }
 
 /// Every callable that owns at least one finding, in declaration order.
-fn symbol_profiles(
-    parsed: &ParsedSyntax<'_>,
+fn symbol_profiles<A: DeclarationAnchors>(
+    authority: &A,
     language: Language,
     findings: &[CapabilityFinding],
 ) -> Box<[SymbolCapabilityProfile]> {
-    grouped_by_callable(parsed, findings)
+    grouped_by_callable(authority, findings)
         .into_iter()
         .map(|(declaration, owned)| profile_for(declaration, owned, language, findings))
         .collect()
@@ -83,17 +85,17 @@ fn symbol_profiles(
 
 /// Flat positions of the attributed findings, keyed by owning callable.
 ///
-/// One batch query answers for every finding at once, so the session indexes
-/// its source once and walks its tree once however many findings arrive. The
-/// answers come back in the order the locations went over, which is detection
-/// order, so a slot's index is its finding's flat position.
+/// One batch query answers for every finding at once, so the authority indexes
+/// its source once and reads its declarations once however many findings
+/// arrive. The answers come back in the order the locations went over, which is
+/// detection order, so a slot's index is its finding's flat position.
 ///
 /// A `BTreeMap` puts the callables in declaration order, because the key opens
 /// with the declaration's own position. Evidence at module scope, inside a
 /// class body but outside its methods, or inside an anonymous callable names no
 /// owner and so contributes no group at all.
-fn grouped_by_callable(
-    parsed: &ParsedSyntax<'_>,
+fn grouped_by_callable<A: DeclarationAnchors>(
+    authority: &A,
     findings: &[CapabilityFinding],
 ) -> BTreeMap<Declaration, Attributed> {
     let at: Box<[Location]> = findings
@@ -104,7 +106,7 @@ fn grouped_by_callable(
         })
         .collect();
     let mut grouped: BTreeMap<Declaration, Attributed> = BTreeMap::new();
-    for (position, anchor) in parsed.enclosing_unit_anchors(&at).into_iter().enumerate() {
+    for (position, anchor) in authority.anchors(&at).into_iter().enumerate() {
         let Some(owner) = anchor.and_then(callable_owner) else {
             continue;
         };

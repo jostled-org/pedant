@@ -4,19 +4,23 @@
 //! kinds and the ownership questions behind them are per-language, so a
 //! backend is one `match` arm rather than a trait implementation.
 
+#[cfg(feature = "_ts_generic")]
 use std::ops::Range;
 
 use crate::extract::select::UnitSelector;
 use crate::language::SyntaxLanguage;
-use crate::tree_sitter::{Node, node_text, walk_descendants};
+use crate::tree_sitter::Node;
+#[cfg(feature = "_ts_generic")]
+use crate::tree_sitter::{node_text, walk_descendants};
+#[cfg(feature = "_ts_generic")]
 use crate::unit::SourceUnitKind;
 
 /// One recognized grammar node: the byte range to return and the node naming it.
 ///
 /// The range rather than a node, because a declaration's text is not always one
-/// node's extent: a Go specification may return its whole `type` declaration,
-/// and a decorated class member opens at a decorator the grammar states as a
-/// preceding sibling.
+/// node's extent: a decorated class member opens at a decorator the grammar
+/// states as a preceding sibling.
+#[cfg(feature = "_ts_generic")]
 struct Declaration<'t> {
     kind: SourceUnitKind,
     range: Range<usize>,
@@ -51,7 +55,43 @@ pub(crate) fn collect<'s>(
 /// The one recognizer both entry points share. `source` must be the exact
 /// string `root`'s tree was parsed from, because a node's byte range indexes
 /// it; [`collect`] parses that string itself and a session was bound to it.
+///
+/// Go is routed away from the walk below before it starts. Its declarations are
+/// part of [`GoFileFacts`](crate::go::GoFileFacts), which capability
+/// attribution and Go resolution both read, so recognizing them a second time
+/// here would be a second grammar mapping that could answer differently.
 pub(crate) fn offer_declarations<'s>(
+    root: Node<'_>,
+    source: &'s str,
+    language: SyntaxLanguage,
+    selector: &mut UnitSelector<'s>,
+) {
+    #[cfg(feature = "ts-go")]
+    if matches!(language, SyntaxLanguage::Go) {
+        crate::go::offer_unit_declarations(root, source, selector);
+    }
+    #[cfg(feature = "_ts_generic")]
+    if !go_owns(language) {
+        offer_recognized(root, source, language, selector);
+    }
+}
+
+/// Whether the Go fact inventory owns this language's declarations.
+///
+/// Read by the generic walk rather than by the Go route, because it is the
+/// generic walk that must stand down: recognizing nothing for Go still costs a
+/// whole-tree traversal per extraction.
+#[cfg(feature = "_ts_generic")]
+fn go_owns(language: SyntaxLanguage) -> bool {
+    cfg!(feature = "ts-go") && matches!(language, SyntaxLanguage::Go)
+}
+
+/// Offer every declaration the shared recognizer names beneath `root`.
+///
+/// Absent from a build whose only grammar is Go, which the recognizer answers
+/// for nothing: the walk would visit every node to recognize none of them.
+#[cfg(feature = "_ts_generic")]
+fn offer_recognized<'s>(
     root: Node<'_>,
     source: &'s str,
     language: SyntaxLanguage,
@@ -79,6 +119,7 @@ pub(crate) fn offer_declarations<'s>(
 /// absence its feature leaves — so the match is exhaustive in every
 /// configuration and a new [`SyntaxLanguage`] fails to compile here rather than
 /// recognizing nothing.
+#[cfg(feature = "_ts_generic")]
 fn recognize<'t>(node: Node<'t>, language: SyntaxLanguage) -> Option<Declaration<'t>> {
     match language {
         // Rust has no grammar here; its backend is `extract::rust`.
@@ -95,9 +136,9 @@ fn recognize<'t>(node: Node<'t>, language: SyntaxLanguage) -> Option<Declaration
         SyntaxLanguage::TypeScript | SyntaxLanguage::Tsx => typescript(node),
         #[cfg(not(feature = "ts-typescript"))]
         SyntaxLanguage::TypeScript | SyntaxLanguage::Tsx => None,
-        #[cfg(feature = "ts-go")]
-        SyntaxLanguage::Go => go(node),
-        #[cfg(not(feature = "ts-go"))]
+        // Go has no matcher here in any configuration: its declarations belong
+        // to `crate::go`, which `offer_declarations` routes to before this walk
+        // begins.
         SyntaxLanguage::Go => None,
         #[cfg(feature = "ts-bash")]
         SyntaxLanguage::Bash => bash(node),
@@ -107,6 +148,7 @@ fn recognize<'t>(node: Node<'t>, language: SyntaxLanguage) -> Option<Declaration
 }
 
 /// A declaration returning `range`'s text, named by `namer`'s `name` field.
+#[cfg(feature = "_ts_generic")]
 fn declaration(range: Range<usize>, kind: SourceUnitKind, namer: Node<'_>) -> Declaration<'_> {
     Declaration {
         kind,
@@ -250,61 +292,6 @@ fn leading_decorator(node: Node<'_>) -> Option<Node<'_>> {
 fn decorator_before(node: Node<'_>) -> Option<Node<'_>> {
     node.prev_sibling()
         .filter(|sibling| sibling.kind() == "decorator")
-}
-
-/// Go functions, methods, and struct type specifications.
-#[cfg(feature = "ts-go")]
-fn go(node: Node<'_>) -> Option<Declaration<'_>> {
-    match node.kind() {
-        "function_declaration" => Some(declaration(
-            node.byte_range(),
-            SourceUnitKind::Function,
-            node,
-        )),
-        "method_declaration" => Some(declaration(node.byte_range(), SourceUnitKind::Method, node)),
-        "type_spec" => go_struct(node),
-        _ => None,
-    }
-}
-
-/// A Go type specification is a unit only when it declares a struct;
-/// interfaces and aliases are not units.
-///
-/// The unit is the specification, not its declaration, so each struct in a
-/// grouped `type (...)` is its own unit and a non-struct beside it stays
-/// absent.
-#[cfg(feature = "ts-go")]
-fn go_struct(node: Node<'_>) -> Option<Declaration<'_>> {
-    let declared = node.child_by_field_name("type")?;
-    (declared.kind() == "struct_type")
-        .then(|| declaration(go_declared_range(node), SourceUnitKind::Struct, node))
-}
-
-/// The byte range one type specification returns.
-///
-/// A sole ungrouped specification returns its whole declaration, so the `type`
-/// keyword opens the text. A specification inside `type (...)` returns only
-/// its own range.
-#[cfg(feature = "ts-go")]
-fn go_declared_range(spec: Node<'_>) -> Range<usize> {
-    spec.parent()
-        .filter(|parent| parent.kind() == "type_declaration" && go_is_sole_spec(spec))
-        .unwrap_or(spec)
-        .byte_range()
-}
-
-/// Whether a specification is all its `type` declaration states.
-///
-/// The grammar states `type_declaration` as `seq('type', choice(spec, alias,
-/// seq('(', ..., ')')))`, so an ungrouped specification closes its declaration
-/// and a grouped one is always followed by at least the closing parenthesis.
-/// One sibling read answers that. Scanning the children for the opening
-/// parenthesis allocates a tree-sitter cursor per specification, and reading a
-/// fixed child index in its place would answer wrongly for `type /* c */ (`,
-/// where the comment the grammar admits as an extra displaces the parenthesis.
-#[cfg(feature = "ts-go")]
-fn go_is_sole_spec(spec: Node<'_>) -> bool {
-    spec.next_sibling().is_none()
 }
 
 /// Bash function definitions, with or without the `function` keyword.

@@ -20,6 +20,7 @@ use std::path::{Path, PathBuf};
 /// instead of arriving unscanned.
 const MODULE_INVENTORY: &[&str] = &[
     "analyze.rs",
+    "attribution/anchors.rs",
     "attribution/envelope.rs",
     "attribution/mod.rs",
     "attribution/symbols.rs",
@@ -37,12 +38,32 @@ const MODULE_INVENTORY: &[&str] = &[
     "string_analysis/validation.rs",
 ];
 
-/// The four structured backends: each binds one session and hands it on.
+/// The four structured backends as `(module, declaration authority)`: each
+/// binds one session and hands one authority on.
+///
+/// Go states a different authority from the rest. Its declarations belong to
+/// the fact inventory `pedant-syntax` extracts, so its detection returns that
+/// inventory where the other three return the session they bound. Both are
+/// authorities the projection can ask, which is why the answer is a column here
+/// rather than a second table.
 ///
 /// Closed against discovery below rather than trusted: a fifth backend that
 /// binds a session or seals one is required to be listed here, so it cannot
 /// escape the per-backend counts by simply not being named.
-const STRUCTURED_BACKENDS: &[&str] = &["bash.rs", "go.rs", "javascript.rs", "python.rs"];
+const STRUCTURED_BACKENDS: &[(&str, &str)] = &[
+    ("bash.rs", "-> Option<ParsedSyntax<'source>>"),
+    ("go.rs", "-> Option<GoFileFacts<'source>>"),
+    ("javascript.rs", "-> Option<ParsedSyntax<'source>>"),
+    ("python.rs", "-> Option<ParsedSyntax<'source>>"),
+];
+
+/// Every structured backend's module, in the order the table states them.
+fn backend_modules() -> Box<[&'static str]> {
+    STRUCTURED_BACKENDS
+        .iter()
+        .map(|&(module, _)| module)
+        .collect()
+}
 
 /// The owners that must stay outside structured attribution entirely.
 ///
@@ -50,8 +71,11 @@ const STRUCTURED_BACKENDS: &[&str] = &["bash.rs", "go.rs", "javascript.rs", "pyt
 /// request belongs to `pedant-core`, so neither may reach a parser.
 const UNATTRIBUTED_OWNERS: &[&str] = &["analyze.rs", "manifest.rs"];
 
-/// The one module that turns a bound session into symbol profiles.
+/// The one module that turns a declaration authority into symbol profiles.
 const PROJECTION_MODULE: &str = "attribution/symbols.rs";
+
+/// The one module that asks an authority for declarations.
+const ANCHOR_AUTHORITY: &str = "attribution/anchors.rs";
 
 /// The bound-parse entry point every structured backend takes exactly once.
 const BOUND_PARSE: &str = "parse_bound(";
@@ -64,15 +88,15 @@ const RAW_PARSE_ROUTES: &[&str] = &["parse(", "Parser", "root_node("];
 /// The one call that hands a backend's own session to attribution.
 const SEAL_CALL: &str = "attribution::symbols::seal(bound";
 
-/// The one signature that carries a session back out of detection.
-const SESSION_RETURN: &str = "-> Option<ParsedSyntax<'source>>";
-
 /// The one question a bound session answers for attribution.
 ///
 /// It is the batch form: every finding's location goes over in one call, so the
-/// source is indexed once and its tree walked once per analysis rather than
-/// once per finding.
+/// source is indexed once and read once per analysis rather than once per
+/// finding.
 const ANCHOR_QUERY: &str = "enclosing_unit_anchors(";
+
+/// The one question the projection asks its authority.
+const AUTHORITY_QUERY: &str = ".anchors(";
 
 /// Routes no module in this crate may name.
 ///
@@ -129,49 +153,50 @@ fn structured_analyzers_use_one_bound_parse_session() {
 /// the crate arrives in both of them and fails here, rather than skipping every
 /// count below because nobody added its name.
 fn assert_backends_bind_one_session(closure: &Closure) {
+    let modules = backend_modules();
     assert_eq!(
         &*members_naming(closure, BOUND_PARSE),
-        STRUCTURED_BACKENDS,
+        &*modules,
         "the modules that bind a parse session must be exactly the structured backends"
     );
     assert_eq!(
         &*members_naming(closure, SEAL_CALL),
-        STRUCTURED_BACKENDS,
-        "the modules that hand a session to attribution must be exactly the structured backends"
+        &*modules,
+        "the modules that hand an authority to attribution must be exactly the structured backends"
     );
 
-    for backend in STRUCTURED_BACKENDS {
-        let code = member(closure, backend);
+    for &(module, authority) in STRUCTURED_BACKENDS {
+        let code = member(closure, module);
         assert_eq!(
             code.occurrences(BOUND_PARSE),
             1,
-            "{backend} must bind exactly one parse session"
+            "{module} must bind exactly one parse session"
         );
         assert_eq!(
-            code.occurrences(SESSION_RETURN),
+            code.occurrences(authority),
             1,
-            "{backend} must return that session from detection exactly once"
+            "{module} must return its own declaration authority exactly once"
         );
         assert_eq!(
             code.occurrences(SEAL_CALL),
             1,
-            "{backend} must hand its own session to attribution exactly once"
+            "{module} must hand that authority to attribution exactly once"
         );
         assert_eq!(
             code.occurrences(ANCHOR_QUERY),
             0,
-            "{backend} must not ask a declaration question itself"
+            "{module} must not ask a declaration question itself"
         );
     }
 }
 
-/// The projection asks the handed-over session, and parses nothing.
+/// The projection asks the handed-over authority, and parses nothing.
 fn assert_projection_consumes_the_same_session(closure: &Closure) {
     let projection = member(closure, PROJECTION_MODULE);
     assert_eq!(
-        projection.occurrences(ANCHOR_QUERY),
+        projection.occurrences(AUTHORITY_QUERY),
         1,
-        "{PROJECTION_MODULE} must ask the bound session for anchors in one place"
+        "{PROJECTION_MODULE} must ask the handed-over authority for anchors in one place"
     );
     assert_eq!(
         projection.occurrences(BOUND_PARSE),
@@ -181,13 +206,16 @@ fn assert_projection_consumes_the_same_session(closure: &Closure) {
 
     assert_eq!(
         &*members_naming(closure, ANCHOR_QUERY),
-        &[PROJECTION_MODULE],
-        "only {PROJECTION_MODULE} may ask a session for an anchor"
+        &[ANCHOR_AUTHORITY],
+        "only {ANCHOR_AUTHORITY} may ask a session or an inventory for an anchor"
     );
 }
 
 /// Every discovered module whose code names `token`, in path order.
-fn members_naming<'closure>(closure: &'closure Closure, token: &str) -> Box<[&'closure str]> {
+pub(crate) fn members_naming<'closure>(
+    closure: &'closure Closure,
+    token: &str,
+) -> Box<[&'closure str]> {
     closure
         .iter()
         .filter(|(_, code)| code.occurrences(token) > 0)
@@ -230,7 +258,7 @@ fn assert_no_raw_parser_or_forbidden_route(closure: &Closure) {
 // ---------------------------------------------------------------------------
 
 /// Every discovered production source, keyed by its path under `src/`.
-type Closure = BTreeMap<Box<str>, Code>;
+pub(crate) type Closure = BTreeMap<Box<str>, Code>;
 
 /// One source with its comment lines removed.
 ///
@@ -238,7 +266,7 @@ type Closure = BTreeMap<Box<str>, Code>;
 /// prose rather than a call, so the comments come out before anything is
 /// counted. Filled once at construction and only ever read afterwards, so it
 /// owns exactly the bytes it holds.
-struct Code(Box<str>);
+pub(crate) struct Code(Box<str>);
 
 impl Code {
     fn read(path: &Path) -> Self {
@@ -252,7 +280,7 @@ impl Code {
         Self(code.into_boxed_str())
     }
 
-    fn occurrences(&self, token: &str) -> usize {
+    pub(crate) fn occurrences(&self, token: &str) -> usize {
         self.0.matches(token).count()
     }
 }
@@ -263,7 +291,7 @@ fn is_comment(line: &str) -> bool {
     trimmed.starts_with("//")
 }
 
-fn member<'closure>(closure: &'closure Closure, label: &str) -> &'closure Code {
+pub(crate) fn member<'closure>(closure: &'closure Closure, label: &str) -> &'closure Code {
     closure
         .get(label)
         .unwrap_or_else(|| panic!("{label} should be part of the discovered closure"))
@@ -273,7 +301,7 @@ fn member<'closure>(closure: &'closure Closure, label: &str) -> &'closure Code {
 ///
 /// A declaration that names no file is a refusal, not a skip: an unresolved
 /// module would silently drop whatever it holds out of every scan above.
-fn discover_closure() -> Closure {
+pub(crate) fn discover_closure() -> Closure {
     let mut closure: Closure = BTreeMap::new();
     let mut pending = vec![crate_source().join("lib.rs")];
     while let Some(path) = pending.pop() {

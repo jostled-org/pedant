@@ -11,5 +11,9 @@
 
 mod claims;
 mod closure;
+/// Where the Go fact walk checks its ceilings. Needs the Go grammar's own
+/// modules to exist, so it carries that gate on top of the tree's.
+#[cfg(feature = "ts-go")]
+mod go_facts;
 mod modules;
 mod scan;

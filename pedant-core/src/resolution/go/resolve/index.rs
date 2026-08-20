@@ -11,11 +11,16 @@ use std::collections::BTreeMap;
 use pedant_types::{DefinitionHandle, ResolutionUnitHandle, SymbolKind};
 
 /// A named type, as the source that mentioned it wrote it.
+///
+/// The pointer form the source wrote is not carried: a call's value selects the
+/// same method set whether the callable returns `T` or `*T`, so the two answer
+/// this tier's question identically. What turns on pointerness is an interface's
+/// method set, and the binding record the structural resolver reads states the
+/// written form there.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct TypeName {
     pub(super) qualifier: Option<Box<str>>,
     pub(super) name: Box<str>,
-    pub(super) pointer: bool,
 }
 
 /// One definition the report states, and what lookup must know about it.

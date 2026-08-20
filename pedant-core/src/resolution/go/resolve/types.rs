@@ -55,12 +55,29 @@ pub(super) fn concrete(index: &Index, site: Site<'_>, qualifier: &str) -> Option
 /// complete, so they answer with no name rather than with the text they were
 /// written as.
 fn plain_name(qualifier: &str) -> Option<&str> {
-    let base = qualifier.trim_start_matches(['&', '*']);
+    let base = held(qualifier).trim_start_matches(['&', '*']);
     let named = !base.is_empty()
         && base
             .chars()
             .all(|letter| letter.is_alphanumeric() || letter == '_');
     named.then_some(base)
+}
+
+/// The expression one parenthesized receiver holds.
+///
+/// Go binds a selector tighter than an address or a dereference, so `*p.M()`
+/// dereferences what the call returns and `&n.M()` takes the address of it. A
+/// receiver dereferenced or addressed before its member is selected is written
+/// `(*p).M()` and `(&n).M()`, so the parentheses are part of the text every such
+/// receiver arrives as.
+fn held(qualifier: &str) -> &str {
+    match qualifier
+        .strip_prefix('(')
+        .and_then(|open| open.strip_suffix(')'))
+    {
+        Some(inner) => held(inner),
+        None => qualifier,
+    }
 }
 
 /// The type one binding's own evidence names.

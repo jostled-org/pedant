@@ -142,6 +142,61 @@ fn definition_name(report: &ResolutionReport, definition: u32) -> Box<str> {
         .expect("a parent names a definition of its own report")
 }
 
+/// `<kind>|<text>|<file>:<line>|<answer file>:<line>,…` for every reference of
+/// one unit that names one of `named`.
+///
+/// Every other table labels a candidate `<unit>::<name>`, which cannot tell two
+/// definitions sharing a name apart. Go's promotion rule is exactly that
+/// question: when a direct member and a promoted one are both called `Label`,
+/// only the site the answer was declared at says which embedding level answered.
+pub fn member_answers(
+    resolution: &GoProjectResolution,
+    key: &str,
+    named: &[&str],
+) -> Box<[Box<str>]> {
+    let report = resolution.report();
+    report
+        .references()
+        .iter()
+        .zip(report.resolutions())
+        .filter(|(reference, _)| unit_key(report, reference.unit().index()) == key)
+        .filter(|(reference, _)| named.contains(&reference.text()))
+        .map(|(reference, record)| answer_text(report, reference, record))
+        .collect()
+}
+
+fn answer_text(
+    report: &ResolutionReport,
+    reference: &SymbolReference,
+    record: &ResolutionRecord,
+) -> Box<str> {
+    let span = SymbolReference::span(reference);
+    let sites: Box<[Box<str>]> = record
+        .candidates()
+        .iter()
+        .map(|candidate| candidate_site(report, candidate.definition().index()))
+        .collect();
+    format!(
+        "{:?}|{}|{}:{}|{}",
+        reference.kind(),
+        reference.text(),
+        span.file(),
+        span.start().line(),
+        joined(&sites)
+    )
+    .into_boxed_str()
+}
+
+/// Where one candidate definition is written.
+fn candidate_site(report: &ResolutionReport, definition: u32) -> Box<str> {
+    let found = report
+        .definitions()
+        .get(definition as usize)
+        .expect("a candidate names a definition of its own report");
+    let span = SymbolDefinition::span(found);
+    format!("{}:{}", span.file(), span.start().line()).into_boxed_str()
+}
+
 /// Every reference of one unit, which is what a case comparing one package's
 /// answers writes down.
 pub fn unit_references(resolution: &GoProjectResolution, key: &str) -> Box<[Box<str>]> {

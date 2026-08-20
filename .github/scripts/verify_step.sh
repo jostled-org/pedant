@@ -254,6 +254,8 @@ exact pedant-core substrate ${core_go} go_project_resolution_validates_every_sna
 exact pedant-core substrate ${core_go} go_resolution_limits_refuse_every_first_excess
 exact pedant-core substrate ${core_go} go_resolution_limit_checks_dominate_candidate_retention
 root pedant-core substrate ${core_go}
+root pedant-syntax enclosing_unit ts-go
+root pedant-lang capability ts-go
 root pedant-types serialization default
 root pedant-core substrate default
 SPECS

@@ -14,6 +14,19 @@ pub enum GoResolutionError {
         /// Why the unit does not describe a snapshot unit.
         reason: Box<str>,
     },
+    /// A site names a definition position this resolution never recorded.
+    ///
+    /// Every candidate and every enclosing definition is a position the index
+    /// answered for when it recorded it. A position it no longer answers for
+    /// would drop a candidate the ceiling already counted, so the whole
+    /// resolution refuses rather than stating a shorter answer than it proved.
+    #[error("definition position {slot} is not recorded by this resolution: {reason}")]
+    DefinitionMapping {
+        /// The index-local position that could not be read.
+        slot: u32,
+        /// Why the position names no definition.
+        reason: Box<str>,
+    },
     /// A site names a file this snapshot does not hold.
     #[error("{file} is not a source of this snapshot")]
     UnknownFile {

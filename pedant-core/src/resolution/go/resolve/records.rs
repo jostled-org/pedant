@@ -16,7 +16,7 @@ use pedant_types::{
 use crate::resolution::go::limits::GoResolutionLimits;
 
 use super::error::GoResolutionError;
-use super::index::Index;
+use super::index::{Index, Slot};
 use super::references::Denotation;
 
 /// State one record per reference of one package context.
@@ -46,18 +46,46 @@ fn write_one(
 ) -> Result<(), GoResolutionError> {
     let (denotation, unit) = stated;
     check_candidate_capacity(denotation, limits)?;
-    let conditional = is_conditional(index, denotation);
+    let named = named_definitions(index, denotation)?;
+    let conditional = is_conditional(&named, denotation);
     let certainty = certainty_of(&denotation.candidates, conditional);
     let handle = builder.add_reference(
         &unit_handle(index, unit)?,
         denotation.kind,
         Arc::clone(&denotation.text),
         denotation.span.clone(),
-        enclosing(index, denotation).as_ref(),
+        enclosing(index, denotation)?.as_ref(),
     )?;
-    let retained = retained_candidates(index, denotation, certainty);
+    let retained = retained_candidates(&named, certainty);
     builder.set_resolution(&handle, retained, gaps(denotation, conditional))?;
     Ok(())
+}
+
+/// Every definition one reference's candidates name.
+///
+/// Read once, because certainty and retention ask the same question of the same
+/// positions. A position the index does not answer for refuses here: filtering
+/// it away would state fewer candidates than the ceiling counted, which is the
+/// silent truncation this tier does not perform.
+fn named_definitions<'index>(
+    index: &'index Index,
+    denotation: &Denotation,
+) -> Result<Box<[&'index Slot]>, GoResolutionError> {
+    denotation
+        .candidates
+        .iter()
+        .map(|slot| recorded(index, *slot))
+        .collect()
+}
+
+/// The definition one recorded position names.
+fn recorded(index: &Index, slot: usize) -> Result<&Slot, GoResolutionError> {
+    index
+        .slot(slot)
+        .ok_or_else(|| GoResolutionError::DefinitionMapping {
+            slot: u32::try_from(slot).unwrap_or(u32::MAX),
+            reason: Box::from("no definition was recorded at this position"),
+        })
 }
 
 /// Candidate fan-out is never truncated: an overflowing reference refuses the
@@ -75,15 +103,9 @@ fn check_candidate_capacity(
 }
 
 /// The candidates one record names, each carrying the record's own certainty.
-fn retained_candidates(
-    index: &Index,
-    denotation: &Denotation,
-    certainty: ResolutionCertainty,
-) -> Box<[CandidateInput]> {
-    denotation
-        .candidates
+fn retained_candidates(named: &[&Slot], certainty: ResolutionCertainty) -> Box<[CandidateInput]> {
+    named
         .iter()
-        .filter_map(|slot| index.slot(*slot))
         .map(|slot| CandidateInput::new(slot.handle.clone(), certainty))
         .collect()
 }
@@ -92,12 +114,8 @@ fn retained_candidates(
 ///
 /// The reference's own source and every definition it names are read, because
 /// either one being conditional leaves the active universe unknown.
-fn is_conditional(index: &Index, denotation: &Denotation) -> bool {
-    denotation.conditional
-        || denotation
-            .candidates
-            .iter()
-            .any(|slot| index.slot(*slot).is_some_and(|found| found.conditional))
+fn is_conditional(named: &[&Slot], denotation: &Denotation) -> bool {
+    denotation.conditional || named.iter().any(|found| found.conditional)
 }
 
 fn certainty_of(candidates: &[usize], conditional: bool) -> ResolutionCertainty {
@@ -123,10 +141,14 @@ fn gaps(denotation: &Denotation, conditional: bool) -> Box<[ResolutionGap]> {
 ///
 /// A site written outside every declaration — an import specification, a
 /// package-level initializer — holds none, and states none.
-fn enclosing(index: &Index, denotation: &Denotation) -> Option<DefinitionHandle> {
-    index
-        .slot(denotation.enclosing?)
-        .map(|found| found.handle.clone())
+fn enclosing(
+    index: &Index,
+    denotation: &Denotation,
+) -> Result<Option<DefinitionHandle>, GoResolutionError> {
+    denotation
+        .enclosing
+        .map(|slot| recorded(index, slot).map(|found| found.handle.clone()))
+        .transpose()
 }
 
 /// The handle of the unit one reference is stated in.

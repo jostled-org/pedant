@@ -2,72 +2,25 @@
 //! from.
 //!
 //! A submodule of `tests/enclosing_unit.rs`, reached through a `#[path]`
-//! attribute. One source carries every grammar shape the inventory claims, so
-//! the ordering, the spans, the scopes, the bindings, the conditions, and the
-//! anchors are all read off the same bytes rather than off a fixture per claim.
+//! attribute. [`go_fact_source`](crate::go_fact_source)'s one source carries
+//! every grammar shape the inventory claims, so the ordering, the spans, the
+//! scopes, the bindings, the conditions, and the anchors are all read off the
+//! same bytes rather than off a fixture per claim. What that source writes as
+//! the type of each name it binds is read beside them, in
+//! [`go_type_facts`](crate::go_type_facts).
 //!
 //! Every span assertion resolves back through the source: a fact's byte range
 //! slices the exact text it names, so a span that drifts fails here rather than
 //! travelling into a resolution report.
 
 use pedant_syntax::go::{
-    GoBindingKind, GoBuildConditionKind, GoDeclarationKind, GoFactError, GoFactLimits, GoFactSpan,
-    GoFileFacts, GoImportForm, GoReferenceKind, GoScopeKind,
+    GoBindingKind, GoBuildConditionKind, GoDeclarationKind, GoFactLimits, GoFactSpan, GoFileFacts,
+    GoImportForm, GoReferenceKind, GoScopeKind,
 };
-use pedant_syntax::tree_sitter::{SourceUnitAnchor, parse_bound};
-use pedant_syntax::{Location, SourceUnitKind, SyntaxLanguage};
+use pedant_syntax::tree_sitter::SourceUnitAnchor;
+use pedant_syntax::{Location, SourceUnitKind};
 
-/// One Go source holding every fact family the inventory claims.
-///
-/// Line numbers are written beside each line because every expectation below
-/// names a zero-based line, and a source whose lines are counted by hand is one
-/// an editor can silently renumber.
-pub(crate) const FACT_SOURCE: &str = concat!(
-    "//go:build linux && cgo\n",             // 0
-    "// +build linux,cgo\n",                 // 1
-    "\n",                                    // 2
-    "package widget\n",                      // 3
-    "\n",                                    // 4
-    "import (\n",                            // 5
-    "\t\"fmt\"\n",                           // 6
-    "\talias \"net/http\"\n",                // 7
-    "\t_ \"embed\"\n",                       // 8
-    "\t. \"strings\"\n",                     // 9
-    ")\n",                                   // 10
-    "\n",                                    // 11
-    "const Limit = 10\n",                    // 12
-    "\n",                                    // 13
-    "var Shared int\n",                      // 14
-    "\n",                                    // 15
-    "type Config struct {\n",                // 16
-    "\tRetries int\n",                       // 17
-    "\tfmt.Stringer\n",                      // 18
-    "}\n",                                   // 19
-    "\n",                                    // 20
-    "type Runner interface {\n",             // 21
-    "\tRun(n int) error\n",                  // 22
-    "}\n",                                   // 23
-    "\n",                                    // 24
-    "type Handle Config\n",                  // 25
-    "\n",                                    // 26
-    "type Alias = Config\n",                 // 27
-    "\n",                                    // 28
-    "func build(count int) (sum int) {\n",   // 29
-    "\tlocal := count\n",                    // 30
-    "\t{\n",                                 // 31
-    "\t\tvar inner int = local\n",           // 32
-    "\t\tsum = inner\n",                     // 33
-    "\t}\n",                                 // 34
-    "\tfmt.Println(sum)\n",                  // 35
-    "\treturn sum\n",                        // 36
-    "}\n",                                   // 37
-    "\n",                                    // 38
-    "func (c *Config) Run(n int) error {\n", // 39
-    "\tlabel := \"gö\"\n",                   // 40
-    "\t_ = label\n",                         // 41
-    "\treturn nil\n",                        // 42
-    "}\n",                                   // 43
-);
+use crate::go_fact_source::{FACT_SOURCE, complete_facts, facts};
 
 /// One import as this module compares it: form, path, alias, bound name, and
 /// the line it opens on.
@@ -78,17 +31,6 @@ type ImportRow<'a> = (
     Option<&'a str>,
     usize,
 );
-
-/// Build the inventory this module's claims are read from.
-pub(crate) fn facts(source: &str, limits: GoFactLimits) -> Result<GoFileFacts<'_>, GoFactError> {
-    let parsed = parse_bound(source, SyntaxLanguage::Go).expect("the Go grammar parses the source");
-    parsed.go_file_facts(limits)
-}
-
-/// The inventory of [`FACT_SOURCE`], with no ceiling in the way.
-pub(crate) fn complete_facts() -> GoFileFacts<'static> {
-    facts(FACT_SOURCE, GoFactLimits::UNBOUNDED).expect("an unbounded inventory")
-}
 
 /// The exact text one span names.
 ///
@@ -223,6 +165,13 @@ fn assert_declarations(facts: &GoFileFacts<'_>) {
             (GoDeclarationKind::TypeAlias, "Alias"),
             (GoDeclarationKind::Function, "build"),
             (GoDeclarationKind::Method, "Run"),
+            (GoDeclarationKind::Function, "shapes"),
+            (GoDeclarationKind::Function, "spawn"),
+            (GoDeclarationKind::Function, "fetch"),
+            (GoDeclarationKind::Function, "pair"),
+            (GoDeclarationKind::Function, "table"),
+            (GoDeclarationKind::Function, "boxed"),
+            (GoDeclarationKind::Function, "serve"),
         ],
         "declarations keep source order and their declared spelling"
     );
@@ -475,6 +424,10 @@ fn assert_recovery_and_language_are_exact() {
 
     #[cfg(feature = "ts-python")]
     {
+        use pedant_syntax::SyntaxLanguage;
+        use pedant_syntax::go::GoFactError;
+        use pedant_syntax::tree_sitter::parse_bound;
+
         let python = parse_bound("def handle():\n    pass\n", SyntaxLanguage::Python)
             .expect("the Python grammar parses");
         assert_eq!(

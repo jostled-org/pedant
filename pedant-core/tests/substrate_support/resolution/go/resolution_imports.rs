@@ -3,6 +3,11 @@
 //! Go binds an import in the file that writes it, never in the package. Two
 //! files of one package importing the same path therefore hold two bindings,
 //! and a name one file aliases is not that name in the other.
+//!
+//! A dot import binds no name at all: it pulls the imported package's names into
+//! the file. What that binds is decided by the corpus, so a dot import the
+//! snapshot holds and one it does not answer differently for the same
+//! unresolved name.
 
 use crate::resolution::go::fixture::resolve_default;
 use crate::resolution::go::resolution_fixtures::IMPORT_FORMS;
@@ -17,10 +22,17 @@ const APP_DEFINITIONS: &[&str] = &[
     "x#production|Package|app|aliased.go:0|",
     "x#production|Function|Aliased|aliased.go:8|app",
     "x#production|Function|Dotted|dotted.go:7|app",
+    "x#production|Function|Outside|outside.go:4|app",
 ];
 
 /// Every reference the importing package states, with the target each import
 /// form binds.
+///
+/// The last two rows carry the dot import whose package is outside the snapshot.
+/// `Elsewhere` is declared by no package the corpus holds, and the file that
+/// reads it pulls unspelled names from a package the corpus cannot see, so the
+/// answer is `ExternalDefinition` rather than `MissingDefinition`: the report
+/// says the name is not here, not that it exists nowhere.
 const APP_REFERENCES: &[&str] = &[
     "x#production|Import|x/util|aliased.go:3|resolved|x/util#production::util|",
     "x#production|Import|x/text|aliased.go:4|resolved|x/text#production::text|",
@@ -33,6 +45,9 @@ const APP_REFERENCES: &[&str] = &[
     "x#production|Type|string|dotted.go:7|-||ExternalDefinition",
     "x#production|Call|Join|dotted.go:8|resolved|x/text#production::Join|",
     "x#production|Call|Name|dotted.go:8|resolved|x/util#production::Name|",
+    "x#production|Import|example.com/outside|outside.go:2|-||ExternalDefinition",
+    "x#production|Type|string|outside.go:4|-||ExternalDefinition",
+    "x#production|Call|Elsewhere|outside.go:5|-||ExternalDefinition",
 ];
 
 /// 5.T1 (Invariant 12): imports are file-scoped, and the default name, the

@@ -7,13 +7,13 @@
 //! wrapper that only ever saw its own producer's output would prove nothing
 //! about a report handed to it.
 
-use pedant_core::resolution::go::GoResolutionLimits;
-use pedant_types::{Language, ResolutionReport, SymbolKind};
+use pedant_core::resolution::go::{GoProjectResolution, GoResolutionLimits};
+use pedant_types::{Language, ResolutionReport, SymbolDefinition, SymbolKind};
 
 use crate::resolution::go::fixture::{resolve, resolve_default};
 use crate::resolution::go::resolution_fixtures::BOUND_CONTEXTS;
 use crate::resolution::go::resolution_refusal::assert_reports_it_did_not_write_are_refused;
-use crate::resolution::go::resolution_views::units;
+use crate::resolution::go::resolution_views::{references, unit_references, units};
 use crate::resolution::go::views::borrowed;
 
 /// Every report unit [`BOUND_CONTEXTS`] states, one per snapshot package
@@ -23,6 +23,32 @@ const BOUND_UNITS: &[&str] = &[
     "x#internal_test",
     "x#production",
     "x/util#production",
+];
+
+/// The build-conditioned source of [`BOUND_CONTEXTS`], whose declarations only
+/// some builds hold.
+const CONDITIONED_SOURCE: &str = "tuned_linux.go";
+
+/// The production context's own references, which is what shows the certainty
+/// rule discriminates: the unconditioned call beside the conditioned one
+/// resolves.
+/// A site written inside the conditioned source states the predicate gap too,
+/// whether or not it names a candidate at all.
+const PRODUCTION_REFERENCES: &[&str] = &[
+    "x#production|Import|x/util|app.go:2|resolved|x/util#production::util|",
+    "x#production|Type|string|app.go:4|-||ExternalDefinition",
+    "x#production|Call|Name|app.go:5|resolved|x/util#production::Name|",
+    "x#production|Call|tuned|app.go:5|possible|x#production::tuned|ConditionalCompilation",
+    "x#production|Type|string|tuned_linux.go:2|-||ExternalDefinition,ConditionalCompilation",
+];
+
+/// Every record naming a definition a build predicate governs.
+///
+/// One candidate each, so no answer here is possible because it is ambiguous:
+/// the predicate alone is what keeps it from resolving.
+const CONDITIONAL_EVIDENCE: &[&str] = &[
+    "x#internal_test|Call|tuned|app.go:5|possible|x#internal_test::tuned|ConditionalCompilation",
+    "x#production|Call|tuned|app.go:5|possible|x#production::tuned|ConditionalCompilation",
 ];
 
 /// 5.T6 (Invariants 7, 19, 21): every published resolution binds one report
@@ -69,6 +95,12 @@ fn go_project_resolution_validates_every_snapshot_binding_and_kind() {
         );
     }
     assert_go_kind_subset(resolution.report());
+    assert_eq!(
+        &*borrowed(&unit_references(&resolution, "x#production")),
+        PRODUCTION_REFERENCES,
+        "an unconditioned call resolves in the same report a conditioned one does not"
+    );
+    assert_conditional_evidence_is_possible(&resolution);
 
     drop(resolution);
     drop(snapshot);
@@ -98,8 +130,7 @@ impl GoUnitId {
     }
 }
 
-/// Only the Go subset of the shared vocabulary appears, and a conditioned
-/// candidate is never resolved.
+/// Only the Go subset of the shared vocabulary appears.
 fn assert_go_kind_subset(report: &ResolutionReport) {
     let refused: Box<[SymbolKind]> = report
         .definitions()
@@ -127,6 +158,48 @@ fn assert_go_kind_subset(report: &ResolutionReport) {
             "every definition carries its unit's language"
         );
     }
+}
+
+/// A candidate a build predicate governs is possible, never resolved, and says
+/// which predicate family kept it possible.
+///
+/// This tier evaluates no predicate, so a definition only some builds hold
+/// leaves the active universe unknown. The conditioned definitions are found by
+/// the source that declares them and the list is required to be non-empty, so a
+/// fixture that stopped stating conditional evidence fails here rather than
+/// satisfying the rule over nothing.
+fn assert_conditional_evidence_is_possible(resolution: &GoProjectResolution) {
+    let report = resolution.report();
+    let conditioned: Box<[u32]> = report
+        .definitions()
+        .iter()
+        .enumerate()
+        .filter(|(_, definition)| SymbolDefinition::span(definition).file() == CONDITIONED_SOURCE)
+        .map(|(index, _)| u32::try_from(index).expect("a report-local definition identifier"))
+        .collect();
+    assert!(
+        !conditioned.is_empty(),
+        "{CONDITIONED_SOURCE} states the definitions this rule is read over"
+    );
+
+    let rendered = references(resolution);
+    let naming: Box<[Box<str>]> = report
+        .resolutions()
+        .iter()
+        .enumerate()
+        .filter(|(_, record)| {
+            record
+                .candidates()
+                .iter()
+                .any(|candidate| conditioned.contains(&candidate.definition().index()))
+        })
+        .map(|(index, _)| rendered[index].clone())
+        .collect();
+    assert_eq!(
+        &*borrowed(&naming),
+        CONDITIONAL_EVIDENCE,
+        "every record naming a conditioned definition is possible and states the predicate gap"
+    );
 }
 
 /// Two loads whose fixture files were written in opposite orders state the same

@@ -42,13 +42,12 @@ fn go_lexical_shadowing_blocks_package_and_import_claims() {
         "only the unshadowed occurrence claims the imported package"
     );
 
-    let claiming: Box<[&&str]> = APP_REFERENCES
+    let claiming = stated
         .iter()
         .filter(|line| line.contains("x/util#production"))
-        .collect();
+        .count();
     assert_eq!(
-        claiming.len(),
-        2,
+        claiming, 2,
         "exactly the import specification and the unshadowed call name the imported package"
     );
 

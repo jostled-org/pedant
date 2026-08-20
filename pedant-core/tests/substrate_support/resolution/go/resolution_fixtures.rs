@@ -15,6 +15,12 @@ const MANIFEST: FixtureFile = ("repo/go.mod", "module x\n\ngo 1.22\n");
 ///
 /// `util` is imported by both files, which is what makes file scope observable:
 /// a binding shared by two files is still two bindings.
+///
+/// A third file dot-imports a path no directory of this module holds. A dot
+/// import pulls names it does not spell, so a name the corpus cannot answer in
+/// that file could still be declared by the package outside it: the answer is
+/// "not here" rather than "nowhere", and `outside.go` is the only file here whose
+/// unresolved name states it.
 pub const IMPORT_FORMS: &[FixtureFile] = &[
     MANIFEST,
     (
@@ -33,6 +39,10 @@ pub const IMPORT_FORMS: &[FixtureFile] = &[
     (
         "repo/dotted.go",
         "package app\n\nimport (\n\t. \"x/text\"\n\t\"x/util\"\n)\n\nfunc Dotted() string {\n\treturn Join() + util.Name()\n}\n",
+    ),
+    (
+        "repo/outside.go",
+        "package app\n\nimport . \"example.com/outside\"\n\nfunc Outside() string {\n\treturn Elsewhere()\n}\n",
     ),
 ];
 
@@ -68,15 +78,51 @@ pub const CALL_SHAPES: &[FixtureFile] = &[
 /// Every receiver form a concrete method call is resolved from, plus the
 /// embedded promotion, the conditional ambiguity, and the receiver evidence a
 /// snapshot cannot complete.
+///
+/// `Node` declares `Rename` in pointer form and `Label` in value form, and both
+/// are called from both receiver forms, because Go selects one method set at a
+/// call site: a value receiver reaches a pointer method and a pointer receiver
+/// reaches a value method. A fixture that called each method only from the form
+/// its declaration wrote would pass under a resolver that matched pointerness.
+///
+/// `store` declares a second `Node` with a second `Label`, and `foreign.go`
+/// declares a receiver of it by writing the package-qualified form. Both packages
+/// answer the same method name, so a resolver that dropped the qualifier would
+/// publish a resolved call into the wrong package rather than a gap: the crossing
+/// row names `x/store#production::Label`, and the bare lookup beside it names
+/// `x#production::Label`.
+///
+/// `Fetch` carries the same crossing one hop further: it *returns* `store.Node`,
+/// and `Crossed` binds a receiver from calling it. A declared result names its
+/// package through the imports of the file that wrote it, which is not the file
+/// asking, so this tier states no receiver type and the call keeps its gap. A
+/// resolver that read the result's name without its qualifier would find `app`'s
+/// own `Node` and publish a resolved edge into the wrong package.
+///
+/// The embedding chain is three types deep, and two names answer at two depths
+/// each. `Node` declares `Label` and `Base` promotes another, so depth 0 decides;
+/// `Base` declares `Ping` and `Root` promotes another, so depth 1 decides over
+/// depth 2; `Trace` is declared only on `Root`, so it is reached at depth 2 or
+/// not at all. A resolver that flattened the chain would answer two candidates
+/// where Go answers one, and one that widened past the first answering level
+/// would answer the deeper method.
 pub const METHOD_SETS: &[FixtureFile] = &[
     MANIFEST,
     (
+        "repo/store/store.go",
+        "package store\n\ntype Node struct{}\n\nfunc (n Node) Label() string {\n\treturn \"store\"\n}\n",
+    ),
+    (
+        "repo/foreign.go",
+        "package app\n\nimport \"x/store\"\n\nfunc Foreign() string {\n\tvar n store.Node\n\treturn n.Label()\n}\n\nfunc Fetch() store.Node {\n\treturn store.Node{}\n}\n\nfunc Crossed() string {\n\tn := Fetch()\n\treturn n.Label()\n}\n",
+    ),
+    (
         "repo/types.go",
-        "package app\n\ntype Base struct{}\n\nfunc (b Base) Ping() string {\n\treturn \"ping\"\n}\n\ntype Node struct {\n\tBase\n\tName string\n}\n\nfunc (n *Node) Rename(next string) {\n\tn.Name = next\n}\n\nfunc (n Node) Label() string {\n\treturn n.Name\n}\n\nfunc NewNode() *Node {\n\treturn &Node{}\n}\n",
+        "package app\n\ntype Root struct{}\n\nfunc (r Root) Trace() string {\n\treturn \"root\"\n}\n\nfunc (r Root) Ping() string {\n\treturn \"root\"\n}\n\ntype Base struct {\n\tRoot\n}\n\nfunc (b Base) Ping() string {\n\treturn \"ping\"\n}\n\nfunc (b Base) Label() string {\n\treturn \"base\"\n}\n\ntype Node struct {\n\tBase\n\tName string\n}\n\nfunc (n *Node) Rename(next string) {\n\tn.Name = next\n}\n\nfunc (n Node) Label() string {\n\treturn n.Name\n}\n\nfunc NewNode() *Node {\n\treturn &Node{}\n}\n",
     ),
     (
         "repo/receivers.go",
-        "package app\n\nfunc Literal() string {\n\tn := Node{}\n\treturn n.Label()\n}\n\nfunc Address() string {\n\tn := &Node{}\n\treturn n.Ping()\n}\n\nfunc Result() string {\n\tn := NewNode()\n\treturn n.Label()\n}\n\nfunc Converted(raw Node) string {\n\tn := Node(raw)\n\treturn n.Label()\n}\n\nfunc Declared() string {\n\tvar n Node\n\treturn n.Label()\n}\n\nfunc Indexed(all []Node) string {\n\treturn all[0].Label()\n}\n",
+        "package app\n\nfunc Literal() string {\n\tn := Node{}\n\treturn n.Label()\n}\n\nfunc Address() string {\n\tn := &Node{}\n\treturn n.Ping()\n}\n\nfunc Result() string {\n\tn := NewNode()\n\treturn n.Label()\n}\n\nfunc Converted(raw Node) string {\n\tn := Node(raw)\n\treturn n.Label()\n}\n\nfunc Declared() string {\n\tvar n Node\n\treturn n.Label()\n}\n\nfunc Indexed(all []Node) string {\n\treturn all[0].Label()\n}\n\nfunc Renamed() string {\n\tn := Node{}\n\tn.Rename(\"next\")\n\treturn n.Label()\n}\n\nfunc Pointed() string {\n\tn := NewNode()\n\tn.Rename(\"next\")\n\treturn n.Label()\n}\n\nfunc Dereferenced() string {\n\tn := NewNode()\n\treturn (*n).Label()\n}\n\nfunc Addressed() string {\n\tn := Node{}\n\treturn (&n).Ping()\n}\n\nfunc Promoted() string {\n\tn := Node{}\n\treturn n.Trace()\n}\n",
     ),
     (
         "repo/plat_linux.go",
@@ -94,11 +140,21 @@ pub const METHOD_SETS: &[FixtureFile] = &[
 
 /// One directory stating all three compilation contexts beside a second
 /// package, which is what a wrapper binds one report unit per.
+///
+/// `tuned` is declared in a platform-suffixed source, so the only build that
+/// holds it is one this tier does not evaluate. It sits here rather than in a
+/// fixture of its own because a wrapper states certainty over the same report it
+/// binds: a conditioned answer proved beside an unconditioned one is what shows
+/// the rule discriminates.
 pub const BOUND_CONTEXTS: &[FixtureFile] = &[
     MANIFEST,
     (
         "repo/app.go",
-        "package app\n\nimport \"x/util\"\n\nfunc Run() string {\n\treturn util.Name()\n}\n",
+        "package app\n\nimport \"x/util\"\n\nfunc Run() string {\n\treturn util.Name() + tuned()\n}\n",
+    ),
+    (
+        "repo/tuned_linux.go",
+        "package app\n\nfunc tuned() string {\n\treturn \"linux\"\n}\n",
     ),
     (
         "repo/app_test.go",

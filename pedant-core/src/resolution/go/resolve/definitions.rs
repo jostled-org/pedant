@@ -334,7 +334,6 @@ fn result_type(record: &GoDeclarationRecord) -> Option<TypeName> {
     record.result_name().map(|name| TypeName {
         qualifier: record.result_qualifier().map(Box::from),
         name: Box::from(name),
-        pointer: record.result_pointer(),
     })
 }
 

@@ -5,7 +5,8 @@
 //! comparison rather than slipping past an assertion that never asked.
 
 use pedant_core::resolution::go::{
-    GoBuildCondition, GoResolutionSnapshot, GoSnapshotModule, GoSource,
+    GoBindingRecord, GoBuildCondition, GoDeclarationRecord, GoInitializerForm,
+    GoResolutionSnapshot, GoSnapshotModule, GoSource,
 };
 
 /// `<module path>|<directory>|<manifest>|<depth>` for every snapshot module.
@@ -113,6 +114,122 @@ fn kind_token(kind: pedant_core::resolution::go::GoBuildConditionKind) -> &'stat
         pedant_core::resolution::go::GoBuildConditionKind::GoBuild => "directive",
         pedant_core::resolution::go::GoBuildConditionKind::LegacyBuildTag => "legacy",
     }
+}
+
+/// `<path>|<name>|<form>|<qualifier>|<type>|<pointer>` for every name a stored
+/// source binds, in snapshot order, with `none` where the binding states no
+/// initializer.
+///
+/// The retained initializer is the only evidence of what a short variable
+/// declaration binds, and every receiver a method call is resolved from reads
+/// it. Rendering every binding rather than the ones that carry one is what makes
+/// a fabricated initializer as visible as a dropped one.
+pub fn source_initializers(snapshot: &GoResolutionSnapshot) -> Box<[Box<str>]> {
+    snapshot
+        .sources()
+        .iter()
+        .flat_map(|source| {
+            source
+                .facts()
+                .bindings()
+                .iter()
+                .map(|bound| initializer_text(source.path(), bound))
+        })
+        .collect()
+}
+
+fn initializer_text(path: &str, bound: &GoBindingRecord) -> Box<str> {
+    match bound.initializer() {
+        None => format!("{path}|{}|none", bound.name()).into_boxed_str(),
+        Some(stated) => format!(
+            "{path}|{}|{}|{}|{}|{}",
+            bound.name(),
+            form_token(stated.form()),
+            stated.qualifier().unwrap_or("-"),
+            stated.name(),
+            stated.pointer()
+        )
+        .into_boxed_str(),
+    }
+}
+
+/// The spelling one initializer form is written down as.
+///
+/// Spelled out rather than derived from `Debug`, so a form added to the closed
+/// set is a table the cases must revise rather than a row whose text changes
+/// under them.
+fn form_token(form: GoInitializerForm) -> &'static str {
+    match form {
+        GoInitializerForm::CompositeLiteral => "literal",
+        GoInitializerForm::CompositeLiteralAddress => "literal-address",
+        GoInitializerForm::Call => "call",
+    }
+}
+
+/// `<path>|<name>|<qualifier>|<type>|<pointer>` for every name a stored source
+/// binds, in snapshot order, with `-` where the binding writes no type.
+///
+/// A receiver, a parameter, a result, and a `var` state their type directly, and
+/// the package that type belongs to is the qualifier beside it. A retention that
+/// kept the name and dropped the qualifier would leave `var n pkg.T` looking
+/// exactly like `var n T`, so the two parts are rendered together over every
+/// binding rather than over the ones that write a qualifier.
+pub fn source_declared_types(snapshot: &GoResolutionSnapshot) -> Box<[Box<str>]> {
+    snapshot
+        .sources()
+        .iter()
+        .flat_map(|source| {
+            source
+                .facts()
+                .bindings()
+                .iter()
+                .map(|bound| declared_type_text(source.path(), bound))
+        })
+        .collect()
+}
+
+fn declared_type_text(path: &str, bound: &GoBindingRecord) -> Box<str> {
+    format!(
+        "{path}|{}|{}|{}|{}",
+        bound.name(),
+        bound.type_qualifier().unwrap_or("-"),
+        bound.type_name().unwrap_or("-"),
+        bound.pointer()
+    )
+    .into_boxed_str()
+}
+
+/// `<path>|<name>|<qualifier>|<result>|<pointer>` for every declaration a stored
+/// source states, in snapshot order, with `-` where it names no single result
+/// type.
+///
+/// A callable's declared result is the only evidence a call's value carries a
+/// type, and every receiver read from a call is resolved through it. Rendering
+/// every declaration rather than the callables is what makes a fabricated result
+/// as visible as one the retention dropped.
+pub fn source_results(snapshot: &GoResolutionSnapshot) -> Box<[Box<str>]> {
+    snapshot
+        .sources()
+        .iter()
+        .flat_map(|source| {
+            source
+                .facts()
+                .declarations()
+                .iter()
+                .map(|declared| result_text(source.path(), declared))
+        })
+        .collect()
+}
+
+fn result_text(path: &str, declared: &GoDeclarationRecord) -> Box<str> {
+    format!(
+        "{path}|{}|{}|{}|{}",
+        declared.name(),
+        declared.result_qualifier().unwrap_or("-"),
+        declared.result_name().unwrap_or("-"),
+        declared.result_pointer()
+    )
+    .into_boxed_str()
 }
 
 /// `<path>|<declared package>|<declarations>|<imports>` for every stored

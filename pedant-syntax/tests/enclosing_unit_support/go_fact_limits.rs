@@ -1,13 +1,13 @@
 //! What a lowered Go fact ceiling refuses, and when it refuses it.
 //!
 //! A submodule of `tests/enclosing_unit.rs`, reached through a `#[path]`
-//! attribute. It shares [`go_facts`](crate::go_facts)'s fixture and its one
-//! extraction helper, because a ceiling is only meaningful against the same
-//! inventory the completeness case reads.
+//! attribute. It shares [`go_fact_source`](crate::go_fact_source)'s fixture and
+//! its one extraction helper, because a ceiling is only meaningful against the
+//! same inventory the completeness case reads.
 
 use pedant_syntax::go::{GoFactError, GoFactLimits, GoFileFacts};
 
-use crate::go_facts::{FACT_SOURCE, complete_facts, facts};
+use crate::go_fact_source::{FACT_SOURCE, complete_facts, facts};
 
 /// A source with `depth` nested blocks inside one function.
 fn nested_source(depth: usize) -> String {

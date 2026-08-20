@@ -392,10 +392,20 @@ mod typescript;
 #[path = "enclosing_unit_support/go.rs"]
 mod go;
 
+/// The one Go source every fact claim is read from.
+#[cfg(feature = "ts-go")]
+#[path = "enclosing_unit_support/go_fact_source.rs"]
+mod go_fact_source;
+
 /// What the bounded Go fact inventory states.
 #[cfg(feature = "ts-go")]
 #[path = "enclosing_unit_support/go_facts.rs"]
 mod go_facts;
+
+/// What that inventory states as the type of every name the source binds.
+#[cfg(feature = "ts-go")]
+#[path = "enclosing_unit_support/go_type_facts.rs"]
+mod go_type_facts;
 
 /// What a lowered Go fact ceiling refuses, and when.
 #[cfg(feature = "ts-go")]

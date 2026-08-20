@@ -1,8 +1,9 @@
 //! Dependency-selection ancestry behavior and structural-work proofs.
 
+use pedant_core::resolution::ResolutionProbe;
 use pedant_core::resolution::rust::{
-    ClosureSite, ResolutionLimit, ResolutionLimits, ResolutionProbe, RustSnapshotError,
-    SourceClosureFailure, SourceClosureFailureKind,
+    ClosureSite, ResolutionLimit, ResolutionLimits, RustSnapshotError, SourceClosureFailure,
+    SourceClosureFailureKind,
 };
 
 use crate::resolution::fixture;

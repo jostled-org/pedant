@@ -6,11 +6,11 @@
 //! stay in separate files.
 
 use pedant_core::capabilities::detect_capabilities;
+#[cfg(feature = "resolution-test-support")]
+use pedant_core::resolution::ResolutionProbe;
 use pedant_core::resolution::rust::{CargoTargetKind, SourceClosureFailureKind};
 #[cfg(feature = "resolution-test-support")]
-use pedant_core::resolution::rust::{
-    PackageId, ResolutionProbe, RustProject, RustSnapshotError, unknown_target_id,
-};
+use pedant_core::resolution::rust::{PackageId, RustProject, RustSnapshotError, unknown_target_id};
 use pedant_types::Capability;
 
 #[cfg(feature = "resolution-test-support")]

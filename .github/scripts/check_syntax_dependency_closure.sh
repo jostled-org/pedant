@@ -9,10 +9,12 @@
 # `pedant-syntax`, so a reverse edge is a cycle, and a `pedant-core` or
 # `pedant-mcp` edge would drag the whole engine into a snippet build.
 #
-# `pedant-core` and `pedant-lang` are sibling libraries over `pedant-types`
-# alone, and both directions of that are checked. Proving only that
-# `pedant-lang` misses `pedant-core` leaves a `pedant-core` -> `pedant-syntax`
-# edge free to land, and that edge breaks the same shape from the other side.
+# `pedant-core` and `pedant-lang` are sibling libraries, and neither may reach
+# the other. `pedant-lang` reaches `pedant-syntax` for the grammars it analyzes;
+# `pedant-core` reaches it for the Go module resolution surface. Both edges run
+# down into the substrate, so neither is a cycle. The edge that would break the
+# shape runs the other way. `pedant-syntax` states no reachable sibling, so
+# every one is forbidden to it.
 #
 # Each package states only what it may reach. Everything else in the workspace
 # is forbidden, derived from `cargo metadata` rather than restated here, so a
@@ -171,14 +173,17 @@ check_closure pedant-lang \
     require:pedant-syntax \
     require:pedant-types
 
-# The other direction of the same sibling claim. `pedant-lang` not reaching
-# `pedant-core` says nothing about `pedant-core` reaching `pedant-syntax`, and
-# that edge would put the whole analysis engine inside the substrate it is
-# supposed to sit above. Its forbid set is derived the same way every other one
-# is, so `pedant-syntax`, `pedant-snippet`, and `pedant-lang` are all closed to
-# it without being named here.
+# The other direction of the same sibling claim. `pedant-core` reaches the
+# substrate directly and nothing else. Its `pedant-syntax` edge is the one
+# `go-resolution` selects: default-off, versioned, and carrying the Go grammar
+# alone. `require:` rather than `allow:` is the point — the edge must stay
+# declared in this manifest. A `pedant-core` that reached the grammar through a
+# sibling would read it from beside itself, not below. Its forbid set is derived
+# the same way every other one is, so `pedant-snippet` and `pedant-lang` are
+# closed to it without being named here.
 check_closure pedant-core \
-    require:pedant-types
+    require:pedant-types \
+    require:pedant-syntax
 
 if [ "${status}" -ne 0 ]; then
     echo "error: syntax dependency closure drifted." >&2

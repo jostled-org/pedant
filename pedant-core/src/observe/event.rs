@@ -5,11 +5,11 @@
 /// Every path payload is repository-relative and `/`-separated, so an observer
 /// compares one path shape no matter which loader recorded the event.
 pub(crate) enum Observation<'a> {
-    /// A project index was built from a repository root.
+    /// A project index was built from a repository root, in any language.
     ProjectLoad,
-    /// A `Cargo.toml` was read: once per manifest when the project is indexed,
-    /// and once more per participating manifest when a snapshot re-checks the
-    /// revision it was indexed against.
+    /// A build manifest was read — a `Cargo.toml` or a `go.mod`: once per
+    /// manifest when the project is indexed, and once more per participating
+    /// manifest when a snapshot re-checks the revision it was indexed against.
     ManifestRead(&'a str),
     /// A Rust source was read.
     SourceRead(&'a str),

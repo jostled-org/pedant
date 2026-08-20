@@ -6,7 +6,7 @@
 //! and the contracts stay in separate files.
 
 #[cfg(feature = "resolution-test-support")]
-use pedant_core::resolution::rust::ResolutionProbe;
+use pedant_core::resolution::ResolutionProbe;
 use pedant_core::resolution::rust::RustResolutionError;
 
 use crate::resolution::fixture;

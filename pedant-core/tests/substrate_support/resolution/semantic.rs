@@ -8,7 +8,7 @@
 //! at the same coordinates.
 
 #[cfg(feature = "resolution-test-support")]
-use pedant_core::resolution::rust::ResolutionProbe;
+use pedant_core::resolution::ResolutionProbe;
 #[cfg(feature = "resolution-test-support")]
 use pedant_core::resolution::rust::RustResolutionError;
 #[cfg(feature = "resolution-test-support")]

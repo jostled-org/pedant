@@ -213,7 +213,7 @@ pub fn assert_invalid_utf8_is_partial_evidence() {
 /// configuration Step 3 runs; every other configuration still proves the
 /// refusal.
 #[cfg(feature = "resolution-test-support")]
-struct ReadWatch(pedant_core::resolution::rust::ResolutionProbe);
+struct ReadWatch(pedant_core::resolution::ResolutionProbe);
 
 #[cfg(not(feature = "resolution-test-support"))]
 struct ReadWatch;
@@ -221,7 +221,7 @@ struct ReadWatch;
 #[cfg(feature = "resolution-test-support")]
 impl ReadWatch {
     fn install() -> Self {
-        Self(pedant_core::resolution::rust::ResolutionProbe::install())
+        Self(pedant_core::resolution::ResolutionProbe::install())
     }
 
     /// Assert the entry point is the only source the readers opened.

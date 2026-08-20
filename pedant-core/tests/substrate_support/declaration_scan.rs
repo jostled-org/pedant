@@ -34,19 +34,28 @@ pub(crate) fn excluded_root() -> PathBuf {
     crate_path("src").join(SEMANTIC_EXCLUSION)
 }
 
-/// The process-capability evidence one source names, when it names any.
+/// Every capability one source states, with the evidence that states it.
 ///
-/// Both the whole-substrate scan and the narrower Tier 1 scan ask this one
-/// question, so the production entry points it asks it through are named once.
-pub(crate) fn process_evidence(path: &Path) -> Option<Box<str>> {
+/// The whole-substrate scan, the narrower Tier 1 scan, and the Go project
+/// boundary all ask about capabilities, so the production entry points they ask
+/// through are named once.
+pub(crate) fn capability_findings(path: &Path) -> Box<[(Capability, Box<str>)]> {
     let syntax = parse_rust_file(path);
     let ir = extract(&path.to_string_lossy(), &syntax, None);
     detect_capabilities(&ir, None)
         .profile
         .findings
         .iter()
-        .find(|finding| finding.capability == Capability::ProcessExec)
-        .map(|finding| format!("{}: {}", path.display(), finding.evidence).into_boxed_str())
+        .map(|finding| (finding.capability, finding.evidence.as_ref().into()))
+        .collect()
+}
+
+/// The process-capability evidence one source names, when it names any.
+pub(crate) fn process_evidence(path: &Path) -> Option<Box<str>> {
+    capability_findings(path)
+        .iter()
+        .find(|(capability, _)| *capability == Capability::ProcessExec)
+        .map(|(_, evidence)| format!("{}: {evidence}", path.display()).into_boxed_str())
 }
 
 /// Prove the semantic exclusion removes something: `ir/semantic/context.rs` is
@@ -69,18 +78,22 @@ pub(crate) fn crate_path(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(relative)
 }
 
-fn read_file(path: &Path) -> String {
+/// Read one tracked source, failing loudly rather than treating it as empty.
+///
+/// An unreadable file must not read as a satisfied clause: that is the one way
+/// a structural claim could pass over a file it never inspected.
+pub(crate) fn read_source(path: &Path) -> String {
     fs::read_to_string(path)
         .unwrap_or_else(|error| panic!("{} should be readable: {error}", path.display()))
 }
 
 pub(crate) fn parse_rust_file(path: &Path) -> syn::File {
-    syn::parse_file(&read_file(path))
+    syn::parse_file(&read_source(path))
         .unwrap_or_else(|error| panic!("{} should parse as Rust: {error}", path.display()))
 }
 
 pub(crate) fn manifest_table() -> toml::Table {
-    let text = read_file(&crate_path("Cargo.toml"));
+    let text = read_source(&crate_path("Cargo.toml"));
     toml::from_str(&text).expect("pedant-core/Cargo.toml should parse as TOML")
 }
 

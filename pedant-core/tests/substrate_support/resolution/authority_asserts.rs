@@ -3,7 +3,8 @@
 //! Only the proof feature can construct an identity no target occupies, so this
 //! module compiles with the probe that observes the refusal.
 
-use pedant_core::resolution::rust::{ResolutionProbe, RustProject, RustSnapshotError, TargetId};
+use pedant_core::resolution::ResolutionProbe;
+use pedant_core::resolution::rust::{RustProject, RustSnapshotError, TargetId};
 
 use crate::resolution::views::observed_paths;
 

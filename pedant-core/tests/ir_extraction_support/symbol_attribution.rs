@@ -6,7 +6,7 @@
 
 use pedant_core::check_config::CheckConfig;
 use pedant_core::lint::analyze;
-use pedant_core::resolution::rust::ResolutionProbe;
+use pedant_core::resolution::ResolutionProbe;
 use pedant_types::{Capability, CapabilitySymbolKind, SymbolAttributionStatus};
 
 const FILE: &str = "one_ir.rs";

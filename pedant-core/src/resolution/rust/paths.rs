@@ -4,26 +4,19 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use super::error::RustProjectError;
+use crate::resolution::paths::RootError;
 
-/// Render a path for an error payload without borrowing it.
-pub(super) fn path_text(path: &Path) -> Box<str> {
-    path.display().to_string().into_boxed_str()
-}
+pub(super) use crate::resolution::paths::path_text;
 
 /// Resolve the supplied root to its canonical directory form.
 pub(super) fn canonical_root(root: &Path) -> Result<PathBuf, RustProjectError> {
-    let canonical =
-        std::fs::canonicalize(root).map_err(|source| RustProjectError::InvalidRoot {
-            path: path_text(root),
-            reason: source.to_string().into_boxed_str(),
-        })?;
-    match canonical.is_dir() {
-        true => Ok(canonical),
-        false => Err(RustProjectError::InvalidRoot {
-            path: path_text(root),
-            reason: Box::from("the project root is not a directory"),
-        }),
-    }
+    crate::resolution::paths::canonical_root(root).map_err(|error| RustProjectError::InvalidRoot {
+        path: path_text(root),
+        reason: match error {
+            RootError::Unreadable(source) => source.to_string().into_boxed_str(),
+            RootError::NotADirectory => Box::from("the project root is not a directory"),
+        },
+    })
 }
 
 /// Normalize a path inside the root to repository-relative `/`-separated text.

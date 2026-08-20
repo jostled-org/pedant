@@ -49,7 +49,8 @@ impl ResolutionProbe {
         Self { state }
     }
 
-    /// Every `Cargo.toml` the production loaders read, in order.
+    /// Every build manifest the production loaders read, in order: a
+    /// `Cargo.toml` from the Rust loader, a `go.mod` from the Go one.
     pub fn manifest_reads(&self) -> Box<[Box<str>]> {
         snapshot_of(&self.state.manifest_reads)
     }

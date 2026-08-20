@@ -7,14 +7,17 @@ release_always = true
 [[package]]
 name = "pedant-types"
 
+# Ahead of pedant-core: the Go resolution surface makes pedant-core an optional,
+# versioned consumer of pedant-syntax, and cargo replaces that path edge with a
+# registry edge while packaging.
+[[package]]
+name = "pedant-syntax"
+
 [[package]]
 name = "pedant-core"
 
 [[package]]
 name = "pedant-graph"
-
-[[package]]
-name = "pedant-syntax"
 
 [[package]]
 name = "pedant-snippet"

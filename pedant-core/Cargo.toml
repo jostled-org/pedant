@@ -16,6 +16,11 @@ default = ["checks"]
 # substrate — fact extraction, capability detection, hashing, pattern matching,
 # and the Cargo project model.
 checks = ["dep:serde"]
+# The Go resolution surface: the Go module project model and the snapshots and
+# resolution taken from it. Default-off, and it selects only the Go grammar in
+# `pedant-syntax` — never `checks`, `semantic`, or rust-analyzer — so a build
+# without it links no Go grammar through this crate.
+go-resolution = ["dep:pedant-syntax"]
 # Proof-only observation of the production project and snapshot loaders. No
 # default or non-dev edge selects it; ordinary builds compile no instrumentation.
 resolution-test-support = []
@@ -43,6 +48,12 @@ serde = { version = "1", features = ["derive", "rc"], optional = true }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = "1"
 pedant-types = { version = "0.15.1", path = "../pedant-types" }
+# Optional, and selected only by `go-resolution`. `default-features = false`
+# with `ts-go` alone keeps every other grammar and the Rust backend out of a
+# Go-enabled build.
+pedant-syntax = { version = "0.4.0", path = "../pedant-syntax", default-features = false, features = [
+    "ts-go",
+], optional = true }
 thiserror = "2"
 sha2 = "0.11"
 ra_ap_ide = { version = "0.0.342", optional = true }

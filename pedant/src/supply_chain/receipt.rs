@@ -9,7 +9,7 @@
 
 use std::path::{Path, PathBuf};
 
-use pedant_core::resolution::rust::ResolutionProbe;
+use pedant_core::resolution::ResolutionProbe;
 use serde::Serialize;
 
 use super::attestation::CrateAttestation;

@@ -1187,6 +1187,7 @@ name = "pedant-core"
 version = "0.22.0"
 dependencies = [
  "line-index",
+ "pedant-syntax",
  "pedant-types",
  "proc-macro2",
  "quote",

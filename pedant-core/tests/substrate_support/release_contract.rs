@@ -29,9 +29,9 @@ use crate::resolution::authority_scan::read_text;
 /// module reads.
 const PUBLISHED: [&str; 8] = [
     "pedant-types",
+    "pedant-syntax",
     "pedant-core",
     "pedant-graph",
-    "pedant-syntax",
     "pedant-snippet",
     "pedant-lang",
     "pedant-mcp",

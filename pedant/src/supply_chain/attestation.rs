@@ -2,7 +2,7 @@ use std::path::Path;
 use std::time::SystemTime;
 
 #[cfg(feature = "resolution-test-support")]
-use pedant_core::resolution::rust::ResolutionProbe;
+use pedant_core::resolution::ResolutionProbe;
 use pedant_core::resolution::rust::{RustPackage, RustProject};
 use pedant_types::{AnalysisCompleteness, AnalysisTier, AttestationContent, CapabilityProfile};
 

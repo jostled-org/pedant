@@ -46,8 +46,6 @@ pub use version::CargoPackageVersion;
 pub use warning::RustResolutionWarning;
 
 #[cfg(feature = "resolution-test-support")]
-pub use crate::observe::ResolutionProbe;
-#[cfg(feature = "resolution-test-support")]
 pub use test_support::{
     EdgeFingerprintClaim, RelativePathNormalizationError, SnapshotFingerprintClaim,
     SourceFingerprintClaim, UnitFingerprintClaim, normalize_relative_path,

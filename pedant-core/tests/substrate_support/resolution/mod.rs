@@ -24,6 +24,9 @@ mod fingerprint;
 #[cfg(feature = "resolution-test-support")]
 mod fingerprint_claims;
 mod fixture;
+/// The Go module project cases, which name types only `go-resolution` compiles.
+#[cfg(feature = "go-resolution")]
+mod go;
 mod inline_path_cases;
 mod inline_path_fixtures;
 mod limits;

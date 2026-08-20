@@ -6,9 +6,10 @@
 //! a resolver answer "which name does this occurrence see" without inventing
 //! definitions.
 
-use crate::go::context::{FactContext, field_text, named_children, text};
+use crate::go::context::{FactContext, named_children, text};
 use crate::go::scope::GoScopeKind;
 use crate::go::span::GoFactSpan;
+use crate::go::written_type::{WrittenType, field_type, type_parts};
 use crate::tree_sitter::Node;
 
 /// What binds one name into a scope.
@@ -30,16 +31,54 @@ pub enum GoBindingKind {
     Type,
 }
 
-/// The type a binding's source writes for it, when it writes one.
+/// What shape a short variable declaration's initializer is written in.
 ///
-/// A field group rather than three loose fields, because the three answers are
-/// only ever read together: a receiver's method set depends on its name, its
-/// package qualifier, and whether it was written in pointer form.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-struct WrittenType<'source> {
+/// A short variable declaration states no type, so the only evidence of what it
+/// binds is the shape of the expression beside it. These are the shapes that
+/// name a type; syntax alone cannot say what that name denotes, so a reader
+/// holding a corpus decides.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GoInitializerForm {
+    /// `T{…}` or `pkg.T{…}`, which is a value of the type it names.
+    CompositeLiteral,
+    /// `&T{…}` or `&pkg.T{…}`, which is a pointer to the type it names.
+    CompositeLiteralAddress,
+    /// `f(…)`, `pkg.f(…)`, or `T(x)`. A call whose callee is a bare or
+    /// package-qualified name is a call when the name denotes a function and a
+    /// conversion when it denotes a type, and the grammar states neither.
+    Call,
+}
+
+/// The type one short variable declaration's initializer names.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GoInitializer<'source> {
+    form: GoInitializerForm,
     qualifier: Option<&'source str>,
-    name: Option<&'source str>,
+    name: &'source str,
     pointer: bool,
+}
+
+impl<'source> GoInitializer<'source> {
+    /// What shape the initializer is written in.
+    pub fn form(&self) -> GoInitializerForm {
+        self.form
+    }
+
+    /// The package qualifier written before the name, when the source writes
+    /// one.
+    pub fn qualifier(&self) -> Option<&'source str> {
+        self.qualifier
+    }
+
+    /// The name the initializer states, in its source spelling.
+    pub fn name(&self) -> &'source str {
+        self.name
+    }
+
+    /// Whether the initializer states a pointer form.
+    pub fn pointer(&self) -> bool {
+        self.pointer
+    }
 }
 
 /// One name bound into a scope.
@@ -51,6 +90,7 @@ pub struct GoBindingFact<'source> {
     scope: u32,
     declaration: Option<u32>,
     written: WrittenType<'source>,
+    initializer: Option<GoInitializer<'source>>,
 }
 
 impl<'source> GoBindingFact<'source> {
@@ -94,6 +134,17 @@ impl<'source> GoBindingFact<'source> {
     pub fn pointer(&self) -> bool {
         self.written.pointer
     }
+
+    /// The type this binding's initializer names, for a short variable
+    /// declaration whose expression states one.
+    ///
+    /// Absent everywhere else: a parameter, a receiver, a result, and a `var`
+    /// or `const` inside a body all state their type directly, and an
+    /// initializer whose shape names no type states no evidence here rather
+    /// than a guess.
+    pub fn initializer(&self) -> Option<GoInitializer<'source>> {
+        self.initializer
+    }
 }
 
 /// Every name `node` binds, in the order the source writes them.
@@ -135,6 +186,18 @@ fn binding<'source>(
         scope: context.scope,
         declaration: context.declaration,
         written,
+        initializer: None,
+    }
+}
+
+/// The same binding, carrying the type its initializer names.
+fn initialized<'source>(
+    bound: GoBindingFact<'source>,
+    initializer: Option<GoInitializer<'source>>,
+) -> GoBindingFact<'source> {
+    GoBindingFact {
+        initializer,
+        ..bound
     }
 }
 
@@ -149,7 +212,7 @@ fn parameters<'source>(
     context: FactContext,
 ) -> Box<[GoBindingFact<'source>]> {
     let kind = context.parameter_role.unwrap_or(GoBindingKind::Parameter);
-    let written = written_type(node, source);
+    let written = field_type(node, "type", source);
     named_children(node)
         .iter()
         .map(|&name| binding(kind, name, written, source, context))
@@ -157,25 +220,117 @@ fn parameters<'source>(
 }
 
 /// Every name one short variable declaration binds.
+///
+/// A declaration binding one name also carries what its initializer names. One
+/// binding several names distributes a call's results across them, and which
+/// result reaches which name is not a grammar answer, so those bindings carry
+/// no initializer evidence.
 fn locals<'source>(
     node: Node<'_>,
     source: &'source str,
     context: FactContext,
 ) -> Box<[GoBindingFact<'source>]> {
-    node.child_by_field_name("left")
+    let names = node
+        .child_by_field_name("left")
         .map(|left| identifiers(left))
-        .unwrap_or_default()
+        .unwrap_or_default();
+    let stated = (names.len() == 1)
+        .then(|| initializer_of(node, source))
+        .flatten();
+    names
         .iter()
         .map(|&name| {
-            binding(
-                GoBindingKind::Local,
-                name,
-                WrittenType::default(),
-                source,
-                context,
+            initialized(
+                binding(
+                    GoBindingKind::Local,
+                    name,
+                    WrittenType::default(),
+                    source,
+                    context,
+                ),
+                stated,
             )
         })
         .collect()
+}
+
+/// The type one short variable declaration's sole initializer names.
+fn initializer_of<'source>(node: Node<'_>, source: &'source str) -> Option<GoInitializer<'source>> {
+    let right = node.child_by_field_name("right")?;
+    let stated = (right.named_child_count() == 1)
+        .then(|| right.named_child(0))
+        .flatten()?;
+    initializer_at(stated, source, false)
+}
+
+/// The type one expression names, when its shape names one.
+///
+/// A leading `&` is followed through once: `&T{…}` is a pointer to the literal's
+/// type, and `&f(…)` is not a form Go accepts, so no other shape is reached
+/// through it.
+fn initializer_at<'source>(
+    stated: Node<'_>,
+    source: &'source str,
+    address: bool,
+) -> Option<GoInitializer<'source>> {
+    match stated.kind() {
+        "composite_literal" => composite(stated, source, address),
+        "call_expression" => (!address).then(|| called(stated, source)).flatten(),
+        "unary_expression" => addressed(stated, source, address),
+        _ => None,
+    }
+}
+
+/// A composite literal, which is a value of the type it names.
+fn composite<'source>(
+    stated: Node<'_>,
+    source: &'source str,
+    address: bool,
+) -> Option<GoInitializer<'source>> {
+    let declared = stated.child_by_field_name("type")?;
+    let written = type_parts(declared, source, false);
+    Some(GoInitializer {
+        form: match address {
+            true => GoInitializerForm::CompositeLiteralAddress,
+            false => GoInitializerForm::CompositeLiteral,
+        },
+        qualifier: written.qualifier,
+        name: written.name?,
+        pointer: written.pointer || address,
+    })
+}
+
+/// A call whose callee is a bare or package-qualified name.
+fn called<'source>(stated: Node<'_>, source: &'source str) -> Option<GoInitializer<'source>> {
+    let callee = stated.child_by_field_name("function")?;
+    let (qualifier, name) = match callee.kind() {
+        "identifier" | "type_identifier" => (None, text(callee, source)),
+        "selector_expression" => (
+            Some(text(callee.child_by_field_name("operand")?, source)),
+            text(callee.child_by_field_name("field")?, source),
+        ),
+        _ => return None,
+    };
+    Some(GoInitializer {
+        form: GoInitializerForm::Call,
+        qualifier,
+        name,
+        pointer: false,
+    })
+}
+
+/// The expression a leading `&` takes the address of.
+fn addressed<'source>(
+    stated: Node<'_>,
+    source: &'source str,
+    address: bool,
+) -> Option<GoInitializer<'source>> {
+    let operator = stated.child_by_field_name("operator")?;
+    let operand = stated.child_by_field_name("operand")?;
+    match (address, text(operator, source)) {
+        (false, "&") => initializer_at(operand, source, true),
+        _ => None,
+    }
 }
 
 /// Every name one `var` or `const` specification inside a body binds.
@@ -187,7 +342,7 @@ fn body_names<'source>(
 ) -> Box<[GoBindingFact<'source>]> {
     match inside_a_body(context) {
         true => {
-            let written = written_type(node, source);
+            let written = field_type(node, "type", source);
             named_children(node)
                 .iter()
                 .map(|&name| binding(kind, name, written, source, context))
@@ -218,55 +373,6 @@ fn body_type<'source>(
         })
         .into_iter()
         .collect()
-}
-
-/// The type one declaration writes, if it writes one.
-fn written_type<'source>(node: Node<'_>, source: &'source str) -> WrittenType<'source> {
-    node.child_by_field_name("type")
-        .map(|declared| type_parts(declared, source, false))
-        .unwrap_or_default()
-}
-
-/// One written type split into its qualifier, its name, and its pointer form.
-fn type_parts<'source>(
-    declared: Node<'_>,
-    source: &'source str,
-    pointer: bool,
-) -> WrittenType<'source> {
-    match declared.kind() {
-        "type_identifier" => WrittenType {
-            qualifier: None,
-            name: Some(text(declared, source)),
-            pointer,
-        },
-        "qualified_type" => WrittenType {
-            qualifier: field_text(declared, "package", source),
-            name: field_text(declared, "name", source),
-            pointer,
-        },
-        "pointer_type" => nested_type(declared.named_child(0), source, true),
-        "generic_type" => nested_type(declared.child_by_field_name("type"), source, pointer),
-        _ => WrittenType {
-            qualifier: None,
-            name: None,
-            pointer,
-        },
-    }
-}
-
-/// The parts of a type one wrapper holds, or nothing when it holds none.
-fn nested_type<'source>(
-    inner: Option<Node<'_>>,
-    source: &'source str,
-    pointer: bool,
-) -> WrittenType<'source> {
-    inner
-        .map(|held| type_parts(held, source, pointer))
-        .unwrap_or(WrittenType {
-            qualifier: None,
-            name: None,
-            pointer,
-        })
 }
 
 /// Every identifier one expression list holds directly.

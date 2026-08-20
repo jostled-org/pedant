@@ -44,6 +44,34 @@ pub const GO_MODULES: &[&str] = &[
     "unit_table.rs",
 ];
 
+/// Every module of the Go resolution stage, relative to `src/resolution/go`.
+///
+/// A directory of its own, because the loader and the snapshot answer what a
+/// repository holds while these answer what its names denote, and only the
+/// second set may read a report vocabulary.
+pub const RESOLVE_MODULES: &[&str] = &[
+    "resolve/corpus.rs",
+    "resolve/definitions.rs",
+    "resolve/error.rs",
+    "resolve/imports.rs",
+    "resolve/index.rs",
+    "resolve/lookup.rs",
+    "resolve/methods.rs",
+    "resolve/mod.rs",
+    "resolve/pipeline.rs",
+    "resolve/records.rs",
+    "resolve/references.rs",
+    "resolve/resolver.rs",
+    "resolve/scopes.rs",
+    "resolve/target.rs",
+    "resolve/types.rs",
+    "resolve/universe.rs",
+];
+
+/// The subdirectories `src/resolution/go` holds, so the exactness check counts
+/// them beside the files rather than reporting them as absent owners.
+const GO_DIRECTORIES: &[&str] = &["resolve"];
+
 /// The Go modules the snapshot stage owns, relative to `src/resolution/go`.
 ///
 /// A subset of [`GO_MODULES`], because a claim about what a snapshot may do has
@@ -78,6 +106,7 @@ pub const SNAPSHOT_MODULES: &[&str] = &[
 pub const SHARED_MODULES: &[&str] = &[
     "digest.rs",
     "identity.rs",
+    "line_index.rs",
     "path_normalization.rs",
     "paths.rs",
 ];
@@ -105,18 +134,56 @@ const REACHED_DIRECTORY: &str = "observe";
 /// The complete source closure a Go project load runs through: the Go owners,
 /// the shared resolution owners beneath them, and the crate modules they reach.
 pub fn source_closure() -> Box<[PathBuf]> {
-    let go = crate_path("src/resolution/go");
     let shared = crate_path("src/resolution");
     let source = crate_path("src");
-    let mut paths: Vec<PathBuf> = GO_MODULES.iter().map(|name| go.join(name)).collect();
+    let mut paths: Vec<PathBuf> = go_module_paths()
+        .iter()
+        .map(|(_, path)| path.clone())
+        .collect();
     paths.extend(SHARED_MODULES.iter().map(|name| shared.join(name)));
     paths.extend(REACHED_MODULES.iter().map(|name| source.join(name)));
     for path in &paths {
         assert!(path.is_file(), "{} is modelled but absent", path.display());
     }
-    assert_directory_is_exactly_modelled(&go, GO_MODULES);
     assert_directory_is_exactly_modelled(&source.join(REACHED_DIRECTORY), &reached_directory());
     paths.into_boxed_slice()
+}
+
+/// Every Go owner, as the label a report names it by and the path it sits at.
+///
+/// One walk, two subjects: the closure claims need the paths and the ownership
+/// claims need the labels, and a module reachable under one and not the other
+/// would be a hole in whichever list it was missing from.
+pub fn go_module_paths() -> Box<[(Box<str>, PathBuf)]> {
+    let go = crate_path("src/resolution/go");
+    let named: Box<[(Box<str>, PathBuf)]> = GO_MODULES
+        .iter()
+        .chain(RESOLVE_MODULES.iter())
+        .map(|name| (Box::from(*name), go.join(name)))
+        .collect();
+    assert_directory_is_exactly_modelled(&go, &top_level_entries());
+    assert_directory_is_exactly_modelled(&go.join("resolve"), &nested_entries("resolve/"));
+    named
+}
+
+/// Everything `src/resolution/go` holds directly: its own modules and the
+/// subdirectories it opens.
+fn top_level_entries() -> Box<[&'static str]> {
+    let mut entries: Vec<&'static str> = GO_MODULES
+        .iter()
+        .copied()
+        .chain(GO_DIRECTORIES.iter().copied())
+        .collect();
+    entries.sort_unstable();
+    entries.into_boxed_slice()
+}
+
+/// The files [`RESOLVE_MODULES`] names inside one Go subdirectory.
+fn nested_entries(prefix: &str) -> Box<[&'static str]> {
+    RESOLVE_MODULES
+        .iter()
+        .filter_map(|name| name.strip_prefix(prefix))
+        .collect()
 }
 
 /// The files [`REACHED_MODULES`] names inside [`REACHED_DIRECTORY`].

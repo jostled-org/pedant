@@ -28,7 +28,9 @@ use crate::resolution::rust::snapshot::{
 };
 use crate::resolution::rust::warning;
 
-use super::coordinates::LineIndex;
+use crate::resolution::line_index::LineIndex;
+
+use super::coordinates;
 use super::error::RustResolutionError;
 
 /// The stable key one snapshot unit is identified by across reports.
@@ -314,7 +316,7 @@ fn validate_span(
         })?;
     let (source, index) = stated;
     for at in [span.start(), span.end()] {
-        if !index.holds(source.text(), at) {
+        if !coordinates::holds(index, source.text(), at) {
             return Err(RustResolutionError::InvalidCoordinate {
                 file: Box::from(span.file()),
                 line: at.line(),

@@ -7,7 +7,9 @@ use pedant_types::{ReferenceHandle, ResolutionReportBuilder, ResolutionUnitHandl
 use crate::ir::sites::ReferenceSite;
 use crate::resolution::rust::snapshot::RustResolutionSnapshot;
 
-use super::coordinates::LineIndex;
+use crate::resolution::line_index::LineIndex;
+
+use super::coordinates;
 use super::error::RustResolutionError;
 use super::graph::Graph;
 use super::index::Index;
@@ -68,7 +70,7 @@ fn add_node(
             node,
             site,
         };
-        let span = lines.span(source.text(), source.shared_path(), reference.range);
+        let span = coordinates::span(lines, source.text(), source.shared_path(), reference.range);
         entries.extend(add_site(builder, snapshot, &context, (reference, span))?);
     }
     Ok(())

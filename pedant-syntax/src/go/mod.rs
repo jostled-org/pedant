@@ -27,8 +27,9 @@ mod reference;
 mod scope;
 mod span;
 mod walk;
+mod written_type;
 
-pub use binding::{GoBindingFact, GoBindingKind};
+pub use binding::{GoBindingFact, GoBindingKind, GoInitializer, GoInitializerForm};
 pub use condition::{GoBuildConditionFact, GoBuildConditionKind};
 pub use declaration::{GoDeclarationFact, GoDeclarationKind};
 pub use error::GoFactError;

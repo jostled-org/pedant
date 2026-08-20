@@ -38,6 +38,7 @@ const MODULE_INVENTORY: &[&str] = &[
     "go/scope.rs",
     "go/span.rs",
     "go/walk.rs",
+    "go/written_type.rs",
     "language.rs",
     "lib.rs",
     "location.rs",

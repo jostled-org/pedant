@@ -14,7 +14,7 @@
 //! and the queue is grown only after both ceilings pass.
 
 use crate::declaration_scan::{crate_path, parse_rust_file};
-use crate::resolution::go::owners::{GO_MODULES, source_closure};
+use crate::resolution::go::owners::{GO_MODULES, go_module_paths, source_closure};
 use crate::resolution::go::scan::{
     SourceScan, impl_method, statement_naming, statement_naming_field,
 };
@@ -140,39 +140,39 @@ fn method_body<'file>(loader: &'file syn::File, name: &str) -> &'file syn::Block
 
 /// Exactly one Go module states `check`, and it states it once.
 fn assert_single_check_site(check: &str) {
-    let naming: Box<[(&str, usize)]> = GO_MODULES
-        .iter()
-        .map(|module| {
-            (
-                *module,
-                SourceScan::of_file(&parse_rust_file(&go_path(module))).reaches(check),
-            )
-        })
-        .filter(|(_, count)| *count > 0)
-        .collect();
-    assert_eq!(
-        &*naming,
-        [(LOADER_MODULE, 1)],
-        "`{check}` must have exactly one call site, in {LOADER_MODULE}"
-    );
+    assert_sole_owner(check, |scan| scan.reaches(check), "call site");
 }
 
 /// Exactly one Go module grows the named table, and it grows it once.
 fn assert_single_retention_site(route: &str) {
-    let naming: Box<[(&str, usize)]> = GO_MODULES
+    assert_sole_owner(route, |scan| scan.reaches_on_field(route), "retention site");
+}
+
+/// The loader is the one Go owner a route is reached from, and it reaches it
+/// once.
+///
+/// The whole Go surface is scanned rather than the loader's own directory:
+/// a second admission written beneath `resolve/` would be just as unchecked as
+/// one written beside `load.rs`.
+fn assert_sole_owner(route: &str, reached: impl Fn(&SourceScan) -> usize, role: &str) {
+    let scanned: Box<[(Box<str>, usize)]> = go_module_paths()
         .iter()
-        .map(|module| {
+        .map(|(label, path)| {
             (
-                *module,
-                SourceScan::of_file(&parse_rust_file(&go_path(module))).reaches_on_field(route),
+                label.clone(),
+                reached(&SourceScan::of_file(&parse_rust_file(path))),
             )
         })
         .filter(|(_, count)| *count > 0)
         .collect();
+    let naming: Box<[(&str, usize)]> = scanned
+        .iter()
+        .map(|(label, count)| (&**label, *count))
+        .collect();
     assert_eq!(
         &*naming,
         [(LOADER_MODULE, 1)],
-        "`{route}` must have exactly one retention site, in {LOADER_MODULE}"
+        "`{route}` must have exactly one {role}, in {LOADER_MODULE}"
     );
 }
 

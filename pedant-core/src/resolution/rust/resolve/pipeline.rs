@@ -9,7 +9,9 @@ use pedant_types::{ResolutionReportBuilder, ResolutionReportLimits, ResolutionTi
 
 use crate::resolution::rust::snapshot::RustResolutionSnapshot;
 
-use super::coordinates::{self, LineIndex};
+use crate::resolution::line_index::LineIndex;
+
+use super::coordinates;
 use super::corpus::Corpus;
 use super::error::RustResolutionError;
 use super::graph::{self, Graph};

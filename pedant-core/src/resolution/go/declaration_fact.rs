@@ -18,6 +18,9 @@ pub struct GoDeclarationRecord {
     parent: Option<u32>,
     receiver: Option<u32>,
     scope: u32,
+    result_qualifier: Option<Box<str>>,
+    result_name: Option<Box<str>>,
+    result_pointer: bool,
 }
 
 impl GoDeclarationRecord {
@@ -31,6 +34,9 @@ impl GoDeclarationRecord {
             parent: fact.parent(),
             receiver: fact.receiver(),
             scope: fact.scope(),
+            result_qualifier: fact.result_qualifier().map(Box::from),
+            result_name: fact.result_name().map(Box::from),
+            result_pointer: fact.result_pointer(),
         }
     }
 
@@ -68,5 +74,21 @@ impl GoDeclarationRecord {
     /// The index of the scope this declaration is stated in.
     pub fn scope(&self) -> u32 {
         self.scope
+    }
+
+    /// The package qualifier of the single result this callable declares.
+    pub fn result_qualifier(&self) -> Option<&str> {
+        self.result_qualifier.as_deref()
+    }
+
+    /// The name of the single result this callable declares, absent whenever
+    /// the source states no single named result.
+    pub fn result_name(&self) -> Option<&str> {
+        self.result_name.as_deref()
+    }
+
+    /// Whether the single declared result is a pointer form.
+    pub fn result_pointer(&self) -> bool {
+        self.result_pointer
     }
 }

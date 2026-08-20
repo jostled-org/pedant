@@ -6,6 +6,7 @@
 
 pub(crate) mod digest;
 pub(crate) mod identity;
+pub(crate) mod line_index;
 pub(crate) mod path_normalization;
 pub(crate) mod paths;
 

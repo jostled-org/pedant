@@ -14,7 +14,9 @@ use crate::ir::cfg::RustCfgCondition;
 use crate::ir::sites::DefinitionSite;
 use crate::resolution::rust::snapshot::{RustResolutionSnapshot, RustSource};
 
-use super::coordinates::LineIndex;
+use crate::resolution::line_index::LineIndex;
+
+use super::coordinates;
 use super::error::RustResolutionError;
 use super::graph::Graph;
 #[cfg(feature = "semantic")]
@@ -263,7 +265,8 @@ fn declaring_slot(graph: &Graph, draft: &Draft, node: usize) -> Option<usize> {
 }
 
 fn span_of(context: &NodeContext<'_>, definition: &DefinitionSite) -> Option<SourceSpan> {
-    context.lines.span(
+    coordinates::span(
+        context.lines,
         context.source.text(),
         context.source.shared_path(),
         definition.range,

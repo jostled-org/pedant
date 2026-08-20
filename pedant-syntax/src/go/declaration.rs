@@ -3,6 +3,7 @@
 use crate::go::context::{FactContext, named_children, text};
 use crate::go::scope::GoScopeKind;
 use crate::go::span::GoFactSpan;
+use crate::go::written_type::{WrittenType, field_type};
 use crate::tree_sitter::Node;
 
 /// What one Go declaration declares.
@@ -48,6 +49,7 @@ pub struct GoDeclarationFact<'source> {
     parent: Option<u32>,
     receiver: Option<u32>,
     scope: u32,
+    result: WrittenType<'source>,
 }
 
 impl<'source> GoDeclarationFact<'source> {
@@ -92,6 +94,26 @@ impl<'source> GoDeclarationFact<'source> {
     /// The scope this declaration is stated in.
     pub fn scope(&self) -> u32 {
         self.scope
+    }
+
+    /// The package qualifier of the single result this callable declares.
+    pub fn result_qualifier(&self) -> Option<&'source str> {
+        self.result.qualifier
+    }
+
+    /// The name of the single result this callable declares.
+    ///
+    /// Absent for a declaration that is not a callable, for a callable stating
+    /// no result, and for one stating a result the model names no single type
+    /// for — several results, or an unnamed composite. A caller reading a call's
+    /// value therefore learns a type only when the source states exactly one.
+    pub fn result_name(&self) -> Option<&'source str> {
+        self.result.name
+    }
+
+    /// Whether the single declared result is a pointer form.
+    pub fn result_pointer(&self) -> bool {
+        self.result.pointer
     }
 
     /// Name the receiver binding a method declaration states.
@@ -154,7 +176,16 @@ fn declaration<'source>(
         parent,
         receiver: None,
         scope: context.scope,
+        result: WrittenType::default(),
     }
+}
+
+/// The same declaration, carrying the single result its callable declares.
+fn returning<'source>(
+    declared: GoDeclarationFact<'source>,
+    result: WrittenType<'source>,
+) -> GoDeclarationFact<'source> {
+    GoDeclarationFact { result, ..declared }
 }
 
 /// A package-level `func`, with or without a receiver.
@@ -168,7 +199,12 @@ fn package_callable<'source>(
         .then(|| node.child_by_field_name("name"))
         .flatten();
     named
-        .map(|name| declaration(kind, name, GoFactSpan::of_node(node), source, context, None))
+        .map(|name| {
+            returning(
+                declaration(kind, name, GoFactSpan::of_node(node), source, context, None),
+                field_type(node, "result", source),
+            )
+        })
         .into_iter()
         .collect()
 }
@@ -267,13 +303,16 @@ fn interface_member<'source>(
         .flatten();
     named
         .map(|name| {
-            declaration(
-                kind,
-                name,
-                GoFactSpan::of_node(node),
-                source,
-                context,
-                context.declaration,
+            returning(
+                declaration(
+                    kind,
+                    name,
+                    GoFactSpan::of_node(node),
+                    source,
+                    context,
+                    context.declaration,
+                ),
+                field_type(node, "result", source),
             )
         })
         .into_iter()

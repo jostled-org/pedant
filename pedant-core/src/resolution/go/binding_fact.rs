@@ -1,6 +1,51 @@
 //! One bound name a snapshotted Go source states.
 
-use pedant_syntax::go::{GoBindingFact, GoBindingKind, GoFactSpan};
+use pedant_syntax::go::{
+    GoBindingFact, GoBindingKind, GoFactSpan, GoInitializer, GoInitializerForm,
+};
+
+/// The type one short variable declaration's initializer names, retained by the
+/// snapshot rather than borrowed from the parse it came from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GoInitializerRecord {
+    form: GoInitializerForm,
+    qualifier: Option<Box<str>>,
+    name: Box<str>,
+    pointer: bool,
+}
+
+impl GoInitializerRecord {
+    /// Retain one extracted initializer.
+    fn of(fact: GoInitializer<'_>) -> Self {
+        Self {
+            form: fact.form(),
+            qualifier: fact.qualifier().map(Box::from),
+            name: Box::from(fact.name()),
+            pointer: fact.pointer(),
+        }
+    }
+
+    /// What shape the initializer is written in.
+    pub fn form(&self) -> GoInitializerForm {
+        self.form
+    }
+
+    /// The package qualifier written before the name, when the source writes
+    /// one.
+    pub fn qualifier(&self) -> Option<&str> {
+        self.qualifier.as_deref()
+    }
+
+    /// The name the initializer states, in its source spelling.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Whether the initializer states a pointer form.
+    pub fn pointer(&self) -> bool {
+        self.pointer
+    }
+}
 
 /// One name a Go source binds, exactly as its source wrote it.
 ///
@@ -18,6 +63,7 @@ pub struct GoBindingRecord {
     type_qualifier: Option<Box<str>>,
     type_name: Option<Box<str>>,
     pointer: bool,
+    initializer: Option<GoInitializerRecord>,
 }
 
 impl GoBindingRecord {
@@ -32,6 +78,7 @@ impl GoBindingRecord {
             type_qualifier: fact.type_qualifier().map(Box::from),
             type_name: fact.type_name().map(Box::from),
             pointer: fact.pointer(),
+            initializer: fact.initializer().map(GoInitializerRecord::of),
         }
     }
 
@@ -73,5 +120,11 @@ impl GoBindingRecord {
     /// Whether the written type is a pointer.
     pub fn pointer(&self) -> bool {
         self.pointer
+    }
+
+    /// The type this binding's initializer names, for a short variable
+    /// declaration whose expression states one.
+    pub fn initializer(&self) -> Option<&GoInitializerRecord> {
+        self.initializer.as_ref()
     }
 }

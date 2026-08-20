@@ -5,7 +5,8 @@
 //! entry points are stated here, so one fixture owner serves both languages.
 
 use pedant_core::resolution::go::{
-    GoProject, GoProjectError, GoResolutionLimits, GoResolutionSnapshot, GoSnapshotError,
+    GoProject, GoProjectError, GoProjectResolution, GoResolutionError, GoResolutionLimits,
+    GoResolutionSnapshot, GoResolver, GoSnapshotError,
 };
 
 use crate::resolution::fixture::{FixtureFile, build_repository, repository_root};
@@ -62,6 +63,47 @@ pub fn snapshot_refusal(files: &[FixtureFile], limits: GoResolutionLimits) -> Go
         Ok(snapshot) => panic!("the fixture should be refused, not snapshotted: {snapshot:?}"),
         Err(error) => error,
     };
+    drop(tree);
+    error
+}
+
+/// Materialize a Go fixture, snapshot it, and resolve the snapshot.
+///
+/// The snapshot must succeed: a resolver case states what a walked corpus
+/// denotes, and the snapshot refusals are the snapshot cases' own subject. The
+/// snapshot is returned beside the result, because a published resolution names
+/// the snapshot's units and a case reads both.
+pub fn resolve(
+    files: &[FixtureFile],
+    limits: GoResolutionLimits,
+) -> (
+    tempfile::TempDir,
+    GoResolutionSnapshot,
+    Result<GoProjectResolution, GoResolutionError>,
+) {
+    let (tree, taken) = snapshot(files, limits);
+    let snapshot = taken.unwrap_or_else(|error| panic!("the fixture should snapshot: {error}"));
+    let resolved = GoResolver::resolve_syntactic(&snapshot);
+    (tree, snapshot, resolved)
+}
+
+/// Resolve a Go fixture under the documented defaults and require success.
+pub fn resolve_default(
+    files: &[FixtureFile],
+) -> (tempfile::TempDir, GoResolutionSnapshot, GoProjectResolution) {
+    let (tree, snapshot, resolved) = resolve(files, GoResolutionLimits::default());
+    let resolution = resolved.unwrap_or_else(|error| panic!("the fixture should resolve: {error}"));
+    (tree, snapshot, resolution)
+}
+
+/// Resolve a Go fixture under `limits` and require a typed refusal.
+pub fn resolve_refusal(files: &[FixtureFile], limits: GoResolutionLimits) -> GoResolutionError {
+    let (tree, snapshot, resolved) = resolve(files, limits);
+    let error = match resolved {
+        Ok(resolution) => panic!("the fixture should be refused, not resolved: {resolution:?}"),
+        Err(error) => error,
+    };
+    drop(snapshot);
     drop(tree);
     error
 }

@@ -32,6 +32,7 @@ mod project;
 mod reference_fact;
 mod replacement;
 mod requirement;
+mod resolve;
 mod snapshot;
 mod snapshot_error;
 mod snapshot_module;
@@ -44,7 +45,7 @@ mod unit_table;
 #[cfg(feature = "resolution-test-support")]
 mod test_support;
 
-pub use binding_fact::GoBindingRecord;
+pub use binding_fact::{GoBindingRecord, GoInitializerRecord};
 pub use condition::GoBuildCondition;
 pub use declaration_fact::GoDeclarationRecord;
 pub use error::GoProjectError;
@@ -59,6 +60,7 @@ pub use project::GoProject;
 pub use reference_fact::GoReferenceRecord;
 pub use replacement::{GoReplacement, GoReplacementTarget};
 pub use requirement::{GoRequirement, GoRequirementResolution};
+pub use resolve::{GoProjectResolution, GoResolutionError, GoResolver, GoUnitBinding};
 pub use snapshot::GoResolutionSnapshot;
 pub use snapshot_error::{GoSnapshotError, GoSourceDefect};
 pub use snapshot_module::{GoSnapshotEdge, GoSnapshotModule, GoSnapshotModuleId};
@@ -72,7 +74,7 @@ pub use unit::{GoPackageContext, GoResolutionUnit, GoSnapshotUnitId};
 /// produced instead of a copy that could drift from them.
 pub use pedant_syntax::go::{
     GoBindingKind, GoBuildConditionKind, GoDeclarationKind, GoFactSpan, GoImportForm,
-    GoReferenceKind, GoScopeFact, GoScopeKind,
+    GoInitializerForm, GoReferenceKind, GoScopeFact, GoScopeKind,
 };
 
 #[cfg(feature = "resolution-test-support")]

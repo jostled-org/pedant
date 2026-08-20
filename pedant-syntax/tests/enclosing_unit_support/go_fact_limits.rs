@@ -5,7 +5,7 @@
 //! extraction helper, because a ceiling is only meaningful against the same
 //! inventory the completeness case reads.
 
-use pedant_syntax::go::{GoFactError, GoFactLimits};
+use pedant_syntax::go::{GoFactError, GoFactLimits, GoFileFacts};
 
 use crate::go_facts::{FACT_SOURCE, complete_facts, facts};
 
@@ -23,6 +23,33 @@ fn nested_source(depth: usize) -> String {
     source
 }
 
+/// The longest chain of enclosing scopes the inventory states.
+///
+/// Every scope names the scope that holds it, and each link is one syntax level
+/// the walk had to descend through, so this chain is a lower bound on the tree
+/// depth the ceiling is measured against. Counting scopes instead would be
+/// satisfied by siblings, which cost the walk no depth at all.
+fn deepest_scope_nesting(facts: &GoFileFacts<'_>) -> usize {
+    facts
+        .scopes()
+        .iter()
+        .map(|scope| {
+            let mut held = scope.parent();
+            let mut nesting = 1_usize;
+            while let Some(index) = held {
+                let parent = facts
+                    .scopes()
+                    .get(usize::try_from(index).expect("a scope index within the inventory"))
+                    .expect("every named parent is a scope the inventory states");
+                held = parent.parent();
+                nesting += 1;
+            }
+            nesting
+        })
+        .max()
+        .unwrap_or(0)
+}
+
 /// 2.T2 (Invariant 5): a lowered ceiling refuses before descent or insertion,
 /// and publishes no partial inventory.
 #[test]
@@ -32,8 +59,9 @@ fn go_fact_limits_refuse_before_descent_or_insertion() {
         facts(&deep, GoFactLimits::UNBOUNDED).expect("an unbounded inventory of the nested source");
     let depth_limit = 6;
     assert!(
-        reached.scopes().len() > depth_limit,
-        "the nested source is deeper than the ceiling under test"
+        deepest_scope_nesting(&reached) > depth_limit,
+        "the nested source nests scopes deeper than the ceiling under test, got {}",
+        deepest_scope_nesting(&reached)
     );
 
     assert_eq!(

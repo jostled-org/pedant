@@ -2,6 +2,11 @@
 //!
 //! Each row builds its own repository and drops it before the next runs, so no
 //! row can read a directory another row wrote.
+//!
+//! A row states the variant it is owed as well as the text, because the message
+//! is the weaker half of the claim: two refusals can share a phrase, and a
+//! loader that returned `MissingReplacementManifest` where the boundary owes
+//! `OutOfRoot` would still be reporting a manifest it never should have reached.
 
 use std::path::Path;
 
@@ -10,8 +15,14 @@ use pedant_core::resolution::go::{GoProject, GoProjectError, GoResolutionLimits}
 use crate::resolution::fixture::{FixtureFile, build_repository, repository_root, write_file};
 use crate::resolution::go::fixture::refusal;
 
-/// One refusal row: what it declares, and the error text its loader owes.
-type RefusalRow = (&'static str, &'static [FixtureFile], &'static str);
+/// One refusal row: what it declares, the variant its loader owes, and the text
+/// that variant must render.
+type RefusalRow = (
+    &'static str,
+    &'static [FixtureFile],
+    &'static str,
+    &'static str,
+);
 
 /// The complete refusal table for declarations the loader can decide from the
 /// manifests alone.
@@ -22,6 +33,7 @@ const DECLARED_REFUSALS: &[RefusalRow] = &[
             "repo/go.mod",
             "module example.com/root\n\nrequire example.com/a v1.0.0\nrequire example.com/a v2.0.0\n",
         )],
+        "DuplicateRequirement",
         "manifest go.mod requires example.com/a more than once",
     ),
     (
@@ -30,6 +42,7 @@ const DECLARED_REFUSALS: &[RefusalRow] = &[
             "repo/go.mod",
             "module example.com/root\n\nexclude example.com/a v1.0.0\nexclude example.com/a v1.0.0\n",
         )],
+        "DuplicateExclusion",
         "manifest go.mod excludes example.com/a v1.0.0 more than once",
     ),
     (
@@ -38,6 +51,7 @@ const DECLARED_REFUSALS: &[RefusalRow] = &[
             "repo/go.mod",
             "module example.com/root\n\nreplace example.com/a => ./local/one\nreplace example.com/a => ./local/two\n",
         )],
+        "DuplicateReplacement",
         "manifest go.mod replaces example.com/a at any version more than once",
     ),
     (
@@ -46,6 +60,7 @@ const DECLARED_REFUSALS: &[RefusalRow] = &[
             "repo/go.mod",
             "module example.com/root\n\nrequire example.com/a v1.0.0\n\nexclude example.com/a v1.0.0\n",
         )],
+        "ExcludedRequirement",
         "requirement example.com/a v1.0.0 is excluded by the root manifest",
     ),
     (
@@ -54,6 +69,7 @@ const DECLARED_REFUSALS: &[RefusalRow] = &[
             "repo/go.mod",
             "module example.com/root\n\nrequire example.com/a 1.0\n",
         )],
+        "InvalidVersion",
         "manifest go.mod declares an invalid version 1.0 for example.com/a",
     ),
     (
@@ -62,16 +78,19 @@ const DECLARED_REFUSALS: &[RefusalRow] = &[
             "repo/go.mod",
             "module example.com/root\n\nreplace example.com/a => example.com/b\n",
         )],
+        "ManifestParse",
         "failed to parse manifest go.mod at line 3: a replacement without a version must name a directory path",
     ),
     (
         "a manifest with no module directive",
         &[("repo/go.mod", "go 1.22\n")],
+        "MissingModuleDeclaration",
         "manifest go.mod declares no module path",
     ),
     (
         "a directive the go.mod grammar does not define",
         &[("repo/go.mod", "module example.com/root\n\nvendorize ./x\n")],
+        "ManifestParse",
         "failed to parse manifest go.mod at line 3: unknown directive vendorize",
     ),
     (
@@ -80,6 +99,7 @@ const DECLARED_REFUSALS: &[RefusalRow] = &[
             "repo/go.mod",
             "module example.com/root\n\nrequire (\n\texample.com/a v1.0.0\n",
         )],
+        "ManifestParse",
         "failed to parse manifest go.mod at line 3: the require block is never closed",
     ),
 ];
@@ -93,6 +113,7 @@ const TARGET_REFUSALS: &[RefusalRow] = &[
             "repo/go.mod",
             "module example.com/root\n\nrequire example.com/a v1.0.0\n\nreplace example.com/a => ./local/absent\n",
         )],
+        "MissingReplacementManifest",
         "replacement directory local/absent for example.com/a holds no readable go.mod",
     ),
     (
@@ -104,6 +125,7 @@ const TARGET_REFUSALS: &[RefusalRow] = &[
             ),
             ("repo/local/bare/a.go", "package a\n"),
         ],
+        "MissingReplacementManifest",
         "replacement directory local/bare for example.com/a holds no readable go.mod",
     ),
     (
@@ -115,6 +137,7 @@ const TARGET_REFUSALS: &[RefusalRow] = &[
             ),
             ("repo/local/other/go.mod", "module example.com/other\n"),
         ],
+        "ReplacementModuleMismatch",
         "replacement directory local/other declares example.com/other, not example.com/a",
     ),
     (
@@ -126,6 +149,7 @@ const TARGET_REFUSALS: &[RefusalRow] = &[
             ),
             ("outside/go.mod", "module example.com/a\n"),
         ],
+        "OutOfRoot",
         "lies outside the project root",
     ),
 ];
@@ -134,19 +158,57 @@ const TARGET_REFUSALS: &[RefusalRow] = &[
 /// root escape is a typed refusal that publishes no project.
 #[test]
 fn go_project_refuses_conflicts_missing_manifests_mismatches_and_root_escape() {
-    for (subject, files, expected) in DECLARED_REFUSALS.iter().chain(TARGET_REFUSALS) {
-        let error = refusal(files);
-        let text = error.to_string();
-        assert!(
-            text.contains(expected),
-            "{subject}: expected a refusal naming {expected:?}, got {text:?}"
-        );
+    for (subject, files, variant, expected) in DECLARED_REFUSALS.iter().chain(TARGET_REFUSALS) {
+        assert_refusal(subject, refusal(files), (variant, expected));
     }
 
     assert_conflicting_local_modules();
     assert_unreadable_manifest();
     assert_missing_root_manifest();
     assert_symlinked_escape();
+}
+
+/// One refusal carries the variant it is owed and renders the text that variant
+/// owes. The rendered text is returned for the rows that check more of it.
+fn assert_refusal(subject: &str, error: GoProjectError, owed: (&str, &str)) -> String {
+    let (variant, expected) = owed;
+    assert_eq!(
+        variant_of(&error),
+        variant,
+        "{subject}: expected a {variant} refusal, got {error:?}"
+    );
+    let text = error.to_string();
+    assert!(
+        text.contains(expected),
+        "{subject}: expected a refusal naming {expected:?}, got {text:?}"
+    );
+    text
+}
+
+/// The variant one refusal carries, read from the enum rather than its message.
+///
+/// The match is exhaustive on purpose. `GoProjectError` is public and closed, so
+/// a variant added to the loader cannot reach a caller until this table names
+/// it and some row claims it.
+fn variant_of(error: &GoProjectError) -> &'static str {
+    match error {
+        GoProjectError::InvalidRoot { .. } => "InvalidRoot",
+        GoProjectError::OutOfRoot { .. } => "OutOfRoot",
+        GoProjectError::NonUtf8Path { .. } => "NonUtf8Path",
+        GoProjectError::ManifestRead { .. } => "ManifestRead",
+        GoProjectError::ManifestParse { .. } => "ManifestParse",
+        GoProjectError::MissingModuleDeclaration { .. } => "MissingModuleDeclaration",
+        GoProjectError::DuplicateRequirement { .. } => "DuplicateRequirement",
+        GoProjectError::DuplicateExclusion { .. } => "DuplicateExclusion",
+        GoProjectError::DuplicateReplacement { .. } => "DuplicateReplacement",
+        GoProjectError::InvalidVersion { .. } => "InvalidVersion",
+        GoProjectError::ExcludedRequirement { .. } => "ExcludedRequirement",
+        GoProjectError::MissingReplacementManifest { .. } => "MissingReplacementManifest",
+        GoProjectError::ReplacementModuleMismatch { .. } => "ReplacementModuleMismatch",
+        GoProjectError::ConflictingLocalModules { .. } => "ConflictingLocalModules",
+        GoProjectError::ManifestLimitExceeded { .. } => "ManifestLimitExceeded",
+        GoProjectError::DependencyDepthLimitExceeded { .. } => "DependencyDepthLimitExceeded",
+    }
 }
 
 /// Two modules requiring one path at two versions, each replaced by its own
@@ -176,10 +238,13 @@ replace (
         ("repo/local/left/go.mod", "module example.com/twin\n"),
         ("repo/local/right/go.mod", "module example.com/twin\n"),
     ]);
-    let text = error.to_string();
-    assert!(
-        text.contains("module example.com/twin is declared by local/left and local/right"),
-        "two directories may not declare one module path: {text:?}"
+    assert_refusal(
+        "two directories may not declare one module path",
+        error,
+        (
+            "ConflictingLocalModules",
+            "module example.com/twin is declared by local/left and local/right",
+        ),
     );
 }
 
@@ -199,11 +264,14 @@ fn assert_unreadable_manifest() {
         b"not a manifest\n",
     );
 
-    let error = load_error(&repository_root(&tree));
-    let text = error.to_string();
+    let text = assert_refusal(
+        "an unreadable replacement manifest is reported, not skipped",
+        load_error(&repository_root(&tree)),
+        ("ManifestRead", "failed to read"),
+    );
     assert!(
-        text.contains("failed to read") && text.contains("go.mod"),
-        "an unreadable replacement manifest is reported, not skipped: {text:?}"
+        text.contains("go.mod"),
+        "the read failure names the manifest it could not read: {text:?}"
     );
     drop(tree);
 }
@@ -211,11 +279,10 @@ fn assert_unreadable_manifest() {
 /// A root without a readable `go.mod` anchors no main module.
 fn assert_missing_root_manifest() {
     let tree = build_repository(&[("repo/main.go", "package main\n")], false);
-    let error = load_error(&repository_root(&tree));
-    let text = error.to_string();
-    assert!(
-        text.contains("invalid project root"),
-        "a root without go.mod is an invalid root: {text:?}"
+    assert_refusal(
+        "a root without go.mod is an invalid root",
+        load_error(&repository_root(&tree)),
+        ("InvalidRoot", "invalid project root"),
     );
     drop(tree);
 }
@@ -241,11 +308,10 @@ fn assert_symlinked_escape() {
     )
     .expect("the fixture can link a sibling directory");
 
-    let error = load_error(&repository_root(&tree));
-    let text = error.to_string();
-    assert!(
-        text.contains("lies outside the project root"),
-        "a symlinked escape is refused: {text:?}"
+    assert_refusal(
+        "a symlinked escape is refused",
+        load_error(&repository_root(&tree)),
+        ("OutOfRoot", "lies outside the project root"),
     );
     drop(tree);
 }

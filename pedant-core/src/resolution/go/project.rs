@@ -9,7 +9,9 @@ use super::limits::GoResolutionLimits;
 use super::module::GoModule;
 use super::replacement::GoReplacement;
 use super::requirement::GoRequirement;
-use super::{error::GoProjectError, load};
+use super::snapshot::GoResolutionSnapshot;
+use super::snapshot_error::GoSnapshotError;
+use super::{error::GoProjectError, load, snapshot};
 
 /// A factual Go module project rooted at one canonical repository root.
 ///
@@ -36,6 +38,15 @@ impl GoProject {
     /// toolchain, code generator, or network client is invoked.
     pub fn load(root: &Path, limits: GoResolutionLimits) -> Result<Self, GoProjectError> {
         load::load_project(root, limits)
+    }
+
+    /// Walk every admitted module's packages and snapshot what they state.
+    ///
+    /// Reads the `.go` sources the walk admits and nothing else: no process,
+    /// toolchain, code generator, or network client is invoked, and no
+    /// environment or host selection state decides which sources exist.
+    pub fn snapshot_resolution(&self) -> Result<GoResolutionSnapshot, GoSnapshotError> {
+        snapshot::build(self)
     }
 
     /// The canonical repository root this project was loaded from.

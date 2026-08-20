@@ -4,7 +4,9 @@
 //! leaves room for belong to [`crate::resolution::fixture`]; only the Go loader
 //! entry points are stated here, so one fixture owner serves both languages.
 
-use pedant_core::resolution::go::{GoProject, GoProjectError, GoResolutionLimits};
+use pedant_core::resolution::go::{
+    GoProject, GoProjectError, GoResolutionLimits, GoResolutionSnapshot, GoSnapshotError,
+};
 
 use crate::resolution::fixture::{FixtureFile, build_repository, repository_root};
 
@@ -26,6 +28,42 @@ pub fn load_default(files: &[FixtureFile]) -> (tempfile::TempDir, GoProject) {
     let (tree, loaded) = load(files, GoResolutionLimits::default());
     let project = loaded.unwrap_or_else(|error| panic!("the fixture should load: {error}"));
     (tree, project)
+}
+
+/// Materialize a Go fixture, load it, and snapshot it under `limits`.
+///
+/// The load must succeed: a snapshot case states what a walked project holds,
+/// and the load refusals are the project cases' own subject.
+pub fn snapshot(
+    files: &[FixtureFile],
+    limits: GoResolutionLimits,
+) -> (
+    tempfile::TempDir,
+    Result<GoResolutionSnapshot, GoSnapshotError>,
+) {
+    let (tree, loaded) = load(files, limits);
+    let project = loaded.unwrap_or_else(|error| panic!("the fixture should load: {error}"));
+    let taken = project.snapshot_resolution();
+    drop(project);
+    (tree, taken)
+}
+
+/// Snapshot a Go fixture under the documented defaults and require success.
+pub fn snapshot_default(files: &[FixtureFile]) -> (tempfile::TempDir, GoResolutionSnapshot) {
+    let (tree, taken) = snapshot(files, GoResolutionLimits::default());
+    let snapshot = taken.unwrap_or_else(|error| panic!("the fixture should snapshot: {error}"));
+    (tree, snapshot)
+}
+
+/// Snapshot a Go fixture under `limits` and require a typed refusal.
+pub fn snapshot_refusal(files: &[FixtureFile], limits: GoResolutionLimits) -> GoSnapshotError {
+    let (tree, taken) = snapshot(files, limits);
+    let error = match taken {
+        Ok(snapshot) => panic!("the fixture should be refused, not snapshotted: {snapshot:?}"),
+        Err(error) => error,
+    };
+    drop(tree);
+    error
 }
 
 /// Load a Go fixture and require a typed refusal.

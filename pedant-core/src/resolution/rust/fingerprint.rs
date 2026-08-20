@@ -16,7 +16,7 @@
 use std::fmt;
 use std::path::Path;
 
-use sha2::{Digest, Sha256};
+use crate::resolution::digest::ClaimDigest;
 
 use super::dependency::{CargoDependencyKind, DependencyActivation};
 use super::snapshot::{RustResolutionUnit, RustSnapshotEdge, RustSource};
@@ -90,26 +90,26 @@ impl RustSnapshotFingerprint {
     /// held to UTF-8, and a lossy rendering gives two roots that differ only in
     /// unencodable bytes one identity.
     pub(in crate::resolution::rust) fn from_claims(claims: &SnapshotClaims<'_>) -> Self {
-        let mut hasher = Sha256::new();
-        field(&mut hasher, claims.root.as_os_str().as_encoded_bytes());
-        field(&mut hasher, &claims.requested.to_le_bytes());
-        count(&mut hasher, claims.units.len());
+        let mut digest = ClaimDigest::new();
+        digest.field(claims.root.as_os_str().as_encoded_bytes());
+        digest.field(&claims.requested.to_le_bytes());
+        digest.count(claims.units.len());
         claims
             .units
             .iter()
-            .for_each(|unit| hash_unit(&mut hasher, unit));
-        count(&mut hasher, claims.edges.len());
+            .for_each(|unit| hash_unit(&mut digest, unit));
+        digest.count(claims.edges.len());
         claims
             .edges
             .iter()
-            .for_each(|edge| hash_edge(&mut hasher, edge));
-        count(&mut hasher, claims.sources.len());
+            .for_each(|edge| hash_edge(&mut digest, edge));
+        digest.count(claims.sources.len());
         claims
             .sources
             .iter()
-            .for_each(|source| hash_source(&mut hasher, source));
+            .for_each(|source| hash_source(&mut digest, source));
         Self {
-            digest: hasher.finalize().into(),
+            digest: digest.finish(),
         }
     }
 
@@ -199,41 +199,27 @@ fn predicate(activation: &DependencyActivation) -> Option<&str> {
     }
 }
 
-fn hash_unit(hasher: &mut Sha256, unit: &UnitClaim<'_>) {
-    field(hasher, unit.name.as_bytes());
-    field(hasher, unit.manifest.as_bytes());
-    field(hasher, unit.kind.as_bytes());
-    field(hasher, unit.crate_root.as_bytes());
-    hash_predicate(hasher, unit.predicate);
-    count(hasher, unit.sources.len());
-    unit.sources
-        .iter()
-        .for_each(|path| field(hasher, path.as_bytes()));
+fn hash_unit(digest: &mut ClaimDigest, unit: &UnitClaim<'_>) {
+    digest.text(unit.name);
+    digest.text(unit.manifest);
+    digest.text(unit.kind);
+    digest.text(unit.crate_root);
+    digest.optional_text(unit.predicate);
+    digest.count(unit.sources.len());
+    unit.sources.iter().for_each(|path| digest.text(path));
 }
 
-fn hash_edge(hasher: &mut Sha256, edge: &EdgeClaim<'_>) {
-    field(hasher, &edge.source.to_le_bytes());
-    field(hasher, &edge.target.to_le_bytes());
-    field(hasher, edge.alias.as_bytes());
-    field(hasher, &[kind_tag(edge.kind)]);
-    hash_predicate(hasher, edge.predicate);
+fn hash_edge(digest: &mut ClaimDigest, edge: &EdgeClaim<'_>) {
+    digest.field(&edge.source.to_le_bytes());
+    digest.field(&edge.target.to_le_bytes());
+    digest.text(edge.alias);
+    digest.field(&[kind_tag(edge.kind)]);
+    digest.optional_text(edge.predicate);
 }
 
-fn hash_source(hasher: &mut Sha256, source: &SourceClaim<'_>) {
-    field(hasher, source.path.as_bytes());
-    field(hasher, source.digest);
-}
-
-/// An always-active claim and a conditional one with an empty predicate are
-/// distinct facts, so the presence tag is hashed beside the predicate text.
-fn hash_predicate(hasher: &mut Sha256, predicate: Option<&str>) {
-    match predicate {
-        None => field(hasher, &[0]),
-        Some(text) => {
-            field(hasher, &[1]);
-            field(hasher, text.as_bytes());
-        }
-    }
+fn hash_source(digest: &mut ClaimDigest, source: &SourceClaim<'_>) {
+    digest.text(source.path);
+    digest.field(source.digest);
 }
 
 /// The stable byte one dependency table takes in the digest.
@@ -243,22 +229,4 @@ fn kind_tag(kind: CargoDependencyKind) -> u8 {
         CargoDependencyKind::Development => 1,
         CargoDependencyKind::Build => 2,
     }
-}
-
-/// Hash one field, length first.
-///
-/// The length is a fixed-width `u64` rather than a pointer-width one, so a
-/// 32-bit host and a 64-bit host state one digest for one repository state.
-fn field(hasher: &mut Sha256, bytes: &[u8]) {
-    hasher.update((bytes.len() as u64).to_le_bytes());
-    hasher.update(bytes);
-}
-
-/// Hash one list's element count, in the same framed form as a field.
-///
-/// A field length delimits one field; it does not say where a list ends. Without
-/// the count, a claim of two units and one edge runs field-for-field against one
-/// of one unit and two edges.
-fn count(hasher: &mut Sha256, elements: usize) {
-    field(hasher, &(elements as u64).to_le_bytes());
 }

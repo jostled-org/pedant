@@ -47,6 +47,11 @@ const FRESHNESS_EDIT: &str = "pub fn run() { work(); }\npub fn work() { let _ = 
 /// The one source allowed to compute a snapshot fingerprint.
 const FINGERPRINT_OWNER: &str = "pedant-core/src/resolution/rust/fingerprint.rs";
 
+/// The one owner of the framing every language's snapshot identity is built
+/// from. Rust and Go each state their own claims and each hash them here, so
+/// two languages cannot disagree about where one field ends.
+const FRAMING_OWNER: &str = "pedant-core/src/resolution/digest.rs";
+
 /// The one proof boundary allowed to delegate straight into that computation.
 const PROOF_BUILDER: &str = "pedant-core/src/resolution/rust/test_support/claim.rs";
 
@@ -312,19 +317,41 @@ fn snapshot_fingerprint_has_one_production_hash_owner() {
         "the first-party source scan found nothing"
     );
 
+    assert_sole_hash_sites(sources);
+    assert_no_second_hashing_implementation(sources);
+    assert_framing_delegation_and_retention(sources);
+}
+
+/// Every hashing marker is named by exactly the sources allowed to name it.
+fn assert_sole_hash_sites(sources: &[Source]) {
     assert_sole_site(
         sources,
         "RustSnapshotFingerprint::from_claims",
         &[FINGERPRINT_OWNER, PROOF_BUILDER],
     );
-    assert_sole_site(sources, "fn from_claims", &[FINGERPRINT_OWNER]);
+    assert_sole_site(
+        sources,
+        "fn from_claims(claims: &SnapshotClaims<'_>)",
+        &[FINGERPRINT_OWNER],
+    );
+    assert_sole_site(
+        sources,
+        "fn field(&mut self, bytes: &[u8])",
+        &[FRAMING_OWNER],
+    );
     assert_sole_site(sources, "fingerprint().bytes()", &[BYTE_CONSUMER]);
     assert_sole_site(
         sources,
         "fn bytes(&self) -> &[u8; 32]",
         &[FINGERPRINT_OWNER],
     );
+}
 
+/// No source in the hashing scope carries a second hasher.
+///
+/// The scope is required to select sources first, so an empty filter cannot
+/// pass by scanning nothing.
+fn assert_no_second_hashing_implementation(sources: &[Source]) {
     for tree in HASHING_SCOPE {
         assert!(
             sources.iter().any(|source| source.path.starts_with(tree)),
@@ -345,16 +372,22 @@ fn snapshot_fingerprint_has_one_production_hash_owner() {
         hashing.is_empty(),
         "no second snapshot-fingerprint hashing implementation may exist: {hashing:?}"
     );
+}
 
+/// The owner hashes through the one framing owner, the proof builder delegates
+/// straight into it, and both public owners retain the value.
+fn assert_framing_delegation_and_retention(sources: &[Source]) {
     let owner = sources
         .iter()
         .find(|source| &*source.path == FINGERPRINT_OWNER)
         .unwrap_or_else(|| panic!("{FINGERPRINT_OWNER} is a scanned first-party source"));
     assert!(
-        owner
-            .text
-            .contains("hasher.update((bytes.len() as u64).to_le_bytes())"),
-        "the owner states one fixed-width length-delimited digest assembly"
+        read_text(FRAMING_OWNER).contains("self.hasher.update((bytes.len() as u64).to_le_bytes())"),
+        "the framing owner states one fixed-width length-delimited digest assembly"
+    );
+    assert!(
+        owner.text.contains("ClaimDigest::new()"),
+        "{FINGERPRINT_OWNER} must build its identity through the one framing owner"
     );
     assert!(
         read_text(PROOF_BUILDER).contains("RustSnapshotFingerprint::from_claims(&SnapshotClaims {"),

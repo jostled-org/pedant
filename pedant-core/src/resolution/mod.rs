@@ -4,6 +4,7 @@
 //! repository declares its build units, takes no policy input, and returns no
 //! violation.
 
+pub(crate) mod digest;
 pub(crate) mod identity;
 pub(crate) mod path_normalization;
 pub(crate) mod paths;

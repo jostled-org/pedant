@@ -7,15 +7,13 @@
 //! process, a network client, or a `GOPATH` lookup added later would not change
 //! any manifest count.
 
-use std::path::Path;
-
 use pedant_core::resolution::ResolutionProbe;
 use pedant_core::resolution::go::{GoProject, GoResolutionLimits};
 use pedant_types::Capability;
 
-use crate::declaration_scan::{capability_findings, crate_path, read_source};
+use crate::declaration_scan::capability_findings;
 use crate::resolution::fixture::{build_repository, repository_root};
-use crate::resolution::go::owners::source_closure;
+use crate::resolution::go::owners::{file_label, source_closure, text_offenders};
 use crate::resolution::go::project_fixtures::DIRECTIVE_AUTHORITY;
 
 /// Every manifest a [`DIRECTIVE_AUTHORITY`] load may open, in read order.
@@ -36,7 +34,9 @@ const FORBIDDEN_AUTHORITIES: &[(&str, &[&str])] = &[
     ("GOOS", &[]),
     ("GOARCH", &[]),
     ("CGO_ENABLED", &[]),
-    ("vendor", &[]),
+    // The package walk must name the vendored tree to keep it out of
+    // discovery, so its one owner is admitted and no other module may say it.
+    ("vendor", &["resolution/go/discovery.rs"]),
     ("pkg/mod", &[]),
     ("std::env", &[]),
     ("env::var", &[]),
@@ -52,11 +52,15 @@ const ADMITTED_CAPABILITIES: &[Capability] = &[Capability::FileRead];
 
 /// The capability one named owner may state, and no other owner may.
 ///
-/// A project identity is scoped by a SHA-256 digest over manifest bytes, so
-/// `hash.rs` reaches `sha2` and states `Crypto`. Naming the owner keeps that
+/// A project identity is scoped by a SHA-256 digest over manifest bytes and a
+/// snapshot identity by one over its claims, so `hash.rs` and the shared framed
+/// digest both reach `sha2` and state `Crypto`. Naming the two owners keeps that
 /// from becoming a closure-wide allowance: a Go module that hashed anything
 /// would have to justify itself here first.
-const OWNED_CAPABILITIES: &[(&str, Capability)] = &[("hash.rs", Capability::Crypto)];
+const OWNED_CAPABILITIES: &[(&str, Capability)] = &[
+    ("hash.rs", Capability::Crypto),
+    ("resolution/digest.rs", Capability::Crypto),
+];
 
 /// 3.T5 (Invariant 4): a Go project load reads only the manifests it admits,
 /// inside the root, and its source consults no host, process, or network
@@ -105,17 +109,7 @@ fn assert_observed_manifest_reads() {
 
 /// No source in the closure names an authority the boundary excludes.
 fn assert_closure_names_no_forbidden_authority() {
-    let closure = source_closure();
-    let mut offenders: Vec<Box<str>> = Vec::new();
-    for path in &closure {
-        let text = read_source(path);
-        let name = file_label(path);
-        for (marker, allowed) in FORBIDDEN_AUTHORITIES {
-            if text.contains(marker) && !allowed.contains(&&*name) {
-                offenders.push(format!("{name} names {marker}").into_boxed_str());
-            }
-        }
-    }
+    let offenders = text_offenders(FORBIDDEN_AUTHORITIES);
     assert!(
         offenders.is_empty(),
         "the Go project closure consults excluded authorities: {offenders:?}"
@@ -177,17 +171,4 @@ fn admission(label: &str, capability: Capability) -> Admission {
         Some((owner, _)) => Admission::Owner(owner),
         None => Admission::Refused,
     }
-}
-
-/// One closure owner's name, relative to `src`.
-///
-/// Relative rather than bare: the closure holds three `mod.rs` files, and an
-/// offender report that named only the file would not say which module it came
-/// from.
-fn file_label(path: &Path) -> Box<str> {
-    path.strip_prefix(crate_path("src"))
-        .unwrap_or_else(|_| panic!("{} is a closure owner beneath src", path.display()))
-        .to_string_lossy()
-        .into_owned()
-        .into_boxed_str()
 }

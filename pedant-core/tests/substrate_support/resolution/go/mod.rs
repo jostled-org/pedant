@@ -5,17 +5,37 @@
 //! the reason stated there: cargo builds one test executable per `tests/*.rs`,
 //! so a support tree must not become a root.
 
+mod conditions;
+mod discovery;
 mod fixture;
+mod host_state;
 mod limits;
 mod owners;
 mod ownership;
 mod project;
 mod project_fixtures;
+mod recovery;
 mod refusal;
 mod scan;
+mod snapshot;
+mod snapshot_fixtures;
+mod snapshot_limits;
+mod snapshot_ownership;
+mod snapshot_views;
 mod views;
 
 /// The observed half of the security boundary needs the production probe, which
 /// only the proof feature compiles.
 #[cfg(feature = "resolution-test-support")]
 mod boundary;
+
+/// The observed source, parse, and fact-walk streams need the same probe.
+#[cfg(feature = "resolution-test-support")]
+mod observation;
+
+/// The fingerprint coverage table and the case reading it need the proof-only
+/// claim adapter.
+#[cfg(feature = "resolution-test-support")]
+mod snapshot_claims;
+#[cfg(feature = "resolution-test-support")]
+mod snapshot_fingerprint;

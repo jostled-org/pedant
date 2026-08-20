@@ -112,3 +112,11 @@ pub fn impl_method<'file>(file: &'file syn::File, name: &str) -> Option<&'file s
             _ => None,
         })
 }
+
+/// The free function one file declares under `name`.
+pub fn free_function<'file>(file: &'file syn::File, name: &str) -> Option<&'file syn::ItemFn> {
+    file.items.iter().find_map(|item| match item {
+        syn::Item::Fn(function) if function.sig.ident == name => Some(function),
+        _ => None,
+    })
+}

@@ -180,6 +180,23 @@ test_step_five_owns_the_go_type_fact_contract() {
     esac
 }
 
+# Step 5's semantic process journey exceeded the ordinary guard before its
+# localized budget was introduced. The route must execute that exact predicate
+# and its owning root under the semantic feature profile.
+test_step_five_owns_the_semantic_process_budget() {
+    run_verifier "${GO_PLAN}" 5 VERIFY_STEP_LIST_ONLY=1
+    local listing
+    listing="$(commands_of "${ROW_OUTPUT}")"
+    case "${listing}" in
+        *"pedant gate_cli semantic project_gate_semantic_is_single_context_all_target_or_error"*) ;;
+        *) fail "Go step 5 must select the semantic process-budget predicate" ;;
+    esac
+    case "${listing}" in
+        *"cargo test -p pedant --test gate_cli --no-default-features --features semantic"*) ;;
+        *) fail "Go step 5 must run the semantic gate-CLI root" ;;
+    esac
+}
+
 # The lint gate is derived from each step's specifications rather than written
 # beside them. A derivation that dropped a package would leave a crate the step
 # tests unlinted, which is the same silent narrowing by another route.
@@ -275,6 +292,7 @@ test_step_one_covers_the_graph_crate_it_changes
 test_step_one_owns_the_exact_test_harness
 test_step_one_owns_the_repository_verifier_harness
 test_step_five_owns_the_go_type_fact_contract
+test_step_five_owns_the_semantic_process_budget
 test_every_go_step_lints_every_package_it_tests
 test_an_unrelated_valid_plan_keeps_generic_routing
 test_an_unrelated_plan_at_a_high_step_still_routes

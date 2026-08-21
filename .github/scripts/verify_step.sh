@@ -254,11 +254,13 @@ exact pedant-core substrate ${core_go} go_project_resolution_validates_every_sna
 exact pedant-core substrate ${core_go} go_resolution_limits_refuse_every_first_excess
 exact pedant-core substrate ${core_go} go_resolution_limit_checks_dominate_candidate_retention
 exact pedant-syntax enclosing_unit ts-go go_file_facts_state_every_written_type_and_initializer
+exact pedant gate_cli semantic project_gate_semantic_is_single_context_all_target_or_error
 root pedant-core substrate ${core_go}
 root pedant-syntax enclosing_unit ts-go
 root pedant-lang capability ts-go
 root pedant-types serialization default
 root pedant-core substrate default
+root pedant gate_cli semantic
 SPECS
             ;;
         6)

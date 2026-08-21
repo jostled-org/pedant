@@ -34,11 +34,7 @@ impl<'a> FileImports<'a> {
             named: facts
                 .imports()
                 .iter()
-                .filter_map(|import| {
-                    import
-                        .local_name()
-                        .map(|name| (name, target(corpus, import)))
-                })
+                .filter_map(|import| named_binding(corpus, import))
                 .collect(),
             dotted: facts
                 .imports()
@@ -58,6 +54,24 @@ impl<'a> FileImports<'a> {
     pub(super) fn dotted(&self) -> &[ImportTarget] {
         &self.dotted
     }
+}
+
+/// The file-scoped name one non-dot import binds after snapshot lookup.
+fn named_binding<'a>(
+    corpus: &Corpus<'a>,
+    import: &'a GoImportRecord,
+) -> Option<(&'a str, ImportTarget)> {
+    let found = target(corpus, import);
+    let name = match import.form() {
+        GoImportForm::Named => found
+            .unit
+            .and_then(|unit| corpus.unit(unit))
+            .map(|unit| unit.package_name())
+            .or_else(|| import.local_name()),
+        GoImportForm::Aliased => import.local_name(),
+        GoImportForm::Dot | GoImportForm::Blank => None,
+    };
+    name.map(|name| (name, found))
 }
 
 /// What one import specification names, joined against the snapshot.

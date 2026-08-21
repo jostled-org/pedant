@@ -31,6 +31,10 @@ pub const IMPORT_FORMS: &[FixtureFile] = &[
         "repo/text/text.go",
         "package text\n\nfunc Join() string {\n\treturn \"text\"\n}\n",
     ),
+    (
+        "repo/textutil/text.go",
+        "package text\n\nfunc Join() string {\n\treturn \"textutil\"\n}\n",
+    ),
     ("repo/blank/blank.go", "package blank\n"),
     (
         "repo/aliased.go",
@@ -43,6 +47,10 @@ pub const IMPORT_FORMS: &[FixtureFile] = &[
     (
         "repo/outside.go",
         "package app\n\nimport . \"example.com/outside\"\n\nfunc Outside() string {\n\treturn Elsewhere()\n}\n",
+    ),
+    (
+        "repo/renamed.go",
+        "package app\n\nimport \"x/textutil\"\n\nfunc Renamed() string {\n\treturn text.Join() + textutil.Join()\n}\n",
     ),
 ];
 
@@ -166,7 +174,7 @@ pub const BOUND_CONTEXTS: &[FixtureFile] = &[
     ),
     (
         "repo/api_test.go",
-        "package app_test\n\nimport \"x\"\n\nfunc drive() string {\n\treturn x.Run()\n}\n",
+        "package app_test\n\nimport \"x\"\n\nfunc drive() string {\n\treturn app.Run()\n}\n",
     ),
     (
         "repo/util/util.go",

@@ -23,6 +23,7 @@ const APP_DEFINITIONS: &[&str] = &[
     "x#production|Function|Aliased|aliased.go:8|app",
     "x#production|Function|Dotted|dotted.go:7|app",
     "x#production|Function|Outside|outside.go:4|app",
+    "x#production|Function|Renamed|renamed.go:4|app",
 ];
 
 /// Every reference the importing package states, with the target each import
@@ -51,6 +52,11 @@ const APP_REFERENCES: &[&str] = &[
     "x#production|Import|example.com/outside|outside.go:2|-||ExternalDefinition",
     "x#production|Type|string|outside.go:4|-||ExternalDefinition",
     "x#production|Call|Elsewhere|outside.go:5|-||ExternalDefinition",
+    "x#production|Import|x/textutil|renamed.go:2|resolved|x/textutil#production::text|",
+    "x#production|Type|string|renamed.go:4|-||ExternalDefinition",
+    "x#production|Call|Join|renamed.go:5|resolved|x/textutil#production::Join|",
+    "x#production|Value|textutil|renamed.go:5|-||MissingDefinition",
+    "x#production|Call|Join|renamed.go:5|-||DynamicDispatch",
 ];
 
 /// 5.T1 (Invariant 12): imports are file-scoped, and the default name, the

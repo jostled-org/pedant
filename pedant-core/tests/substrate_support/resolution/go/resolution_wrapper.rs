@@ -42,6 +42,14 @@ const PRODUCTION_REFERENCES: &[&str] = &[
     "x#production|Type|string|tuned_linux.go:2|-||ExternalDefinition,ConditionalCompilation",
 ];
 
+/// The external-test context imports the root package under its declared name,
+/// which differs from the module path's final segment.
+const EXTERNAL_TEST_REFERENCES: &[&str] = &[
+    "x#external_test|Import|x|api_test.go:2|resolved|x#production::app|",
+    "x#external_test|Type|string|api_test.go:4|-||ExternalDefinition",
+    "x#external_test|Call|Run|api_test.go:5|resolved|x#production::Run|",
+];
+
 /// Every record naming a definition a build predicate governs.
 ///
 /// One candidate each, so no answer here is possible because it is ambiguous:
@@ -99,6 +107,11 @@ fn go_project_resolution_validates_every_snapshot_binding_and_kind() {
         &*borrowed(&unit_references(&resolution, "x#production")),
         PRODUCTION_REFERENCES,
         "an unconditioned call resolves in the same report a conditioned one does not"
+    );
+    assert_eq!(
+        &*borrowed(&unit_references(&resolution, "x#external_test")),
+        EXTERNAL_TEST_REFERENCES,
+        "a default import binds the imported package's declared name"
     );
     assert_conditional_evidence_is_possible(&resolution);
 

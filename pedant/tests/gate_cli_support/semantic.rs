@@ -6,8 +6,14 @@
 //! beneath the fixture's own `target/pedant-semantic` path, which the
 //! production loader selects.
 
-use crate::fixture::{ProjectFixture, analyzed_targets, json_payload};
+use std::time::Duration;
+
+use crate::fixture::{ProjectFixture, RunOptions, analyzed_targets, json_payload};
 use crate::process_guard::Completed;
+
+/// A cold rust-analyzer context indexes the discovered sysroot before it can
+/// answer the first project query.
+const SEMANTIC_BUDGET: Duration = Duration::from_secs(180);
 
 /// A two-target package whose sources rust-analyzer resolves the same way the
 /// parse-only tier reads them: plain Rust, LF endings, no conditional module.
@@ -68,8 +74,12 @@ const UNLOADABLE_CORPUS: &[(&str, &str)] = &[
 /// Every selected target is judged at Tier 2 from one context, or the run fails
 /// all-target with exit 2 and no syntactic success.
 pub(crate) fn semantic_is_single_context_all_target_or_error() {
+    let options = RunOptions {
+        budget: SEMANTIC_BUDGET,
+        ..RunOptions::default()
+    };
     let fixture = ProjectFixture::build(SEMANTIC_CORPUS);
-    let run = fixture.project_gate(&["--semantic", "--format", "json"]);
+    let run = fixture.project_gate_with(&["--semantic", "--format", "json"], &options);
     assert!(
         !run.timed_out(),
         "the Tier 2 journey must finish inside its budget: {}",
@@ -87,10 +97,12 @@ pub(crate) fn semantic_is_single_context_all_target_or_error() {
         "every selected target sits under the one semantic summary"
     );
 
-    let refused = ProjectFixture::build(UNRESOLVABLE_CORPUS).project_gate(&["--semantic"]);
+    let refused =
+        ProjectFixture::build(UNRESOLVABLE_CORPUS).project_gate_with(&["--semantic"], &options);
     assert_refusal(&refused, "cannot be resolved");
 
-    let unloadable = ProjectFixture::build(UNLOADABLE_CORPUS).project_gate(&["--semantic"]);
+    let unloadable =
+        ProjectFixture::build(UNLOADABLE_CORPUS).project_gate_with(&["--semantic"], &options);
     assert_refusal(&unloadable, "has no loadable semantic context");
 }
 

@@ -12,8 +12,9 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
-use crate::process_guard::{Completed, Run, execute};
+use crate::process_guard::{BUDGET, Completed, Run, execute};
 
 /// The manifest a single-package fixture library declares.
 pub(crate) const ROOT_MANIFEST: &str =
@@ -91,6 +92,8 @@ pub(crate) struct RunOptions<'a> {
     pub(crate) stdin: Option<&'a [u8]>,
     /// Whether the parent keeps the child's stdout reader.
     pub(crate) capture_stdout: bool,
+    /// Ceiling on how long the guarded child may run.
+    pub(crate) budget: Duration,
 }
 
 impl Default for RunOptions<'_> {
@@ -100,6 +103,7 @@ impl Default for RunOptions<'_> {
             path_prefix: None,
             stdin: None,
             capture_stdout: true,
+            budget: BUDGET,
         }
     }
 }
@@ -230,6 +234,7 @@ impl ProjectFixture {
         run.path_prefix = options.path_prefix;
         run.stdin = options.stdin;
         run.capture_stdout = options.capture_stdout;
+        run.budget = options.budget;
         execute(&run).unwrap_or_else(|failure| panic!("the guarded run failed: {failure}"))
     }
 }

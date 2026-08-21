@@ -13,8 +13,8 @@ const MANIFEST: FixtureFile = ("repo/go.mod", "module x\n\ngo 1.22\n");
 /// Two files of one package importing the same two packages four ways: a
 /// default name, an explicit alias, a dot import, and a blank import.
 ///
-/// `util` is imported by both files, which is what makes file scope observable:
-/// a binding shared by two files is still two bindings.
+/// The asymmetric `Join()` and `tx.Join()` calls make file scope observable:
+/// neither file may inherit the other file's alias or dot-import binding.
 ///
 /// A third file dot-imports a path no directory of this module holds. A dot
 /// import pulls names it does not spell, so a name the corpus cannot answer in
@@ -34,11 +34,11 @@ pub const IMPORT_FORMS: &[FixtureFile] = &[
     ("repo/blank/blank.go", "package blank\n"),
     (
         "repo/aliased.go",
-        "package app\n\nimport (\n\t\"x/util\"\n\ttx \"x/text\"\n\t_ \"x/blank\"\n)\n\nfunc Aliased() string {\n\treturn util.Name() + tx.Join()\n}\n",
+        "package app\n\nimport (\n\t\"x/util\"\n\ttx \"x/text\"\n\t_ \"x/blank\"\n)\n\nfunc Aliased() string {\n\treturn util.Name() + tx.Join() + Join()\n}\n",
     ),
     (
         "repo/dotted.go",
-        "package app\n\nimport (\n\t. \"x/text\"\n\t\"x/util\"\n)\n\nfunc Dotted() string {\n\treturn Join() + util.Name()\n}\n",
+        "package app\n\nimport (\n\t. \"x/text\"\n\t\"x/util\"\n)\n\nfunc Dotted() string {\n\treturn Join() + util.Name() + tx.Join()\n}\n",
     ),
     (
         "repo/outside.go",
@@ -71,7 +71,7 @@ pub const CALL_SHAPES: &[FixtureFile] = &[
     ),
     (
         "repo/calls.go",
-        "package app\n\nimport (\n\t\"fmt\"\n\t\"x/util\"\n)\n\ntype Label string\n\nfunc Local() string {\n\treturn \"local\"\n}\n\nfunc Direct() string {\n\treturn Local()\n}\n\nfunc Qualified() string {\n\treturn util.Name()\n}\n\nfunc External() string {\n\treturn fmt.Sprint(\"external\")\n}\n\nfunc Convert(raw string) Label {\n\treturn Label(raw)\n}\n\nfunc Indirect(fn func() string) string {\n\treturn fn()\n}\n\nfunc Closure() string {\n\tfn := Local\n\treturn fn()\n}\n\nfunc Missing() string {\n\treturn DoesNotExist()\n}\n",
+        "package app\n\nimport (\n\t\"fmt\"\n\t\"x/util\"\n)\n\ntype Label string\n\nfunc Local() string {\n\treturn \"local\"\n}\n\nfunc Direct() string {\n\treturn Local()\n}\n\nfunc Qualified() string {\n\treturn util.Name()\n}\n\nfunc External() string {\n\treturn fmt.Sprint(\"external\")\n}\n\nfunc Convert(raw string) Label {\n\treturn Label(raw)\n}\n\nfunc Indirect(fn func() string) string {\n\treturn fn()\n}\n\nfunc Closure() string {\n\tfn := Local\n\treturn fn()\n}\n\nfunc Missing() string {\n\treturn DoesNotExist()\n}\n\nfunc MissingQualified() string {\n\treturn util.Nope()\n}\n",
     ),
     (
         "repo/kinds.go",

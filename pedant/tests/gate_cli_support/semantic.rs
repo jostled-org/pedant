@@ -9,7 +9,7 @@
 use std::time::Duration;
 
 use crate::fixture::{ProjectFixture, RunOptions, analyzed_targets, json_payload};
-use crate::process_guard::Completed;
+use crate::process_guard::{BUDGET, Completed};
 
 /// A cold rust-analyzer context indexes the discovered sysroot before it can
 /// answer the first project query.
@@ -74,10 +74,29 @@ const UNLOADABLE_CORPUS: &[(&str, &str)] = &[
 /// Every selected target is judged at Tier 2 from one context, or the run fails
 /// all-target with exit 2 and no syntactic success.
 pub(crate) fn semantic_is_single_context_all_target_or_error() {
+    assert_eq!(
+        BUDGET,
+        Duration::from_secs(120),
+        "ordinary guarded journeys retain the shared 120-second ceiling"
+    );
+    assert_eq!(
+        RunOptions::default().budget,
+        BUDGET,
+        "default run options inherit the shared process ceiling"
+    );
+    assert_eq!(
+        SEMANTIC_BUDGET,
+        Duration::from_secs(180),
+        "only this rust-analyzer-backed journey receives the wider ceiling"
+    );
     let options = RunOptions {
         budget: SEMANTIC_BUDGET,
         ..RunOptions::default()
     };
+    assert_eq!(
+        options.budget, SEMANTIC_BUDGET,
+        "the semantic journey applies its localized ceiling"
+    );
     let fixture = ProjectFixture::build(SEMANTIC_CORPUS);
     let run = fixture.project_gate_with(&["--semantic", "--format", "json"], &options);
     assert!(

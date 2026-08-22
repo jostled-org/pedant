@@ -79,7 +79,7 @@ pub const CALL_SHAPES: &[FixtureFile] = &[
     ),
     (
         "repo/calls.go",
-        "package app\n\nimport (\n\t\"fmt\"\n\t\"x/util\"\n)\n\ntype Label string\n\nfunc Local() string {\n\treturn \"local\"\n}\n\nfunc Direct() string {\n\treturn Local()\n}\n\nfunc Qualified() string {\n\treturn util.Name()\n}\n\nfunc External() string {\n\treturn fmt.Sprint(\"external\")\n}\n\nfunc Convert(raw string) Label {\n\treturn Label(raw)\n}\n\nfunc Indirect(fn func() string) string {\n\treturn fn()\n}\n\nfunc Closure() string {\n\tfn := Local\n\treturn fn()\n}\n\nfunc Missing() string {\n\treturn DoesNotExist()\n}\n\nfunc MissingQualified() string {\n\treturn util.Nope()\n}\n",
+        "package app\n\nimport (\n\t\"fmt\"\n\t\"x/util\"\n)\n\ntype Label string\n\nfunc Local() string {\n\treturn \"local\"\n}\n\nfunc Direct() string {\n\treturn Local()\n}\n\nfunc Qualified() string {\n\treturn util.Name()\n}\n\nfunc External() string {\n\treturn fmt.Sprint(\"external\")\n}\n\nfunc Convert(raw string) Label {\n\treturn Label(raw)\n}\n\nfunc Indirect(fn func() string) string {\n\treturn fn()\n}\n\nfunc Closure() string {\n\tfn := Local\n\treturn fn()\n}\n\nfunc Missing() string {\n\treturn DoesNotExist()\n}\n\nfunc MissingQualified() string {\n\treturn util.Nope()\n}\n\nfunc Universe(raw []string) (int, error) {\n\treturn len(append(raw, \"entry\")), nil\n}\n",
     ),
     (
         "repo/kinds.go",

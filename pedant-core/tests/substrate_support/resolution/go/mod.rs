@@ -20,6 +20,7 @@ mod resolution_calls;
 mod resolution_fixtures;
 mod resolution_imports;
 mod resolution_limits;
+mod resolution_method_facts;
 mod resolution_methods;
 mod resolution_ownership;
 mod resolution_refusal;

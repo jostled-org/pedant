@@ -172,6 +172,9 @@ fn assert_declarations(facts: &GoFileFacts<'_>) {
             (GoDeclarationKind::Function, "table"),
             (GoDeclarationKind::Function, "boxed"),
             (GoDeclarationKind::Function, "serve"),
+            (GoDeclarationKind::Struct, "Embedder"),
+            (GoDeclarationKind::EmbeddedField, "Config"),
+            (GoDeclarationKind::EmbeddedField, "Handle"),
         ],
         "declarations keep source order and their declared spelling"
     );

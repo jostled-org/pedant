@@ -14,6 +14,9 @@
 
 use crate::resolution::go::fixture::resolve_default;
 use crate::resolution::go::resolution_fixtures::METHOD_SETS;
+use crate::resolution::go::resolution_method_facts::{
+    DECLARED_RESULTS, DECLARED_TYPES, RETAINED_INITIALIZERS,
+};
 use crate::resolution::go::resolution_views::{member_answers, unit_definitions, unit_references};
 use crate::resolution::go::snapshot_views::{
     source_declared_types, source_initializers, source_results,
@@ -26,140 +29,6 @@ const APP: &str = "x#production";
 /// The second package, which declares the type one receiver is written from and
 /// the method that receiver reaches.
 const STORE: &str = "x/store#production";
-
-/// The initializer every bound name retains, which is the receiver evidence the
-/// answers below are read from.
-///
-/// A composite literal, its address, and a call are the three forms a short
-/// variable declaration proves a type through; a receiver, a parameter, and a
-/// `var` state their type directly and retain no initializer at all.
-const RETAINED_INITIALIZERS: &[&str] = &[
-    "foreign.go|n|none",
-    "foreign.go|n|call|-|Fetch|false",
-    "plat_linux.go|n|none",
-    "plat_windows.go|n|none",
-    "platform.go|n|call|-|NewNode|false",
-    "receivers.go|n|literal|-|Node|false",
-    "receivers.go|n|literal-address|-|Node|true",
-    "receivers.go|n|call|-|NewNode|false",
-    "receivers.go|raw|none",
-    "receivers.go|n|call|-|Node|false",
-    "receivers.go|n|none",
-    "receivers.go|all|none",
-    "receivers.go|n|literal|-|Node|false",
-    "receivers.go|n|call|-|NewNode|false",
-    "receivers.go|n|call|-|NewNode|false",
-    "receivers.go|n|literal|-|Node|false",
-    "receivers.go|n|literal|-|Node|false",
-    "receivers.go|n|none",
-    "store/store.go|n|none",
-    "store/store.go|s|none",
-    "types.go|r|none",
-    "types.go|r|none",
-    "types.go|b|none",
-    "types.go|b|none",
-    "types.go|n|none",
-    "types.go|next|none",
-    "types.go|n|none",
-    "zembed.go|s|none",
-    "zembed.go|n|none",
-];
-
-/// The type every bound name writes, which is the receiver evidence a `var`, a
-/// parameter, and a receiver carry instead of an initializer.
-///
-/// `foreign.go` is the row the qualifier claim stands on: `var n store.Node`
-/// binds a name whose type belongs to another package, and the package it names
-/// is retained beside the name rather than folded into it. A retention that kept
-/// only `Node` would read identically to the six bare `Node` rows beneath it,
-/// and the method call over it would then resolve inside `app`.
-const DECLARED_TYPES: &[&str] = &[
-    "foreign.go|n|store|Node|false",
-    "foreign.go|n|-|-|false",
-    "plat_linux.go|n|-|Node|true",
-    "plat_windows.go|n|-|Node|true",
-    "platform.go|n|-|-|false",
-    "receivers.go|n|-|-|false",
-    "receivers.go|n|-|-|false",
-    "receivers.go|n|-|-|false",
-    "receivers.go|raw|-|Node|false",
-    "receivers.go|n|-|-|false",
-    "receivers.go|n|-|Node|false",
-    "receivers.go|all|-|-|false",
-    "receivers.go|n|-|-|false",
-    "receivers.go|n|-|-|false",
-    "receivers.go|n|-|-|false",
-    "receivers.go|n|-|-|false",
-    "receivers.go|n|-|-|false",
-    "receivers.go|n|-|Node|false",
-    "store/store.go|n|-|Node|false",
-    "store/store.go|s|-|Shared|false",
-    "types.go|r|-|Root|false",
-    "types.go|r|-|Root|false",
-    "types.go|b|-|Base|false",
-    "types.go|b|-|Base|false",
-    "types.go|n|-|Node|true",
-    "types.go|next|-|string|false",
-    "types.go|n|-|Node|false",
-    "zembed.go|s|-|Shared|false",
-    "zembed.go|n|-|ForeignBase|false",
-];
-
-/// The single result every declaration states, which is what makes a receiver
-/// read from a call statically known.
-///
-/// `NewNode` and `Fetch` are the only declarations here that return a named
-/// type. `NewNode` returns `app`'s own in pointer form; `Fetch` returns another
-/// package's, and the package it names is retained beside the type rather than
-/// folded into it. Every other callable returns a `string` no method is called
-/// on, and the types and fields beside them declare no result at all.
-///
-/// A retention that dropped the declared result would leave `n := NewNode()`
-/// with no receiver type, and one that dropped the qualifier would leave
-/// `n := Fetch()` looking like it returned `app`'s `Node`, so this table is read
-/// beside the method answers rather than trusted through them.
-const DECLARED_RESULTS: &[&str] = &[
-    "foreign.go|Foreign|-|string|false",
-    "foreign.go|Fetch|store|Node|false",
-    "foreign.go|Crossed|-|string|false",
-    "plat_linux.go|Platform|-|string|false",
-    "plat_windows.go|Platform|-|string|false",
-    "platform.go|Platform|-|string|false",
-    "receivers.go|Literal|-|string|false",
-    "receivers.go|Address|-|string|false",
-    "receivers.go|Result|-|string|false",
-    "receivers.go|Converted|-|string|false",
-    "receivers.go|Declared|-|string|false",
-    "receivers.go|Indexed|-|string|false",
-    "receivers.go|Renamed|-|string|false",
-    "receivers.go|Pointed|-|string|false",
-    "receivers.go|Dereferenced|-|string|false",
-    "receivers.go|Addressed|-|string|false",
-    "receivers.go|Promoted|-|string|false",
-    "receivers.go|MissingMember|-|string|false",
-    "store/store.go|Node|-|-|false",
-    "store/store.go|Label|-|string|false",
-    "store/store.go|Shared|-|-|false",
-    "store/store.go|Promote|-|string|false",
-    "types.go|Root|-|-|false",
-    "types.go|Trace|-|string|false",
-    "types.go|Ping|-|string|false",
-    "types.go|Base|-|-|false",
-    "types.go|Root|-|-|false",
-    "types.go|Ping|-|string|false",
-    "types.go|Label|-|string|false",
-    "types.go|Node|-|-|false",
-    "types.go|Base|-|-|false",
-    "types.go|Name|-|-|false",
-    "types.go|Rename|-|-|false",
-    "types.go|Label|-|string|false",
-    "types.go|NewNode|-|Node|true",
-    "zembed.go|Shared|-|-|false",
-    "zembed.go|Promote|-|string|false",
-    "zembed.go|ForeignBase|-|-|false",
-    "zembed.go|Shared|-|-|false",
-    "zembed.go|Embedded|-|string|false",
-];
 
 /// Every definition the package states, which is what a method's parent claim
 /// is read against: a concrete method is a child of its receiver's named type.
@@ -201,6 +70,20 @@ const APP_DEFINITIONS: &[&str] = &[
     "x#production|Struct|ForeignBase|zembed.go:10|app",
     "x#production|Field|Shared|zembed.go:11|ForeignBase",
     "x#production|Function|Embedded|zembed.go:14|app",
+    "x#production|Struct|Boxed|zembed.go:19|app",
+    "x#production|Field|Base|zembed.go:20|Boxed",
+    "x#production|Function|Boxing|zembed.go:23|app",
+    "x#production|Struct|Stringer|zgaps.go:4|app",
+    "x#production|Method|String|zgaps.go:6|Stringer",
+    "x#production|Struct|Printed|zgaps.go:10|app",
+    "x#production|Field|Stringer|zgaps.go:11|Printed",
+    "x#production|Struct|Unbound|zgaps.go:14|app",
+    "x#production|Field|Shared|zgaps.go:15|Unbound",
+    "x#production|Function|Outside|zgaps.go:18|app",
+    "x#production|Function|Unimported|zgaps.go:23|app",
+    "x#production|Struct|Doubled|zshadow.go:4|app",
+    "x#production|Field|Shared|zshadow.go:5|Doubled",
+    "x#production|Function|Twinned|zshadow.go:8|app",
 ];
 
 /// Every reference the package states, compared whole.
@@ -235,6 +118,23 @@ const APP_DEFINITIONS: &[&str] = &[
 /// the honest answer, and it is the row that moves: a resolver reading the
 /// result's name without its qualifier finds `app`'s own `Node` and publishes a
 /// resolved edge into the wrong package.
+///
+/// The last four call rows are the embedding this tier admits and the three it
+/// refuses, each written beside a local decoy. `zembed.go:25` reaches `Ping`
+/// through `*Base`, so a pointer embedding promotes exactly as a value one
+/// does. `zgaps.go:20` calls `String` on a type embedding `fmt.Stringer`,
+/// `zgaps.go:25` calls `Promote` on one embedding `store.Shared` in a file no
+/// import binds `store` in, and `zshadow.go:10` calls it on one embedding a
+/// bare `Shared` two packages answer. All three state `MissingDefinition`: the
+/// corpus cannot name a member promoted from a type it does not hold, and the
+/// same-named local `Stringer` and `Shared` are what a resolver reaching for an
+/// answer would publish instead.
+///
+/// The embedded type sites beside them carry the same claim one step earlier.
+/// `zgaps.go:11` stays external rather than binding the local `Stringer`,
+/// `zgaps.go:15` keeps the dynamic gap an unbound qualifier leaves at every
+/// other site, and `zshadow.go:5` names both packages' `Shared` rather than
+/// choosing.
 const APP_REFERENCES: &[&str] = &[
     "x#production|Import|x/store|foreign.go:2|resolved|x/store#production::store|",
     "x#production|Type|string|foreign.go:4|-||ExternalDefinition",
@@ -317,6 +217,26 @@ const APP_REFERENCES: &[&str] = &[
     "x#production|Type|string|zembed.go:14|-||ExternalDefinition",
     "x#production|Type|ForeignBase|zembed.go:15|resolved|x#production::ForeignBase|",
     "x#production|Call|Promote|zembed.go:16|resolved|x/store#production::Promote|",
+    "x#production|Type|Base|zembed.go:20|resolved|x#production::Base|",
+    "x#production|Type|string|zembed.go:23|-||ExternalDefinition",
+    "x#production|Type|Boxed|zembed.go:24|resolved|x#production::Boxed|",
+    "x#production|Call|Ping|zembed.go:25|resolved|x#production::Ping|",
+    "x#production|Import|fmt|zgaps.go:2|-||ExternalDefinition",
+    "x#production|Type|Stringer|zgaps.go:6|resolved|x#production::Stringer|",
+    "x#production|Type|string|zgaps.go:6|-||ExternalDefinition",
+    "x#production|Type|Stringer|zgaps.go:11|-||ExternalDefinition",
+    "x#production|Type|Shared|zgaps.go:15|-||DynamicDispatch",
+    "x#production|Type|string|zgaps.go:18|-||ExternalDefinition",
+    "x#production|Type|Printed|zgaps.go:19|resolved|x#production::Printed|",
+    "x#production|Call|String|zgaps.go:20|-||MissingDefinition",
+    "x#production|Type|string|zgaps.go:23|-||ExternalDefinition",
+    "x#production|Type|Unbound|zgaps.go:24|resolved|x#production::Unbound|",
+    "x#production|Call|Promote|zgaps.go:25|-||MissingDefinition",
+    "x#production|Import|x/store|zshadow.go:2|resolved|x/store#production::store|",
+    "x#production|Type|Shared|zshadow.go:5|possible|x#production::Shared,x/store#production::Shared|Ambiguous",
+    "x#production|Type|string|zshadow.go:8|-||ExternalDefinition",
+    "x#production|Type|Doubled|zshadow.go:9|resolved|x#production::Doubled|",
+    "x#production|Call|Promote|zshadow.go:10|-||MissingDefinition",
 ];
 
 /// Every definition the second package states, which is what the crossing call
@@ -341,8 +261,8 @@ const STORE_REFERENCES: &[&str] = &[
     "x/store#production|Type|string|store/store.go:10|-||ExternalDefinition",
 ];
 
-/// The three names the embedding chain answers at more than one depth.
-const PROMOTED_NAMES: &[&str] = &["Label", "Ping", "Promote", "Trace"];
+/// The names the embedding chain answers, at one depth or several.
+const PROMOTED_NAMES: &[&str] = &["Label", "Ping", "Promote", "String", "Trace"];
 
 /// Which declaration each of those names reached, by the site it is written at.
 ///
@@ -358,6 +278,14 @@ const PROMOTED_NAMES: &[&str] = &["Label", "Ping", "Promote", "Trace"];
 /// sites for `Label` and two for `Ping`, and one that widened past the first
 /// answering level would answer `types.go:20` and `types.go:8`. Both stay green
 /// in every other table.
+///
+/// The last four rows are what the embedding boundary decides. `zembed.go:25`
+/// reaches `types.go:16` through `*Base`, so the star the source wrote changes
+/// no identity and no depth. The three empty rows are the embeddings this tier
+/// cannot admit — external, unbound, and ambiguous — and each names a site the
+/// same corpus holds: `zgaps.go:6` declares a local `String`, and `zembed.go:6`
+/// a local `Promote`. A resolver that answered from the embedding package
+/// rather than the embedded one would fill all three.
 const PROMOTION_DEPTHS: &[&str] = &[
     "Call|Label|foreign.go:6|store/store.go:4",
     "Call|Label|foreign.go:15|",
@@ -373,6 +301,10 @@ const PROMOTION_DEPTHS: &[&str] = &[
     "Call|Ping|receivers.go:50|types.go:16",
     "Call|Trace|receivers.go:55|types.go:4",
     "Call|Promote|zembed.go:16|store/store.go:10",
+    "Call|Ping|zembed.go:25|types.go:16",
+    "Call|String|zgaps.go:20|",
+    "Call|Promote|zgaps.go:25|",
+    "Call|Promote|zshadow.go:10|",
 ];
 
 /// 7.T1 (Invariant 16): a unique method on a statically known concrete

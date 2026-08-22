@@ -315,12 +315,23 @@ fn embedded_member<'source>(
                         context,
                         context.declaration,
                     ),
-                    type_parts(written, source, false),
+                    type_parts(written, source, embedded_star(node)),
                 )
             })
         })
         .into_iter()
         .collect()
+}
+
+/// Whether a struct embeds `*T` rather than `T`.
+///
+/// The grammar writes the star of an embedded pointer beside the field's `type`
+/// rather than inside it, so the written-type recognizer reads a bare name here
+/// and the form has to be taken off the field declaration itself. A named
+/// field's own `*T` sits inside its type, so no other star reaches this node.
+fn embedded_star(node: Node<'_>) -> bool {
+    let mut walk = node.walk();
+    node.children(&mut walk).any(|child| child.kind() == "*")
 }
 
 /// A method an interface declares.

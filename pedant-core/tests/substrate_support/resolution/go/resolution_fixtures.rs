@@ -152,6 +152,32 @@ pub const CALL_SHAPES: &[FixtureFile] = &[
 /// not at all. A resolver that flattened the chain would answer two candidates
 /// where Go answers one, and one that widened past the first answering level
 /// would answer the deeper method.
+///
+/// `zembed.go` embeds across the crossing and beside a decoy. `ForeignBase`
+/// embeds `store.Shared` while the same file declares its own `Shared` with the
+/// same `Promote`, so the promoted call answers `x/store#production::Promote`
+/// and a resolver that dropped the embedded qualifier — or resolved the
+/// embedded name in the embedding package — answers the decoy instead. `Boxed`
+/// embeds `*Base`: the star is written outside the embedded type, and promotion
+/// runs through the same identity either way.
+///
+/// `zgaps.go` writes the two embeddings whose written type this tier cannot
+/// reach, each beside a decoy the same package declares. `Printed` embeds
+/// `fmt.Stringer`, whose package is outside the snapshot, while the file itself
+/// declares a `Stringer` with a `String`. `Unbound` writes `store.Shared` where
+/// no import binds `store`, which is the file-scope rule the qualified call
+/// sites already carry, applied to an embedded type; `zembed.go` declares the
+/// `Shared` a resolver dropping that qualifier would find.
+///
+/// `zshadow.go` writes the third: `Doubled` embeds a bare `Shared` in a file
+/// that dot-imports `x/store`, so two packages answer one name. That is a Go
+/// program error — no identifier may be declared in both the file and the
+/// package block — and it is one the resolver states as a gap rather than
+/// deciding, exactly as it does for an ambiguous selector.
+///
+/// All three promoted calls must state `MissingDefinition`: the corpus holds no
+/// such member, which is what the embedding rule says a chain leaving the
+/// snapshot leaves behind.
 pub const METHOD_SETS: &[FixtureFile] = &[
     MANIFEST,
     (
@@ -184,7 +210,15 @@ pub const METHOD_SETS: &[FixtureFile] = &[
     ),
     (
         "repo/zembed.go",
-        "package app\n\nimport \"x/store\"\n\ntype Shared struct{}\n\nfunc (s Shared) Promote() string {\n\treturn \"local\"\n}\n\ntype ForeignBase struct {\n\tstore.Shared\n}\n\nfunc Embedded() string {\n\tvar n ForeignBase\n\treturn n.Promote()\n}\n",
+        "package app\n\nimport \"x/store\"\n\ntype Shared struct{}\n\nfunc (s Shared) Promote() string {\n\treturn \"local\"\n}\n\ntype ForeignBase struct {\n\tstore.Shared\n}\n\nfunc Embedded() string {\n\tvar n ForeignBase\n\treturn n.Promote()\n}\n\ntype Boxed struct {\n\t*Base\n}\n\nfunc Boxing() string {\n\tvar b Boxed\n\treturn b.Ping()\n}\n",
+    ),
+    (
+        "repo/zgaps.go",
+        "package app\n\nimport \"fmt\"\n\ntype Stringer struct{}\n\nfunc (s Stringer) String() string {\n\treturn \"local\"\n}\n\ntype Printed struct {\n\tfmt.Stringer\n}\n\ntype Unbound struct {\n\tstore.Shared\n}\n\nfunc Outside() string {\n\tvar p Printed\n\treturn p.String()\n}\n\nfunc Unimported() string {\n\tvar u Unbound\n\treturn u.Promote()\n}\n",
+    ),
+    (
+        "repo/zshadow.go",
+        "package app\n\nimport . \"x/store\"\n\ntype Doubled struct {\n\tShared\n}\n\nfunc Twinned() string {\n\tvar d Doubled\n\treturn d.Promote()\n}\n",
     ),
 ];
 

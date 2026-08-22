@@ -23,7 +23,6 @@ pub struct GoDeclarationRecord {
     result_pointer: bool,
     embedded_qualifier: Option<Box<str>>,
     embedded_name: Option<Box<str>>,
-    embedded_pointer: bool,
 }
 
 impl GoDeclarationRecord {
@@ -42,7 +41,6 @@ impl GoDeclarationRecord {
             result_pointer: fact.result_pointer(),
             embedded_qualifier: fact.embedded_qualifier().map(Box::from),
             embedded_name: fact.embedded_name().map(Box::from),
-            embedded_pointer: fact.embedded_pointer(),
         }
     }
 
@@ -104,12 +102,12 @@ impl GoDeclarationRecord {
     }
 
     /// The name of the type this field embeds.
+    ///
+    /// The pointer form the source wrote is not retained beside it. Embedding
+    /// `T` and embedding `*T` promote the same members from the same type
+    /// identity, so no resolution stage asks the question, and the syntax
+    /// inventory still states the written form for a reader that does.
     pub fn embedded_name(&self) -> Option<&str> {
         self.embedded_name.as_deref()
-    }
-
-    /// Whether the embedded type is written in pointer form.
-    pub fn embedded_pointer(&self) -> bool {
-        self.embedded_pointer
     }
 }

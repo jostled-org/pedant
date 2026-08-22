@@ -104,6 +104,11 @@ pub(crate) const FACT_SOURCE: &str = concat!(
     "\t_ = linked\n",                        // 84
     "\t_ = client\n",                        // 85
     "}\n",                                   // 86
+    "\n",                                    // 87
+    "type Embedder struct {\n",              // 88
+    "\tConfig\n",                            // 89
+    "\t*Handle\n",                           // 90
+    "}\n",                                   // 91
 );
 
 /// Build the inventory every claim is read from.

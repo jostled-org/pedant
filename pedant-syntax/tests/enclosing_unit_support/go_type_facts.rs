@@ -113,14 +113,28 @@ const DECLARED_RESULTS: &[&str] = &[
     "table|-|-|false",
     "boxed|-|-|true",
     "serve|-|-|false",
+    "Embedder|-|-|false",
+    "Config|-|-|false",
+    "Handle|-|-|false",
 ];
 
 /// What every embedded declaration writes as its type.
 ///
 /// The package qualifier is part of the identity. Retaining only `Stringer`
 /// would let a consumer silently substitute a same-named local type for
-/// `fmt.Stringer`.
-const EMBEDDED_TYPES: &[&str] = &["Stringer|fmt|Stringer|false"];
+/// `fmt.Stringer`, so the qualified row is written beside a bare one: a walk
+/// that hardcoded a qualifier and one that dropped every qualifier each fail
+/// against one of the two.
+///
+/// `*Handle` is the pointer form, and it is the row that keeps the walk from
+/// stopping at the `pointer_type` wrapper: the name is read from inside the
+/// wrapper, and the form the source wrote is stated beside it rather than
+/// folded into the name.
+const EMBEDDED_TYPES: &[&str] = &[
+    "Stringer|fmt|Stringer|false",
+    "Config|-|Config|false",
+    "Handle|-|Handle|true",
+];
 
 /// 7.T2 (Invariants 1-3): one bounded inventory states the written type, the
 /// initializer, and the declared result of every name Step 7 resolves.

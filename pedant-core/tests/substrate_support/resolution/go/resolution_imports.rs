@@ -29,11 +29,16 @@ const APP_DEFINITIONS: &[&str] = &[
 /// Every reference the importing package states, with the target each import
 /// form binds.
 ///
-/// The last two rows carry the dot import whose package is outside the snapshot.
-/// `Elsewhere` is declared by no package the corpus holds, and the file that
-/// reads it pulls unspelled names from a package the corpus cannot see, so the
-/// answer is `ExternalDefinition` rather than `MissingDefinition`: the report
+/// The `outside.go` rows carry the dot import whose package is outside the
+/// snapshot. `Elsewhere` is declared by no package the corpus holds, and the file
+/// that reads it pulls unspelled names from a package the corpus cannot see, so
+/// the answer is `ExternalDefinition` rather than `MissingDefinition`: the report
 /// says the name is not here, not that it exists nowhere.
+///
+/// `blank.Zero()` and `text.Join()` state what the blank and dot forms do not
+/// bind. Both packages declare the member the call names, so both calls would
+/// resolve if either form bound a qualifier; the qualifier is missing and the
+/// call is a dynamic dispatch instead.
 const APP_REFERENCES: &[&str] = &[
     "x#production|Import|x/util|aliased.go:3|resolved|x/util#production::util|",
     "x#production|Import|x/text|aliased.go:4|resolved|x/text#production::text|",
@@ -42,12 +47,16 @@ const APP_REFERENCES: &[&str] = &[
     "x#production|Call|Name|aliased.go:9|resolved|x/util#production::Name|",
     "x#production|Call|Join|aliased.go:9|resolved|x/text#production::Join|",
     "x#production|Call|Join|aliased.go:9|-||MissingDefinition",
+    "x#production|Value|blank|aliased.go:9|-||MissingDefinition",
+    "x#production|Call|Zero|aliased.go:9|-||DynamicDispatch",
     "x#production|Import|x/text|dotted.go:3|resolved|x/text#production::text|",
     "x#production|Import|x/util|dotted.go:4|resolved|x/util#production::util|",
     "x#production|Type|string|dotted.go:7|-||ExternalDefinition",
     "x#production|Call|Join|dotted.go:8|resolved|x/text#production::Join|",
     "x#production|Call|Name|dotted.go:8|resolved|x/util#production::Name|",
     "x#production|Value|tx|dotted.go:8|-||MissingDefinition",
+    "x#production|Call|Join|dotted.go:8|-||DynamicDispatch",
+    "x#production|Value|text|dotted.go:8|-||MissingDefinition",
     "x#production|Call|Join|dotted.go:8|-||DynamicDispatch",
     "x#production|Import|example.com/outside|outside.go:2|-||ExternalDefinition",
     "x#production|Type|string|outside.go:4|-||ExternalDefinition",

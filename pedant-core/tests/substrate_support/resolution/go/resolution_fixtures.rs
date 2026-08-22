@@ -21,6 +21,12 @@ const MANIFEST: FixtureFile = ("repo/go.mod", "module x\n\ngo 1.22\n");
 /// that file could still be declared by the package outside it: the answer is
 /// "not here" rather than "nowhere", and `outside.go` is the only file here whose
 /// unresolved name states it.
+///
+/// Neither the dot nor the blank form binds a qualifier, so both files write one:
+/// `dotted.go` writes `text.Join()` for the package it dot-imports, and
+/// `aliased.go` writes `blank.Zero()` for the package it blank-imports. Both
+/// packages hold the member the call names, so each qualifier resolves the moment
+/// its form binds a name — which neither form may do.
 pub const IMPORT_FORMS: &[FixtureFile] = &[
     MANIFEST,
     (
@@ -35,14 +41,17 @@ pub const IMPORT_FORMS: &[FixtureFile] = &[
         "repo/textutil/text.go",
         "package text\n\nfunc Join() string {\n\treturn \"textutil\"\n}\n",
     ),
-    ("repo/blank/blank.go", "package blank\n"),
+    (
+        "repo/blank/blank.go",
+        "package blank\n\nfunc Zero() string {\n\treturn \"blank\"\n}\n",
+    ),
     (
         "repo/aliased.go",
-        "package app\n\nimport (\n\t\"x/util\"\n\ttx \"x/text\"\n\t_ \"x/blank\"\n)\n\nfunc Aliased() string {\n\treturn util.Name() + tx.Join() + Join()\n}\n",
+        "package app\n\nimport (\n\t\"x/util\"\n\ttx \"x/text\"\n\t_ \"x/blank\"\n)\n\nfunc Aliased() string {\n\treturn util.Name() + tx.Join() + Join() + blank.Zero()\n}\n",
     ),
     (
         "repo/dotted.go",
-        "package app\n\nimport (\n\t. \"x/text\"\n\t\"x/util\"\n)\n\nfunc Dotted() string {\n\treturn Join() + util.Name() + tx.Join()\n}\n",
+        "package app\n\nimport (\n\t. \"x/text\"\n\t\"x/util\"\n)\n\nfunc Dotted() string {\n\treturn Join() + util.Name() + tx.Join() + text.Join()\n}\n",
     ),
     (
         "repo/outside.go",
@@ -56,6 +65,15 @@ pub const IMPORT_FORMS: &[FixtureFile] = &[
 
 /// One package whose parameters, receivers, locals, and nested blocks bind the
 /// same name an import and a package declaration state.
+///
+/// A binding that merely suppresses an occurrence proves half the rule. The
+/// other half is the claim it blocks, so two locals here shadow a name that
+/// would otherwise answer. `Shadowed` binds `util` to `Helper`, which declares
+/// its own `Name`, and writes `util.Name()`: the import binds `util` too, and
+/// both packages hold a `Name`, so the qualifier decides which package the call
+/// enters. `Rebound` binds `Label` over the package's own `Label` and reads it
+/// bare, where the package declaration would answer if the binding did not
+/// cover it.
 pub const SHADOWING: &[FixtureFile] = &[
     MANIFEST,
     (
@@ -64,7 +82,7 @@ pub const SHADOWING: &[FixtureFile] = &[
     ),
     (
         "repo/shadow.go",
-        "package app\n\nimport \"x/util\"\n\ntype Counter struct{}\n\nfunc (util Counter) Bump() Counter {\n\treturn util\n}\n\nfunc Nested(util string) string {\n\t{\n\t\tinner := util\n\t\treturn inner\n\t}\n}\n\nfunc Free() string {\n\treturn util.Name()\n}\n",
+        "package app\n\nimport \"x/util\"\n\nvar Label = \"app\"\n\ntype Counter struct{}\n\nfunc (util Counter) Bump() Counter {\n\treturn util\n}\n\nfunc Nested(util string) string {\n\t{\n\t\tinner := util\n\t\treturn inner\n\t}\n}\n\nfunc Free() string {\n\treturn util.Name()\n}\n\ntype Helper struct{}\n\nfunc (h Helper) Name() string {\n\treturn \"helper\"\n}\n\nfunc Shadowed() string {\n\tutil := Helper{}\n\treturn util.Name()\n}\n\nfunc Rebound() string {\n\tLabel := \"local\"\n\treturn Label\n}\n",
     ),
 ];
 

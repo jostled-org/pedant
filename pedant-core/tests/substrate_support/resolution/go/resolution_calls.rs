@@ -75,6 +75,12 @@ const APP_REFERENCES: &[&str] = &[
     "x#production|Type|CodeAlias|kinds.go:11|resolved|x#production::CodeAlias|",
 ];
 
+/// Every name this corpus mentions and no unit in it declares: the imported
+/// package and the member read through it, and the three predeclared names the
+/// universe answers. A report definition under any of them is a fabricated node,
+/// wherever it was filed.
+const UNDECLARED: &[&str] = &["fmt", "Sprint", "len", "append", "error"];
+
 /// 6.T1 (Invariant 14): a direct and a package-qualified target in the snapshot
 /// resolve, and an external target keeps its gap with no fabricated node.
 #[test]
@@ -96,12 +102,12 @@ fn go_function_calls_resolve_only_in_snapshot_targets() {
         .report()
         .definitions()
         .iter()
-        .filter(|definition| definition.name() == "Sprint" || definition.name() == "fmt")
+        .filter(|definition| UNDECLARED.contains(&definition.name()))
         .map(|definition| definition.name())
         .collect();
     assert!(
         fabricated.is_empty(),
-        "an external target fabricates no definition: {fabricated:?}"
+        "an external or universe name fabricates no definition: {fabricated:?}"
     );
 
     drop(resolution);

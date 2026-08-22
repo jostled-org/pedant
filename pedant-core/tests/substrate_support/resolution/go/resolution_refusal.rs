@@ -5,11 +5,15 @@
 //! about a report handed to it, so every disagreement it must refuse is stated
 //! here directly: a foreign unit key, a Rust-only kind, a file the snapshot does
 //! not hold, and a coordinate outside the exact snapshotted bytes.
+//!
+//! Every row is answered before anything is asserted. A validation claim the
+//! wrapper stopped proving moves each row that claim owns, and a fail-fast
+//! sequence would report only the first of them.
 
 use std::sync::Arc;
 
 use pedant_core::resolution::go::{
-    GoProject, GoProjectResolution, GoResolutionError, GoResolutionLimits,
+    GoProject, GoProjectResolution, GoResolutionError, GoResolutionLimits, GoResolutionSnapshot,
 };
 use pedant_types::{
     Language, ReferenceKind, ResolutionReport, ResolutionReportBuilder, ResolutionReportLimits,
@@ -18,6 +22,17 @@ use pedant_types::{
 
 use crate::resolution::fixture::{build_repository, repository_root};
 use crate::resolution::go::resolution_fixtures::BOUND_CONTEXTS;
+use crate::resolution::go::views::borrowed;
+
+/// Every stated report and what the wrapper does with it.
+const ANSWERS: &[&str] = &[
+    "valid|accepted",
+    "foreign key|UnitMapping",
+    "rust definition kind|UnsupportedDefinitionKind(Trait)",
+    "rust reference kind|UnsupportedReferenceKind(Module)",
+    "unknown file|UnknownFile",
+    "bad coordinate|InvalidCoordinate",
+];
 
 /// A report the resolver did not write is refused for every disagreement it
 /// states, and the same shape stating only admitted facts is accepted.
@@ -34,55 +49,48 @@ pub fn assert_reports_it_did_not_write_are_refused(keys: &[&str]) {
 
     let keys: Box<[Arc<str>]> = keys.iter().map(|key| Arc::from(*key)).collect();
     let file: Arc<str> = Arc::from("app.go");
+    let answered: Box<[Box<str>]> = Row::ALL
+        .iter()
+        .map(|row| answer(&snapshot, (&keys, &file), *row))
+        .collect();
 
-    assert!(
-        matches!(
-            GoProjectResolution::try_new(&snapshot, stated(&keys, &file, Row::ForeignKey)),
-            Err(GoResolutionError::UnitMapping { .. })
-        ),
-        "a report unit no snapshot unit keys is refused"
-    );
-    assert!(
-        matches!(
-            GoProjectResolution::try_new(&snapshot, stated(&keys, &file, Row::RustKind)),
-            Err(GoResolutionError::UnsupportedDefinitionKind {
-                kind: SymbolKind::Trait,
-                ..
-            })
-        ),
-        "a Rust-only definition kind is refused"
-    );
-    assert!(
-        matches!(
-            GoProjectResolution::try_new(&snapshot, stated(&keys, &file, Row::RustReference)),
-            Err(GoResolutionError::UnsupportedReferenceKind {
-                kind: ReferenceKind::Module,
-                ..
-            })
-        ),
-        "a Rust-only reference kind is refused"
-    );
-    assert!(
-        matches!(
-            GoProjectResolution::try_new(&snapshot, stated(&keys, &file, Row::UnknownFile)),
-            Err(GoResolutionError::UnknownFile { .. })
-        ),
-        "a site naming a file the snapshot does not hold is refused"
-    );
-    assert!(
-        matches!(
-            GoProjectResolution::try_new(&snapshot, stated(&keys, &file, Row::BadCoordinate)),
-            Err(GoResolutionError::InvalidCoordinate { .. })
-        ),
-        "a coordinate outside the exact snapshotted source is refused"
-    );
-    assert!(
-        GoProjectResolution::try_new(&snapshot, stated(&keys, &file, Row::Valid)).is_ok(),
-        "the same shape stating only admitted facts is accepted"
+    assert_eq!(
+        &*borrowed(&answered),
+        ANSWERS,
+        "each disagreement is refused by the claim that owns it, and the admitted shape is accepted"
     );
 
     drop(snapshot);
     drop(tree);
+}
+
+/// What the wrapper does with one stated report, under the row's own label.
+fn answer(snapshot: &GoResolutionSnapshot, named: (&[Arc<str>], &Arc<str>), row: Row) -> Box<str> {
+    let (keys, file) = named;
+    let verdict = match GoProjectResolution::try_new(snapshot, stated(keys, file, row)) {
+        Ok(_) => Box::from("accepted"),
+        Err(error) => refusal(&error),
+    };
+    format!("{}|{verdict}", row.label()).into_boxed_str()
+}
+
+/// Which claim refused one report, and the value it refused on.
+///
+/// The kind is stated because a wrapper that refused a Go kind would otherwise
+/// read the same as one that refused the Rust kind the row carries.
+fn refusal(error: &GoResolutionError) -> Box<str> {
+    match error {
+        GoResolutionError::UnitMapping { .. } => Box::from("UnitMapping"),
+        GoResolutionError::UnsupportedDefinitionKind { kind, .. } => {
+            format!("UnsupportedDefinitionKind({kind:?})").into_boxed_str()
+        }
+        GoResolutionError::UnsupportedReferenceKind { kind, .. } => {
+            format!("UnsupportedReferenceKind({kind:?})").into_boxed_str()
+        }
+        GoResolutionError::UnknownFile { .. } => Box::from("UnknownFile"),
+        GoResolutionError::InvalidCoordinate { .. } => Box::from("InvalidCoordinate"),
+        other => format!("Other({other})").into_boxed_str(),
+    }
 }
 
 /// Which disagreement one stated report carries.
@@ -94,6 +102,29 @@ enum Row {
     RustReference,
     UnknownFile,
     BadCoordinate,
+}
+
+impl Row {
+    /// Every row, in the order [`ANSWERS`] states them.
+    const ALL: &'static [Self] = &[
+        Self::Valid,
+        Self::ForeignKey,
+        Self::RustKind,
+        Self::RustReference,
+        Self::UnknownFile,
+        Self::BadCoordinate,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Valid => "valid",
+            Self::ForeignKey => "foreign key",
+            Self::RustKind => "rust definition kind",
+            Self::RustReference => "rust reference kind",
+            Self::UnknownFile => "unknown file",
+            Self::BadCoordinate => "bad coordinate",
+        }
+    }
 }
 
 /// One report stating every snapshot unit and a single definition, perturbed by

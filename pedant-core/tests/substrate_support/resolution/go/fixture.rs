@@ -96,18 +96,6 @@ pub fn resolve_default(
     (tree, snapshot, resolution)
 }
 
-/// Resolve a Go fixture under `limits` and require a typed refusal.
-pub fn resolve_refusal(files: &[FixtureFile], limits: GoResolutionLimits) -> GoResolutionError {
-    let (tree, snapshot, resolved) = resolve(files, limits);
-    let error = match resolved {
-        Ok(resolution) => panic!("the fixture should be refused, not resolved: {resolution:?}"),
-        Err(error) => error,
-    };
-    drop(snapshot);
-    drop(tree);
-    error
-}
-
 /// Load a Go fixture and require a typed refusal.
 pub fn refusal(files: &[FixtureFile]) -> GoProjectError {
     let (tree, loaded) = load(files, GoResolutionLimits::default());

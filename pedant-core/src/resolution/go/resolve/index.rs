@@ -23,6 +23,13 @@ pub(super) struct TypeName {
     pub(super) name: Box<str>,
 }
 
+/// One named type an in-snapshot package embeds.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) struct EmbeddedType {
+    pub(super) unit: usize,
+    pub(super) name: Box<str>,
+}
+
 /// One definition the report states, and what lookup must know about it.
 pub(super) struct Slot {
     pub(super) handle: DefinitionHandle,
@@ -56,7 +63,7 @@ pub(super) struct UnitIndex {
     pub(super) package: usize,
     names: BTreeMap<Box<str>, Vec<usize>>,
     members: BTreeMap<(Box<str>, Box<str>), Vec<usize>>,
-    embeds: BTreeMap<Box<str>, Vec<Box<str>>>,
+    embeds: BTreeMap<Box<str>, Vec<EmbeddedType>>,
     declarations: BTreeMap<(Box<str>, u32), usize>,
 }
 
@@ -88,11 +95,11 @@ impl UnitIndex {
     }
 
     /// Record one type a named type embeds.
-    pub(super) fn embed(&mut self, owner: &str, embedded: &str) {
+    pub(super) fn embed(&mut self, owner: &str, embedded: EmbeddedType) {
         self.embeds
             .entry(Box::from(owner))
             .or_default()
-            .push(Box::from(embedded));
+            .push(embedded);
     }
 
     /// Record which slot one source's declaration became.
@@ -115,7 +122,7 @@ impl UnitIndex {
     }
 
     /// Every type one named type embeds, in source order.
-    pub(super) fn embedded(&self, owner: &str) -> &[Box<str>] {
+    pub(super) fn embedded(&self, owner: &str) -> &[EmbeddedType] {
         self.embeds
             .get(owner)
             .map(Vec::as_slice)

@@ -21,6 +21,9 @@ pub struct GoDeclarationRecord {
     result_qualifier: Option<Box<str>>,
     result_name: Option<Box<str>>,
     result_pointer: bool,
+    embedded_qualifier: Option<Box<str>>,
+    embedded_name: Option<Box<str>>,
+    embedded_pointer: bool,
 }
 
 impl GoDeclarationRecord {
@@ -37,6 +40,9 @@ impl GoDeclarationRecord {
             result_qualifier: fact.result_qualifier().map(Box::from),
             result_name: fact.result_name().map(Box::from),
             result_pointer: fact.result_pointer(),
+            embedded_qualifier: fact.embedded_qualifier().map(Box::from),
+            embedded_name: fact.embedded_name().map(Box::from),
+            embedded_pointer: fact.embedded_pointer(),
         }
     }
 
@@ -90,5 +96,20 @@ impl GoDeclarationRecord {
     /// Whether the single declared result is a pointer form.
     pub fn result_pointer(&self) -> bool {
         self.result_pointer
+    }
+
+    /// The package qualifier of the type this field embeds.
+    pub fn embedded_qualifier(&self) -> Option<&str> {
+        self.embedded_qualifier.as_deref()
+    }
+
+    /// The name of the type this field embeds.
+    pub fn embedded_name(&self) -> Option<&str> {
+        self.embedded_name.as_deref()
+    }
+
+    /// Whether the embedded type is written in pointer form.
+    pub fn embedded_pointer(&self) -> bool {
+        self.embedded_pointer
     }
 }

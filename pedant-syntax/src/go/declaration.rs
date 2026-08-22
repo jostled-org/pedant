@@ -3,7 +3,7 @@
 use crate::go::context::{FactContext, named_children, text};
 use crate::go::scope::GoScopeKind;
 use crate::go::span::GoFactSpan;
-use crate::go::written_type::{WrittenType, field_type};
+use crate::go::written_type::{WrittenType, field_type, type_parts};
 use crate::tree_sitter::Node;
 
 /// What one Go declaration declares.
@@ -50,6 +50,7 @@ pub struct GoDeclarationFact<'source> {
     receiver: Option<u32>,
     scope: u32,
     result: WrittenType<'source>,
+    embedded: WrittenType<'source>,
 }
 
 impl<'source> GoDeclarationFact<'source> {
@@ -116,6 +117,21 @@ impl<'source> GoDeclarationFact<'source> {
         self.result.pointer
     }
 
+    /// The package qualifier of the type this field embeds.
+    pub fn embedded_qualifier(&self) -> Option<&'source str> {
+        self.embedded.qualifier
+    }
+
+    /// The name of the type this field embeds.
+    pub fn embedded_name(&self) -> Option<&'source str> {
+        self.embedded.name
+    }
+
+    /// Whether the embedded type is written in pointer form.
+    pub fn embedded_pointer(&self) -> bool {
+        self.embedded.pointer
+    }
+
     /// Name the receiver binding a method declaration states.
     ///
     /// Filled after the fact is retained, because a receiver is a binding of
@@ -177,6 +193,7 @@ fn declaration<'source>(
         receiver: None,
         scope: context.scope,
         result: WrittenType::default(),
+        embedded: WrittenType::default(),
     }
 }
 
@@ -186,6 +203,17 @@ fn returning<'source>(
     result: WrittenType<'source>,
 ) -> GoDeclarationFact<'source> {
     GoDeclarationFact { result, ..declared }
+}
+
+/// The same declaration, carrying the type its field embeds.
+fn embedding<'source>(
+    declared: GoDeclarationFact<'source>,
+    embedded: WrittenType<'source>,
+) -> GoDeclarationFact<'source> {
+    GoDeclarationFact {
+        embedded,
+        ..declared
+    }
 }
 
 /// A package-level `func`, with or without a receiver.
@@ -276,16 +304,20 @@ fn embedded_member<'source>(
     context: FactContext,
 ) -> Box<[GoDeclarationFact<'source>]> {
     node.child_by_field_name("type")
-        .and_then(embedded_name)
-        .map(|name| {
-            declaration(
-                GoDeclarationKind::EmbeddedField,
-                name,
-                GoFactSpan::of_node(node),
-                source,
-                context,
-                context.declaration,
-            )
+        .and_then(|written| {
+            embedded_name(written).map(|name| {
+                embedding(
+                    declaration(
+                        GoDeclarationKind::EmbeddedField,
+                        name,
+                        GoFactSpan::of_node(node),
+                        source,
+                        context,
+                        context.declaration,
+                    ),
+                    type_parts(written, source, false),
+                )
+            })
         })
         .into_iter()
         .collect()
@@ -325,20 +357,24 @@ fn interface_embed<'source>(
     source: &'source str,
     context: FactContext,
 ) -> Box<[GoDeclarationFact<'source>]> {
-    let named = (context.declaration_kind == Some(GoDeclarationKind::Interface))
+    let written = (context.declaration_kind == Some(GoDeclarationKind::Interface))
         .then(|| node.named_child(0))
-        .flatten()
-        .and_then(embedded_name);
-    named
-        .map(|name| {
-            declaration(
-                GoDeclarationKind::EmbeddedField,
-                name,
-                GoFactSpan::of_node(node),
-                source,
-                context,
-                context.declaration,
-            )
+        .flatten();
+    written
+        .and_then(|written| {
+            embedded_name(written).map(|name| {
+                embedding(
+                    declaration(
+                        GoDeclarationKind::EmbeddedField,
+                        name,
+                        GoFactSpan::of_node(node),
+                        source,
+                        context,
+                        context.declaration,
+                    ),
+                    type_parts(written, source, false),
+                )
+            })
         })
         .into_iter()
         .collect()

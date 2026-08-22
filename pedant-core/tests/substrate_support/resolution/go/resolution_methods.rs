@@ -53,6 +53,7 @@ const RETAINED_INITIALIZERS: &[&str] = &[
     "receivers.go|n|literal|-|Node|false",
     "receivers.go|n|none",
     "store/store.go|n|none",
+    "store/store.go|s|none",
     "types.go|r|none",
     "types.go|r|none",
     "types.go|b|none",
@@ -60,6 +61,8 @@ const RETAINED_INITIALIZERS: &[&str] = &[
     "types.go|n|none",
     "types.go|next|none",
     "types.go|n|none",
+    "zembed.go|s|none",
+    "zembed.go|n|none",
 ];
 
 /// The type every bound name writes, which is the receiver evidence a `var`, a
@@ -90,6 +93,7 @@ const DECLARED_TYPES: &[&str] = &[
     "receivers.go|n|-|-|false",
     "receivers.go|n|-|Node|false",
     "store/store.go|n|-|Node|false",
+    "store/store.go|s|-|Shared|false",
     "types.go|r|-|Root|false",
     "types.go|r|-|Root|false",
     "types.go|b|-|Base|false",
@@ -97,6 +101,8 @@ const DECLARED_TYPES: &[&str] = &[
     "types.go|n|-|Node|true",
     "types.go|next|-|string|false",
     "types.go|n|-|Node|false",
+    "zembed.go|s|-|Shared|false",
+    "zembed.go|n|-|ForeignBase|false",
 ];
 
 /// The single result every declaration states, which is what makes a receiver
@@ -133,6 +139,8 @@ const DECLARED_RESULTS: &[&str] = &[
     "receivers.go|MissingMember|-|string|false",
     "store/store.go|Node|-|-|false",
     "store/store.go|Label|-|string|false",
+    "store/store.go|Shared|-|-|false",
+    "store/store.go|Promote|-|string|false",
     "types.go|Root|-|-|false",
     "types.go|Trace|-|string|false",
     "types.go|Ping|-|string|false",
@@ -146,6 +154,11 @@ const DECLARED_RESULTS: &[&str] = &[
     "types.go|Rename|-|-|false",
     "types.go|Label|-|string|false",
     "types.go|NewNode|-|Node|true",
+    "zembed.go|Shared|-|-|false",
+    "zembed.go|Promote|-|string|false",
+    "zembed.go|ForeignBase|-|-|false",
+    "zembed.go|Shared|-|-|false",
+    "zembed.go|Embedded|-|string|false",
 ];
 
 /// Every definition the package states, which is what a method's parent claim
@@ -183,6 +196,11 @@ const APP_DEFINITIONS: &[&str] = &[
     "x#production|Method|Rename|types.go:29|Node",
     "x#production|Method|Label|types.go:33|Node",
     "x#production|Function|NewNode|types.go:37|app",
+    "x#production|Struct|Shared|zembed.go:4|app",
+    "x#production|Method|Promote|zembed.go:6|Shared",
+    "x#production|Struct|ForeignBase|zembed.go:10|app",
+    "x#production|Field|Shared|zembed.go:11|ForeignBase",
+    "x#production|Function|Embedded|zembed.go:14|app",
 ];
 
 /// Every reference the package states, compared whole.
@@ -292,6 +310,13 @@ const APP_REFERENCES: &[&str] = &[
     "x#production|Value|Name|types.go:34|resolved|x#production::Name|",
     "x#production|Type|Node|types.go:37|resolved|x#production::Node|",
     "x#production|Type|Node|types.go:38|resolved|x#production::Node|",
+    "x#production|Import|x/store|zembed.go:2|resolved|x/store#production::store|",
+    "x#production|Type|Shared|zembed.go:6|resolved|x#production::Shared|",
+    "x#production|Type|string|zembed.go:6|-||ExternalDefinition",
+    "x#production|Type|Shared|zembed.go:11|resolved|x/store#production::Shared|",
+    "x#production|Type|string|zembed.go:14|-||ExternalDefinition",
+    "x#production|Type|ForeignBase|zembed.go:15|resolved|x#production::ForeignBase|",
+    "x#production|Call|Promote|zembed.go:16|resolved|x/store#production::Promote|",
 ];
 
 /// Every definition the second package states, which is what the crossing call
@@ -300,6 +325,8 @@ const STORE_DEFINITIONS: &[&str] = &[
     "x/store#production|Package|store|store/store.go:0|",
     "x/store#production|Struct|Node|store/store.go:2|store",
     "x/store#production|Method|Label|store/store.go:4|Node",
+    "x/store#production|Struct|Shared|store/store.go:8|store",
+    "x/store#production|Method|Promote|store/store.go:10|Shared",
 ];
 
 /// Every reference the second package states, compared whole.
@@ -310,10 +337,12 @@ const STORE_DEFINITIONS: &[&str] = &[
 const STORE_REFERENCES: &[&str] = &[
     "x/store#production|Type|Node|store/store.go:4|resolved|x/store#production::Node|",
     "x/store#production|Type|string|store/store.go:4|-||ExternalDefinition",
+    "x/store#production|Type|Shared|store/store.go:10|resolved|x/store#production::Shared|",
+    "x/store#production|Type|string|store/store.go:10|-||ExternalDefinition",
 ];
 
 /// The three names the embedding chain answers at more than one depth.
-const PROMOTED_NAMES: &[&str] = &["Label", "Ping", "Trace"];
+const PROMOTED_NAMES: &[&str] = &["Label", "Ping", "Promote", "Trace"];
 
 /// Which declaration each of those names reached, by the site it is written at.
 ///
@@ -343,9 +372,10 @@ const PROMOTION_DEPTHS: &[&str] = &[
     "Call|Label|receivers.go:45|types.go:33",
     "Call|Ping|receivers.go:50|types.go:16",
     "Call|Trace|receivers.go:55|types.go:4",
+    "Call|Promote|zembed.go:16|store/store.go:10",
 ];
 
-/// 5.T5 (Invariant 16): a unique method on a statically known concrete
+/// 7.T1 (Invariant 16): a unique method on a statically known concrete
 /// receiver resolves according to its pointer or value method set, a promoted
 /// method resolves at the shallowest depth that answers it, a receiver whose
 /// declared type names another package resolves in that package, and incomplete

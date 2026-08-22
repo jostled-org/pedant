@@ -122,7 +122,7 @@ pub const METHOD_SETS: &[FixtureFile] = &[
     MANIFEST,
     (
         "repo/store/store.go",
-        "package store\n\ntype Node struct{}\n\nfunc (n Node) Label() string {\n\treturn \"store\"\n}\n",
+        "package store\n\ntype Node struct{}\n\nfunc (n Node) Label() string {\n\treturn \"store\"\n}\n\ntype Shared struct{}\n\nfunc (s Shared) Promote() string {\n\treturn \"store\"\n}\n",
     ),
     (
         "repo/foreign.go",
@@ -147,6 +147,10 @@ pub const METHOD_SETS: &[FixtureFile] = &[
     (
         "repo/platform.go",
         "package app\n\nfunc Platform() string {\n\tn := NewNode()\n\treturn n.Platform()\n}\n",
+    ),
+    (
+        "repo/zembed.go",
+        "package app\n\nimport \"x/store\"\n\ntype Shared struct{}\n\nfunc (s Shared) Promote() string {\n\treturn \"local\"\n}\n\ntype ForeignBase struct {\n\tstore.Shared\n}\n\nfunc Embedded() string {\n\tvar n ForeignBase\n\treturn n.Promote()\n}\n",
     ),
 ];
 

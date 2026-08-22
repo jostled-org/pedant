@@ -21,7 +21,9 @@ use crate::resolution::go::unit::GoResolutionUnit;
 
 use super::corpus::{Corpus, conditional};
 use super::error::GoResolutionError;
-use super::index::{Index, Slot, TypeName, UnitIndex};
+use super::imports::FileImports;
+use super::index::{EmbeddedType, Index, Slot, TypeName, UnitIndex};
+use super::lookup::{self, Outcome};
 use super::target::unit_key;
 
 /// State every unit, every package, and every declaration those packages hold.
@@ -37,6 +39,7 @@ pub(super) fn state(
     for (position, unit) in corpus.units().iter().enumerate() {
         state_members(builder, &mut index, corpus, (position, unit))?;
     }
+    state_embeddings(&mut index, corpus);
     for (position, unit) in corpus.units().iter().enumerate() {
         state_methods(builder, &mut index, corpus, (position, unit))?;
     }
@@ -186,11 +189,101 @@ fn record_membership(
     };
     match (owner, record.kind()) {
         (None, _) => unit.declare(record.name(), slot),
-        (Some(holder), GoDeclarationKind::EmbeddedField) => {
-            unit.embed(&holder, record.name());
-            unit.hold(&holder, record.name(), slot);
-        }
         (Some(holder), _) => unit.hold(&holder, record.name(), slot),
+    }
+}
+
+/// Resolve every embedded type after all package definitions are indexed.
+fn state_embeddings(index: &mut Index, corpus: &Corpus<'_>) {
+    for (position, unit) in corpus.units().iter().enumerate() {
+        for path in unit.sources() {
+            let Some(source) = corpus.source(path) else {
+                continue;
+            };
+            state_source_embeddings(index, corpus, position, source);
+        }
+    }
+}
+
+/// Resolve the embedded types written by one source through its own imports.
+fn state_source_embeddings(
+    index: &mut Index,
+    corpus: &Corpus<'_>,
+    position: usize,
+    source: &GoSource,
+) {
+    let imports = FileImports::of(corpus, source.facts());
+    for record in source
+        .facts()
+        .declarations()
+        .iter()
+        .filter(|record| record.kind() == GoDeclarationKind::EmbeddedField)
+    {
+        state_embedding(index, position, source, &imports, record);
+    }
+}
+
+/// Record one uniquely identified in-snapshot embedded type.
+fn state_embedding(
+    index: &mut Index,
+    position: usize,
+    source: &GoSource,
+    imports: &FileImports<'_>,
+    record: &GoDeclarationRecord,
+) {
+    let Some(parent) = record
+        .parent()
+        .and_then(|parent| source.facts().declarations().get(parent as usize))
+        .map(GoDeclarationRecord::name)
+    else {
+        return;
+    };
+    let Some(embedded) = embedded_type(index, position, imports, record) else {
+        return;
+    };
+    let Some(unit) = index.unit_mut(position) else {
+        return;
+    };
+    unit.embed(parent, embedded);
+}
+
+/// The unique in-snapshot type one embedded declaration names.
+fn embedded_type(
+    index: &Index,
+    position: usize,
+    imports: &FileImports<'_>,
+    record: &GoDeclarationRecord,
+) -> Option<EmbeddedType> {
+    let name = record.embedded_name()?;
+    let outcome = match record.embedded_qualifier() {
+        Some(qualifier) => imports
+            .named(qualifier)
+            .map(|target| lookup::qualified(index, target, name))
+            .unwrap_or(Outcome::Missing),
+        None => lookup::bare(index, (position, imports), name),
+    };
+    let Outcome::Found(found) = outcome else {
+        return None;
+    };
+    unique_embedded_type(index, &found)
+}
+
+/// One semantic type identity from every definition a written name selected.
+fn unique_embedded_type(index: &Index, found: &[usize]) -> Option<EmbeddedType> {
+    let mut types: Vec<EmbeddedType> = found
+        .iter()
+        .filter_map(|slot| index.slot(*slot))
+        .filter(|slot| slot.is_type())
+        .map(|slot| EmbeddedType {
+            unit: slot.unit,
+            name: slot.name.clone(),
+        })
+        .collect();
+    types.sort_unstable();
+    types.dedup();
+    match types.as_slice() {
+        [only] => Some(only.clone()),
+        _ => None,
     }
 }
 

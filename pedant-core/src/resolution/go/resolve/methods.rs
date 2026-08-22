@@ -8,7 +8,7 @@
 
 use std::collections::BTreeSet;
 
-use super::index::Index;
+use super::index::{EmbeddedType, Index};
 use super::types::Receiver;
 
 /// Every definition one concrete receiver answers to under `member`.
@@ -18,14 +18,14 @@ use super::types::Receiver;
 /// candidates rather than a choice: an ambiguous selector is a real Go program
 /// error, and a resolver that picked one would hide it.
 pub(super) fn members(index: &Index, receiver: Receiver, member: &str) -> Box<[usize]> {
-    let mut visited: BTreeSet<Box<str>> = BTreeSet::new();
-    let mut level: Vec<Box<str>> = owner(index, receiver).into_iter().collect();
+    let mut visited: BTreeSet<EmbeddedType> = BTreeSet::new();
+    let mut level: Vec<EmbeddedType> = owner(index, receiver).into_iter().collect();
     while !level.is_empty() {
-        let found = at_depth(index, receiver.unit, &level, member);
+        let found = at_depth(index, &level, member);
         if !found.is_empty() {
             return found;
         }
-        let next = deeper(index, receiver.unit, &level, &visited);
+        let next = deeper(index, &level, &visited);
         visited.extend(level.drain(..));
         level = next;
     }
@@ -33,18 +33,23 @@ pub(super) fn members(index: &Index, receiver: Receiver, member: &str) -> Box<[u
 }
 
 /// The name the receiver's own type is declared under.
-fn owner(index: &Index, receiver: Receiver) -> Option<Box<str>> {
-    index.slot(receiver.slot).map(|slot| slot.name.clone())
+fn owner(index: &Index, receiver: Receiver) -> Option<EmbeddedType> {
+    index.slot(receiver.slot).map(|slot| EmbeddedType {
+        unit: slot.unit,
+        name: slot.name.clone(),
+    })
 }
 
 /// Every definition the named types at one embedding depth answer with.
-fn at_depth(index: &Index, unit: usize, level: &[Box<str>], member: &str) -> Box<[usize]> {
-    let Some(tables) = index.unit(unit) else {
-        return Box::from([]);
-    };
+fn at_depth(index: &Index, level: &[EmbeddedType], member: &str) -> Box<[usize]> {
     let mut found: Vec<usize> = level
         .iter()
-        .flat_map(|name| tables.member(name, member).iter().copied())
+        .flat_map(|embedded| {
+            index
+                .unit(embedded.unit)
+                .into_iter()
+                .flat_map(|tables| tables.member(&embedded.name, member).iter().copied())
+        })
         .collect();
     found.sort_unstable();
     found.dedup();
@@ -55,17 +60,20 @@ fn at_depth(index: &Index, unit: usize, level: &[Box<str>], member: &str) -> Box
 /// walked.
 fn deeper(
     index: &Index,
-    unit: usize,
-    level: &[Box<str>],
-    visited: &BTreeSet<Box<str>>,
-) -> Vec<Box<str>> {
-    let Some(tables) = index.unit(unit) else {
-        return Vec::new();
-    };
-    let mut next: Vec<Box<str>> = level
+    level: &[EmbeddedType],
+    visited: &BTreeSet<EmbeddedType>,
+) -> Vec<EmbeddedType> {
+    let mut next: Vec<EmbeddedType> = level
         .iter()
-        .flat_map(|name| tables.embedded(name).iter().cloned())
-        .filter(|name| !visited.contains(name) && !level.iter().any(|open| open == name))
+        .flat_map(|embedded| {
+            index
+                .unit(embedded.unit)
+                .into_iter()
+                .flat_map(|tables| tables.embedded(&embedded.name).iter().cloned())
+        })
+        .filter(|embedded| {
+            !visited.contains(embedded) && !level.iter().any(|open| open == embedded)
+        })
         .collect();
     next.sort_unstable();
     next.dedup();

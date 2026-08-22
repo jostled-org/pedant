@@ -75,7 +75,7 @@ const APP_REFERENCES: &[&str] = &[
     "x#production|Type|CodeAlias|kinds.go:11|resolved|x#production::CodeAlias|",
 ];
 
-/// 5.T3 (Invariant 14): a direct and a package-qualified target in the snapshot
+/// 6.T1 (Invariant 14): a direct and a package-qualified target in the snapshot
 /// resolve, and an external target keeps its gap with no fabricated node.
 #[test]
 fn go_function_calls_resolve_only_in_snapshot_targets() {
@@ -109,7 +109,7 @@ fn go_function_calls_resolve_only_in_snapshot_targets() {
     drop(tree);
 }
 
-/// 5.T4 (Invariant 15): a conversion is a type reference rather than a call,
+/// 6.T2 (Invariant 15): a conversion is a type reference rather than a call,
 /// and a call through a function value states no resolved target.
 #[test]
 fn go_conversions_and_runtime_function_values_are_not_static_calls() {

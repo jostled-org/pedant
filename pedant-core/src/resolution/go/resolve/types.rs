@@ -26,7 +26,6 @@ use super::scopes;
 /// resolver's question rather than this one.
 #[derive(Clone, Copy)]
 pub(super) struct Receiver {
-    pub(super) unit: usize,
     pub(super) slot: usize,
 }
 
@@ -173,8 +172,5 @@ fn first_type(index: &Index, found: &[usize]) -> Option<Receiver> {
 
 /// One found type slot, with the unit that declares it.
 fn receiver(index: &Index, slot: usize) -> Option<Receiver> {
-    index.slot(slot).map(|found| Receiver {
-        unit: found.unit,
-        slot,
-    })
+    index.slot(slot).map(|_| Receiver { slot })
 }

@@ -54,7 +54,7 @@ const ROWS: &[Row] = &[
     },
 ];
 
-/// 5.T7 (Invariant 5): the candidates-per-reference ceiling refuses at its
+/// 8.T2 (Invariant 5): the candidates-per-reference ceiling refuses at its
 /// first excess and publishes no report.
 #[test]
 fn go_resolution_limits_refuse_every_first_excess() {

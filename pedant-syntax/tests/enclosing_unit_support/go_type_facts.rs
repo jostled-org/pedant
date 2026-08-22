@@ -11,7 +11,9 @@
 //! a type where the grammar proves none fails as loudly as one that stopped
 //! stating the type it does prove.
 
-use pedant_syntax::go::{GoBindingFact, GoDeclarationFact, GoFileFacts, GoInitializerForm};
+use pedant_syntax::go::{
+    GoBindingFact, GoDeclarationFact, GoDeclarationKind, GoFileFacts, GoInitializerForm,
+};
 
 use crate::go_fact_source::complete_facts;
 
@@ -113,8 +115,15 @@ const DECLARED_RESULTS: &[&str] = &[
     "serve|-|-|false",
 ];
 
-/// 5.T9 (Invariants 1-3): one bounded inventory states the written type, the
-/// initializer, and the declared result of every name Step 5 resolves.
+/// What every embedded declaration writes as its type.
+///
+/// The package qualifier is part of the identity. Retaining only `Stringer`
+/// would let a consumer silently substitute a same-named local type for
+/// `fmt.Stringer`.
+const EMBEDDED_TYPES: &[&str] = &["Stringer|fmt|Stringer|false"];
+
+/// 7.T2 (Invariants 1-3): one bounded inventory states the written type, the
+/// initializer, and the declared result of every name Step 7 resolves.
 #[test]
 fn go_file_facts_state_every_written_type_and_initializer() {
     let facts = complete_facts();
@@ -122,6 +131,7 @@ fn go_file_facts_state_every_written_type_and_initializer() {
     assert_initializers(&facts);
     assert_declared_types(&facts);
     assert_declared_results(&facts);
+    assert_embedded_types(&facts);
 }
 
 /// Every binding's initializer evidence, compared as one ordered list.
@@ -208,5 +218,31 @@ fn result_row(declared: &GoDeclarationFact<'_>) -> String {
         declared.result_qualifier().unwrap_or("-"),
         declared.result_name().unwrap_or("-"),
         declared.result_pointer()
+    )
+}
+
+/// Every embedded declaration's written type, compared as one ordered list.
+fn assert_embedded_types(facts: &GoFileFacts<'_>) {
+    let stated: Box<[String]> = facts
+        .declarations()
+        .iter()
+        .filter(|declared| declared.kind() == GoDeclarationKind::EmbeddedField)
+        .map(embedded_type_row)
+        .collect();
+    let borrowed: Box<[&str]> = stated.iter().map(String::as_str).collect();
+    assert_eq!(
+        &*borrowed, EMBEDDED_TYPES,
+        "an embedded declaration retains the package-qualified type its source writes"
+    );
+}
+
+/// One embedded declaration's name and complete written type.
+fn embedded_type_row(declared: &GoDeclarationFact<'_>) -> String {
+    format!(
+        "{}|{}|{}|{}",
+        declared.name(),
+        declared.embedded_qualifier().unwrap_or("-"),
+        declared.embedded_name().unwrap_or("-"),
+        declared.embedded_pointer()
     )
 }

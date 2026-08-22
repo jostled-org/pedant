@@ -59,7 +59,7 @@ const CONDITIONAL_EVIDENCE: &[&str] = &[
     "x#production|Call|tuned|app.go:5|possible|x#production::tuned|ConditionalCompilation",
 ];
 
-/// 5.T6 (Invariants 7, 19, 21): every published resolution binds one report
+/// 8.T1 (Invariants 7, 19, 21): every published resolution binds one report
 /// unit per snapshot context, states only Go-admitted kinds at coordinates the
 /// snapshot holds, retains the snapshot's identity, and states the same bytes
 /// whatever order the fixture was written in.

@@ -80,7 +80,7 @@ commands_of() {
 
 test_every_go_step_lists_a_non_empty_matrix() {
     local step listing
-    for step in 1 2 3 4 5 6 7 8 9 10; do
+    for step in 1 2 3 4 5 6 7 8 9 10 11 12 13 14; do
         run_verifier "${GO_PLAN}" "${step}" VERIFY_STEP_LIST_ONLY=1
         [ "${ROW_STATUS}" -eq 0 ] \
             || fail "listing Go step ${step} must succeed, got ${ROW_STATUS}"
@@ -99,7 +99,7 @@ test_every_go_step_lists_a_non_empty_matrix() {
 
 test_absolute_and_relative_plan_paths_give_equal_matrices() {
     local step relative absolute
-    for step in 1 2 3 4 5 6 7 8 9 10; do
+    for step in 1 2 3 4 5 6 7 8 9 10 11 12 13 14; do
         run_verifier "${GO_PLAN}" "${step}" VERIFY_STEP_LIST_ONLY=1
         relative="$(commands_of "${ROW_OUTPUT}")"
         run_verifier "${ROOT}/${GO_PLAN}" "${step}" VERIFY_STEP_LIST_ONLY=1
@@ -151,7 +151,7 @@ test_step_one_covers_the_graph_crate_it_changes() {
     esac
 }
 
-# 1.T4's harness selects every predicate Steps 2–10 name, so an unowned harness
+# 1.T4's harness selects every predicate Steps 2–14 name, so an unowned harness
 # would leave the whole plan's selection layer unproven from Step 2 onward.
 test_step_one_owns_the_exact_test_harness() {
     run_verifier "${GO_PLAN}" 1 VERIFY_STEP_LIST_ONLY=1
@@ -169,31 +169,31 @@ test_step_one_owns_the_repository_verifier_harness() {
     esac
 }
 
-# Step 5 consumes the written type and initializer facts while resolving calls
-# and concrete receivers. The predicate that states that complete input must be
+# Step 7 consumes the written type and initializer facts while resolving
+# concrete receivers. The predicate that states that complete input must be
 # selected exactly, not reached only as a side effect of the syntax root.
-test_step_five_owns_the_go_type_fact_contract() {
-    run_verifier "${GO_PLAN}" 5 VERIFY_STEP_LIST_ONLY=1
+test_step_seven_owns_the_go_type_fact_contract() {
+    run_verifier "${GO_PLAN}" 7 VERIFY_STEP_LIST_ONLY=1
     case "$(commands_of "${ROW_OUTPUT}")" in
         *"pedant-syntax enclosing_unit ts-go go_file_facts_state_every_written_type_and_initializer"*) ;;
-        *) fail "Go step 5 must select the written type and initializer fact contract" ;;
+        *) fail "Go step 7 must select the written type and initializer fact contract" ;;
     esac
 }
 
-# Step 5's semantic process journey exceeded the ordinary guard before its
+# Step 9's semantic process journey exceeded the ordinary guard before its
 # localized budget was introduced. The route must execute that exact predicate
 # and its owning root under the semantic feature profile.
-test_step_five_owns_the_semantic_process_budget() {
-    run_verifier "${GO_PLAN}" 5 VERIFY_STEP_LIST_ONLY=1
+test_step_nine_owns_the_semantic_process_budget() {
+    run_verifier "${GO_PLAN}" 9 VERIFY_STEP_LIST_ONLY=1
     local listing
     listing="$(commands_of "${ROW_OUTPUT}")"
     case "${listing}" in
         *"pedant gate_cli semantic project_gate_semantic_is_single_context_all_target_or_error"*) ;;
-        *) fail "Go step 5 must select the semantic process-budget predicate" ;;
+        *) fail "Go step 9 must select the semantic process-budget predicate" ;;
     esac
     case "${listing}" in
         *"cargo test -p pedant --test gate_cli --no-default-features --features semantic"*) ;;
-        *) fail "Go step 5 must run the semantic gate-CLI root" ;;
+        *) fail "Go step 9 must run the semantic gate-CLI root" ;;
     esac
 }
 
@@ -202,7 +202,7 @@ test_step_five_owns_the_semantic_process_budget() {
 # tests unlinted, which is the same silent narrowing by another route.
 test_every_go_step_lints_every_package_it_tests() {
     local step listing line package
-    for step in 1 2 3 4 5 6 7 8 9 10; do
+    for step in 1 2 3 4 5 6 7 8 9 10 11 12 13 14; do
         run_verifier "${GO_PLAN}" "${step}" VERIFY_STEP_LIST_ONLY=1
         listing="$(commands_of "${ROW_OUTPUT}")"
         while IFS= read -r line; do
@@ -238,7 +238,7 @@ test_an_unrelated_plan_at_a_high_step_still_routes() {
 
 test_unknown_go_steps_fail_closed() {
     local step
-    for step in 0 11 99 one ""; do
+    for step in 0 15 99 one ""; do
         run_verifier "${GO_PLAN}" "${step}" VERIFY_STEP_LIST_ONLY=1
         [ "${ROW_STATUS}" -eq 64 ] \
             || fail "Go step '${step}' is not a step of this plan and must fail 64, got ${ROW_STATUS}"
@@ -291,8 +291,8 @@ test_step_one_lists_its_own_predicates
 test_step_one_covers_the_graph_crate_it_changes
 test_step_one_owns_the_exact_test_harness
 test_step_one_owns_the_repository_verifier_harness
-test_step_five_owns_the_go_type_fact_contract
-test_step_five_owns_the_semantic_process_budget
+test_step_seven_owns_the_go_type_fact_contract
+test_step_nine_owns_the_semantic_process_budget
 test_every_go_step_lints_every_package_it_tests
 test_an_unrelated_valid_plan_keeps_generic_routing
 test_an_unrelated_plan_at_a_high_step_still_routes

@@ -247,23 +247,43 @@ SPECS
             cat <<SPECS
 exact pedant-core substrate ${core_go} go_import_bindings_are_file_scoped_and_form_exact
 exact pedant-core substrate ${core_go} go_lexical_shadowing_blocks_package_and_import_claims
-exact pedant-core substrate ${core_go} go_function_calls_resolve_only_in_snapshot_targets
-exact pedant-core substrate ${core_go} go_conversions_and_runtime_function_values_are_not_static_calls
-exact pedant-core substrate ${core_go} go_concrete_method_sets_resolve_unique_and_promoted_receivers
-exact pedant-core substrate ${core_go} go_project_resolution_validates_every_snapshot_binding_and_kind
-exact pedant-core substrate ${core_go} go_resolution_limits_refuse_every_first_excess
-exact pedant-core substrate ${core_go} go_resolution_limit_checks_dominate_candidate_retention
-exact pedant-syntax enclosing_unit ts-go go_file_facts_state_every_written_type_and_initializer
-exact pedant gate_cli semantic project_gate_semantic_is_single_context_all_target_or_error
 root pedant-core substrate ${core_go}
-root pedant-syntax enclosing_unit ts-go
-root pedant-lang capability ts-go
-root pedant-types serialization default
 root pedant-core substrate default
-root pedant gate_cli semantic
 SPECS
             ;;
         6)
+            cat <<SPECS
+exact pedant-core substrate ${core_go} go_function_calls_resolve_only_in_snapshot_targets
+exact pedant-core substrate ${core_go} go_conversions_and_runtime_function_values_are_not_static_calls
+root pedant-core substrate ${core_go}
+root pedant-core substrate default
+SPECS
+            ;;
+        7)
+            cat <<SPECS
+exact pedant-core substrate ${core_go} go_concrete_method_sets_resolve_unique_and_promoted_receivers
+exact pedant-syntax enclosing_unit ts-go go_file_facts_state_every_written_type_and_initializer
+root pedant-core substrate ${core_go}
+root pedant-syntax enclosing_unit ts-go
+root pedant-core substrate default
+SPECS
+            ;;
+        8)
+            cat <<SPECS
+exact pedant-core substrate ${core_go} go_project_resolution_validates_every_snapshot_binding_and_kind
+exact pedant-core substrate ${core_go} go_resolution_limits_refuse_every_first_excess
+exact pedant-core substrate ${core_go} go_resolution_limit_checks_dominate_candidate_retention
+root pedant-core substrate ${core_go}
+root pedant-core substrate default
+SPECS
+            ;;
+        9)
+            cat <<SPECS
+exact pedant gate_cli semantic project_gate_semantic_is_single_context_all_target_or_error
+root pedant gate_cli semantic
+SPECS
+            ;;
+        10)
             cat <<SPECS
 exact pedant-core substrate ${core_go} go_structural_implementations_require_complete_method_sets
 exact pedant-core substrate ${core_go} go_interface_dispatch_is_always_possible
@@ -275,7 +295,7 @@ root pedant-types serialization default
 root pedant-core substrate default
 SPECS
             ;;
-        7)
+        11)
             cat <<SPECS
 exact pedant-graph graph default graph_projection_has_one_language_neutral_assembler
 exact pedant-graph graph default rust_direct_and_cached_projection_bytes_stay_exact_after_neutral_assembly
@@ -284,7 +304,7 @@ root pedant-graph graph default
 root pedant-core substrate default
 SPECS
             ;;
-        8)
+        12)
             cat <<SPECS
 exact pedant-graph graph go go_graph_projects_one_package_and_definition_node_per_report_claim
 exact pedant-graph graph go go_graph_containment_is_total_acyclic_and_relation_free
@@ -303,7 +323,7 @@ root pedant-graph graph default
 root pedant-core substrate ${core_go}
 SPECS
             ;;
-        9)
+        13)
             cat <<SPECS
 exact pedant-core substrate ${core_go} go_test_and_feature_ownership_is_exact
 exact pedant-core substrate ${core_go} go_production_structure_and_error_ownership_are_exact
@@ -313,7 +333,7 @@ check .github/scripts/check_go_configurations.sh
 check .github/scripts/run_shellcheck.sh
 SPECS
             ;;
-        10)
+        14)
             cat <<SPECS
 exact pedant-core substrate default published_versions_and_requirements_form_releaseable_graph
 exact pedant-core substrate default go_release_and_archive_owners_are_exact

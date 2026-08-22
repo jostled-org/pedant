@@ -38,7 +38,7 @@ const WRAPPER_CLAIMS: &[&str] = &[
     "validate_sites",
 ];
 
-/// 5.T8 (Invariant 5): the candidate ceiling dominates candidate retention, and
+/// 8.T3 (Invariant 5): the candidate ceiling dominates candidate retention, and
 /// the wrapper proves every binding, kind, and coordinate before it publishes.
 #[test]
 fn go_resolution_limit_checks_dominate_candidate_retention() {

@@ -1,9 +1,11 @@
-//! What a call denotes, and the three call shapes that denote no static target.
+//! What a call denotes, and the call shapes that denote no static target.
 //!
 //! A direct call and a package-qualified call resolve when the snapshot holds
-//! their target. A call whose callee names a type converts rather than calls,
-//! and a call through a value held by a parameter or a local is chosen at run
-//! time, so neither states a resolved call target.
+//! their target, whether they are written at the top of a function body or
+//! inside a function literal nested in one. A call whose callee names a type
+//! converts rather than calls, and a call through a value held by a parameter, a
+//! local, or a captured local is chosen at run time, so none of them states a
+//! resolved call target.
 
 use crate::resolution::go::fixture::resolve_default;
 use crate::resolution::go::resolution_fixtures::CALL_SHAPES;
@@ -25,10 +27,12 @@ const APP_DEFINITIONS: &[&str] = &[
     "x#production|Function|External|calls.go:21|app",
     "x#production|Function|Convert|calls.go:25|app",
     "x#production|Function|Indirect|calls.go:29|app",
-    "x#production|Function|Closure|calls.go:33|app",
+    "x#production|Function|Held|calls.go:33|app",
     "x#production|Function|Missing|calls.go:38|app",
     "x#production|Function|MissingQualified|calls.go:42|app",
     "x#production|Function|Universe|calls.go:46|app",
+    "x#production|Function|Literal|calls.go:50|app",
+    "x#production|Function|Captured|calls.go:57|app",
     "x#production|DefinedType|Code|kinds.go:2|app",
     "x#production|TypeAlias|CodeAlias|kinds.go:4|app",
     "x#production|Constant|DefaultCode|kinds.go:6|app",
@@ -66,6 +70,15 @@ const APP_REFERENCES: &[&str] = &[
     "x#production|Type|error|calls.go:46|-||ExternalDefinition",
     "x#production|Call|len|calls.go:47|-||ExternalDefinition",
     "x#production|Call|append|calls.go:47|-||ExternalDefinition",
+    "x#production|Type|string|calls.go:50|-||ExternalDefinition",
+    "x#production|Type|string|calls.go:51|-||ExternalDefinition",
+    "x#production|Call|Local|calls.go:52|resolved|x#production::Local|",
+    "x#production|Call|inner|calls.go:54|-||DynamicDispatch",
+    "x#production|Type|string|calls.go:57|-||ExternalDefinition",
+    "x#production|Value|Local|calls.go:58|resolved|x#production::Local|",
+    "x#production|Type|string|calls.go:59|-||ExternalDefinition",
+    "x#production|Call|fn|calls.go:60|-||DynamicDispatch",
+    "x#production|Call|inner|calls.go:62|-||DynamicDispatch",
     "x#production|Type|int|kinds.go:2|-||ExternalDefinition",
     "x#production|Type|Code|kinds.go:4|resolved|x#production::Code|",
     "x#production|Type|Code|kinds.go:6|resolved|x#production::Code|",
@@ -115,8 +128,9 @@ fn go_function_calls_resolve_only_in_snapshot_targets() {
     drop(tree);
 }
 
-/// 6.T2 (Invariant 15): a conversion is a type reference rather than a call,
-/// and a call through a function value states no resolved target.
+/// 6.T2 (Invariant 15): a conversion is a type reference rather than a call, and
+/// a call through a function value, a function literal, or a local a literal
+/// captured states no resolved target.
 #[test]
 fn go_conversions_and_runtime_function_values_are_not_static_calls() {
     let (tree, snapshot, resolution) = resolve_default(CALL_SHAPES);
@@ -138,7 +152,7 @@ fn go_conversions_and_runtime_function_values_are_not_static_calls() {
 
     let dynamic: Box<[&str]> = stated
         .iter()
-        .filter(|line| line.contains("|Call|fn|"))
+        .filter(|line| line.contains("|Call|") && line.contains("DynamicDispatch"))
         .map(|line| &**line)
         .collect();
     assert_eq!(
@@ -146,8 +160,12 @@ fn go_conversions_and_runtime_function_values_are_not_static_calls() {
         [
             "x#production|Call|fn|calls.go:30|-||DynamicDispatch",
             "x#production|Call|fn|calls.go:35|-||DynamicDispatch",
+            "x#production|Call|inner|calls.go:54|-||DynamicDispatch",
+            "x#production|Call|fn|calls.go:60|-||DynamicDispatch",
+            "x#production|Call|inner|calls.go:62|-||DynamicDispatch",
         ],
-        "a call through a parameter and a call through a local both stay dynamic"
+        "a call through a parameter, a local, a function literal, or a local the \
+         literal captured all stay dynamic"
     );
 
     let alias_conversions: Box<[&str]> = stated
@@ -174,8 +192,10 @@ fn go_conversions_and_runtime_function_values_are_not_static_calls() {
         [
             "x#production|Call|Local|calls.go:14|resolved|x#production::Local|",
             "x#production|Call|Name|calls.go:18|resolved|x/util#production::Name|",
+            "x#production|Call|Local|calls.go:52|resolved|x#production::Local|",
         ],
-        "exactly the two static targets are resolved calls"
+        "exactly the three static targets are resolved calls, one of them written \
+         inside a function literal"
     );
 
     drop(resolution);

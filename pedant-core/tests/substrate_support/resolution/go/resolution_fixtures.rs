@@ -86,9 +86,25 @@ pub const SHADOWING: &[FixtureFile] = &[
     ),
 ];
 
-/// Direct, package-qualified, and external calls beside the three call shapes
-/// that are not static calls: a conversion, a parameter holding a function, and
-/// a closure held by a local.
+/// Direct, package-qualified, and external calls beside the call shapes that
+/// are not static calls: a conversion, a parameter holding a function, a
+/// function value held by a local, and two function literals.
+///
+/// `Indirect` and `Held` state a function value, which is not a closure: neither
+/// writes a `func` literal, so a resolver that never walked into one would still
+/// answer both. `Literal` and `Captured` write the literal itself, and a literal
+/// opens a declaration scope inside a block, which is the one nesting no other
+/// shape here produces.
+///
+/// `Captured` calls a local the enclosing function bound, and its call is the
+/// one site here whose answer the literal boundary decides: a resolver whose
+/// chain stopped at the literal would see no binding covering `fn`, look the
+/// name up as a package name, and state it missing rather than dynamic. Such a
+/// resolver withholds the dynamic answer; it cannot invent a static one, because
+/// no package declares `fn`. `Literal` calls a package function instead, which a
+/// bare lookup answers from the unit's declarations rather than from the chain,
+/// so that row states the weaker claim its shape can carry: a reference written
+/// inside a literal body is published and resolved at all.
 pub const CALL_SHAPES: &[FixtureFile] = &[
     MANIFEST,
     (
@@ -97,7 +113,7 @@ pub const CALL_SHAPES: &[FixtureFile] = &[
     ),
     (
         "repo/calls.go",
-        "package app\n\nimport (\n\t\"fmt\"\n\t\"x/util\"\n)\n\ntype Label string\n\nfunc Local() string {\n\treturn \"local\"\n}\n\nfunc Direct() string {\n\treturn Local()\n}\n\nfunc Qualified() string {\n\treturn util.Name()\n}\n\nfunc External() string {\n\treturn fmt.Sprint(\"external\")\n}\n\nfunc Convert(raw string) Label {\n\treturn Label(raw)\n}\n\nfunc Indirect(fn func() string) string {\n\treturn fn()\n}\n\nfunc Closure() string {\n\tfn := Local\n\treturn fn()\n}\n\nfunc Missing() string {\n\treturn DoesNotExist()\n}\n\nfunc MissingQualified() string {\n\treturn util.Nope()\n}\n\nfunc Universe(raw []string) (int, error) {\n\treturn len(append(raw, \"entry\")), nil\n}\n",
+        "package app\n\nimport (\n\t\"fmt\"\n\t\"x/util\"\n)\n\ntype Label string\n\nfunc Local() string {\n\treturn \"local\"\n}\n\nfunc Direct() string {\n\treturn Local()\n}\n\nfunc Qualified() string {\n\treturn util.Name()\n}\n\nfunc External() string {\n\treturn fmt.Sprint(\"external\")\n}\n\nfunc Convert(raw string) Label {\n\treturn Label(raw)\n}\n\nfunc Indirect(fn func() string) string {\n\treturn fn()\n}\n\nfunc Held() string {\n\tfn := Local\n\treturn fn()\n}\n\nfunc Missing() string {\n\treturn DoesNotExist()\n}\n\nfunc MissingQualified() string {\n\treturn util.Nope()\n}\n\nfunc Universe(raw []string) (int, error) {\n\treturn len(append(raw, \"entry\")), nil\n}\n\nfunc Literal() string {\n\tinner := func() string {\n\t\treturn Local()\n\t}\n\treturn inner()\n}\n\nfunc Captured() string {\n\tfn := Local\n\tinner := func() string {\n\t\treturn fn()\n\t}\n\treturn inner()\n}\n",
     ),
     (
         "repo/kinds.go",

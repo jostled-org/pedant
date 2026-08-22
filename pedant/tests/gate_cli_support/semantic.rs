@@ -5,6 +5,13 @@
 //! is no Tier 1 fallback and no mixed-tier report. Nested Cargo output stays
 //! beneath the fixture's own `target/pedant-semantic` path, which the
 //! production loader selects.
+//!
+//! This is the one journey whose child indexes a sysroot before it answers, so
+//! it is the one journey with a wider ceiling. That ceiling is localized here:
+//! the shared guard and every ordinary row keep the 120-second default, and
+//! this module asserts both literal numbers rather than reading whichever one
+//! it was handed. Each child still runs through [`ProjectFixture`], so each is
+//! contained, killed, reaped, and proved gone before its row reads a result.
 
 use std::time::Duration;
 
@@ -99,11 +106,7 @@ pub(crate) fn semantic_is_single_context_all_target_or_error() {
     );
     let fixture = ProjectFixture::build(SEMANTIC_CORPUS);
     let run = fixture.project_gate_with(&["--semantic", "--format", "json"], &options);
-    assert!(
-        !run.timed_out(),
-        "the Tier 2 journey must finish inside its budget: {}",
-        run.transcript()
-    );
+    assert_finished(&run, "the analyzed project");
     let payload = json_payload(&run);
     assert_eq!(
         payload["analysis_tier"], "semantic",
@@ -125,8 +128,24 @@ pub(crate) fn semantic_is_single_context_all_target_or_error() {
     assert_refusal(&unloadable, "has no loadable semantic context");
 }
 
+/// The child reached its own end rather than the ceiling that bounds it.
+///
+/// A journey killed at its budget publishes nothing, so every later reading of
+/// its output would be a reading of silence. This is the row that tells the two
+/// apart, and it is why the observed 120.03-second overrun could be diagnosed
+/// as a budget rather than as an empty semantic report.
+fn assert_finished(run: &Completed, label: &str) {
+    assert!(
+        !run.timed_out(),
+        "{label}: the Tier 2 child must finish inside the {}-second ceiling: {}",
+        SEMANTIC_BUDGET.as_secs(),
+        run.transcript()
+    );
+}
+
 /// A refused Tier 2 request exits 2, names its class, and publishes nothing.
 fn assert_refusal(refused: &Completed, expected: &str) {
+    assert_finished(refused, expected);
     assert_eq!(
         refused.code(),
         Some(2),

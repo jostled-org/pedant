@@ -14,7 +14,16 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use pedant_process_guard::wait_until_tree_gone;
+
 use crate::process_guard::{BUDGET, Completed, Run, execute};
+
+/// How long a killed tree may take to leave the process table.
+///
+/// Teardown has already signalled the group and joined both drains, so this
+/// covers only the interval between a descendant's last write and its reaping
+/// by whichever process adopted it.
+const REAP_BUDGET: Duration = Duration::from_secs(5);
 
 /// The manifest a single-package fixture library declares.
 pub(crate) const ROOT_MANIFEST: &str =
@@ -235,8 +244,28 @@ impl ProjectFixture {
         run.stdin = options.stdin;
         run.capture_stdout = options.capture_stdout;
         run.budget = options.budget;
-        execute(&run).unwrap_or_else(|failure| panic!("the guarded run failed: {failure}"))
+        let completed =
+            execute(&run).unwrap_or_else(|failure| panic!("the guarded run failed: {failure}"));
+        assert_tree_is_gone(&completed);
+        completed
     }
+}
+
+/// Nothing the guarded child started outlived the guard that owned it.
+///
+/// Stated once here because every row in this root reaches its child through
+/// [`ProjectFixture::spawn`], and because the claim is the same for all of
+/// them: the gate reads a repository someone else wrote and may run a
+/// toolchain over it, so a child here is a tree. Teardown kills that tree
+/// before a caller may assert anything, and this is what falsifies the kill
+/// having missed a member.
+fn assert_tree_is_gone(completed: &Completed) {
+    assert!(
+        wait_until_tree_gone(completed.tree_root, REAP_BUDGET),
+        "tree {} outlived its guard: {}",
+        completed.tree_root,
+        completed.transcript()
+    );
 }
 
 /// A single-package library whose `left` and `right` modules hold the stated

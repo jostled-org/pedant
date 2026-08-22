@@ -163,11 +163,36 @@ pub fn process_is_running(pid: u32) -> bool {
     unsafe { libc::kill(pid, 0) == 0 }
 }
 
+/// Whether any member of a contained tree is still present.
+///
+/// A Unix tree is the process group its guarded child leads, so this asks the
+/// group rather than the leader: a descendant that outlived the leader keeps
+/// the group alive after the leader itself is reaped.
+#[cfg(unix)]
+pub fn tree_is_running(root_pid: u32) -> bool {
+    let Ok(group_id) = i32::try_from(root_pid) else {
+        return false;
+    };
+    // SAFETY: signal zero checks group existence and permission without
+    // delivering a signal or writing memory.
+    unsafe { libc::killpg(group_id, 0) == 0 }
+}
+
 /// Wait until a watched process is gone or the budget expires.
 pub fn wait_until_gone(pid: u32, budget: Duration) -> bool {
+    wait_until_absent(|| process_is_running(pid), budget)
+}
+
+/// Wait until every member of a contained tree is gone or the budget expires.
+pub fn wait_until_tree_gone(root_pid: u32, budget: Duration) -> bool {
+    wait_until_absent(|| tree_is_running(root_pid), budget)
+}
+
+/// Poll one liveness question until it answers absent or the budget expires.
+fn wait_until_absent(present: impl Fn() -> bool, budget: Duration) -> bool {
     let deadline = Instant::now() + budget;
     loop {
-        match (process_is_running(pid), Instant::now() >= deadline) {
+        match (present(), Instant::now() >= deadline) {
             (false, _) => return true,
             (true, true) => return false,
             (true, false) => std::thread::sleep(PROCESS_POLL),
@@ -326,4 +351,14 @@ pub fn process_is_running(pid: u32) -> bool {
         CloseHandle(handle);
         read != 0 && status == STILL_ACTIVE
     }
+}
+
+/// Whether any member of a contained tree is still present.
+///
+/// A Windows tree is a Job Object whose kill-on-close limit ends every member
+/// the moment its guard releases the handle, and a caller outside that guard
+/// can name no member but the root, so this asks the root process.
+#[cfg(windows)]
+pub fn tree_is_running(root_pid: u32) -> bool {
+    process_is_running(root_pid)
 }

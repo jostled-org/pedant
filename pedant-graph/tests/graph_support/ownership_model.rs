@@ -80,7 +80,7 @@ pub const ERROR_OWNERS: &[(&str, &[&str])] = &[
     ),
     (
         "GraphBuildError::DanglingUnitBinding",
-        &["src/go/validation.rs", "src/rust/validation.rs"],
+        &["src/projection/validation.rs"],
     ),
     (
         "GraphBuildError::SharedUnitBinding",
@@ -161,12 +161,15 @@ pub const ERROR_OWNERS: &[(&str, &[&str])] = &[
     ("GraphBuildError::CapacityExceeded", &["src/graph.rs"]),
 ];
 
-/// The neutral validator the Rust planner must reach before it plans anything.
+/// The neutral validators the Rust planner must reach before it plans anything.
 ///
 /// Placing the report's own records is the neutral placement owner's job, so
 /// the validators that placement reaches are modelled there. What is left to a
-/// planner is the pairing of every reference with the record that answered it.
-pub const PLANNED_VALIDATORS: &[&str] = &["resolved_references"];
+/// planner is the pairing of every reference with the record that answered it,
+/// and the refusal a binding that names no snapshot instance earns — neutral
+/// because what a graph cannot do with an absent instance is the same in every
+/// language, whichever identity the adapter looked up.
+pub const PLANNED_VALIDATORS: &[&str] = &["resolved_references", "bound_instance"];
 
 /// The Rust-specific validators the Rust planner must reach, in the order it
 /// reaches them.
@@ -174,7 +177,6 @@ pub const RUST_PLANNED_VALIDATORS: &[&str] = &[
     "check_root_target",
     "check_snapshot_identity",
     "stated_binding",
-    "snapshot_instance",
     "distinct_binding",
     "dependency_unit",
 ];
@@ -213,10 +215,16 @@ pub const DRAFTED_VALIDATORS: &[&str] = &["definition_identity", "optional_ident
 /// The Go validators the Go planner must reach, in the order it reaches them.
 pub const GO_PLANNED_VALIDATORS: &[&str] = &["check_snapshot_identity", "definition_kind"];
 
+/// The neutral validators the Go placement owner must reach before it states a
+/// unit.
+///
+/// One: the dangling-binding refusal it shares with the Rust planner. Its
+/// sibling list below is what stays Go-specific.
+pub const GO_PLACED_NEUTRAL_VALIDATORS: &[&str] = &["bound_instance"];
+
 /// The Go validators the Go placement owner must reach before it states a unit.
 pub const GO_PLACED_VALIDATORS: &[&str] = &[
     "stated_binding",
-    "snapshot_instance",
     "package_declaration",
     "module_unit",
     "distinct_declaration",

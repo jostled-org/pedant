@@ -9,6 +9,7 @@ pub(crate) mod identity;
 pub(crate) mod line_index;
 pub(crate) mod path_normalization;
 pub(crate) mod paths;
+pub(crate) mod sites;
 
 /// Factual Go module project model for Go repositories, behind the default-off
 /// `go-resolution` feature, which selects the Go grammar and nothing else.

@@ -16,8 +16,7 @@
 use std::collections::BTreeMap;
 
 use pedant_core::resolution::go::{
-    GoProjectResolution, GoResolutionSnapshot, GoResolutionUnit, GoSnapshotEdge,
-    GoSnapshotModuleId, GoSnapshotUnitId, GoUnitBinding,
+    GoProjectResolution, GoResolutionSnapshot, GoSnapshotEdge, GoSnapshotModuleId, GoUnitBinding,
 };
 use pedant_types::{ResolutionReport, ResolutionUnit, SymbolDefinition, SymbolKind};
 
@@ -58,35 +57,18 @@ pub(crate) fn stated_binding<'a>(
         })
 }
 
-/// The package context one report unit's binding names.
-///
-/// A binding the snapshot holds no unit for is dangling rather than missing:
-/// the resolution states a package context, and the supplied snapshot does not
-/// have it.
-pub(crate) fn snapshot_instance(
-    snapshot: &GoResolutionSnapshot,
-    unit: (GoSnapshotUnitId, u32),
-) -> Result<&GoResolutionUnit, GraphBuildError> {
-    let (snapshot_unit, reported) = unit;
-    snapshot
-        .unit(snapshot_unit)
-        .ok_or(GraphBuildError::DanglingUnitBinding { unit: reported })
-}
-
 /// The plan position of the module whose tree declares one bound package.
 ///
 /// The module table is filled from the snapshot's own modules, so a module
-/// identity outside it names nothing this graph holds a container for, which is
-/// the same dangling binding a missing package context is.
+/// identity outside it names nothing this graph holds a container for. That is
+/// the same dangling binding a missing package context is, so it is refused
+/// through the same neutral owner rather than built a second time here.
 pub(crate) fn module_unit(
     modules: &BTreeMap<GoSnapshotModuleId, u32>,
     module: GoSnapshotModuleId,
     reported: u32,
 ) -> Result<u32, GraphBuildError> {
-    modules
-        .get(&module)
-        .copied()
-        .ok_or(GraphBuildError::DanglingUnitBinding { unit: reported })
+    neutral::bound_instance(modules.get(&module).copied(), reported)
 }
 
 /// The report definition whose package clause roots one unit.

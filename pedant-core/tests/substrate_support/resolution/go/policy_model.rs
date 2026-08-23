@@ -60,26 +60,105 @@ pub const FORBIDDEN_MACROS: &[&str] = &[
 /// refusal a caller reads from a typed error.
 pub const FORBIDDEN_METHODS: &[&str] = &["expect", "expect_err", "unwrap", "unwrap_err"];
 
-/// One typed error owner: the source that declares it, the enum, and every
-/// variant it states.
+/// How far one typed error travels.
+#[derive(PartialEq, Eq)]
+pub enum ErrorReach {
+    /// Out of its crate. A caller elsewhere matches on it, so it must implement
+    /// `std::error::Error`.
+    Published,
+    /// No further than its crate. Every caller maps it into the published error
+    /// of the seam that refused, so it states no `Display` of its own and it
+    /// must not be `pub` — a neutral cause that escaped would report a Go
+    /// failure and a Rust failure as one type.
+    Mapped,
+}
+
+/// One typed error owner: the source that declares it, the enum, how far it
+/// travels, and every variant it states.
 pub struct ErrorOwner {
     /// The tracked source, relative to the workspace root.
     pub source: &'static str,
     /// The enum this seam refuses through.
     pub name: &'static str,
+    /// Whether callers outside the crate match on it.
+    pub reach: ErrorReach,
     /// Every variant, in declaration order.
     pub variants: &'static [&'static str],
 }
 
-/// Every seam of the Go surface refuses through its own typed enum.
+/// Every seam this plan wrote or changed refuses through its own typed enum.
 ///
-/// Four seams, four enums. A seam that borrowed another's error would report a
-/// manifest failure as a snapshot failure, and a caller matching on the shared
-/// type could not tell which stage refused.
+/// Seven seams, seven enums. A seam that borrowed another's error would report
+/// a manifest failure as a snapshot failure, and a caller matching on the
+/// shared type could not tell which stage refused. The two Rust seams and the
+/// graph seam are here because the plan changed them: `RustResolutionError`
+/// gained the widened report vocabulary's refusals, `GraphBuildError` gained
+/// the neutral projection's, and `RootError` is the neutral cause the plan
+/// hoisted out of both loaders.
 pub const ERROR_OWNERS: &[ErrorOwner] = &[
+    ErrorOwner {
+        source: "pedant-core/src/resolution/paths.rs",
+        name: "RootError",
+        reach: ErrorReach::Mapped,
+        variants: &["Unreadable", "NotADirectory"],
+    },
+    ErrorOwner {
+        source: "pedant-core/src/resolution/sites.rs",
+        name: "SiteError",
+        reach: ErrorReach::Mapped,
+        variants: &["UnknownFile", "InvalidCoordinate"],
+    },
+    ErrorOwner {
+        source: "pedant-core/src/resolution/rust/resolve/error.rs",
+        name: "RustResolutionError",
+        reach: ErrorReach::Published,
+        variants: &[
+            "UnitMapping",
+            "UnknownFile",
+            "UnsupportedDefinitionKind",
+            "UnsupportedReferenceKind",
+            "InvalidCoordinate",
+            "LimitExceeded",
+            "ImportsNotConverged",
+            "SemanticContextMismatch",
+            "SemanticSharedSourceMismatch",
+            "Report",
+        ],
+    },
+    ErrorOwner {
+        source: "pedant-graph/src/error.rs",
+        name: "GraphBuildError",
+        reach: ErrorReach::Published,
+        variants: &[
+            "RootTargetMismatch",
+            "SnapshotFingerprintMismatch",
+            "MissingUnitBinding",
+            "DanglingUnitBinding",
+            "SharedUnitBinding",
+            "RepeatedUnitContainer",
+            "MissingUnitDeclaration",
+            "RepeatedUnitDeclaration",
+            "SharedUnitRoot",
+            "MissingDependencyUnit",
+            "MissingSourceNode",
+            "RepeatedUnitSource",
+            "ReferenceRecordMismatch",
+            "MissingDefinitionNode",
+            "UnnamedDefinitionKind",
+            "UnnamedReferenceKind",
+            "MissingReferenceRecord",
+            "UnknownContainmentNode",
+            "MultiplyContained",
+            "UnparentedNode",
+            "RootHasParent",
+            "ContainmentCycle",
+            "CapacityExceeded",
+        ],
+    },
     ErrorOwner {
         source: "pedant-syntax/src/go/error.rs",
         name: "GoFactError",
+        reach: ErrorReach::Published,
         variants: &[
             "LanguageMismatch",
             "SyntaxDepthExceeded",
@@ -89,6 +168,7 @@ pub const ERROR_OWNERS: &[ErrorOwner] = &[
     ErrorOwner {
         source: "pedant-core/src/resolution/go/error.rs",
         name: "GoProjectError",
+        reach: ErrorReach::Published,
         variants: &[
             "InvalidRoot",
             "OutOfRoot",
@@ -111,6 +191,7 @@ pub const ERROR_OWNERS: &[ErrorOwner] = &[
     ErrorOwner {
         source: "pedant-core/src/resolution/go/snapshot_error.rs",
         name: "GoSnapshotError",
+        reach: ErrorReach::Published,
         variants: &[
             "OutOfRoot",
             "NonUtf8Path",
@@ -131,6 +212,7 @@ pub const ERROR_OWNERS: &[ErrorOwner] = &[
     ErrorOwner {
         source: "pedant-core/src/resolution/go/resolve/error.rs",
         name: "GoResolutionError",
+        reach: ErrorReach::Published,
         variants: &[
             "UnitMapping",
             "DefinitionMapping",

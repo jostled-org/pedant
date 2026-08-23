@@ -37,7 +37,7 @@ const WRAPPER_CLAIMS: &[&str] = &[
     "bind_units",
     "validate_definition_kinds",
     "validate_reference_kinds",
-    "validate_sites",
+    "validate_snapshot_sites",
 ];
 
 /// 8.T3 (Invariant 5): the candidate ceiling dominates candidate retention, and

@@ -8,9 +8,16 @@
 //! beside the projector or a support module nothing registered.
 //!
 //! Stated once because both Step 13 claims read it. The registration case asks
-//! whether every owner is declared and every predicate registered; the policy
-//! case parses the same production sources and holds them to the repository's
-//! structural rules. Two inventories could pass one and drift on the other.
+//! whether every Go owner is declared and every predicate registered; the
+//! policy case holds production sources to the repository's structural rules.
+//! Two inventories could pass one and drift on the other.
+//!
+//! The two claims range over different universes, so the set is stated in two
+//! parts. [`production_sources`] is the Go surface, and registration is a claim
+//! about it alone. [`plan_sources`] adds the production owners this plan wrote
+//! or changed elsewhere, because "no body is written twice" is only decidable
+//! when both copies are read and this plan wrote one half of several pairs
+//! outside the Go trees.
 //!
 //! The test-side half of the same inventory is [`super::support_trees`], and
 //! the path and directory helpers below serve both.
@@ -88,6 +95,93 @@ pub const GO_PRODUCTION: &[ProductionTree] = &[
     },
 ];
 
+/// The language-neutral projection this plan built the Go adapter on top of,
+/// relative to `pedant-graph/src/projection`.
+pub const PROJECTION_MODULES: &[&str] = &[
+    "assembly.rs",
+    "draft.rs",
+    "forest.rs",
+    "mod.rs",
+    "placement.rs",
+    "state.rs",
+    "validation.rs",
+];
+
+/// Directories this plan created whole outside the Go trees.
+///
+/// One so far: Step 11 split the Rust assembler into a neutral projection both
+/// languages mint through, and every module beneath it is this plan's. Modelled
+/// as a tree rather than a file list for the same reason the Go trees are — a
+/// module that appeared beside the assembler unregistered has to fail.
+pub const PLAN_TREES: &[ProductionTree] = &[ProductionTree {
+    package: "pedant-graph",
+    directory: "pedant-graph/src/projection",
+    families: &[PROJECTION_MODULES],
+    subdirectories: &[],
+}];
+
+/// Every other production module this plan wrote or changed.
+///
+/// Exit Criterion 14 claims no body is written twice across the modules written
+/// in this plan, and the Go trees are not those modules: the plan widened the
+/// shared report vocabulary, hoisted `LineIndex` and the path helpers into
+/// language-neutral owners, split the graph assembler, and changed each Rust
+/// counterpart of a Go module it added. A scan that stopped at the Go trees
+/// collects a body copied between a Go module and its Rust twin exactly once
+/// and reports no duplicate.
+///
+/// Stated rather than derived, like every inventory here. Deriving it would
+/// mean running version control, which this case is registered to prove without
+/// a process, and a derived set agrees with whatever the tree holds instead of
+/// rejecting a module nothing registered.
+///
+/// The eight published packages are the production surface. `test-support`
+/// crates ship with no release and assert by design, so holding them to a
+/// production rule would state a claim about the wrong code.
+pub const PLAN_MODULES: &[&str] = &[
+    "pedant-core/src/lib.rs",
+    "pedant-core/src/observe/event.rs",
+    "pedant-core/src/observe/probe.rs",
+    "pedant-core/src/resolution/digest.rs",
+    "pedant-core/src/resolution/identity.rs",
+    "pedant-core/src/resolution/line_index.rs",
+    "pedant-core/src/resolution/mod.rs",
+    "pedant-core/src/resolution/paths.rs",
+    "pedant-core/src/resolution/rust/fingerprint.rs",
+    "pedant-core/src/resolution/rust/identity.rs",
+    "pedant-core/src/resolution/rust/mod.rs",
+    "pedant-core/src/resolution/rust/paths.rs",
+    "pedant-core/src/resolution/rust/resolve/coordinates.rs",
+    "pedant-core/src/resolution/rust/resolve/error.rs",
+    "pedant-core/src/resolution/rust/resolve/index.rs",
+    "pedant-core/src/resolution/rust/resolve/pipeline.rs",
+    "pedant-core/src/resolution/rust/resolve/references.rs",
+    "pedant-core/src/resolution/rust/resolve/target.rs",
+    "pedant-core/src/resolution/sites.rs",
+    "pedant-graph/src/edge.rs",
+    "pedant-graph/src/error.rs",
+    "pedant-graph/src/lib.rs",
+    "pedant-graph/src/rust/cache.rs",
+    "pedant-graph/src/rust/claim.rs",
+    "pedant-graph/src/rust/mapping.rs",
+    "pedant-graph/src/rust/mod.rs",
+    "pedant-graph/src/rust/projection.rs",
+    "pedant-graph/src/rust/reuse.rs",
+    "pedant-graph/src/rust/source.rs",
+    "pedant-graph/src/rust/validation.rs",
+    "pedant-lang/src/attribution/anchors.rs",
+    "pedant-lang/src/attribution/mod.rs",
+    "pedant-lang/src/attribution/symbols.rs",
+    "pedant-lang/src/go.rs",
+    "pedant-syntax/src/extract/ts.rs",
+    "pedant-syntax/src/lib.rs",
+    "pedant-syntax/src/tree_sitter/session.rs",
+    "pedant-types/src/resolution/definition.rs",
+    "pedant-types/src/resolution/reference.rs",
+    "pedant/src/supply_chain/attestation.rs",
+    "pedant/src/supply_chain/receipt.rs",
+];
+
 /// A tracked path, resolved against the workspace root.
 pub fn tracked_path(relative: &str) -> PathBuf {
     workspace_root().join(relative)
@@ -131,6 +225,67 @@ pub fn production_sources() -> Box<[String]> {
         "the Go surface spans three crates, so it must exceed one crate's module list"
     );
     sources.into_boxed_slice()
+}
+
+/// Every production source this plan wrote or changed, in one sorted set.
+///
+/// [`production_sources`] answers the Go registration claim and stops at the Go
+/// trees, which is the right universe for "every Go owner is registered". It is
+/// the wrong universe for a claim about duplicate bodies: a duplicate is only
+/// visible when both copies are read, and this plan wrote one half of several
+/// pairs outside those trees.
+pub fn plan_sources() -> Box<[String]> {
+    let mut sources: Vec<String> = production_sources().into_vec();
+    let go = sources.len();
+    for tree in PLAN_TREES {
+        assert!(
+            tracked_path(&format!("{}/Cargo.toml", tree.package)).is_file(),
+            "{} must be a tracked package to own a plan tree",
+            tree.package
+        );
+        assert_tree_is_exactly_modelled(tree);
+        sources.extend(tree_modules(tree));
+    }
+    sources.extend(PLAN_MODULES.iter().map(|module| (*module).to_owned()));
+    assert_each_is_tracked(&sources);
+    assert_each_is_stated_once(&mut sources, go);
+    sources.into_boxed_slice()
+}
+
+/// No modelled owner names a file the repository does not hold.
+///
+/// A stated path that moved has to fail here. Reading it as absent would drop
+/// the module from every claim below while leaving each one green.
+fn assert_each_is_tracked(sources: &[String]) {
+    let missing: Vec<&String> = sources
+        .iter()
+        .filter(|module| !tracked_path(module).is_file())
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "every modelled production owner must be a tracked file: {missing:?}"
+    );
+}
+
+/// Each owner reaches the scan once, and the plan set is wider than the Go
+/// trees it contains.
+///
+/// A path stated twice would enter the duplicate scan as its own copy, so the
+/// claim would fail on a body written once. The width guard is the other half:
+/// it refuses a plan set that quietly collapsed back to the Go trees.
+fn assert_each_is_stated_once(sources: &mut Vec<String>, go: usize) {
+    let stated = sources.len();
+    assert!(
+        stated > go,
+        "this plan wrote production modules outside the Go trees, so the set must exceed them"
+    );
+    sources.sort_unstable();
+    sources.dedup();
+    assert_eq!(
+        sources.len(),
+        stated,
+        "every production owner is modelled exactly once"
+    );
 }
 
 /// One production tree holds exactly its modelled modules and subdirectories,

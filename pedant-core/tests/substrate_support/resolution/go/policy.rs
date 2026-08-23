@@ -1,5 +1,5 @@
-//! Every Go production owner is held to this repository's structural rules,
-//! read from the committed source.
+//! Every production owner this plan wrote or changed is held to this
+//! repository's structural rules, read from the committed source.
 //!
 //! The rules are enforced elsewhere too — `pedant check` runs over the eight
 //! first-party trees and clippy runs over each feature configuration — but
@@ -9,22 +9,28 @@
 //! a variant deleted as unreachable or a seam that borrowed another's enum both
 //! land green.
 //!
+//! The universe is [`plan_sources`] rather than the Go surface for exactly that
+//! first reason. This plan wrote both halves of several language pairs — a Go
+//! module and the Rust counterpart it was written beside — and a scan that read
+//! only the Go half would collect a copied body once and call it unique.
+//!
 //! Reads tracked text and runs nothing. Compiles under `go-resolution` alone.
 
 use std::collections::BTreeMap;
 
-use crate::resolution::go::policy_errors::error_enums;
+use crate::resolution::go::policy_errors::{ErrorEnum, error_enums};
 use crate::resolution::go::policy_model::{
-    DEFENSIVE_ONLY_VARIANTS, ERROR_OWNERS, ErrorOwner, FORBIDDEN_MACROS, FORBIDDEN_METHODS,
-    MAX_BODY_STATEMENTS, MAX_NESTING, MIN_DUPLICATE_STATEMENTS,
+    DEFENSIVE_ONLY_VARIANTS, ERROR_OWNERS, ErrorOwner, ErrorReach, FORBIDDEN_MACROS,
+    FORBIDDEN_METHODS, MAX_BODY_STATEMENTS, MAX_NESTING, MIN_DUPLICATE_STATEMENTS,
 };
 use crate::resolution::go::policy_routes::forbidden_routes;
 use crate::resolution::go::policy_scan::{Body, bodies};
-use crate::resolution::go::surface::{production_sources, tracked_text};
+use crate::resolution::go::surface::{plan_sources, tracked_text};
 
-/// 13.T5 (Exit Criteria 14 to 16): the Go production surface states unique,
-/// one-job, shallow bodies; refuses through typed seam-specific errors; and
-/// takes no panic, output, inline-test, or trait-object route.
+/// 13.T5 (Exit Criteria 14 to 16): every production owner this plan wrote or
+/// changed states unique, one-job, shallow bodies; refuses through typed
+/// seam-specific errors; and takes no panic, output, inline-test, or
+/// trait-object route.
 #[test]
 fn go_production_structure_and_error_ownership_are_exact() {
     let parsed = parsed_surface();
@@ -38,13 +44,14 @@ fn go_production_structure_and_error_ownership_are_exact() {
     assert_every_seam_refuses_through_its_own_typed_error(&parsed);
 }
 
-/// Every Go production source, parsed once and labelled by its tracked path.
+/// Every production source this plan wrote or changed, parsed once and
+/// labelled by its tracked path.
 ///
-/// One parse, four subjects. Parsing per claim would read the same forty-odd
+/// One parse, four subjects. Parsing per claim would read the same hundred-odd
 /// files four times and, worse, would let one claim range over a set another
 /// never saw.
 fn parsed_surface() -> Box<[(Box<str>, syn::File)]> {
-    production_sources()
+    plan_sources()
         .iter()
         .map(|path| {
             let text = tracked_text(path);
@@ -55,8 +62,8 @@ fn parsed_surface() -> Box<[(Box<str>, syn::File)]> {
         .collect()
 }
 
-/// No Go owner panics, prints, asserts, declares an inline test, or names a
-/// trait object.
+/// No owner panics, prints, asserts, declares an inline test, or names a trait
+/// object.
 fn assert_no_forbidden_route_is_taken(surface: &[(Box<str>, syn::File)]) {
     let offenders: Vec<String> = surface
         .iter()
@@ -69,7 +76,7 @@ fn assert_no_forbidden_route_is_taken(surface: &[(Box<str>, syn::File)]) {
         .collect();
     assert!(
         offenders.is_empty(),
-        "a Go production owner refuses through its typed error and returns its output: {offenders:?}"
+        "a production owner refuses through its typed error and returns its output: {offenders:?}"
     );
 }
 
@@ -96,7 +103,7 @@ fn assert_every_body_is_one_shallow_job(surface: &[(Box<str>, syn::File)]) {
     }
     assert!(
         offenders.is_empty(),
-        "every Go body states at most {MAX_BODY_STATEMENTS} statements and nests at most \
+        "every body states at most {MAX_BODY_STATEMENTS} statements and nests at most \
          {MAX_NESTING} layers: {offenders:?}"
     );
     assert!(
@@ -106,7 +113,7 @@ fn assert_every_body_is_one_shallow_job(surface: &[(Box<str>, syn::File)]) {
     );
 }
 
-/// No two Go owners state the same body.
+/// No two owners state the same body.
 ///
 /// Name-independent: a copied body renamed on arrival is still one
 /// implementation in two places, and it is the copy a later fix reaches only
@@ -174,13 +181,7 @@ fn assert_every_seam_refuses_through_its_own_typed_error(surface: &[(Box<str>, s
                 declared.name,
                 declared.untyped_variants
             );
-            assert!(
-                declared.derives_thiserror
-                    || tracked_text(path)
-                        .contains(&format!("impl std::error::Error for {}", declared.name)),
-                "{} must implement std::error::Error",
-                declared.name
-            );
+            assert_reaches_only_its_callers(declared, path, owner);
         }
     }
     let mut modelled: Vec<String> = ERROR_OWNERS
@@ -195,6 +196,31 @@ fn assert_every_seam_refuses_through_its_own_typed_error(surface: &[(Box<str>, s
         "the Go surface publishes exactly the modelled error enums"
     );
     assert_defensive_variants_are_admitted();
+}
+
+/// One declared error travels exactly as far as its model says.
+///
+/// A published error is matched by a caller in another crate, so it has to
+/// implement `std::error::Error` for that caller to report a cause chain. A
+/// mapped one is the neutral cause a language-specific seam turns into its own
+/// error; it must not be `pub`, because a neutral cause that reached a caller
+/// would answer for every language at once and defeat the claim above it.
+fn assert_reaches_only_its_callers(declared: &ErrorEnum, path: &str, owner: &ErrorOwner) {
+    match owner.reach {
+        ErrorReach::Published => assert!(
+            declared.published
+                && (declared.derives_thiserror
+                    || tracked_text(path)
+                        .contains(&format!("impl std::error::Error for {}", declared.name))),
+            "{} is published, so it must be pub and implement std::error::Error",
+            declared.name
+        ),
+        ErrorReach::Mapped => assert!(
+            !declared.published,
+            "{} is the neutral cause its callers map, so it must not leave its crate",
+            declared.name
+        ),
+    }
 }
 
 /// The modelled owner of one declared error enum.

@@ -119,6 +119,7 @@ pub const SHARED_MODULES: &[&str] = &[
     "line_index.rs",
     "path_normalization.rs",
     "paths.rs",
+    "sites.rs",
 ];
 
 /// The crate-level modules a Go load reaches outside the resolution tree,

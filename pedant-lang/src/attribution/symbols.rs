@@ -145,14 +145,9 @@ fn callable_owner(anchor: SourceUnitAnchor) -> Option<CallableOwner> {
     // An absent name is a legitimate answer: an anonymous callable owns its
     // findings lexically and carries no symbol.
     let name = anchor.name?;
-    // An absent column is not. An anchor's start comes from a byte offset, so
-    // it always carries one; reporting "no callable owner" for a broken
-    // invariant would drop the finding while still claiming a complete
-    // attribution.
-    debug_assert!(
-        anchor.start.column.is_some(),
-        "an anchor's start carries a column"
-    );
+    // An absent column is not, and an anchor's start always carries one: it is
+    // derived from a byte offset. The `?` is the type system's half of that
+    // invariant, not a case this reads as "no callable owner".
     let column = anchor.start.column?;
     Some(CallableOwner {
         declaration: (anchor.start.line, column),

@@ -144,7 +144,7 @@ fn plan_units(
     for unit in inputs.report.units() {
         let reported = unit.id().index();
         let snapshot_unit = validation::stated_binding(resolution, unit)?;
-        let instance = validation::snapshot_instance(inputs.snapshot, (snapshot_unit, reported))?;
+        let instance = neutral::bound_instance(inputs.snapshot.unit(snapshot_unit), reported)?;
         validation::distinct_binding(planned.bound.get(&snapshot_unit).copied(), reported)?;
         planned.bound.insert(snapshot_unit, reported);
         planned.units.push(UnitPlan {

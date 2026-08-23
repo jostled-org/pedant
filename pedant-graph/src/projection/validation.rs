@@ -26,6 +26,20 @@ use super::draft::{
 use super::placement::{DefinitionIdentity, DefinitionTable, SourceIdentity, SourceSet};
 use super::state::{ProjectionState, SourceScope};
 
+/// The snapshot instance one report unit's binding names.
+///
+/// A binding the snapshot holds no instance for is dangling rather than
+/// missing: the resolution states a build unit, and the supplied snapshot does
+/// not have it. Neutral because the refusal is — an adapter states which of its
+/// own identities was looked up, and what a graph cannot do with the answer is
+/// the same in every language.
+pub(crate) fn bound_instance<Instance>(
+    held: Option<Instance>,
+    unit: u32,
+) -> Result<Instance, GraphBuildError> {
+    held.ok_or(GraphBuildError::DanglingUnitBinding { unit })
+}
+
 /// One unit instantiates one normalized path once.
 ///
 /// A repeat would mint a second file node while the placement kept only the

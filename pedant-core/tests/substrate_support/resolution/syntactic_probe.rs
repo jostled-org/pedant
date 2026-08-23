@@ -219,6 +219,7 @@ pub const TIER1_SOURCES: &[&str] = &[
     "resolution/rust/toml_view.rs",
     "resolution/rust/version.rs",
     "resolution/rust/warning.rs",
+    "resolution/sites.rs",
 ];
 
 /// The one source that may turn Rust text into a tree, stated as the crate's

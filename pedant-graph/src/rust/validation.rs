@@ -14,8 +14,8 @@
 //! sealed.
 
 use pedant_core::resolution::rust::{
-    RustResolutionSnapshot, RustResolutionUnit, RustSnapshotEdge, RustSnapshotUnitId,
-    RustTargetResolution, RustUnitBinding,
+    RustResolutionSnapshot, RustSnapshotEdge, RustSnapshotUnitId, RustTargetResolution,
+    RustUnitBinding,
 };
 use pedant_types::{ResolutionUnit, SymbolDefinition};
 
@@ -64,21 +64,6 @@ pub(crate) fn stated_binding(
         .ok_or(GraphBuildError::MissingUnitBinding {
             unit: unit.id().index(),
         })
-}
-
-/// The build unit one report unit's binding names.
-///
-/// A binding the snapshot holds no unit for is dangling rather than missing:
-/// the resolution states a build unit, and the supplied snapshot does not have
-/// it.
-pub(crate) fn snapshot_instance(
-    snapshot: &RustResolutionSnapshot,
-    unit: (RustSnapshotUnitId, u32),
-) -> Result<&RustResolutionUnit, GraphBuildError> {
-    let (snapshot_unit, reported) = unit;
-    snapshot
-        .unit(snapshot_unit)
-        .ok_or(GraphBuildError::DanglingUnitBinding { unit: reported })
 }
 
 /// One build unit is bound by one report unit.

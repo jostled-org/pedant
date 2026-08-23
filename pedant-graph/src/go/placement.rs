@@ -22,6 +22,7 @@ use crate::edge::{DependencyEvidence, GraphCertainty, GraphDependencyKind};
 use crate::error::GraphBuildError;
 use crate::id::{index_of, position};
 use crate::projection::draft::{DependencyProjection, StatedContainer, UnitDeclaration, UnitPlan};
+use crate::projection::validation as neutral;
 
 use super::mapping::Vocabulary;
 use super::validation;
@@ -50,8 +51,7 @@ pub(crate) fn plan_units(
     for unit in report.units() {
         let reported = unit.id().index();
         let binding = validation::stated_binding(resolution, unit)?;
-        let instance =
-            validation::snapshot_instance(snapshot, (binding.snapshot_unit(), reported))?;
+        let instance = neutral::bound_instance(snapshot.unit(binding.snapshot_unit()), reported)?;
         declarations.push(UnitDeclaration {
             unit: reported,
             definition: validation::package_declaration(

@@ -16,17 +16,14 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use pedant_types::{
-    ReferenceKind, ResolutionReport, ResolutionUnit, ResolutionUnitId, SourceSpan,
-    SymbolDefinition, SymbolKind, SymbolReference,
-};
+use pedant_types::{ReferenceKind, ResolutionReport, ResolutionUnit, ResolutionUnitId, SymbolKind};
 
 use crate::resolution::go::fingerprint::GoSnapshotFingerprint;
 use crate::resolution::go::identity::position;
 use crate::resolution::go::snapshot::GoResolutionSnapshot;
 use crate::resolution::go::snapshot_module::GoSnapshotModuleId;
 use crate::resolution::go::unit::{GoPackageContext, GoResolutionUnit, GoSnapshotUnitId};
-use crate::resolution::line_index::LineIndex;
+use crate::resolution::sites::{self, SiteError, SourceTexts};
 
 use super::error::GoResolutionError;
 
@@ -89,7 +86,7 @@ impl GoProjectResolution {
         let units = bind_units(snapshot, report.units())?;
         validate_definition_kinds(&report)?;
         validate_reference_kinds(&report)?;
-        validate_sites(snapshot, &report)?;
+        validate_snapshot_sites(snapshot, &report)?;
         Ok(Self {
             root_module: snapshot.root_module(),
             snapshot_fingerprint: snapshot.fingerprint(),
@@ -245,51 +242,31 @@ fn is_go_reference_kind(kind: ReferenceKind) -> bool {
 
 /// Prove every stated coordinate against the exact snapshotted source.
 ///
-/// Each source is indexed once rather than once per site: a report states many
-/// thousands of sites over the same files, and building the line table per site
-/// rescanned whole sources for coordinates derived from those same tables.
-fn validate_sites(
+/// Named apart from the shared authority it hands to: this seam binds one
+/// snapshot's texts and one typed error to that walk, and two functions spelled
+/// alike in one module would read as a single route stated twice.
+fn validate_snapshot_sites(
     snapshot: &GoResolutionSnapshot,
     report: &ResolutionReport,
 ) -> Result<(), GoResolutionError> {
-    let lines = indexed_sources(snapshot);
-    for definition in report.definitions() {
-        validate_span(snapshot, &lines, SymbolDefinition::span(definition))?;
-    }
-    for reference in report.references() {
-        validate_span(snapshot, &lines, SymbolReference::span(reference))?;
-    }
-    Ok(())
+    sites::validate_sites(&snapshot_texts(snapshot), report).map_err(refusal)
 }
 
-fn indexed_sources(snapshot: &GoResolutionSnapshot) -> BTreeMap<&str, LineIndex> {
+/// The text of every source this snapshot holds, keyed by its path.
+fn snapshot_texts(snapshot: &GoResolutionSnapshot) -> SourceTexts<'_> {
     snapshot
         .sources()
         .iter()
-        .map(|source| (source.path(), LineIndex::new(source.text())))
+        .map(|source| (source.path(), source.text()))
         .collect()
 }
 
-fn validate_span(
-    snapshot: &GoResolutionSnapshot,
-    lines: &BTreeMap<&str, LineIndex>,
-    span: &SourceSpan,
-) -> Result<(), GoResolutionError> {
-    let stated = snapshot
-        .source(span.file())
-        .zip(lines.get(span.file()))
-        .ok_or_else(|| GoResolutionError::UnknownFile {
-            file: Box::from(span.file()),
-        })?;
-    let (source, index) = stated;
-    for at in [span.start(), span.end()] {
-        if !index.holds(source.text(), at.line(), at.column()) {
-            return Err(GoResolutionError::InvalidCoordinate {
-                file: Box::from(span.file()),
-                line: at.line(),
-                column: at.column(),
-            });
+/// The Go seam's own error for one refused site.
+fn refusal(error: SiteError) -> GoResolutionError {
+    match error {
+        SiteError::UnknownFile { file } => GoResolutionError::UnknownFile { file },
+        SiteError::InvalidCoordinate { file, line, column } => {
+            GoResolutionError::InvalidCoordinate { file, line, column }
         }
     }
-    Ok(())
 }

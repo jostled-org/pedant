@@ -1,4 +1,4 @@
-//! Which typed error enums one Go production source publishes.
+//! Which typed error enums one production source declares.
 //!
 //! Read from declarations rather than from behaviour: no run states which
 //! variants an enum holds, and a variant deleted as unreachable leaves every
@@ -7,10 +7,12 @@
 use quote::ToTokens;
 use syn::visit::Visit;
 
-/// One error enum a Go production source publishes.
+/// One error enum a production source declares.
 pub struct ErrorEnum {
     /// The enum's name.
     pub name: Box<str>,
+    /// Whether the declaration leaves its crate.
+    pub published: bool,
     /// Every variant, in declaration order.
     pub variants: Box<[Box<str>]>,
     /// Whether the declaration derives `thiserror::Error`.
@@ -20,7 +22,7 @@ pub struct ErrorEnum {
     pub untyped_variants: Box<[Box<str>]>,
 }
 
-/// Every error enum one source publishes.
+/// Every error enum one source declares.
 pub fn error_enums(file: &syn::File) -> Box<[ErrorEnum]> {
     let mut collector = ErrorCollector::default();
     collector.visit_file(file);
@@ -37,6 +39,7 @@ impl<'ast> Visit<'ast> for ErrorCollector {
         let name = node.ident.to_string();
         if name.ends_with("Error") {
             self.found.push(ErrorEnum {
+                published: matches!(node.vis, syn::Visibility::Public(_)),
                 variants: node
                     .variants
                     .iter()

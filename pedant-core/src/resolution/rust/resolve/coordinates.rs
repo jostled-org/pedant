@@ -41,12 +41,6 @@ pub(super) fn span(
     (start < end).then(|| SourceSpan::new(Arc::clone(file), start, end))
 }
 
-/// Prove one report coordinate exists in this source and sits on a UTF-8
-/// code-point boundary.
-pub(super) fn holds(index: &LineIndex, text: &str, position: SourcePosition) -> bool {
-    index.holds(text, position.line(), position.column())
-}
-
 fn position(index: &LineIndex, text: &str, span: IrSpan) -> Option<SourcePosition> {
     let line = span.line.checked_sub(1)?;
     let (start, end) = index.line_bounds(line)?;

@@ -11,7 +11,7 @@
 //! anonymous composite — states no name here, so a reader learns that the term
 //! exists and that this model cannot name it, rather than being handed a guess.
 
-use crate::go::context::named_children;
+use crate::go::context::{name_count, named_nodes};
 use crate::go::written_type::{WrittenType, field_type, type_parts};
 use crate::tree_sitter::Node;
 
@@ -109,7 +109,7 @@ fn results<'source>(
         _ => vec![term(
             declaration,
             (GoSignatureRole::Result, 0),
-            type_parts(result, source, false),
+            type_parts(result, false).written(source),
             false,
         )],
     }
@@ -132,10 +132,8 @@ fn list_terms<'source>(
     role: GoSignatureRole,
 ) -> Vec<GoSignatureTermFact<'source>> {
     let mut cursor = list.walk();
-    let declared: Box<[Node<'_>]> = list.named_children(&mut cursor).collect();
-    declared
-        .iter()
-        .filter_map(|held| variadic_form(*held).map(|variadic| (*held, variadic)))
+    named_nodes(list, &mut cursor)
+        .filter_map(|held| variadic_form(held).map(|variadic| (held, variadic)))
         .flat_map(|(held, variadic)| repeated(held, source, variadic))
         .enumerate()
         .map(|(position, (written, variadic))| {
@@ -146,14 +144,17 @@ fn list_terms<'source>(
 }
 
 /// The written type one parameter declaration states, once per name it binds.
+///
+/// The type is read once and repeated, because `a, b int` is two parameters of
+/// one type and the type is the same `Copy` value both times. A declaration
+/// binding no name still states one, so the arity a source wrote survives.
 fn repeated<'source>(
     declared: Node<'_>,
     source: &'source str,
     variadic: bool,
-) -> Box<[(WrittenType<'source>, bool)]> {
+) -> impl Iterator<Item = (WrittenType<'source>, bool)> {
     let written = field_type(declared, "type", source);
-    let names = named_children(declared).len().max(1);
-    (0..names).map(|_| (written, variadic)).collect()
+    std::iter::repeat_n((written, variadic), name_count(declared).max(1))
 }
 
 /// Whether one list member declares parameters, and whether it is the variadic

@@ -60,10 +60,11 @@ const DIRECTIVES: [(&str, GoBuildConditionKind); 2] = [
 /// repeating the same text further down the file states no predicate.
 pub(super) fn condition_at<'source>(
     node: Node<'_>,
+    kind: &str,
     source: &'source str,
     package_seen: bool,
 ) -> Option<GoBuildConditionFact<'source>> {
-    if node.kind() != "comment" || package_seen {
+    if kind != "comment" || package_seen {
         return None;
     }
     let comment = text(node, source);

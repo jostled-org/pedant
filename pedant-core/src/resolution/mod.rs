@@ -4,11 +4,14 @@
 //! repository declares its build units, takes no policy input, and returns no
 //! violation.
 
+pub(crate) mod binding;
+pub(crate) mod capacity;
 pub(crate) mod digest;
 pub(crate) mod identity;
 pub(crate) mod line_index;
 pub(crate) mod path_normalization;
 pub(crate) mod paths;
+pub(crate) mod read;
 pub(crate) mod sites;
 
 /// Factual Go module project model for Go repositories, behind the default-off

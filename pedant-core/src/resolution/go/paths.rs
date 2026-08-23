@@ -34,6 +34,14 @@ pub(super) enum PathFault {
         /// The offending path, rendered lossily for the message only.
         path: Box<str>,
     },
+    /// The path exists as far as the filesystem is concerned but could not be
+    /// resolved: a denied permission, a symlink loop, an over-long name.
+    Unreadable {
+        /// The path that could not be resolved.
+        path: Box<str>,
+        /// The underlying I/O failure.
+        source: std::io::Error,
+    },
 }
 
 impl From<PathFault> for GoProjectError {
@@ -41,6 +49,7 @@ impl From<PathFault> for GoProjectError {
         match fault {
             PathFault::OutOfRoot { path, root } => Self::OutOfRoot { path, root },
             PathFault::NonUtf8 { path } => Self::NonUtf8Path { path },
+            PathFault::Unreadable { path, source } => Self::PathRead { path, source },
         }
     }
 }
@@ -50,6 +59,7 @@ impl From<PathFault> for GoSnapshotError {
         match fault {
             PathFault::OutOfRoot { path, root } => Self::OutOfRoot { path, root },
             PathFault::NonUtf8 { path } => Self::NonUtf8Path { path },
+            PathFault::Unreadable { path, source } => Self::PathRead { path, source },
         }
     }
 }
@@ -58,21 +68,31 @@ impl From<PathFault> for GoSnapshotError {
 pub(super) fn canonical_root(root: &Path) -> Result<PathBuf, GoProjectError> {
     crate::resolution::paths::canonical_root(root).map_err(|error| GoProjectError::InvalidRoot {
         path: path_text(root),
-        reason: match error {
-            RootError::Unreadable(source) => source.to_string().into_boxed_str(),
-            RootError::NotADirectory => Box::from("the project root is not a directory"),
-        },
+        reason: RootError::reason(error),
     })
 }
 
 /// The canonical form of a path beneath `root`, or `None` when it does not
 /// exist.
 ///
+/// Only "no such file" is absence. Every other read failure — a denied
+/// permission, a symlink loop, a dangling link, an over-long name — is
+/// reported, so an admitted source cannot drop out of a package unseen and a
+/// replacement directory nobody may read cannot be reported as one holding no
+/// manifest.
+///
 /// A path that resolves outside the root is refused here rather than reported
 /// as absent, so a symlink cannot widen what either stage goes on to read.
 pub(super) fn canonical_in_root(root: &Path, path: &Path) -> Result<Option<PathBuf>, PathFault> {
-    let Ok(canonical) = std::fs::canonicalize(path) else {
-        return Ok(None);
+    let canonical = match std::fs::canonicalize(path) {
+        Ok(canonical) => canonical,
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(source) => {
+            return Err(PathFault::Unreadable {
+                path: path_text(path),
+                source,
+            });
+        }
     };
     match canonical.starts_with(root) {
         true => Ok(Some(canonical)),
@@ -81,6 +101,16 @@ pub(super) fn canonical_in_root(root: &Path, path: &Path) -> Result<Option<PathB
             root: path_text(root),
         }),
     }
+}
+
+/// The last segment of a normalized repository-relative path.
+///
+/// The one place a `/`-separated path becomes the file name the build rules
+/// read. Both readers of those rules — the predicate the store retains and the
+/// test context the package assembler assigns — ask this, so neither can be
+/// handed a whole path where a name is documented.
+pub(super) fn file_name(relative: &str) -> &str {
+    relative.rsplit('/').next().unwrap_or(relative)
 }
 
 /// Normalize a path inside the root to repository-relative `/`-separated text.

@@ -72,6 +72,7 @@ fn go_file_facts_are_complete_ordered_and_source_bound() {
     assert_declarations(&facts);
     assert_references(&facts);
     assert_scopes_and_bindings(&facts);
+    assert_switch_clause_scopes(&facts);
     assert_anchors(&facts);
     assert_recovery_and_language_are_exact();
 }
@@ -175,6 +176,11 @@ fn assert_declarations(facts: &GoFileFacts<'_>) {
             (GoDeclarationKind::Struct, "Embedder"),
             (GoDeclarationKind::EmbeddedField, "Config"),
             (GoDeclarationKind::EmbeddedField, "Handle"),
+            (GoDeclarationKind::Function, "classify"),
+            (GoDeclarationKind::Interface, "Sink"),
+            (GoDeclarationKind::InterfaceMethod, "Write"),
+            (GoDeclarationKind::InterfaceMethod, "Close"),
+            (GoDeclarationKind::Function, "logf"),
         ],
         "declarations keep source order and their declared spelling"
     );
@@ -332,6 +338,55 @@ fn assert_scopes_and_bindings(facts: &GoFileFacts<'_>) {
             .name(),
         "build"
     );
+}
+
+/// Each clause of a `switch` binds into a scope of its own.
+///
+/// The Go specification makes every clause an implicit block. A resolver picks
+/// the innermost binding whose scope opens before the occurrence, so two
+/// clauses sharing one scope let `case 1`'s `picked` answer for `case 2`'s
+/// read — a wrong answer rather than a withheld one. The fixture binds one name
+/// in each clause, so the claim is that the two scopes differ and that neither
+/// holds the other.
+fn assert_switch_clause_scopes(facts: &GoFileFacts<'_>) {
+    let clauses: Box<[u32]> = facts
+        .bindings()
+        .iter()
+        .filter(|bound| bound.name() == "picked")
+        .map(|bound| bound.scope())
+        .collect();
+    assert_eq!(
+        clauses.len(),
+        2,
+        "both `case` clauses bind a name the walk states"
+    );
+    assert_ne!(
+        clauses[0], clauses[1],
+        "each `case` clause opens a scope of its own"
+    );
+    for held in clauses.iter().copied() {
+        assert_eq!(
+            facts.scopes()[held as usize].kind(),
+            GoScopeKind::Block,
+            "a clause scope is a block"
+        );
+    }
+    assert!(
+        !encloses(facts, clauses[0], clauses[1]) && !encloses(facts, clauses[1], clauses[0]),
+        "neither clause scope holds the other, so no sibling binding is in view"
+    );
+}
+
+/// Whether `outer` is `inner` or holds it, through the parent chain.
+fn encloses(facts: &GoFileFacts<'_>, outer: u32, inner: u32) -> bool {
+    let mut held = Some(inner);
+    while let Some(index) = held {
+        match index == outer {
+            true => return true,
+            false => held = facts.scopes()[index as usize].parent(),
+        }
+    }
+    false
 }
 
 /// The inventory is the sole Go declaration index, so it answers the same

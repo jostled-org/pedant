@@ -3,6 +3,8 @@
 
 use pedant_syntax::go::{GoSignatureRole, GoSignatureTermFact};
 
+use super::written_type_fact::GoWrittenTypeRecord;
+
 /// One type a snapshotted callable's signature states.
 ///
 /// The same claim [`GoSignatureTermFact`] makes, with its borrowed names owned
@@ -14,9 +16,7 @@ pub struct GoSignatureTermRecord {
     declaration: u32,
     role: GoSignatureRole,
     position: u32,
-    qualifier: Option<Box<str>>,
-    name: Option<Box<str>>,
-    pointer: bool,
+    written: GoWrittenTypeRecord,
     variadic: bool,
 }
 
@@ -27,9 +27,11 @@ impl GoSignatureTermRecord {
             declaration: fact.declaration(),
             role: fact.role(),
             position: fact.position(),
-            qualifier: fact.type_qualifier().map(Box::from),
-            name: fact.type_name().map(Box::from),
-            pointer: fact.pointer(),
+            written: GoWrittenTypeRecord::of(
+                fact.type_qualifier(),
+                fact.type_name(),
+                fact.pointer(),
+            ),
             variadic: fact.variadic(),
         }
     }
@@ -49,21 +51,26 @@ impl GoSignatureTermRecord {
         self.position
     }
 
+    /// The type this term states, as its source spells it.
+    pub fn written_type(&self) -> &GoWrittenTypeRecord {
+        &self.written
+    }
+
     /// The package qualifier of the written type, for a type another package
     /// declares.
     pub fn type_qualifier(&self) -> Option<&str> {
-        self.qualifier.as_deref()
+        self.written.qualifier()
     }
 
     /// The written type's own name, absent whenever the term's shape names no
     /// single type.
     pub fn type_name(&self) -> Option<&str> {
-        self.name.as_deref()
+        self.written.name()
     }
 
     /// Whether the written type is a pointer form.
     pub fn pointer(&self) -> bool {
-        self.pointer
+        self.written.pointer()
     }
 
     /// Whether the term is the variadic parameter its callable ends with.

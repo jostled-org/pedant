@@ -66,6 +66,7 @@ pub const SYNTAX_GO_MODULES: &[&str] = &[
     "limits.rs",
     "mod.rs",
     "reference.rs",
+    "retention.rs",
     "scope.rs",
     "signature.rs",
     "span.rs",

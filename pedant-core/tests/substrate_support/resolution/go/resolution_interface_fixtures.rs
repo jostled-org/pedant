@@ -73,11 +73,25 @@ pub const DISPATCH: &[FixtureFile] = &[
 /// embedding depth. `Left` and `Right` are the control: each answers `Pinger`
 /// from complete evidence, so a resolver that reported every relation as
 /// incomplete fails against them.
+///
+/// `Diamond` states the ambiguity `Both` cannot. Go's promotion rule counts
+/// paths rather than types: `Upper` and `Lower` each embed the same `Left`, so
+/// `Diamond` reaches one `Ping` twice at one depth and the selector is illegal
+/// exactly as `Both`'s is. A resolver keying its widened level by the type
+/// reached collapses the two paths into one and states a proved relation for a
+/// program `go build` refuses. `Upper` and `Lower` beside it are the control:
+/// each reaches the same `Ping` once, and each proves the relation.
+///
+/// `Carrier` embeds the interface itself, which Go admits: a struct embedding
+/// `Pinger` promotes `Pinger`'s own method into its method set and implements
+/// `Pinger`. The answering member is an interface method rather than a
+/// receiver's, and a comparison admitting only the second states nothing at all
+/// about `Carrier` — neither proved, nor possible, nor a gap.
 pub const INTERFACE_GAPS: &[FixtureFile] = &[
     MANIFEST,
     (
         "repo/gaps.go",
-        "package app\n\nimport \"fmt\"\n\ntype Printer interface {\n\tfmt.Stringer\n\tPrint() string\n}\n\ntype Console struct{}\n\nfunc (c Console) Print() string {\n\treturn \"console\"\n}\n\nfunc (c Console) String() string {\n\treturn \"console\"\n}\n\ntype Scaled interface {\n\t~int | float64\n\tScale(factor int) int\n}\n\ntype Ruler struct{}\n\nfunc (r Ruler) Scale(factor int) int {\n\treturn factor\n}\n\ntype Writer interface {\n\tWrite(p []byte) int\n\tClose() error\n}\n\ntype File struct{}\n\nfunc (f File) Write(p []byte) int {\n\treturn 0\n}\n\nfunc (f File) Close() error {\n\treturn nil\n}\n\ntype Pinger interface {\n\tPing() string\n}\n\ntype Left struct{}\n\nfunc (l Left) Ping() string {\n\treturn \"left\"\n}\n\ntype Right struct{}\n\nfunc (r Right) Ping() string {\n\treturn \"right\"\n}\n\ntype Both struct {\n\tLeft\n\tRight\n}\n",
+        "package app\n\nimport \"fmt\"\n\ntype Printer interface {\n\tfmt.Stringer\n\tPrint() string\n}\n\ntype Console struct{}\n\nfunc (c Console) Print() string {\n\treturn \"console\"\n}\n\nfunc (c Console) String() string {\n\treturn \"console\"\n}\n\ntype Scaled interface {\n\t~int | float64\n\tScale(factor int) int\n}\n\ntype Ruler struct{}\n\nfunc (r Ruler) Scale(factor int) int {\n\treturn factor\n}\n\ntype Writer interface {\n\tWrite(p []byte) int\n\tClose() error\n}\n\ntype File struct{}\n\nfunc (f File) Write(p []byte) int {\n\treturn 0\n}\n\nfunc (f File) Close() error {\n\treturn nil\n}\n\ntype Pinger interface {\n\tPing() string\n}\n\ntype Left struct{}\n\nfunc (l Left) Ping() string {\n\treturn \"left\"\n}\n\ntype Right struct{}\n\nfunc (r Right) Ping() string {\n\treturn \"right\"\n}\n\ntype Both struct {\n\tLeft\n\tRight\n}\n\ntype Upper struct {\n\tLeft\n}\n\ntype Lower struct {\n\tLeft\n}\n\ntype Diamond struct {\n\tUpper\n\tLower\n}\n\ntype Carrier struct {\n\tPinger\n}\n",
     ),
 ];
 

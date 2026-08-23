@@ -3,6 +3,8 @@
 
 use std::sync::Arc;
 
+use crate::resolution::line_index::SnapshotSource;
+
 use super::condition::GoBuildCondition;
 use super::facts::GoSourceFacts;
 
@@ -47,6 +49,16 @@ impl GoSource {
     /// snapshotted.
     pub fn facts(&self) -> &GoSourceFacts {
         &self.facts
+    }
+}
+
+impl SnapshotSource for GoSource {
+    fn path(&self) -> &str {
+        &self.path
+    }
+
+    fn text(&self) -> &str {
+        &self.text
     }
 }
 

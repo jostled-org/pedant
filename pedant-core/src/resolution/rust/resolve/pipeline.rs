@@ -9,9 +9,8 @@ use pedant_types::{ResolutionReportBuilder, ResolutionReportLimits, ResolutionTi
 
 use crate::resolution::rust::snapshot::RustResolutionSnapshot;
 
-use crate::resolution::line_index::LineIndex;
+use crate::resolution::line_index::{LineIndex, index_sources};
 
-use super::coordinates;
 use super::corpus::Corpus;
 use super::error::RustResolutionError;
 use super::graph::{self, Graph};
@@ -23,11 +22,18 @@ use super::units::{self, Units};
 use super::{imports, records};
 
 /// The inventory one snapshot states, before any reference is answered.
-pub(super) struct Inventory {
+///
+/// The line tables are retained rather than dropped. They are built here from
+/// the snapshot's texts alone, and the boundary that binds the finished report
+/// proves every stated coordinate against those same texts, so dropping them
+/// would mean scanning every source byte a second time to rebuild a table this
+/// stage already held.
+pub(super) struct Inventory<'snapshot> {
     pub(super) graph: Graph,
     pub(super) units: Units,
     pub(super) index: Index,
     pub(super) entries: Box<[ReferenceEntry]>,
+    lines: Box<[LineIndex<'snapshot>]>,
     builder: ResolutionReportBuilder,
 }
 
@@ -35,9 +41,9 @@ pub(super) struct Inventory {
 pub(super) fn inventory(
     snapshot: &RustResolutionSnapshot,
     tier: ResolutionTier,
-) -> Result<Inventory, RustResolutionError> {
+) -> Result<Inventory<'_>, RustResolutionError> {
     let mut builder = ResolutionReportBuilder::new(tier, ResolutionReportLimits::default());
-    let lines: Box<[LineIndex]> = coordinates::index_sources(snapshot);
+    let lines = index_sources(snapshot.sources());
     let graph = graph::build(snapshot)?;
     let units = units::add_units(&mut builder, snapshot)?;
     let index = index::build(&mut builder, snapshot, (&graph, &units, &lines))?;
@@ -48,14 +54,15 @@ pub(super) fn inventory(
         units,
         index,
         entries,
+        lines,
         builder,
     })
 }
 
 /// Answer every reference of `inventory` and bind the report to its snapshot.
-pub(super) fn finish<P: Promotion>(
-    inventory: Inventory,
-    snapshot: &RustResolutionSnapshot,
+pub(super) fn finish<'snapshot, P: Promotion>(
+    inventory: Inventory<'snapshot>,
+    snapshot: &'snapshot RustResolutionSnapshot,
     promotion: &P,
 ) -> Result<RustTargetResolution, RustResolutionError> {
     let Inventory {
@@ -63,6 +70,7 @@ pub(super) fn finish<P: Promotion>(
         units,
         index,
         entries,
+        lines,
         mut builder,
     } = inventory;
     let corpus = Corpus {
@@ -77,5 +85,5 @@ pub(super) fn finish<P: Promotion>(
         (&imports, promotion),
         (snapshot, &entries, snapshot.limits()),
     )?;
-    RustTargetResolution::try_new(snapshot, builder.finish()?)
+    RustTargetResolution::try_new_indexed(snapshot, builder.finish()?, lines)
 }

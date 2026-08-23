@@ -14,11 +14,11 @@ use pedant_core::resolution::go::{
 use pedant_graph::{CodeGraph, GraphBuildError, GraphLimits, build_go_graph};
 
 use super::corpus::FixtureFile;
-use super::fixture::write_file;
+use super::fixture::TempRepository;
 
 /// One materialized Go repository.
 pub struct GoFixture {
-    directory: tempfile::TempDir,
+    repository: TempRepository,
 }
 
 /// One snapshot and the syntactic resolution validated against it.
@@ -36,21 +36,15 @@ impl GoFixture {
     }
 
     /// Materialize the same files in the order a caller states them.
-    ///
-    /// Directory enumeration is the filesystem's, not the loader's, so writing
-    /// one corpus in two orders is how a case perturbs what the walk sees
-    /// without changing what the repository says.
     pub fn written<'a>(files: impl Iterator<Item = (&'a str, &'a str)>) -> Self {
-        let directory = tempfile::tempdir().expect("a temporary directory should be available");
-        for (relative, contents) in files {
-            write_file(directory.path(), relative, contents.as_bytes());
+        Self {
+            repository: TempRepository::written(files),
         }
-        Self { directory }
     }
 
     /// The repository root inside this fixture.
     pub fn root(&self) -> PathBuf {
-        self.directory.path().join("repo")
+        self.repository.root()
     }
 
     /// Load, snapshot, and syntactically resolve under the default ceilings.
@@ -75,16 +69,12 @@ impl GoFixture {
 
     /// Rewrite one source in place, leaving every manifest alone.
     pub fn rewrite(&self, relative: &str, contents: &str) {
-        write_file(self.directory.path(), relative, contents.as_bytes());
+        self.repository.write(relative, contents);
     }
 
-    /// Release the repository, answering with the root a caller proves gone.
+    /// Release the repository, proving it is gone and answering with its root.
     pub fn close(self) -> PathBuf {
-        let root = self.root();
-        self.directory
-            .close()
-            .expect("the fixture directory should close");
-        root
+        self.repository.close()
     }
 }
 
@@ -95,17 +85,15 @@ pub fn resolve_go(files: &[FixtureFile]) -> (GoFixture, GoResolved) {
     (fixture, resolved)
 }
 
-/// Release one fixture and prove its repository is gone.
+/// Release one fixture before the assertions that need no files.
 ///
-/// Called before the assertions that need no files, so a projection, a query,
-/// or a serializer that reached the loader, the parser, or the filesystem fails
-/// here rather than passing against files that happen to still exist.
+/// Named for the point of the call rather than for its one statement: a
+/// projection, a query, or a serializer that reached the loader, the parser, or
+/// the filesystem must fail here rather than pass against files that happen to
+/// still exist. The proof that the directory is gone belongs to the release
+/// itself, so it is stated once, wherever a repository is closed.
 pub fn close_repository(fixture: GoFixture) {
-    let root = fixture.close();
-    assert!(
-        !root.exists(),
-        "the fixture repository must be gone before the graph is read"
-    );
+    fixture.close();
 }
 
 /// Materialize one corpus, resolve it, project it, and release the repository.

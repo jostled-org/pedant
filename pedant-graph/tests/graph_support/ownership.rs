@@ -7,9 +7,10 @@
 
 use std::collections::BTreeSet;
 
+use super::go_model::RECORD_INSERTIONS;
 use super::inventory::{PRODUCTION_SOURCES, SOURCES};
 use super::scan::{
-    code_only, declaring_sources, discovered_sources, function_body, method_body, parsed,
+    code_only, declaring_sources, discovered_sources, function_body, method_body, naming, parsed,
     position_of, source,
 };
 use super::surface::{
@@ -18,12 +19,11 @@ use super::surface::{
 
 use super::ownership_model::{
     ASSEMBLED_VALIDATORS, BOUND_VALIDATORS, CLAIMED_VALIDATORS, CONTAINMENT_OWNER,
-    CONTAINMENT_VALIDATORS, DRAFTED_VALIDATORS, ERROR_OWNERS, FORBIDDEN_ENTRY_POINTS,
-    GO_PLACED_NEUTRAL_VALIDATORS, GO_PLACED_VALIDATORS, GO_PLANNED_VALIDATORS,
-    GO_PROJECTED_VALIDATORS, GO_VALIDATION_OWNER, INSERTION_OWNER, PANIC_SPELLINGS,
-    PLACED_VALIDATORS, PLANNED_VALIDATORS, PROJECTED_VALIDATORS, RUST_CLAIMED_VALIDATORS,
-    RUST_PLANNED_VALIDATORS, RUST_PROJECTED_VALIDATORS, RUST_VALIDATION_OWNER, STATE_CONSTRUCTOR,
-    STATE_CONSTRUCTOR_SIGNATURE, VALIDATION_OWNER,
+    CONTAINMENT_VALIDATORS, DRAFTED_VALIDATORS, ERROR_OWNERS, FINGERPRINT_VALIDATORS,
+    FORBIDDEN_ENTRY_POINTS, GO_PLACED_NEUTRAL_VALIDATORS, GO_PLACED_VALIDATORS,
+    GO_PLANNED_VALIDATORS, GO_VALIDATION_OWNER, PANIC_SPELLINGS, PLACED_VALIDATORS,
+    PLANNED_VALIDATORS, PROJECTED_VALIDATORS, RUST_CLAIMED_VALIDATORS, RUST_PLANNED_VALIDATORS,
+    RUST_VALIDATION_OWNER, STATE_CONSTRUCTOR, STATE_CONSTRUCTOR_SIGNATURE, VALIDATION_OWNER,
 };
 
 /// The discovered source set equals the model, is non-empty, and names no
@@ -48,29 +48,33 @@ pub fn assert_pure_projection_sources() {
         "every modelled source must carry its compile-time text"
     );
 
-    let offenders = sources_naming(FORBIDDEN_ENTRY_POINTS);
+    let offenders = naming(
+        PRODUCTION_SOURCES,
+        FORBIDDEN_ENTRY_POINTS,
+        "the entry point",
+    );
     assert!(
         offenders.is_empty(),
         "graph production sources reach beyond their supplied facts: {offenders:?}"
     );
 }
 
-/// Every modelled source that names one of `spellings`, in [`SOURCES`] order.
+/// One planner entry proves its own pairing, then plans, then assembles.
 ///
-/// Comments are dropped first, so prose describing a forbidden spelling does
-/// not read as the thing it describes.
-fn sources_naming(spellings: &[&str]) -> Vec<String> {
-    let mut offenders: Vec<String> = Vec::new();
-    for entry in SOURCES {
-        let code = code_only(entry.text);
-        offenders.extend(
-            spellings
-                .iter()
-                .filter(|spelling| code.contains(**spelling))
-                .map(|spelling| format!("{} names {spelling}", entry.path)),
-        );
-    }
-    offenders
+/// The one reading of that order, for every adapter. Which fact a language
+/// proves first is its own — a Rust build proves a root target and a snapshot
+/// identity, a Go build proves a snapshot identity alone — but that the proof
+/// dominates the plan and the plan dominates the assembly is nobody's language,
+/// and a second copy per adapter would be the same claim read twice.
+pub fn assert_entry_orders(planner: &str, proof: &str, subject: &str) {
+    let entry = function_body(planner, "project");
+    let proved = position_of(&entry, proof, subject);
+    let planned = position_of(&entry, "plan (", subject);
+    let assembled = position_of(&entry, "assembly :: assemble", subject);
+    assert!(
+        proved < planned && planned < assembled,
+        "{subject} proves its pairing, then plans, then assembles"
+    );
 }
 
 /// Both public builders delegate to one private projection entry over their
@@ -97,16 +101,17 @@ pub fn assert_public_builders_delegate() {
     );
 }
 
-/// Both identity checks precede planning, and the sole assembly-state
-/// constructor precedes every record-producing pass.
+/// Both identity checks precede planning, and the assembly state has exactly
+/// one constructor and one construction site.
+///
+/// Which passes the assembler runs after that state exists, and in which order,
+/// is one claim about an owner no language owns, read once by
+/// [`super::go_ownership`] over the whole modelled pass list.
 pub fn assert_identity_checks_dominate() {
-    let entry = function_body("src/rust/projection.rs", "project");
-    let validated = position_of(&entry, "validate", "the projection entry");
-    let planned = position_of(&entry, "plan", "the projection entry");
-    let assembled = position_of(&entry, "assembly :: assemble", "the projection entry");
-    assert!(
-        validated < planned && planned < assembled,
-        "the projection entry validates, then plans, then assembles"
+    assert_entry_orders(
+        "src/rust/projection.rs",
+        "validate (",
+        "the Rust projection entry",
     );
     let checks = function_body("src/rust/projection.rs", "validate");
     let root = position_of(&checks, "check_root_target", "the identity checks");
@@ -116,23 +121,6 @@ pub fn assert_identity_checks_dominate() {
         "the root target is proved before the snapshot identity"
     );
 
-    let assembly = function_body("src/projection/assembly.rs", "assemble");
-    let construction = position_of(&assembly, &token_form(STATE_CONSTRUCTOR), "the assembler");
-    for pass in [
-        "assemble_containers",
-        "assemble_sources",
-        "assemble_definitions",
-        "assemble_containment",
-        "assemble_references",
-        "assemble_dependencies",
-        "assemble_candidates",
-    ] {
-        let at = position_of(&assembly, pass, "the assembler");
-        assert!(
-            construction < at,
-            "{pass} must run after the assembly state exists"
-        );
-    }
     assert_eq!(
         declaring_sources(STATE_CONSTRUCTOR),
         vec!["src/projection/assembly.rs"],
@@ -147,18 +135,24 @@ pub fn assert_identity_checks_dominate() {
     );
 }
 
-/// One source spelling as the parsed body renders it.
-fn token_form(spelling: &str) -> String {
-    spelling.replace("::", " :: ")
-}
-
 /// All three insertion owners mint their identity through one checked helper.
+///
+/// The insertions are the modelled ones rather than a second list of the same
+/// three names, and each is read beside the collection it must bound: an owner
+/// that admitted against another collection's ceiling would refuse the wrong
+/// build and admit the one it was meant to stop.
 pub fn assert_one_checked_insertion_owner() {
-    for (method, collection) in [
-        ("insert_node", "GraphCollection::Node"),
-        ("insert_reference", "GraphCollection::Reference"),
-        ("insert_edge", "GraphCollection::Edge"),
-    ] {
+    let collections = [
+        "GraphCollection::Node",
+        "GraphCollection::Reference",
+        "GraphCollection::Edge",
+    ];
+    assert_eq!(
+        RECORD_INSERTIONS.len(),
+        collections.len(),
+        "every modelled insertion is read beside the collection it bounds"
+    );
+    for (method, collection) in RECORD_INSERTIONS.iter().zip(collections) {
         let body = method_body("src/graph.rs", method);
         let admit = position_of(&body, "self . admit", method);
         let mutation = position_of(&body, ". push (", method);
@@ -180,13 +174,6 @@ pub fn assert_one_checked_insertion_owner() {
         admit.contains("self . limits . ceiling (collection)"),
         "the insertion owner must prove the configured ceiling"
     );
-    assert_eq!(
-        code_only(source("src/graph.rs"))
-            .matches(INSERTION_OWNER)
-            .count(),
-        1,
-        "there is exactly one checked insertion owner, spelled {INSERTION_OWNER}"
-    );
 }
 
 /// Every defensive validator is reachable from the shared projection entry,
@@ -194,15 +181,8 @@ pub fn assert_one_checked_insertion_owner() {
 /// production source can abort instead of refusing.
 pub fn assert_defensive_paths_are_wired() {
     assert_every_validator_is_reached();
-    let entry = function_body("src/projection/assembly.rs", "assemble");
-    let finish = position_of(&entry, "state . finish", "the assembler");
-    let forest = position_of(&entry, "check_containment_forest", "the assembler");
-    assert!(
-        forest < finish,
-        "containment must be validated before the graph is constructed"
-    );
     assert_every_refusal_has_its_owners();
-    let aborting = sources_naming(PANIC_SPELLINGS);
+    let aborting = naming(PRODUCTION_SOURCES, PANIC_SPELLINGS, "the aborting spelling");
     assert!(
         aborting.is_empty(),
         "a production source may refuse but never abort: {aborting:?}"
@@ -230,9 +210,14 @@ fn assert_every_validator_is_reached() {
         ),
         (VALIDATION_OWNER, "src/rust/source.rs", PROJECTED_VALIDATORS),
         (
+            VALIDATION_OWNER,
             RUST_VALIDATION_OWNER,
-            "src/rust/source.rs",
-            RUST_PROJECTED_VALIDATORS,
+            FINGERPRINT_VALIDATORS,
+        ),
+        (
+            VALIDATION_OWNER,
+            GO_VALIDATION_OWNER,
+            FINGERPRINT_VALIDATORS,
         ),
         (
             VALIDATION_OWNER,
@@ -276,9 +261,9 @@ fn assert_every_validator_is_reached() {
             GO_PLACED_NEUTRAL_VALIDATORS,
         ),
         (
-            GO_VALIDATION_OWNER,
+            VALIDATION_OWNER,
             "src/go/projection.rs",
-            GO_PROJECTED_VALIDATORS,
+            PROJECTED_VALIDATORS,
         ),
     ] {
         assert_validators_are_reached(owner, reader, validators);
@@ -308,7 +293,7 @@ fn assert_every_refusal_has_its_owners() {
     }
 }
 
-/// Every named validator is declared by the validation owner and reached by the
+/// Every named validator is declared by the validation owner and called by the
 /// source the model says reaches it.
 ///
 /// A validator answering a borrow of what it was handed states its own
@@ -316,9 +301,16 @@ fn assert_every_refusal_has_its_owners() {
 /// is still bound on both sides — by the opening parenthesis or by the opening
 /// angle bracket — so a longer name that merely starts with a modelled one
 /// answers for neither.
+///
+/// The reading half is a call through the module the owner is imported under,
+/// not the bare name. Every reader reaches its validators through an alias, so
+/// the qualified spelling is exact — and it is the only spelling that rejects
+/// the two ways a bare substring passes for nothing: prose naming the validator,
+/// and a reader that declares a same-named function of its own and calls that
+/// one instead.
 fn assert_validators_are_reached(owner: &str, reader: &str, validators: &[&str]) {
     let validation = source(owner);
-    let text = source(reader);
+    let text = code_only(source(reader));
     for validator in validators {
         let declarations = [
             format!("pub(crate) fn {validator}("),
@@ -330,9 +322,10 @@ fn assert_validators_are_reached(owner: &str, reader: &str, validators: &[&str])
                 .any(|declaration| validation.contains(declaration)),
             "{validator} is not declared by {owner}"
         );
+        let called = format!("::{validator}(");
         assert!(
-            text.contains(validator),
-            "{validator} is not reached from {reader}"
+            text.contains(&called),
+            "{reader} states no call spelled {called}"
         );
     }
 }

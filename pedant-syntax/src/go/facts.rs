@@ -8,6 +8,7 @@ use crate::go::error::GoFactError;
 use crate::go::import::GoImportFact;
 use crate::go::limits::GoFactLimits;
 use crate::go::reference::GoReferenceFact;
+use crate::go::retention::GoFactScope;
 use crate::go::scope::GoScopeFact;
 use crate::go::signature::GoSignatureTermFact;
 use crate::go::span::GoFactSpan;
@@ -49,7 +50,7 @@ impl<'source> GoFileFacts<'source> {
         limits: GoFactLimits,
     ) -> Result<Self, GoFactError> {
         Ok(Self::seal(
-            walk::extract(root, source, limits)?,
+            walk::extract(root, source, limits, GoFactScope::Everything)?,
             source,
             has_errors,
         ))
@@ -139,27 +140,32 @@ impl<'source> GoFileFacts<'source> {
             true => at.iter().map(|_| None).collect(),
             false => {
                 let mut selector = UnitSelector::over(self.source, at);
-                self.offer_units(&mut selector);
+                offer_units(&self.declarations, &mut selector);
                 selector.finish_anchors()
             }
         }
     }
+}
 
-    /// Offer every declaration that carries a source unit to `selector`.
-    fn offer_units<'selector>(&self, selector: &mut UnitSelector<'selector>)
-    where
-        'source: 'selector,
-    {
-        for declaration in self.declarations.iter() {
-            let Some(kind) = unit_kind(declaration.kind()) else {
-                continue;
-            };
-            let range = declaration.span().byte_range();
-            if !selector.contains(&range) {
-                continue;
-            }
-            selector.keep(kind, Some(declaration.name()), range);
+/// Offer every declaration that carries a source unit to `selector`.
+///
+/// A function over the slice rather than a method, because two routes read the
+/// same declarations: a sealed inventory answers its own enclosing-unit
+/// question, and the extraction boundary walks for declarations alone and seals
+/// nothing.
+fn offer_units<'source>(
+    declarations: &[GoDeclarationFact<'source>],
+    selector: &mut UnitSelector<'source>,
+) {
+    for declaration in declarations {
+        let Some(kind) = unit_kind(declaration.kind()) else {
+            continue;
+        };
+        let range = declaration.span().byte_range();
+        if !selector.contains(&range) {
+            continue;
         }
+        selector.keep(kind, Some(declaration.name()), range);
     }
 }
 
@@ -168,15 +174,29 @@ impl<'source> GoFileFacts<'source> {
 /// The route the generic extraction boundary takes. Go declarations come from
 /// this crate's fact inventory in every configuration, so the shared
 /// declaration recognizer states no Go grammar of its own.
+///
+/// Declarations alone. This answers the enclosing-unit question, which reads no
+/// import, no reference, no binding, and no signature term, so a host that also
+/// asks for the inventory pays for one whole-tree walk of each rather than two
+/// of the same one.
+///
+/// A refusal travels rather than reading as absence. Both ceilings are
+/// unbounded here, so nothing but a source past the representable ceiling can
+/// refuse — and turning that into "this file declares nothing" is exactly the
+/// collapse `LanguageMismatch` exists to prevent one seam away.
 pub(crate) fn offer_unit_declarations<'source>(
     root: Node<'_>,
     source: &'source str,
     selector: &mut UnitSelector<'source>,
-) {
-    let Ok(facts) = GoFileFacts::extract(root, source, false, GoFactLimits::UNBOUNDED) else {
-        return;
-    };
-    facts.offer_units(selector);
+) -> Result<(), GoFactError> {
+    let inventory = walk::extract(
+        root,
+        source,
+        GoFactLimits::UNBOUNDED,
+        GoFactScope::DeclarationsOnly,
+    )?;
+    offer_units(&inventory.declarations, selector);
+    Ok(())
 }
 
 /// The source unit one declaration carries, if it carries one.

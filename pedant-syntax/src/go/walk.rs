@@ -8,7 +8,9 @@
 //!
 //! The walk is a cursor rather than recursion, so a deeply nested source costs
 //! heap rather than stack and the depth ceiling is the only thing that stops
-//! it.
+//! it. Every recognizer it calls holds to the same rule: a reader that followed
+//! a type chain by recursion would run before [`descend`] had paid for that
+//! chain, and would take the stack down beneath any ceiling at all.
 
 use ::tree_sitter::TreeCursor;
 
@@ -21,6 +23,7 @@ use crate::go::frame::Frames;
 use crate::go::import::{GoImportFact, import_at};
 use crate::go::limits::GoFactLimits;
 use crate::go::reference::{GoReferenceFact, reference_at};
+use crate::go::retention::GoFactScope;
 use crate::go::scope::{GoScopeFact, GoScopeKind, scope_kind_at};
 use crate::go::signature::{GoSignatureTermFact, signature_terms_at};
 use crate::go::span::GoFactSpan;
@@ -43,10 +46,11 @@ pub(super) struct Inventory<'source> {
     pub(super) bindings: Vec<GoBindingFact<'source>>,
     counted: u32,
     limit: u32,
+    retained: GoFactScope,
 }
 
 impl<'source> Inventory<'source> {
-    fn new(limit: u32) -> Self {
+    fn new(limit: u32, retained: GoFactScope) -> Self {
         Self {
             packages: Vec::new(),
             conditions: Vec::new(),
@@ -58,7 +62,13 @@ impl<'source> Inventory<'source> {
             bindings: Vec::new(),
             counted: 0,
             limit,
+            retained,
         }
+    }
+
+    /// What this walk was opened to retain.
+    fn retained(&self) -> GoFactScope {
+        self.retained
     }
 
     fn name_package(&mut self, named: (&'source str, GoFactSpan)) -> Result<u32, GoFactError> {
@@ -98,10 +108,15 @@ impl<'source> Inventory<'source> {
 ///
 /// The sole insertion site. Every category routes through it, so the capacity
 /// check cannot be skipped by adding a seventh kind of fact.
+///
+/// The configured ceiling and the representable one are proved together, before
+/// anything is pushed. A saturating conversion would mint `u32::MAX` as a real
+/// fact identity, and every later record would name it too.
 fn admit<T>(counted: &mut u32, limit: u32, into: &mut Vec<T>, fact: T) -> Result<u32, GoFactError> {
     check_capacity(*counted, limit)?;
+    let index =
+        u32::try_from(into.len()).map_err(|_| GoFactError::FactCapacityExceeded { limit })?;
     *counted += 1;
-    let index = u32::try_from(into.len()).unwrap_or(u32::MAX);
     into.push(fact);
     Ok(index)
 }
@@ -128,21 +143,31 @@ fn check_capacity(counted: u32, limit: u32) -> Result<(), GoFactError> {
 }
 
 /// Whether one more level fits.
+///
+/// A depth the ceiling's own type cannot hold is past every ceiling, including
+/// the unbounded one. Saturating it into `u32::MAX` instead would make the
+/// deepest admissible source the one that spends the most stack.
 fn check_depth(deeper: usize, limit: u32) -> Result<(), GoFactError> {
-    match u64::from(u32::try_from(deeper).unwrap_or(u32::MAX)) <= u64::from(limit) {
+    match u32::try_from(deeper).is_ok_and(|deeper| deeper <= limit) {
         true => Ok(()),
         false => Err(GoFactError::SyntaxDepthExceeded { limit }),
     }
 }
 
-/// Walk one bound Go tree once, retaining every fact it states.
+/// Walk one bound Go tree once, retaining every fact `retained` names.
+///
+/// The file scope is opened here rather than recognized at a node kind, so the
+/// context stack's base names a scope this inventory holds and index zero is a
+/// fact rather than an assumption.
 pub(super) fn extract<'source>(
     root: Node<'_>,
     source: &'source str,
     limits: GoFactLimits,
+    retained: GoFactScope,
 ) -> Result<Inventory<'source>, GoFactError> {
-    let mut inventory = Inventory::new(limits.max_facts());
-    let mut frames = Frames::new();
+    let mut inventory = Inventory::new(limits.max_facts(), retained);
+    let file = inventory.open(GoScopeFact::new(GoScopeKind::File, root, None))?;
+    let mut frames = Frames::new(file);
     let mut cursor = root.walk();
     let mut depth = 0_usize;
     loop {
@@ -179,6 +204,11 @@ fn ascend(frames: &mut Frames, cursor: &mut TreeCursor<'_>, depth: &mut usize) -
 }
 
 /// Retain every fact one node states, then open the context its children read.
+///
+/// The node's kind is asked once and handed to every recognizer. Tree-sitter
+/// answers `kind` with an FFI call and a fresh UTF-8 validation of the result,
+/// and ten recognizers each asking for themselves paid that per node in the
+/// tree.
 fn enter<'source>(
     inventory: &mut Inventory<'source>,
     frames: &mut Frames,
@@ -186,38 +216,66 @@ fn enter<'source>(
     field: Option<&str>,
     source: &'source str,
 ) -> Result<(), GoFactError> {
+    let kind = node.kind();
     let context = frames.context();
-    admit_prelude(inventory, node, source)?;
-    let opened = admit_declarations(inventory, node, source, context)?;
-    let scope = admit_scope(inventory, node, context)?;
-    let next = advanced(context, node, field, opened, scope);
-    admit_bindings(inventory, node, source, next)?;
-    admit_reference(inventory, node, field, source, next)?;
+    let opened = admit_declarations(inventory, node, kind, source, context)?;
+    let scope = admit_scope(inventory, node, kind, context)?;
+    let next = advanced(context, node, (kind, field), opened, scope);
+    admit_surroundings(inventory, node, (kind, field), source, next)?;
     frames.open(node, context, next);
     Ok(())
+}
+
+/// Every fact beside the declarations and the scopes that place them: the
+/// prelude a file opens with, the names a node binds, and the reference it
+/// states.
+///
+/// A declarations-only walk retains none of them, and calls none of their
+/// recognizers.
+fn admit_surroundings<'source>(
+    inventory: &mut Inventory<'source>,
+    node: Node<'_>,
+    written: (&str, Option<&str>),
+    source: &'source str,
+    context: FactContext,
+) -> Result<(), GoFactError> {
+    let (kind, field) = written;
+    match inventory.retained() {
+        GoFactScope::DeclarationsOnly => Ok(()),
+        GoFactScope::Everything => {
+            admit_prelude(inventory, node, kind, source)?;
+            admit_bindings(inventory, node, kind, source, context)?;
+            admit_reference(inventory, node, kind, field, source, context)
+        }
+    }
 }
 
 /// The build predicates, package clause, and imports one node states.
 fn admit_prelude<'source>(
     inventory: &mut Inventory<'source>,
     node: Node<'_>,
+    kind: &str,
     source: &'source str,
 ) -> Result<(), GoFactError> {
-    if let Some(condition) = condition_at(node, source, !inventory.packages.is_empty()) {
+    if let Some(condition) = condition_at(node, kind, source, !inventory.packages.is_empty()) {
         inventory.condition(condition)?;
     }
-    if let Some(named) = package_at(node, source) {
+    if let Some(named) = package_at(node, kind, source) {
         inventory.name_package(named)?;
     }
-    if let Some(import) = import_at(node, source) {
+    if let Some(import) = import_at(node, kind, source) {
         inventory.import(import)?;
     }
     Ok(())
 }
 
 /// The package clause `node` states, if it states one.
-fn package_at<'source>(node: Node<'_>, source: &'source str) -> Option<(&'source str, GoFactSpan)> {
-    match node.kind() {
+fn package_at<'source>(
+    node: Node<'_>,
+    kind: &str,
+    source: &'source str,
+) -> Option<(&'source str, GoFactSpan)> {
+    match kind {
         "package_clause" => {
             let named = node.named_child(0)?;
             Some((text(named, source), GoFactSpan::of_node(named)))
@@ -230,11 +288,12 @@ fn package_at<'source>(node: Node<'_>, source: &'source str) -> Option<(&'source
 fn admit_declarations<'source>(
     inventory: &mut Inventory<'source>,
     node: Node<'_>,
+    kind: &str,
     source: &'source str,
     context: FactContext,
 ) -> Result<Option<(u32, GoDeclarationKind)>, GoFactError> {
     let mut opened = None;
-    for fact in declarations_at(node, source, context).iter().copied() {
+    for fact in declarations_at(node, kind, source, context).iter().copied() {
         let index = inventory.declare(fact)?;
         admit_signature(inventory, node, source, (index, fact.kind()))?;
         opened = Some((index, fact.kind()));
@@ -247,6 +306,8 @@ fn admit_declarations<'source>(
 /// A declaration that is no callable states none: a type, a constant, a
 /// variable, a field, and an embedded element all write no parameter list, and
 /// asking a node for one it does not have would state a signature of nothing.
+/// A declarations-only walk states none either, because a signature term is
+/// evidence for a method set rather than for a source unit.
 fn admit_signature<'source>(
     inventory: &mut Inventory<'source>,
     node: Node<'_>,
@@ -254,7 +315,8 @@ fn admit_signature<'source>(
     declared: (u32, GoDeclarationKind),
 ) -> Result<(), GoFactError> {
     let (index, kind) = declared;
-    if !is_callable(kind) {
+    let stating = matches!(inventory.retained(), GoFactScope::Everything) && is_callable(kind);
+    if !stating {
         return Ok(());
     }
     for fact in signature_terms_at(node, source, index).iter().copied() {
@@ -264,67 +326,99 @@ fn admit_signature<'source>(
 }
 
 /// Whether one declaration kind writes a signature.
+///
+/// Every variant is named. Go interface relations are proved from signature
+/// terms, so a twelfth kind that quietly fell through would state a method set
+/// missing one method and prove a relation the corpus does not hold.
 fn is_callable(kind: GoDeclarationKind) -> bool {
-    matches!(
-        kind,
+    match kind {
         GoDeclarationKind::Function
-            | GoDeclarationKind::Method
-            | GoDeclarationKind::InterfaceMethod
-    )
+        | GoDeclarationKind::Method
+        | GoDeclarationKind::InterfaceMethod => true,
+        GoDeclarationKind::Struct
+        | GoDeclarationKind::Interface
+        | GoDeclarationKind::DefinedType
+        | GoDeclarationKind::TypeAlias
+        | GoDeclarationKind::Constant
+        | GoDeclarationKind::Variable
+        | GoDeclarationKind::Field
+        | GoDeclarationKind::EmbeddedField => false,
+    }
 }
 
 /// The scope one node opens, if it opens one.
 fn admit_scope(
     inventory: &mut Inventory<'_>,
     node: Node<'_>,
+    kind: &str,
     context: FactContext,
 ) -> Result<Option<(u32, GoScopeKind)>, GoFactError> {
-    let Some(kind) = scope_kind_at(node) else {
+    let Some(opened) = scope_kind_at(kind) else {
         return Ok(None);
     };
-    let parent = match kind {
+    let parent = match opened {
+        // The file scope is the walk's own, opened before the first node, so
+        // nothing recognized here can hold it.
         GoScopeKind::File => None,
-        _ => Some(context.scope),
+        GoScopeKind::Declaration | GoScopeKind::Block => Some(context.scope),
     };
-    let index = inventory.open(GoScopeFact::new(kind, node, parent))?;
-    Ok(Some((index, kind)))
+    let index = inventory.open(GoScopeFact::new(opened, node, parent))?;
+    Ok(Some((index, opened)))
 }
 
 /// Every name one node binds, naming the receiver its declaration states.
 fn admit_bindings<'source>(
     inventory: &mut Inventory<'source>,
     node: Node<'_>,
+    kind: &str,
     source: &'source str,
     context: FactContext,
 ) -> Result<(), GoFactError> {
-    for fact in bindings_at(node, source, context).iter().copied() {
+    for fact in bindings_at(node, kind, source, context).iter().copied() {
         let index = inventory.bind(fact)?;
         let receiving = (fact.kind() == GoBindingKind::Receiver)
             .then_some(context.declaration)
             .flatten();
-        if let Some(declaration) = receiving.and_then(|held| held.try_into().ok()) {
-            name_receiver(inventory, declaration, index);
+        if let Some(declaration) = receiving {
+            name_receiver(inventory, declaration, index)?;
         }
     }
     Ok(())
 }
 
 /// Name a method's receiver binding on the declaration that states it.
-fn name_receiver(inventory: &mut Inventory<'_>, declaration: usize, binding: u32) {
-    if let Some(held) = inventory.declarations.get_mut(declaration) {
-        held.bind_receiver(binding);
-    }
+///
+/// Filled after the fact is retained, because a receiver is a binding of its
+/// own and the walk reaches it inside the declaration it belongs to.
+///
+/// Refuses rather than passing over a miss. `declaration` is an index [`admit`]
+/// minted against this same inventory, so nothing here should fail — but the
+/// lookup is fallible in the type system, and a dropped link leaves a method
+/// answering "no receiver", which reads exactly like a plain function and
+/// states no failure at all.
+fn name_receiver(
+    inventory: &mut Inventory<'_>,
+    declaration: u32,
+    binding: u32,
+) -> Result<(), GoFactError> {
+    let held = usize::try_from(declaration)
+        .ok()
+        .and_then(|index| inventory.declarations.get_mut(index))
+        .ok_or(GoFactError::DeclarationMapping { declaration })?;
+    held.bind_receiver(binding);
+    Ok(())
 }
 
 /// The reference one node states, if it states one.
 fn admit_reference<'source>(
     inventory: &mut Inventory<'source>,
     node: Node<'_>,
+    kind: &str,
     field: Option<&str>,
     source: &'source str,
     context: FactContext,
 ) -> Result<(), GoFactError> {
-    if let Some(fact) = reference_at(node, field, source, context) {
+    if let Some(fact) = reference_at(node, kind, field, source, context) {
         inventory.refer(fact)?;
     }
     Ok(())
@@ -334,17 +428,19 @@ fn admit_reference<'source>(
 fn advanced(
     context: FactContext,
     node: Node<'_>,
-    field: Option<&str>,
+    written: (&str, Option<&str>),
     opened: Option<(u32, GoDeclarationKind)>,
     scope: Option<(u32, GoScopeKind)>,
 ) -> FactContext {
+    let (kind, field) = written;
+    let role = parameter_role(kind, field);
     let mut next = context;
-    next.binds_names = context.binds_names || binds_names(node, field);
+    next.binds_names = context.binds_names || binds_names(node, kind, field);
     next.parameter_role = match scope {
         // A callable resets the role, so a function type written inside a
         // result list does not label its own parameters as results.
-        Some(_) => parameter_role(node, field),
-        None => parameter_role(node, field).or(context.parameter_role),
+        Some(_) => role,
+        None => role.or(context.parameter_role),
     };
     if let Some((index, kind)) = opened {
         next.declaration = Some(index);
@@ -354,15 +450,15 @@ fn advanced(
         next.scope = index;
         next.scope_kind = kind;
     }
-    if anonymous_composite(node) {
+    if anonymous_composite(node, kind) {
         next.declaration_kind = None;
     }
     next
 }
 
 /// The role a parameter list gives the names it holds.
-fn parameter_role(node: Node<'_>, field: Option<&str>) -> Option<GoBindingKind> {
-    match (node.kind(), field) {
+fn parameter_role(kind: &str, field: Option<&str>) -> Option<GoBindingKind> {
+    match (kind, field) {
         ("parameter_list", Some("receiver")) => Some(GoBindingKind::Receiver),
         ("parameter_list", Some("parameters")) => Some(GoBindingKind::Parameter),
         ("parameter_list", Some("result")) => Some(GoBindingKind::Result),
@@ -371,8 +467,8 @@ fn parameter_role(node: Node<'_>, field: Option<&str>) -> Option<GoBindingKind> 
 }
 
 /// Whether the identifiers beneath one node are names being bound.
-fn binds_names(node: Node<'_>, field: Option<&str>) -> bool {
-    node.kind() == "expression_list"
+fn binds_names(node: Node<'_>, kind: &str, field: Option<&str>) -> bool {
+    kind == "expression_list"
         && field == Some("left")
         && node
             .parent()
@@ -384,8 +480,8 @@ fn binds_names(node: Node<'_>, field: Option<&str>) -> bool {
 /// An anonymous composite written inside a field, a parameter, or a variable
 /// states members of nothing this model names, so its own members must not be
 /// attributed to the named type that happens to hold it.
-fn anonymous_composite(node: Node<'_>) -> bool {
-    matches!(node.kind(), "struct_type" | "interface_type")
+fn anonymous_composite(node: Node<'_>, kind: &str) -> bool {
+    matches!(kind, "struct_type" | "interface_type")
         && node
             .parent()
             .is_some_and(|parent| parent.kind() != "type_spec")

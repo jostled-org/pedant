@@ -11,13 +11,13 @@
 use std::collections::BTreeSet;
 
 use super::go_model::{
-    ASSEMBLY_OWNER, ASSEMBLY_PASSES, GO_CORE_SPELLINGS, GO_ENTRY_OWNER, GO_PLANNER,
-    GO_VOCABULARY_OWNER, MODULE_LEVEL, PACKAGE_LEVEL, PAIRED_ARGUMENT_TYPES, PAIRED_BUILDERS,
-    RECORD_INSERTIONS, RUST_CORE_SPELLINGS, RUST_ENTRY_OWNER,
+    ASSEMBLY_OWNER, GO_ENTRY_OWNER, GO_PLANNER, GO_VOCABULARY_OWNER, MODULE_LEVEL, PACKAGE_LEVEL,
+    PAIRED_ARGUMENT_TYPES, PAIRED_BUILDERS, RECORD_INSERTIONS, RUST_ENTRY_OWNER,
 };
 use super::inventory::{GO_SOURCES, RUST_SOURCES, SOURCES};
-use super::ownership_model::STATE_CONSTRUCTOR;
-use super::scan::{code_only, function_body, method_body, parsed, position_of, source};
+use super::ownership::assert_entry_orders;
+use super::ownership_model::{ASSEMBLY_PASSES, GO_VOCABULARY, RUST_VOCABULARY, STATE_CONSTRUCTOR};
+use super::scan::{code_only, function_body, naming, parsed, position_of, source};
 
 /// The sources allowed to name a Go core type.
 ///
@@ -36,13 +36,10 @@ pub fn assert_validation_and_limits_dominate_draft_allocation() {
 
 /// The Go entry proves the snapshot identity, then plans, then assembles.
 fn assert_the_pairing_is_proved_first() {
-    let entry = function_body(GO_PLANNER, "project");
-    let checked = position_of(&entry, "check_snapshot_identity", "the Go projection entry");
-    let planned = position_of(&entry, "plan (", "the Go projection entry");
-    let assembled = position_of(&entry, "assembly :: assemble", "the Go projection entry");
-    assert!(
-        checked < planned && planned < assembled,
-        "the Go entry proves the pairing, then plans, then assembles"
+    assert_entry_orders(
+        GO_PLANNER,
+        "check_snapshot_identity",
+        "the Go projection entry",
     );
     let published = code_only(source(GO_ENTRY_OWNER));
     assert!(
@@ -53,14 +50,17 @@ fn assert_the_pairing_is_proved_first() {
 
 /// The one assembler constructs its state before every pass, and runs the
 /// passes in the one order a graph is minted by.
+///
+/// The sole reading of that order. Every pass is placed against the pass before
+/// it rather than against the state construction alone, so a pass that moved
+/// past its neighbour fails here instead of still sitting after the state.
 fn assert_the_assembler_orders_every_pass() {
     let assembly = function_body(ASSEMBLY_OWNER, "assemble");
-    let construction = position_of(
+    let mut previous = position_of(
         &assembly,
         &STATE_CONSTRUCTOR.replace("::", " :: "),
         "the assembler",
     );
-    let mut previous = construction;
     for pass in ASSEMBLY_PASSES {
         let at = position_of(&assembly, pass, "the assembler");
         assert!(
@@ -69,30 +69,21 @@ fn assert_the_assembler_orders_every_pass() {
         );
         previous = at;
     }
-    for insertion in RECORD_INSERTIONS {
-        let body = method_body("src/graph.rs", insertion);
-        let admit = position_of(&body, "self . admit", insertion);
-        let mutation = position_of(&body, ". push (", insertion);
-        assert!(
-            admit < mutation,
-            "{insertion} admits an identity before it mutates the store"
-        );
-    }
 }
 
 /// No Go source mints an identity, inserts a record, or seals a graph.
+///
+/// Scanned with every space dropped, because the spellings are production
+/// source text rather than the parsed token text a body is read as: the sealing
+/// call is written `state.finish(...)` where it lives, and a scan looking for
+/// the token form could never match a source at all.
 fn assert_the_adapter_allocates_no_record() {
-    let offenders: Vec<String> = GO_SOURCES
+    let forbidden: Vec<&str> = RECORD_INSERTIONS
         .iter()
-        .flat_map(|path| {
-            let code = code_only(source(path));
-            RECORD_INSERTIONS
-                .iter()
-                .chain(["GraphRecords", "state . finish", "ProjectionState"].iter())
-                .filter(move |spelling| code.contains(**spelling))
-                .map(move |spelling| format!("{path} names {spelling}"))
-        })
+        .copied()
+        .chain(["GraphRecords", "state.finish", "ProjectionState"])
         .collect();
+    let offenders = naming(GO_SOURCES, &forbidden, "the allocation");
     assert!(
         offenders.is_empty(),
         "a language adapter states a plan and allocates nothing: {offenders:?}"
@@ -109,11 +100,13 @@ pub fn assert_public_api_shapes_are_parallel_and_language_specific() {
 }
 
 /// The two container levels a Go graph states are declared by the Go
-/// vocabulary and by nothing else.
+/// vocabulary and by no other Go source.
 ///
-/// A level is language-declared string vocabulary, so the moment a neutral
-/// owner or another adapter spelled one of them the graph would have two places
-/// deciding what a Go container is called.
+/// A level is language-declared string vocabulary, so the moment a second Go
+/// source spelled one of them the adapter would have two places deciding what a
+/// Go container is called. The claim stops at the Go adapter deliberately: the
+/// Rust vocabulary declares a `module` level of its own, and the two are
+/// different languages' words that happen to be spelled alike.
 fn assert_the_go_vocabulary_owns_its_container_levels() {
     let vocabulary = code_only(source(GO_VOCABULARY_OWNER));
     for level in [MODULE_LEVEL, PACKAGE_LEVEL] {
@@ -183,21 +176,8 @@ fn elided(signature: &str, side: usize) -> String {
 /// A Go source names no Rust vocabulary, a Rust source names no Go vocabulary,
 /// and nothing outside the Go adapter names a Go core type.
 fn assert_each_adapter_keeps_its_own_language() {
-    let crossed: Vec<String> = [
-        (GO_SOURCES, RUST_CORE_SPELLINGS, "Rust"),
-        (RUST_SOURCES, GO_CORE_SPELLINGS, "Go"),
-    ]
-    .into_iter()
-    .flat_map(|(family, forbidden, other)| {
-        family.iter().flat_map(move |path| {
-            let code = code_only(source(path));
-            forbidden
-                .iter()
-                .filter(move |spelling| code.contains(**spelling))
-                .map(move |spelling| format!("{path} names the {other} spelling {spelling}"))
-        })
-    })
-    .collect();
+    let mut crossed = naming(GO_SOURCES, RUST_VOCABULARY, "the Rust spelling");
+    crossed.extend(naming(RUST_SOURCES, GO_VOCABULARY, "the Go spelling"));
     assert!(
         crossed.is_empty(),
         "each adapter keeps its own language inside itself: {crossed:?}"
@@ -208,17 +188,12 @@ fn assert_each_adapter_keeps_its_own_language() {
         .chain(GO_NAMING_SOURCES.iter())
         .copied()
         .collect();
-    let leaked: Vec<String> = SOURCES
+    let elsewhere: Vec<&str> = SOURCES
         .iter()
-        .filter(|entry| !allowed.contains(entry.path))
-        .flat_map(|entry| {
-            let code = code_only(entry.text);
-            GO_CORE_SPELLINGS
-                .iter()
-                .filter(move |spelling| code.contains(**spelling))
-                .map(move |spelling| format!("{} names {spelling}", entry.path))
-        })
+        .map(|entry| entry.path)
+        .filter(|path| !allowed.contains(path))
         .collect();
+    let leaked = naming(&elsewhere, GO_VOCABULARY, "the Go spelling");
     assert!(
         leaked.is_empty(),
         "only the Go adapter and the crate root may name a Go core type: {leaked:?}"

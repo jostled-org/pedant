@@ -23,15 +23,20 @@
 # capabilities, and the scan must come back with every one of them for every
 # mirrored file before the real profile is read.
 #
-# `repository_check_lib.sh` owns the source listing, the mirror, the sentinel
-# bodies, the reach predicate, and the pedant command, because the syntax and
-# graph capability checks make the same argument about their own trees.
+# `repository_check_lib.sh` owns the tree listing, the mirror, the sentinel
+# bodies, the reach proof, the pedant command, and the read-only profile
+# predicate, because the syntax and graph capability checks make the same
+# argument about their own trees. This check states its trees and nothing else.
 #
 # Exit 0 clean, exit 1 on violation.
 
 set -euo pipefail
 
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# `CDPATH` is cleared inside the substitution: `dirname` yields a bare relative
+# path for a script invoked by a relative path, `cd` then consults `CDPATH`,
+# and a match there both enters the wrong directory and prints it — leaving
+# `script_dir` a two-line value naming a tree this repository does not own.
+script_dir="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=repository_check_lib.sh
 . "${script_dir}/repository_check_lib.sh"
@@ -51,54 +56,15 @@ readonly CORE_TREE="pedant-core/src/resolution/go"
 readonly SYNTAX_TREE="pedant-syntax/src/go"
 readonly GRAPH_TREE="pedant-graph/src/go"
 
-sentinels=0
-tree_sources=""
-for tree in "${CORE_TREE}" "${SYNTAX_TREE}" "${GRAPH_TREE}"; do
-    if [ ! -d "${tree}" ]; then
-        echo "error: ${tree} is missing from the repository." >&2
-        exit 1
-    fi
-    read_rust_sources "${tree}"
-    if [ "${RUST_SOURCE_COUNT}" -eq 0 ]; then
-        echo "error: ${tree} holds no Rust source." >&2
-        echo "An empty tree has no capability to report, so the profile below would" >&2
-        echo "pass without constraining anything." >&2
-        exit 1
-    fi
-    sentinels=$((sentinels + RUST_SOURCE_COUNT))
-    tree_sources="${tree_sources}${RUST_SOURCE_LISTING}"$'\n'
-done
-
-mirror="$(mktemp -d)"
-trap 'rm -rf "${mirror}"' EXIT
-
 # Each sentinel takes the mirrored path of one real source, so the file set the
-# reach guard ranges over is the file set the profile ranges over. A count that
-# disagrees with the one above returns 1, and `set -e` stops here.
-mirror_sentinels "${mirror}" "${tree_sources}" "${sentinels}"
-
-reach="$(pedant_capabilities \
-    "${mirror}/${CORE_TREE}" "${mirror}/${SYNTAX_TREE}" "${mirror}/${GRAPH_TREE}")"
-assert_sentinel_reach "${reach}" "${sentinels}" \
-    "${CORE_TREE}, ${SYNTAX_TREE}, and ${GRAPH_TREE}"
-
-# The path predicate is segment-anchored, so a repository-relative finding and
-# an absolute one both resolve to the same tree.
-predicate='
-all(.findings[];
-     .capability == "file_read"
-     and (.location.file | test("(^|/)pedant-core/src/resolution/go/")))
-and any(.findings[];
-     .capability == "file_read"
-     and (.location.file | test("(^|/)pedant-core/src/resolution/go/")))
-'
+# reach guard ranges over is the file set the profile ranges over.
+assert_capability_detectors_live "the Go surface" \
+    "${CORE_TREE}" "${SYNTAX_TREE}" "${GRAPH_TREE}"
 
 profile="$(pedant_capabilities "${CORE_TREE}" "${SYNTAX_TREE}" "${GRAPH_TREE}")"
 
-assert_jq "${profile}" "${predicate}" -- \
-    "error: the Go capability profile drifted." \
-    "Expected only file_read findings, every one under ${CORE_TREE}," \
-    "and at least one such finding. ${SYNTAX_TREE} and ${GRAPH_TREE} take" \
-    "text and facts, so neither may state a capability at all."
+assert_only_file_read_under "${profile}" "${CORE_TREE}" "Go" \
+    "${SYNTAX_TREE} and ${GRAPH_TREE} take text and facts, so neither may" \
+    "state a capability at all."
 
 echo "go capability profile check: clean"

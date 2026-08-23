@@ -7,8 +7,12 @@
 pub(crate) enum Observation<'a> {
     /// A project index was built from a repository root, in any language.
     ProjectLoad,
-    /// A build manifest was read — a `Cargo.toml` or a `go.mod`: once per
-    /// manifest when the project is indexed, and once more per participating
+    /// A build manifest — a `Cargo.toml` or a `go.mod` — was read to its end.
+    ///
+    /// One event means one completed read, so a manifest that could not be
+    /// opened is not counted as read and an absent one is not counted at all.
+    /// The Go loader learns a replacement target has no manifest exactly that
+    /// way, and the Rust loader records a second event per participating
     /// manifest when a snapshot re-checks the revision it was indexed against.
     ManifestRead(&'a str),
     /// A Rust source was read.

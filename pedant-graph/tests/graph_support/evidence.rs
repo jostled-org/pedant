@@ -93,8 +93,10 @@ pub fn assert_references_are_retained() {
 pub fn assert_candidate_edges_retain_evidence() {
     let (_fixture, resolved, graph) = fixture::project_corpus_library();
     let report = resolved.resolution.report();
+    let subject = "the Rust corpus";
 
-    let candidates = assert_candidates_produce_one_edge_each(&graph, report);
+    let candidates = assert_every_candidate_becomes_one_edge(&graph, report, subject);
+    assert_reference_edges_answer_the_candidates(&graph, candidates);
     assert_candidate_edges_name_their_evidence(&graph, report);
     assert_dependency_edges_complete_the_partition(
         &graph,
@@ -102,47 +104,81 @@ pub fn assert_candidate_edges_retain_evidence() {
     );
 }
 
-/// How many candidates the report states, proved equal to the reference-origin
-/// edges the graph holds.
-fn assert_candidates_produce_one_edge_each(graph: &CodeGraph, report: &ResolutionReport) -> usize {
-    let candidates: usize = report
-        .resolutions()
-        .iter()
-        .map(|record| record.candidates().len())
-        .sum();
+/// Every reference record answers for one resolution record, keeps one edge per
+/// candidate, and each of those edges keeps its candidate's exact certainty and
+/// names the record that produced it. Answers with how many candidates were
+/// read.
+///
+/// Graph vocabulary answered from report vocabulary, which is the same claim
+/// whichever language wrote the report, so it is read once here and reached by
+/// every adapter's own case. What stays a language's own is what its sites and
+/// its targets are.
+pub fn assert_every_candidate_becomes_one_edge(
+    graph: &CodeGraph,
+    report: &ResolutionReport,
+    subject: &str,
+) -> usize {
+    assert_eq!(
+        graph.references().len(),
+        report.resolutions().len(),
+        "{subject}: every record is paired with the answer that produced it"
+    );
+    let mut candidates: usize = 0;
+    for (record, answered) in graph.references().iter().zip(report.resolutions()) {
+        assert_eq!(
+            record.edges().len(),
+            answered.candidates().len(),
+            "{subject}: record {} keeps one edge per candidate",
+            record.id().index()
+        );
+        for (produced, candidate) in record.edges().iter().zip(answered.candidates()) {
+            let edge = graph
+                .edge(*produced)
+                .unwrap_or_else(|| panic!("{subject}: edge {} exists", produced.index()));
+            assert_eq!(
+                edge.certainty(),
+                certainty(candidate.certainty()),
+                "{subject}: a candidate edge keeps its exact certainty"
+            );
+            assert_eq!(
+                edge.origin(),
+                &GraphEdgeOrigin::Reference {
+                    reference: record.id()
+                },
+                "{subject}: a candidate edge links back to its record"
+            );
+            candidates = candidates.saturating_add(1);
+        }
+    }
+    assert!(
+        candidates > 0,
+        "{subject}: the corpus must state at least one resolution candidate"
+    );
+    candidates
+}
+
+/// No reference-origin edge exists that no stated candidate accounts for.
+///
+/// The per-record walk proves every candidate reached an edge; this proves the
+/// graph holds no further edge claiming a record as its origin.
+fn assert_reference_edges_answer_the_candidates(graph: &CodeGraph, candidates: usize) {
     let reference_edges = graph
         .edges()
         .iter()
         .filter(|edge| matches!(edge.origin(), GraphEdgeOrigin::Reference { .. }))
         .count();
-    assert!(
-        candidates > 0,
-        "the corpus must state at least one resolution candidate"
-    );
     assert_eq!(
         reference_edges, candidates,
-        "every resolution candidate produces exactly one graph edge"
+        "every resolution candidate produces exactly one graph edge, and no other edge \
+         names a record"
     );
-    candidates
 }
 
-/// Every record keeps one edge per candidate, and each edge keeps the site it
-/// starts at, the definition it names, its certainty, and its record.
+/// Each candidate edge keeps the site it starts at and the definition it names.
 fn assert_candidate_edges_name_their_evidence(graph: &CodeGraph, report: &ResolutionReport) {
     let definitions = definition_nodes(graph, report);
-    assert_eq!(
-        graph.references().len(),
-        report.resolutions().len(),
-        "every record is paired with the answer that produced it"
-    );
-    for (record, source) in graph.references().iter().zip(report.resolutions()) {
-        assert_eq!(
-            record.edges().len(),
-            source.candidates().len(),
-            "record {} keeps one edge per candidate",
-            record.id().index()
-        );
-        for (produced, candidate) in record.edges().iter().zip(source.candidates()) {
+    for (record, answered) in graph.references().iter().zip(report.resolutions()) {
+        for (produced, candidate) in record.edges().iter().zip(answered.candidates()) {
             let edge = graph
                 .edge(*produced)
                 .unwrap_or_else(|| panic!("edge {} exists", produced.index()));
@@ -155,18 +191,6 @@ fn assert_candidate_edges_name_their_evidence(graph: &CodeGraph, report: &Resolu
                 Some(edge.target()),
                 definitions.get(&candidate.definition().index()).copied(),
                 "a candidate edge ends at the definition it names"
-            );
-            assert_eq!(
-                edge.certainty(),
-                expected_certainty(candidate.certainty()),
-                "a candidate edge keeps its exact certainty"
-            );
-            assert_eq!(
-                edge.origin(),
-                &GraphEdgeOrigin::Reference {
-                    reference: record.id()
-                },
-                "a candidate edge links back to its record"
             );
         }
     }
@@ -317,7 +341,11 @@ fn container_name(graph: &CodeGraph, node: pedant_graph::GraphNodeId) -> String 
     found.name().to_owned()
 }
 
-fn expected_certainty(certainty: ResolutionCertainty) -> GraphCertainty {
+/// How much one answered candidate is known, at the graph layer.
+///
+/// The one reading of the shared resolution vocabulary, so no adapter's case
+/// can state a mapping of its own and agree with whatever that adapter emits.
+pub fn certainty(certainty: ResolutionCertainty) -> GraphCertainty {
     match certainty {
         ResolutionCertainty::Resolved => GraphCertainty::Resolved,
         ResolutionCertainty::Possible => GraphCertainty::Possible,

@@ -170,7 +170,7 @@ fn read_element(index: &Index, signatures: &Signatures, stated: (&Slot, usize), 
     };
     match (held.is_interface_method(), held.is_embedded_field()) {
         (true, _) => walk.require(Requirement {
-            name: held.name.clone(),
+            name: Box::from(&*held.name),
             signature: signatures.of_slot(member).map(Box::from),
         }),
         (_, true) => open_embedded(index, (owner, held), walk),
@@ -185,7 +185,7 @@ fn open_embedded(index: &Index, stated: (&Slot, &Slot), walk: &mut Walk) {
         walk.refuse(ResolutionGap::ExternalDefinition);
         return;
     };
-    let named = declared_types(index, &embedded);
+    let named = declared_types(index, embedded);
     if named.is_empty() {
         walk.refuse(ResolutionGap::ExternalDefinition);
     }
@@ -203,13 +203,13 @@ fn open_interface(index: &Index, slot: usize, walk: &mut Walk) {
 }
 
 /// The in-snapshot type one embedded element of an interface names.
-fn embedded_type(index: &Index, owner: &Slot, written: &str) -> Option<EmbeddedType> {
+fn embedded_type<'a>(index: &'a Index, owner: &Slot, written: &str) -> Option<&'a EmbeddedType> {
     index
         .unit(owner.unit)?
         .embedded(&owner.name)
         .iter()
         .find(|embedding| &*embedding.embedded.name == written)
-        .map(|embedding| embedding.embedded.clone())
+        .map(|embedding| &embedding.embedded)
 }
 
 /// Every definition one embedded type identity names that is a type.

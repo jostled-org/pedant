@@ -8,18 +8,13 @@ use super::fixture::Fixture;
 /// Construction and serialization succeed after the fixture project is dropped
 /// and its owned workspace is removed.
 ///
-/// The teardown is asserted before the operations under test, so a projection
-/// that reached a loader, a parser, or the filesystem would fail here rather
-/// than pass against files that happen to still exist.
+/// The release proves the directory is gone before the operations under test
+/// run, so a projection that reached a loader, a parser, or the filesystem
+/// fails here rather than passing against files that happen to still exist.
 pub fn assert_projection_survives_teardown() {
     let fixture = Fixture::build(MINIMAL_CORPUS);
     let resolved = fixture.resolve_library();
-    let root = fixture.close();
-
-    assert!(
-        !root.exists(),
-        "the fixture workspace must be gone before the graph is built"
-    );
+    fixture.close();
 
     let graph = build_rust_graph(&resolved.snapshot, &resolved.resolution)
         .expect("projection needs no repository file");

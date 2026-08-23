@@ -48,6 +48,8 @@ pub(crate) const RETAINED_INITIALIZERS: &[&str] = &[
     "zgaps.go|s|none",
     "zgaps.go|p|none",
     "zgaps.go|u|none",
+    "zowner.go|u|none",
+    "zpaths.go|d|none",
     "zshadow.go|d|none",
 ];
 
@@ -93,6 +95,8 @@ pub(crate) const DECLARED_TYPES: &[&str] = &[
     "zgaps.go|s|-|Stringer|false",
     "zgaps.go|p|-|Printed|false",
     "zgaps.go|u|-|Unbound|false",
+    "zowner.go|u|-|Unknown|false",
+    "zpaths.go|d|-|Diamond|false",
     "zshadow.go|d|-|Doubled|false",
 ];
 
@@ -161,6 +165,15 @@ pub(crate) const DECLARED_RESULTS: &[&str] = &[
     "zgaps.go|Shared|-|-|false",
     "zgaps.go|Outside|-|string|false",
     "zgaps.go|Unimported|-|string|false",
+    "zowner.go|Orphan|-|string|false",
+    "zpaths.go|Upper|-|-|false",
+    "zpaths.go|Base|-|-|false",
+    "zpaths.go|Lower|-|-|false",
+    "zpaths.go|Base|-|-|false",
+    "zpaths.go|Diamond|-|-|false",
+    "zpaths.go|Upper|-|-|false",
+    "zpaths.go|Lower|-|-|false",
+    "zpaths.go|Ambiguous|-|string|false",
     "zshadow.go|Doubled|-|-|false",
     "zshadow.go|Shared|-|-|false",
     "zshadow.go|Twinned|-|string|false",

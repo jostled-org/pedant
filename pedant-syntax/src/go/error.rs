@@ -28,6 +28,17 @@ pub enum GoFactError {
         /// The ceiling the walk ran beneath.
         limit: u32,
     },
+    /// A receiver binding named a declaration the inventory does not hold.
+    ///
+    /// Defensive. The walk links a receiver to the declaration index its own
+    /// `admit` just minted against the same inventory, so the lookup cannot
+    /// miss while that holds. It refuses rather than passing, because dropping
+    /// the link would leave a method answering "no receiver" — an answer that
+    /// reads as a plain function and carries no sign that anything failed.
+    DeclarationMapping {
+        /// The declaration index the receiver named.
+        declaration: u32,
+    },
 }
 
 impl fmt::Display for GoFactError {
@@ -42,6 +53,10 @@ impl fmt::Display for GoFactError {
             Self::FactCapacityExceeded { limit } => {
                 write!(formatter, "the Go fact ceiling of {limit} is spent")
             }
+            Self::DeclarationMapping { declaration } => write!(
+                formatter,
+                "a receiver names Go declaration {declaration}, which this inventory does not hold"
+            ),
         }
     }
 }

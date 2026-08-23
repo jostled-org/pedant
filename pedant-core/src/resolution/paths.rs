@@ -15,6 +15,20 @@ pub(crate) enum RootError {
     NotADirectory,
 }
 
+impl RootError {
+    /// How this refusal reads in the payload each loader publishes.
+    ///
+    /// Stated here rather than at each seam: the two loaders would otherwise
+    /// each spell what an unreadable root and a non-directory root read like,
+    /// and the pair could drift on either sentence.
+    pub(crate) fn reason(self) -> Box<str> {
+        match self {
+            Self::Unreadable(source) => source.to_string().into_boxed_str(),
+            Self::NotADirectory => Box::from("the project root is not a directory"),
+        }
+    }
+}
+
 /// Render a path for an error payload without borrowing it.
 pub(crate) fn path_text(path: &Path) -> Box<str> {
     path.display().to_string().into_boxed_str()

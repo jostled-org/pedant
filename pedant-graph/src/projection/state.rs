@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::hash::{BuildHasherDefault, DefaultHasher};
 use std::sync::Arc;
 
-use pedant_types::ResolutionTier;
+use pedant_types::{ResolutionRecord, ResolutionReport, ResolutionTier, SymbolReference};
 
 use crate::containment::ContainmentEdge;
 use crate::edge::EdgeDraft;
@@ -49,7 +49,11 @@ type DefinitionScope =
 /// containers and the definitions alone.
 #[derive(Clone, Copy)]
 pub(crate) struct ProjectionCapacity {
-    /// The report units, one container node each.
+    /// The plan's own units, no more than one container node each.
+    ///
+    /// An upper bound rather than a count of nodes: a unit rooted at one of its
+    /// own declarations mints no container beside that definition, so a plan
+    /// may state fewer container nodes than it states units.
     pub(crate) units: usize,
     /// The report definitions, one node each.
     pub(crate) definitions: usize,
@@ -60,6 +64,31 @@ pub(crate) struct ProjectionCapacity {
 }
 
 impl ProjectionCapacity {
+    /// How many records one plan's inputs state, counted before one is
+    /// allocated.
+    ///
+    /// The unit count is supplied rather than read from the report, because a
+    /// plan may state units no report unit names and every assembly table is
+    /// indexed by plan position. The candidate fold is stated here and nowhere
+    /// else: it must agree with what the assembler's candidates pass inserts,
+    /// and two adapters counting it apart would reserve for a graph neither of
+    /// them mints.
+    pub(crate) fn stated(
+        units: usize,
+        report: &ResolutionReport,
+        resolved: &[(&SymbolReference, &ResolutionRecord)],
+        dependencies: usize,
+    ) -> Self {
+        Self {
+            units,
+            definitions: report.definitions().len(),
+            references: resolved.len(),
+            edges: resolved.iter().fold(dependencies, |total, (_, record)| {
+                total.saturating_add(record.candidates().len())
+            }),
+        }
+    }
+
     /// The store sizes these counts imply.
     fn records(&self) -> RecordCapacity {
         RecordCapacity {
@@ -73,8 +102,9 @@ impl ProjectionCapacity {
 /// Every table one assembly fills, beside the record store it fills them from.
 pub(crate) struct ProjectionState {
     records: GraphRecords,
-    containers: Vec<Option<GraphNodeId>>,
-    files: Vec<SourceScope>,
+    containers: Box<[Option<GraphNodeId>]>,
+    files: Box<[SourceScope]>,
+    sources: Box<[GraphNodeId]>,
     definitions: DefinitionScope,
 }
 
@@ -96,13 +126,23 @@ impl ProjectionState {
         let definitions = reserved(capacity.definitions, limits.ceiling(GraphCollection::Node));
         Self {
             records: GraphRecords::new(limits, capacity.records()),
-            containers: vec![None; units],
+            containers: vec![None; units].into_boxed_slice(),
             files: (0..units).map(|_| SourceScope::new()).collect(),
+            sources: Box::default(),
             definitions: DefinitionScope::with_capacity_and_hasher(
                 definitions,
                 BuildHasherDefault::default(),
             ),
         }
+    }
+
+    /// How much a table sized from a stated count of one collection reserves.
+    ///
+    /// Forwarded to the one rule the record store reserves by, so a table the
+    /// assembler sizes and a table the store sizes cannot bound themselves
+    /// differently.
+    pub(crate) fn reserved(&self, collection: GraphCollection, stated: usize) -> usize {
+        self.records.reserved(collection, stated)
     }
 
     /// Insert one node through the single checked insertion owner.
@@ -153,8 +193,11 @@ impl ProjectionState {
     /// Record the file node one unit reads one normalized path through.
     ///
     /// The scope the binding belongs in is proved rather than assumed, so a
-    /// unit position this assembly bound no container for is refused where the
-    /// binding is made instead of leaving the file node unreachable.
+    /// unit position outside the plan's own unit count is refused where the
+    /// binding is made instead of leaving the file node unreachable. Whether
+    /// that unit has a container yet is a different question and not one this
+    /// asks: a unit rooted at one of its own declarations binds its sources
+    /// before the definitions pass mints that node.
     pub(crate) fn bind_file(
         &mut self,
         unit: u32,
@@ -172,6 +215,23 @@ impl ProjectionState {
             .get(index_of(unit))
             .and_then(|scope| scope.get(path))
             .copied()
+    }
+
+    /// Record the file node every placed source was minted as, in placement
+    /// order.
+    ///
+    /// The sources pass walks the unit-and-source product in exactly the order
+    /// the placement built it, so a fragment's position is where its own file
+    /// node sits. Every later pass that already holds a fragment position reads
+    /// this table instead of probing a unit's scope by path, which would walk a
+    /// tree of string comparisons once per definition and once per reference.
+    pub(crate) fn bind_sources(&mut self, placed: Box<[GraphNodeId]>) {
+        self.sources = placed;
+    }
+
+    /// The file node one placed fragment answers for.
+    pub(crate) fn fragment_file(&self, fragment: u32) -> Option<GraphNodeId> {
+        self.sources.get(index_of(fragment)).copied()
     }
 
     /// Record the node one stable definition identity produced.

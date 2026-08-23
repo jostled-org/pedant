@@ -22,15 +22,19 @@ use super::replacement::{GoReplacement, GoReplacementTarget};
 use super::requirement::{GoRequirement, GoRequirementResolution};
 use crate::hash::digest_bytes;
 use crate::observe::{self, Observation};
+use crate::resolution::capacity::admits_one_more;
 
 /// The file name a module manifest always has.
 const MANIFEST: &str = "go.mod";
 
+/// The one reason a repository root anchors no Go project.
+const NO_ROOT_MANIFEST: &str = "the project root holds no readable go.mod";
+
 /// One admitted module, before the project mints its identity.
 struct LoadedModule {
     path: Arc<str>,
-    directory: Box<str>,
-    manifest: Box<str>,
+    directory: Arc<str>,
+    manifest: Arc<str>,
     depth: u32,
     digest: [u8; 32],
 }
@@ -83,14 +87,26 @@ pub(super) fn load_project(
 
 /// The main module's manifest, which a Go project cannot be loaded without.
 fn read_root_manifest(root: &Path) -> Result<GoManifestDocument, GoProjectError> {
-    let manifest = root.join(MANIFEST);
-    match manifest.is_file() {
-        true => GoManifestDocument::read(root, &manifest),
-        false => Err(GoProjectError::InvalidRoot {
+    match confined_manifest(root, root)? {
+        Some(manifest) => GoManifestDocument::read(root, &manifest),
+        None => Err(GoProjectError::InvalidRoot {
             path: paths::path_text(root),
-            reason: Box::from("the project root holds no readable go.mod"),
+            reason: Box::from(NO_ROOT_MANIFEST),
         }),
     }
+}
+
+/// The canonical `go.mod` one directory holds, confined to the repository root.
+///
+/// The manifest is resolved, not reconstructed. Repository-relative naming is
+/// lexical and cannot see a symlink, so a `go.mod` linked out of the root would
+/// otherwise be read and its tokens echoed back in a published refusal.
+///
+/// Only "no such file" is absence. A `go.mod` that exists and cannot be read is
+/// reported by the read that fails on it, never reported as one the directory
+/// does not have.
+fn confined_manifest(root: &Path, directory: &Path) -> Result<Option<PathBuf>, GoProjectError> {
+    Ok(paths::canonical_in_root(root, &directory.join(MANIFEST))?)
 }
 
 impl<'a> Loader<'a> {
@@ -123,8 +139,8 @@ impl<'a> Loader<'a> {
             .collect();
         let main = LoadedModule {
             path: Arc::clone(&root_document.module),
-            directory: Box::from(""),
-            manifest: root_document.relative,
+            directory: Arc::from(""),
+            manifest: Arc::from(root_document.relative),
             depth: 0,
             digest: root_document.digest,
         };
@@ -228,13 +244,13 @@ impl<'a> Loader<'a> {
             return Ok(*admitted);
         }
         let document = self.read_module_manifest(&canonical, replacement)?;
-        let relative = paths::relative_text(self.root, &canonical)?;
+        let relative: Arc<str> = Arc::from(paths::relative_text(self.root, &canonical)?);
         self.check_declared_module(&document, (&relative, &requirement.path))?;
         let module = LoadedModule {
             path: Arc::clone(&document.module),
             directory: relative,
-            manifest: document.relative,
-            depth: self.depth_of(owner).saturating_add(1),
+            manifest: Arc::from(document.relative),
+            depth: self.depth_of(owner)?.saturating_add(1),
             digest: document.digest,
         };
         self.retain_module(canonical, module, document.requirements)
@@ -263,16 +279,12 @@ impl<'a> Loader<'a> {
         replacement: (&str, &ParsedRequirement),
     ) -> Result<GoManifestDocument, GoProjectError> {
         let (directory, requirement) = replacement;
-        match GoManifestDocument::read(self.root, &canonical.join(MANIFEST)) {
-            Err(GoProjectError::ManifestRead { source, .. })
-                if source.kind() == std::io::ErrorKind::NotFound =>
-            {
-                Err(GoProjectError::MissingReplacementManifest {
-                    directory: directory.into(),
-                    module: requirement.path.clone(),
-                })
-            }
-            outcome => outcome,
+        match confined_manifest(self.root, canonical)? {
+            Some(manifest) => GoManifestDocument::read(self.root, &manifest),
+            None => Err(GoProjectError::MissingReplacementManifest {
+                directory: directory.into(),
+                module: requirement.path.clone(),
+            }),
         }
     }
 
@@ -295,7 +307,7 @@ impl<'a> Loader<'a> {
             None => Ok(()),
             Some(admitted) => Err(GoProjectError::ConflictingLocalModules {
                 module: document.module.as_ref().into(),
-                first: self.directory_of(*admitted),
+                first: self.directory_of(*admitted)?.into(),
                 second: relative.into(),
             }),
         }
@@ -324,19 +336,21 @@ impl<'a> Loader<'a> {
     }
 
     /// The depth of an already-admitted module.
-    fn depth_of(&self, module: u32) -> u32 {
-        self.modules
-            .get(index_of(module))
-            .map(|admitted| admitted.depth)
-            .unwrap_or_default()
+    ///
+    /// Absence is reported rather than answered. A depth taken as zero would
+    /// restart the replacement-depth count that `check_dependency_depth`
+    /// bounds, so an unknown owner would widen the very ceiling it feeds.
+    fn depth_of(&self, module: u32) -> Result<u32, GoProjectError> {
+        admitted(&self.modules, module).map(|held| held.depth)
     }
 
     /// The repository-relative directory of an already-admitted module.
-    fn directory_of(&self, module: u32) -> Box<str> {
-        self.modules
-            .get(index_of(module))
-            .map(|admitted| admitted.directory.clone())
-            .unwrap_or_default()
+    ///
+    /// Absence is reported rather than answered. An empty directory renders as
+    /// the repository root in a `ConflictingLocalModules` refusal, which names
+    /// a directory the conflict is not in.
+    fn directory_of(&self, module: u32) -> Result<&str, GoProjectError> {
+        admitted(&self.modules, module).map(|held| &*held.directory)
     }
 
     /// Mint identities and seal the project.
@@ -357,7 +371,7 @@ impl<'a> Loader<'a> {
         let Some(main) = modules.next() else {
             return Err(GoProjectError::InvalidRoot {
                 path: paths::path_text(self.root),
-                reason: Box::from("the project root holds no readable go.mod"),
+                reason: Box::from(NO_ROOT_MANIFEST),
             });
         };
         let required: Box<[GoModule]> = modules.collect();
@@ -388,6 +402,18 @@ impl<'a> Loader<'a> {
                 .collect(),
         })
     }
+}
+
+/// One module a load already admitted, by its project-local index.
+///
+/// Absence is a refusal rather than an answer: every index reaching this lookup
+/// is one `retain_module` returned, so a miss is the loader disagreeing with
+/// itself, and both readers of it would otherwise resolve that disagreement
+/// into a depth of zero or a directory that renders as the repository root.
+fn admitted(modules: &[LoadedModule], module: u32) -> Result<&LoadedModule, GoProjectError> {
+    modules
+        .get(index_of(module))
+        .ok_or(GoProjectError::MissingAdmittedModule { index: module })
 }
 
 /// The published form of one loaded requirement.
@@ -433,12 +459,11 @@ fn root_fingerprint(root: &Path) -> Result<[u8; 32], GoProjectError> {
 
 /// One more manifest must still fit under the configured ceiling.
 fn check_manifest_capacity(held: usize, limits: GoResolutionLimits) -> Result<(), GoProjectError> {
-    let ceiling = usize::try_from(limits.max_module_manifests).unwrap_or(usize::MAX);
-    match held.saturating_add(1) > ceiling {
-        true => Err(GoProjectError::ManifestLimitExceeded {
+    match admits_one_more(held, limits.max_module_manifests) {
+        true => Ok(()),
+        false => Err(GoProjectError::ManifestLimitExceeded {
             limit: limits.max_module_manifests,
         }),
-        false => Ok(()),
     }
 }
 

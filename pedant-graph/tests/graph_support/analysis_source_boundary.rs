@@ -189,8 +189,8 @@ fn assert_every_predicate_is_registered_once() {
 ///
 /// Compared as whole sets rather than searched one modelled name at a time: a
 /// predicate added to the root with no entry in any family's inventory is
-/// invisible to every case that reasons over what the crate proves, so a
-/// sixty-sixth wrapper fails here rather than passing unnamed.
+/// invisible to every case that reasons over what the crate proves, so the
+/// next wrapper fails here rather than passing unnamed.
 pub fn assert_every_registered_wrapper_is_modelled() {
     let listed: Vec<&str> = [
         CACHE_PREDICATES,

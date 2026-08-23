@@ -114,6 +114,7 @@ pub const ERROR_OWNERS: &[ErrorOwner] = &[
         reach: ErrorReach::Published,
         variants: &[
             "UnitMapping",
+            "UnitCountMismatch",
             "UnknownFile",
             "UnsupportedDefinitionKind",
             "UnsupportedReferenceKind",
@@ -163,6 +164,7 @@ pub const ERROR_OWNERS: &[ErrorOwner] = &[
             "LanguageMismatch",
             "SyntaxDepthExceeded",
             "FactCapacityExceeded",
+            "DeclarationMapping",
         ],
     },
     ErrorOwner {
@@ -173,6 +175,7 @@ pub const ERROR_OWNERS: &[ErrorOwner] = &[
             "InvalidRoot",
             "OutOfRoot",
             "NonUtf8Path",
+            "PathRead",
             "ManifestRead",
             "ManifestParse",
             "MissingModuleDeclaration",
@@ -184,6 +187,7 @@ pub const ERROR_OWNERS: &[ErrorOwner] = &[
             "MissingReplacementManifest",
             "ReplacementModuleMismatch",
             "ConflictingLocalModules",
+            "MissingAdmittedModule",
             "ManifestLimitExceeded",
             "DependencyDepthLimitExceeded",
         ],
@@ -195,11 +199,13 @@ pub const ERROR_OWNERS: &[ErrorOwner] = &[
         variants: &[
             "OutOfRoot",
             "NonUtf8Path",
+            "PathRead",
             "DirectoryRead",
             "SourceRead",
             "NonUtf8Source",
             "IncompleteSource",
             "MissingPackageClause",
+            "MissingStoredSource",
             "ConflictingPackageClause",
             "FactExtraction",
             "DirectoryEntryLimitExceeded",
@@ -215,6 +221,7 @@ pub const ERROR_OWNERS: &[ErrorOwner] = &[
         reach: ErrorReach::Published,
         variants: &[
             "UnitMapping",
+            "UnitCountMismatch",
             "DefinitionMapping",
             "UnknownFile",
             "UnsupportedDefinitionKind",
@@ -236,4 +243,16 @@ pub const ERROR_OWNERS: &[ErrorOwner] = &[
 /// fallible in the type system and a future writer may not hold that invariant,
 /// and it is named here so the inventory admits it rather than a reader finding
 /// it unmatched by any refusal case and deleting it.
-pub const DEFENSIVE_ONLY_VARIANTS: &[(&str, &str)] = &[("GoResolutionError", "DefinitionMapping")];
+///
+/// `GoFactError::DeclarationMapping` is the same shape one layer down. The Go
+/// walk links a method's receiver to the declaration index its own `admit` just
+/// minted against the same inventory, so the lookup cannot miss while that
+/// holds. It refuses rather than passing over the miss, because a dropped
+/// receiver link leaves the method answering `None` — indistinguishable from a
+/// plain function, with no error and nothing red.
+pub const DEFENSIVE_ONLY_VARIANTS: &[(&str, &str)] = &[
+    ("GoResolutionError", "DefinitionMapping"),
+    ("GoFactError", "DeclarationMapping"),
+    ("GoProjectError", "MissingAdmittedModule"),
+    ("GoSnapshotError", "MissingStoredSource"),
+];

@@ -34,6 +34,10 @@ pub const REGISTERED_PREDICATES: &[(&str, &str)] = &[
         "pedant-syntax/tests/enclosing_unit_support/go_fact_limits.rs",
     ),
     (
+        "go_written_types_are_read_without_recursion",
+        "pedant-syntax/tests/enclosing_unit_support/go_fact_limits.rs",
+    ),
+    (
         "go_fact_limit_checks_dominate_descent_and_insertion",
         "pedant-syntax/tests/enclosing_unit_support/ownership/go_facts.rs",
     ),
@@ -201,6 +205,10 @@ pub const REGISTERED_PREDICATES: &[(&str, &str)] = &[
     ),
     (
         "go_graph_limits_refuse_before_partial_records",
+        "pedant-graph/tests/graph.rs",
+    ),
+    (
+        "go_graph_projects_a_holderless_method_at_the_receiver_level",
         "pedant-graph/tests/graph.rs",
     ),
     (

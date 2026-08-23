@@ -14,14 +14,16 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use pedant_core::resolution::go::{
-    GoProjectResolution, GoResolutionSnapshot, GoSnapshotModuleId, GoUnitBinding,
+    GoProjectResolution, GoResolutionSnapshot, GoSnapshotModuleId, GoSnapshotUnitId, GoUnitBinding,
 };
-use pedant_types::{Language, ResolutionReport, SymbolDefinition, SymbolKind};
+use pedant_types::{Language, ResolutionReport, ResolutionUnit, SymbolDefinition, SymbolKind};
 
 use crate::edge::{DependencyEvidence, GraphCertainty, GraphDependencyKind};
 use crate::error::GraphBuildError;
 use crate::id::{index_of, position};
-use crate::projection::draft::{DependencyProjection, StatedContainer, UnitDeclaration, UnitPlan};
+use crate::projection::draft::{
+    DependencyProjection, StatedContainer, StatedDependency, UnitDeclaration, UnitPlan,
+};
 use crate::projection::validation as neutral;
 
 use super::mapping::Vocabulary;
@@ -38,45 +40,25 @@ pub(crate) struct PlannedUnits {
 }
 
 /// One unit per package context and one per admitted module.
+///
+/// Every plan position a package context takes is captured where that unit is
+/// pushed, and the module positions are derived from how many were pushed. A
+/// later filter over the report's units would therefore move the modules with
+/// them rather than leave every package rooted at the wrong container.
 pub(crate) fn plan_units(
     snapshot: &GoResolutionSnapshot,
     resolution: &GoProjectResolution,
     vocabulary: &Vocabulary,
 ) -> Result<PlannedUnits, GraphBuildError> {
     let report = resolution.report();
-    let modules = module_positions(snapshot, report.units().len());
     let declared = declared_packages(report)?;
-    let mut units = Vec::with_capacity(report.units().len().saturating_add(modules.len()));
-    let mut declarations = Vec::with_capacity(report.units().len());
+    let mut planned = PlannedContexts::opening(report);
     for unit in report.units() {
-        let reported = unit.id().index();
-        let binding = validation::stated_binding(resolution, unit)?;
-        let instance = neutral::bound_instance(snapshot.unit(binding.snapshot_unit()), reported)?;
-        declarations.push(UnitDeclaration {
-            unit: reported,
-            definition: validation::package_declaration(
-                declared.get(index_of(reported)).copied().flatten(),
-                reported,
-            )?,
-        });
-        units.push(UnitPlan {
-            key: Arc::from(unit.key()),
-            language: unit.language(),
-            container: None,
-            parent: Some(validation::module_unit(
-                &modules,
-                GoUnitBinding::module(binding),
-                reported,
-            )?),
-            sources: instance.sources().into(),
-        });
+        plan_context(&mut planned, (snapshot, resolution), (unit, &declared))?;
     }
-    units.extend(planned_modules(snapshot, vocabulary));
-    Ok(PlannedUnits {
-        units: units.into_boxed_slice(),
-        declarations: declarations.into_boxed_slice(),
-        modules,
-    })
+    let modules = module_positions(snapshot, planned.units.len());
+    planned.root(&modules)?;
+    Ok(planned.finish((snapshot, vocabulary), modules))
 }
 
 /// One `DependsOn` projection per local dependency edge, in snapshot order.
@@ -89,59 +71,158 @@ pub(crate) fn plan_dependencies(
     snapshot: &GoResolutionSnapshot,
     modules: &BTreeMap<GoSnapshotModuleId, u32>,
 ) -> Result<Box<[DependencyProjection]>, GraphBuildError> {
-    snapshot
-        .edges()
-        .iter()
-        .enumerate()
-        .map(|(index, edge)| {
-            let stated = (position(index), edge);
-            let source = validation::dependency_unit(modules.get(&edge.source()).copied(), stated)?;
-            let target = validation::dependency_unit(modules.get(&edge.target()).copied(), stated)?;
-            Ok(DependencyProjection {
-                source,
-                target,
-                certainty: GraphCertainty::Resolved,
-                evidence: DependencyEvidence::new(
-                    Arc::from(edge.module_path()),
-                    GraphDependencyKind::Normal,
-                    None,
-                ),
-            })
-        })
-        .collect()
+    DependencyProjection::stated(snapshot.edges(), |edge| StatedDependency {
+        bound: (
+            modules.get(&edge.source()).copied(),
+            modules.get(&edge.target()).copied(),
+        ),
+        certainty: GraphCertainty::Resolved,
+        evidence: DependencyEvidence::new(
+            Arc::from(edge.module_path()),
+            GraphDependencyKind::Normal,
+            None,
+        ),
+    })
+}
+
+/// Every package context planned so far, and what each still owes.
+///
+/// The module a context is rooted under is resolved only once every context has
+/// taken its plan position, because the modules sit after them. Both tables are
+/// filled in one pass, in plan order, so a context's declaration and its
+/// module are read back at exactly the position that context took.
+struct PlannedContexts {
+    units: Vec<UnitPlan>,
+    declarations: Vec<UnitDeclaration>,
+    rooted: Vec<(u32, GoSnapshotModuleId)>,
+    bound: BTreeMap<GoSnapshotUnitId, u32>,
+}
+
+impl PlannedContexts {
+    /// Empty tables sized for one report's units.
+    fn opening(report: &ResolutionReport) -> Self {
+        let stated = report.units().len();
+        Self {
+            units: Vec::with_capacity(stated),
+            declarations: Vec::with_capacity(stated),
+            rooted: Vec::with_capacity(stated),
+            bound: BTreeMap::new(),
+        }
+    }
+
+    /// Root every planned package context under the module whose tree declares
+    /// it.
+    ///
+    /// The module table is filled from the snapshot's own modules, so a module
+    /// identity outside it names nothing this graph holds a container for. That
+    /// is the same dangling binding a missing package context is, and it is
+    /// refused through the same neutral owner.
+    fn root(&mut self, modules: &BTreeMap<GoSnapshotModuleId, u32>) -> Result<(), GraphBuildError> {
+        for (plan, (reported, module)) in self.units.iter_mut().zip(&self.rooted) {
+            plan.parent = Some(neutral::bound_instance(
+                modules.get(module).copied(),
+                *reported,
+            )?);
+        }
+        Ok(())
+    }
+
+    /// Every unit this plan states: the contexts it planned, then one container
+    /// per admitted module.
+    fn finish(
+        self,
+        planned: (&GoResolutionSnapshot, &Vocabulary),
+        modules: BTreeMap<GoSnapshotModuleId, u32>,
+    ) -> PlannedUnits {
+        let (snapshot, vocabulary) = planned;
+        let mut units = self.units;
+        units.extend(planned_modules(snapshot, vocabulary));
+        PlannedUnits {
+            units: units.into_boxed_slice(),
+            declarations: self.declarations.into_boxed_slice(),
+            modules,
+        }
+    }
+}
+
+/// Plan one package context, at the position this plan gives it.
+///
+/// One build unit is bound by one report unit here as it is in every other
+/// adapter: a second report unit naming one package context would give every
+/// source of that context two owners, and a graph that dropped one of the two
+/// joins would be indistinguishable from a repository that states one.
+fn plan_context(
+    planned: &mut PlannedContexts,
+    supplied: (&GoResolutionSnapshot, &GoProjectResolution),
+    stated: (&ResolutionUnit, &[Option<u32>]),
+) -> Result<(), GraphBuildError> {
+    let (snapshot, resolution) = supplied;
+    let (unit, declared) = stated;
+    let reported = unit.id().index();
+    let binding = validation::stated_binding(resolution, unit)?;
+    let snapshot_unit = binding.snapshot_unit();
+    let instance = neutral::bound_instance(snapshot.unit(snapshot_unit), reported)?;
+    neutral::distinct_binding(planned.bound.get(&snapshot_unit).copied(), reported)?;
+    planned.bound.insert(snapshot_unit, reported);
+    let at = position(planned.units.len());
+    planned.declarations.push(UnitDeclaration {
+        unit: at,
+        definition: validation::package_declaration(
+            declared.get(index_of(reported)).copied().flatten(),
+            reported,
+        )?,
+    });
+    planned
+        .rooted
+        .push((reported, GoUnitBinding::module(binding)));
+    planned.units.push(UnitPlan {
+        key: Arc::from(unit.key()),
+        language: unit.language(),
+        container: None,
+        parent: None,
+        sources: instance.sources().into(),
+    });
+    Ok(())
 }
 
 /// The plan position every snapshot module takes, by module identity.
 ///
-/// Modules sit after the package contexts, so the first `units` positions stay
-/// the report's own unit order and every record the report places is found at
-/// the position the report states.
+/// Modules sit after the package contexts, so the count is the plan's own count
+/// of contexts rather than the report's count of units. The two agree today —
+/// one context per report unit — and deriving the offset from the plan is what
+/// keeps them agreeing if they ever stop.
 fn module_positions(
     snapshot: &GoResolutionSnapshot,
-    units: usize,
+    contexts: usize,
 ) -> BTreeMap<GoSnapshotModuleId, u32> {
     snapshot
         .modules()
         .iter()
         .enumerate()
-        .map(|(index, module)| (module.id(), position(units.saturating_add(index))))
+        .map(|(index, module)| (module.id(), position(contexts.saturating_add(index))))
         .collect()
 }
 
 /// One container plan per admitted module, in snapshot order.
+///
+/// The module path is the unit's key and its container's name alike, so it is
+/// allocated once and shared rather than copied out of the snapshot twice.
 fn planned_modules<'a>(
     snapshot: &'a GoResolutionSnapshot,
     vocabulary: &'a Vocabulary,
 ) -> impl Iterator<Item = UnitPlan> + 'a {
-    snapshot.modules().iter().map(|module| UnitPlan {
-        key: Arc::from(module.path()),
-        language: Language::Go,
-        container: Some(StatedContainer {
-            name: Arc::from(module.path()),
-            kind: vocabulary.module_root(),
-        }),
-        parent: None,
-        sources: Box::default(),
+    snapshot.modules().iter().map(|module| {
+        let path: Arc<str> = Arc::from(module.path());
+        UnitPlan {
+            key: Arc::clone(&path),
+            language: Language::Go,
+            container: Some(StatedContainer {
+                name: path,
+                kind: vocabulary.module_root(),
+            }),
+            parent: None,
+            sources: Box::default(),
+        }
     })
 }
 
@@ -151,21 +232,47 @@ fn planned_modules<'a>(
 /// package clauses in its report would take two root containers, and the
 /// containment check would then name a doubled node instead of the doubled
 /// declaration.
+///
+/// The kind decides first and the slot is taken through a refusing accessor, so
+/// skipping means only "this definition is not a package clause". A package
+/// clause naming a unit this report holds no unit for is refused where it is
+/// read, rather than dropped here and surfaced later as a missing source node
+/// naming a subject that is not the one at fault.
 fn declared_packages(report: &ResolutionReport) -> Result<Box<[Option<u32>]>, GraphBuildError> {
     let mut declared: Box<[Option<u32>]> = vec![None; report.units().len()].into_boxed_slice();
     for (index, definition) in report.definitions().iter().enumerate() {
         let reported = definition.unit().index();
-        let held = match definition.kind() {
-            SymbolKind::Package => declared.get_mut(index_of(reported)),
-            _ => None,
-        };
-        let Some(slot) = held else {
-            continue;
-        };
-        validation::distinct_declaration(*slot, reported)?;
-        *slot = Some(position(index));
+        match definition.kind() {
+            SymbolKind::Package => declare_package(&mut declared, reported, position(index))?,
+            SymbolKind::Module
+            | SymbolKind::Function
+            | SymbolKind::Method
+            | SymbolKind::Struct
+            | SymbolKind::Enum
+            | SymbolKind::Union
+            | SymbolKind::Trait
+            | SymbolKind::Interface
+            | SymbolKind::DefinedType
+            | SymbolKind::TypeAlias
+            | SymbolKind::Constant
+            | SymbolKind::Variable
+            | SymbolKind::Static
+            | SymbolKind::Field => continue,
+        }
     }
     Ok(declared)
+}
+
+/// Record the one package clause one report unit is rooted at.
+fn declare_package(
+    declared: &mut [Option<u32>],
+    unit: u32,
+    definition: u32,
+) -> Result<(), GraphBuildError> {
+    let slot = neutral::unit_slot(declared.get_mut(index_of(unit)), unit)?;
+    validation::distinct_declaration(*slot, unit)?;
+    *slot = Some(definition);
+    Ok(())
 }
 
 /// The kind of the definition one report definition names as its holder.

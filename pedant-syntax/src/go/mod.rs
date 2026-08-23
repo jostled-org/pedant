@@ -25,6 +25,7 @@ mod frame;
 mod import;
 mod limits;
 mod reference;
+mod retention;
 mod scope;
 mod signature;
 mod span;

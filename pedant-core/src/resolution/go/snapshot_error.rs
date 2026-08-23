@@ -44,6 +44,21 @@ pub enum GoSnapshotError {
         /// The offending path, rendered lossily for the message only.
         path: Box<str>,
     },
+    /// A path beneath the repository root could not be resolved.
+    ///
+    /// Absence is not this: a directory holding no source and a replacement
+    /// target holding no manifest are both reported by the stage that asked.
+    /// This is a path the filesystem refused to answer for — a denied
+    /// permission, a symlink loop, an over-long name — which must not read as
+    /// a file the repository never held.
+    #[error("failed to resolve {path}: {source}")]
+    PathRead {
+        /// The path that could not be resolved.
+        path: Box<str>,
+        /// The underlying I/O failure.
+        #[source]
+        source: std::io::Error,
+    },
     /// A package directory could not be listed.
     #[error("failed to list {path}: {source}")]
     DirectoryRead {
@@ -80,6 +95,17 @@ pub enum GoSnapshotError {
     #[error("source {path} states no package clause")]
     MissingPackageClause {
         /// The rejected source, repository-relative.
+        path: Box<str>,
+    },
+    /// A path the store interned names no source the store holds.
+    ///
+    /// Defensive, and deliberately not a missing package clause: the store
+    /// refuses any source without one before it retains it, so a path it just
+    /// returned that answers with no clause is the store disagreeing with
+    /// itself rather than a repository stating a source that declares nothing.
+    #[error("source {path} was interned but is not held by the store")]
+    MissingStoredSource {
+        /// The interned path that names no stored source.
         path: Box<str>,
     },
     /// One directory's sources state package clauses Go cannot compile

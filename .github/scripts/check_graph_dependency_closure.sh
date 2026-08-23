@@ -1,140 +1,64 @@
 #!/usr/bin/env bash
 #
 # Keep pedant-graph's production and test dependency surfaces closed.
+#
+# `pedant-graph` projects resolution facts. Production reaches `pedant-core` and
+# `pedant-types` with no `pedant-core` feature at all; the test surface adds
+# exactly one, `resolution-test-support`. Neither surface may reach the judgment
+# tier, the semantic tier, rust-analyzer, or the process guard.
+#
+# The feature claims are whole-set rather than a forbid list, because a forbid
+# list says nothing about the feature nobody thought to forbid.
+#
+# `check_tree_closure` in `repository_check_lib.sh` owns the capture, the
+# vocabulary, the derived forbid set, and both non-vacuity refusals, because the
+# go, syntax, and resolution closure checks prove the same shape of claim about
+# their own subjects. This file states the rows.
+#
+# Exit 0 clean, exit 1 on violation.
 
 set -euo pipefail
 
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# `CDPATH` is cleared inside the substitution: `dirname` yields a bare relative
+# path for a script invoked by a relative path, `cd` then consults `CDPATH`, and
+# a match there both enters the wrong directory and prints it — leaving
+# `script_dir` a two-line value naming a tree this repository does not own.
+script_dir="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=repository_check_lib.sh
 . "${script_dir}/repository_check_lib.sh"
 
 cd_repo_root
-require_tools cargo jq
+require_tools cargo jq rg
 
-readonly ALLOWED_TEST_CORE_FEATURE='pedant-core feature "resolution-test-support"'
+# The two packages outside this workspace that neither surface may reach.
+# `line-index` arrives with the semantic tier; `pedant-process-guard` is a
+# workspace-excluded test helper, so the derived member forbid set cannot name
+# either of them.
+readonly OUTSIDE_MEMBERS=(
+    absent:line-index
+    absent:pedant-process-guard
+)
 
-contains_line() {
-    local haystack="$1" needle="$2" line
-    while IFS= read -r line; do
-        if [ "${line}" = "${needle}" ]; then
-            return 0
-        fi
-    done <<<"${haystack}"
-    return 1
-}
+check_tree_closure "graph production" \
+    -p pedant-graph --no-default-features -e normal,build -- \
+    member:pedant-graph member:pedant-core member:pedant-types \
+    require:pedant-graph require:pedant-core \
+    only-features:pedant-core/ \
+    no-feature:pedant-core/checks no-feature:pedant-core/semantic \
+    "${OUTSIDE_MEMBERS[@]}" \
+    no-prefix:ra_ap_
 
-tree_contains_package() {
-    local tree="$1" package="$2" line
-    while IFS= read -r line; do
-        case "${line}" in
-            "${package} v"*) return 0 ;;
-        esac
-    done <<<"${tree}"
-    return 1
-}
+check_tree_closure "graph test" \
+    -p pedant-graph --no-default-features -e normal,build,dev -- \
+    member:pedant-graph member:pedant-core member:pedant-types \
+    require:pedant-graph require:pedant-core \
+    feature:pedant-core/resolution-test-support \
+    only-features:pedant-core/resolution-test-support \
+    no-feature:pedant-core/checks no-feature:pedant-core/semantic \
+    "${OUTSIDE_MEMBERS[@]}" \
+    no-prefix:ra_ap_
 
-assert_rendered_graph() {
-    local label="$1" tree="$2" root
-    for root in pedant-graph pedant-core; do
-        if ! tree_contains_package "${tree}" "${root}"; then
-            echo "error: ${label} dependency capture names no ${root} root" >&2
-            return 1
-        fi
-    done
-}
-
-assert_closed_packages() {
-    local label="$1" tree="$2" package
-    shift 2
-    for package in "$@"; do
-        if tree_contains_package "${tree}" "${package}"; then
-            echo "error: ${label} closure reaches forbidden package ${package}" >&2
-            return 1
-        fi
-    done
-}
-
-assert_closed_features() {
-    local label="$1" tree="$2" line
-    while IFS= read -r line; do
-        case "${line}" in
-            *' feature "checks"'* | *' feature "semantic"'*)
-                echo "error: ${label} closure enables forbidden edge ${line}" >&2
-                return 1
-                ;;
-            "ra_ap_"*" v"*)
-                echo "error: ${label} closure reaches rust-analyzer package ${line%% v*}" >&2
-                return 1
-                ;;
-        esac
-    done <<<"${tree}"
-}
-
-assert_production_core_features() {
-    local tree="$1" line
-    while IFS= read -r line; do
-        case "${line}" in
-            'pedant-core feature "'*)
-                echo "error: production closure enables ${line}" >&2
-                return 1
-                ;;
-        esac
-    done <<<"${tree}"
-}
-
-assert_test_core_features() {
-    local tree="$1" line allowed=0
-    while IFS= read -r line; do
-        case "${line}" in
-            "${ALLOWED_TEST_CORE_FEATURE}" | "${ALLOWED_TEST_CORE_FEATURE} (*)")
-                allowed=$((allowed + 1))
-                ;;
-            'pedant-core feature "'*)
-                echo "error: test closure enables unmodelled edge ${line}" >&2
-                return 1
-                ;;
-        esac
-    done <<<"${tree}"
-    if [ "${allowed}" -eq 0 ]; then
-        echo "error: test closure does not enable ${ALLOWED_TEST_CORE_FEATURE}" >&2
-        return 1
-    fi
-}
-
-members="$(workspace_metadata | jq -r '.packages[].name')"
-for required in pedant-graph pedant-core pedant-types; do
-    if ! contains_line "${members}" "${required}"; then
-        echo "error: workspace metadata omits required graph member ${required}" >&2
-        exit 1
-    fi
-done
-
-forbidden=(line-index pedant-process-guard)
-while IFS= read -r member; do
-    case "${member}" in
-        pedant-graph | pedant-core | pedant-types) ;;
-        "") ;;
-        *) forbidden+=("${member}") ;;
-    esac
-done <<<"${members}"
-if [ "${#forbidden[@]}" -le 2 ]; then
-    echo "error: workspace metadata produced no forbidden workspace members" >&2
-    exit 1
-fi
-
-production="$(cargo tree -p pedant-graph --no-default-features \
-    --edges normal,build,features --prefix none)"
-test_closure="$(cargo tree -p pedant-graph --no-default-features \
-    --edges normal,build,dev,features --prefix none)"
-
-assert_rendered_graph production "${production}"
-assert_rendered_graph test "${test_closure}"
-assert_closed_packages production "${production}" "${forbidden[@]}"
-assert_closed_packages test "${test_closure}" "${forbidden[@]}"
-assert_closed_features production "${production}"
-assert_closed_features test "${test_closure}"
-assert_production_core_features "${production}"
-assert_test_core_features "${test_closure}"
+assert_no_violations "graph dependency closure drifted."
 
 echo "graph dependency closure check: clean"

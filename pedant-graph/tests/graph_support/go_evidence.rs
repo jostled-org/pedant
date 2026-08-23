@@ -12,8 +12,9 @@ use pedant_graph::{
     CodeGraph, GraphCertainty, GraphDependencyKind, GraphEdgeKind, GraphEdgeOrigin,
     GraphReferenceKind,
 };
-use pedant_types::{ReferenceKind, ResolutionCertainty, ResolutionGap, SymbolReference};
+use pedant_types::{ReferenceKind, ResolutionGap, SymbolReference};
 
+use super::evidence::assert_every_candidate_becomes_one_edge;
 use super::go_corpus::GO_CORPUS;
 use super::go_fixture::project_go;
 use super::go_model::MODULE_LEVEL;
@@ -39,13 +40,8 @@ pub fn assert_every_reference_candidate_certainty_and_gap_is_copied() {
         report.references().len(),
         "every report reference produces one graph reference"
     );
-    assert_eq!(
-        graph.references().len(),
-        report.resolutions().len(),
-        "every graph reference answers for one resolution record"
-    );
+    assert_every_candidate_becomes_one_edge(&graph, report, "the Go corpus");
 
-    let mut candidates: usize = 0;
     for (index, (reference, record)) in report
         .references()
         .iter()
@@ -64,34 +60,7 @@ pub fn assert_every_reference_candidate_certainty_and_gap_is_copied() {
             "reference {index}"
         );
         assert_eq!(held.gaps(), record.gaps(), "reference {index}");
-        assert_eq!(
-            held.edges().len(),
-            record.candidates().len(),
-            "reference {index} produces one edge per candidate"
-        );
-        for (edge, candidate) in held.edges().iter().zip(record.candidates()) {
-            let stated = graph
-                .edge(*edge)
-                .unwrap_or_else(|| panic!("reference {index} names an edge the graph holds"));
-            assert_eq!(
-                stated.certainty(),
-                known(candidate.certainty()),
-                "reference {index} copies its candidate's certainty"
-            );
-            assert_eq!(
-                stated.origin(),
-                &GraphEdgeOrigin::Reference {
-                    reference: held.id()
-                },
-                "reference {index} owns the edge it produced"
-            );
-            candidates = candidates.saturating_add(1);
-        }
     }
-    assert!(
-        candidates > 0,
-        "the corpus states candidates for this case to copy"
-    );
     assert_external_records_are_candidate_free(&graph);
     assert_conversions_produce_no_call_edge(&graph);
     assert_interface_dispatch_is_only_possible(&graph);
@@ -106,14 +75,6 @@ fn denoted(kind: ReferenceKind) -> GraphReferenceKind {
         ReferenceKind::Implementation => GraphReferenceKind::Implementation,
         ReferenceKind::Type | ReferenceKind::Value => GraphReferenceKind::Reference,
         ReferenceKind::Module => panic!("a Go report states no module reference"),
-    }
-}
-
-/// How much one answered candidate is known.
-fn known(certainty: ResolutionCertainty) -> GraphCertainty {
-    match certainty {
-        ResolutionCertainty::Resolved => GraphCertainty::Resolved,
-        ResolutionCertainty::Possible => GraphCertainty::Possible,
     }
 }
 

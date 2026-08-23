@@ -38,11 +38,8 @@ fn write(
         ResolutionReportBuilder::new(ResolutionTier::Syntactic, ResolutionReportLimits::default());
     let index = definitions::state(&mut builder, &corpus)?;
     let implementations = Implementations::of(&index, &corpus, limits)?;
-    for position in 0..corpus.units().len() {
-        let Some(unit) = corpus.unit(position) else {
-            continue;
-        };
-        let stated = references::of_unit(&index, &corpus, &implementations, (position, unit));
+    for (position, unit) in corpus.units().iter().enumerate() {
+        let stated = references::of_unit(&index, &corpus, &implementations, (position, unit))?;
         records::write(&mut builder, &index, (&stated, position), limits)?;
     }
     Ok(builder.finish()?)

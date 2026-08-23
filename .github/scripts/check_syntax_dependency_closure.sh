@@ -23,25 +23,22 @@
 # `pedant-syntax` -> `pedant-mcp`, which is both a cycle and the exact failure
 # this file names.
 #
-# Two spellings say what may be reached:
-#   * `require:<package>` — a DIRECT edge this package must declare. Transitive
-#     satisfaction would let the manifest and the documented shape disagree, as
-#     it did while `pedant-snippet` claimed a `pedant-types` edge it reached
-#     only through `pedant-syntax`.
-#   * `allow:<package>` — an edge admitted anywhere in the closure, required
+# Three specifications say what may be reached:
+#   * `member:<package>` — a workspace member this row may reach at all.
+#     Everything else in the workspace is forbidden to it.
+#   * `direct:<package>` — a DIRECT edge this package must declare, read from a
+#     second `--depth 1` capture. Transitive satisfaction would let the manifest
+#     and the documented shape disagree, as it did while `pedant-snippet`
+#     claimed a `pedant-types` edge it reached only through `pedant-syntax`.
+#   * `require:<package>` — an edge admitted anywhere in the closure, declared
 #     nowhere. `pedant-snippet` sees `pedant-types` through `pedant-syntax`, and
-#     that is the substrate working as designed.
+#     that is the substrate working as designed. It is still a sentinel: a
+#     capture that came back short is one the forbid checks would read as clean.
 #
-# Each package's `cargo tree` is captured once and every predicate counts the
-# whole capture in bash. An external matcher would report "no match" and "the
-# matcher itself failed" through the same exit code, so a broken tool would
-# satisfy every forbid check silently. A loop cannot fail that way. `jq` reads
-# the member list only, and an empty or truncated list would empty the derived
-# forbid set the same silent way — so the list must name every package under
-# check, every package their specs name, and enough members to forbid. The
-# closure capture carries the same requirement from the other side: every
-# `require:` and `allow:` dependency must appear in it, because a capture that
-# came back short is one the forbid checks would read as clean.
+# `check_tree_closure` in `repository_check_lib.sh` owns the capture, the
+# vocabulary, the derived forbid set, and both non-vacuity refusals, because the
+# go, graph, and resolution closure checks prove the same shape of claim about
+# their own subjects. This file states the rows.
 #
 # The edge set is `normal,build`, which is cargo's default and therefore also
 # includes proc-macro edges. `-e normal` alone dropped a fifth of the graph: a
@@ -52,142 +49,55 @@
 
 set -euo pipefail
 
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# `CDPATH` is cleared inside the substitution: `dirname` yields a bare relative
+# path for a script invoked by a relative path, `cd` then consults `CDPATH`, and
+# a match there both enters the wrong directory and prints it — leaving
+# `script_dir` a two-line value naming a tree this repository does not own.
+script_dir="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=repository_check_lib.sh
 . "${script_dir}/repository_check_lib.sh"
 
 cd_repo_root
 
-require_tools cargo jq
+require_tools cargo jq rg
 
 # The edges every capture reads. Cargo's default kinds, named so the choice is
 # visible: dev edges stay out, and build and proc-macro edges stay in.
 readonly EDGE_KINDS="normal,build"
 
-# `cargo tree --prefix none` prints one `<name> v<version>` per line, so a
-# `<name> v` prefix match counts every occurrence — including the `(*)` repeats
-# cargo prints for an already-expanded subtree.
-count_dependency() {
-    local tree="$1" package="$2" line matches=0
-    while IFS= read -r line; do
-        case "${line}" in
-            "${package} v"*) matches=$((matches + 1)) ;;
-        esac
-    done <<<"${tree}"
-    printf '%s' "${matches}"
-}
+check_tree_closure "syntax pedant-syntax" \
+    -p pedant-syntax --all-features -e "${EDGE_KINDS}" -- \
+    member:pedant-syntax member:pedant-types \
+    require:pedant-syntax direct:pedant-types
 
-contains_line() {
-    local haystack="$1" needle="$2" line
-    while IFS= read -r line; do
-        if [ "${line}" = "${needle}" ]; then
-            return 0
-        fi
-    done <<<"${haystack}"
-    return 1
-}
-
-metadata="$(workspace_metadata)"
-members="$(printf '%s\n' "${metadata}" | jq -r '.packages[].name')"
-
-status=0
-
-# Each remaining argument is `require:<package>` or `allow:<package>`.
-check_closure() {
-    local package="$1" closure direct spec mode dependency reachable member forbidden=0
-    shift
-
-    if ! contains_line "${members}" "${package}"; then
-        echo "error: '${package}' is not a workspace member; the member list did not load" >&2
-        status=1
-        return
-    fi
-
-    closure="$(cargo tree -p "${package}" --all-features -e "${EDGE_KINDS}" --prefix none)"
-    direct="$(cargo tree -p "${package}" --all-features -e "${EDGE_KINDS}" --prefix none --depth 1)"
-
-    reachable="${package}"
-    for spec in "$@"; do
-        mode="${spec%%:*}"
-        dependency="${spec#*:}"
-        case "${mode}" in
-            require | allow) ;;
-            *)
-                echo "error: unknown closure mode '${mode}' in '${spec}'" >&2
-                exit 1
-                ;;
-        esac
-        if ! contains_line "${members}" "${dependency}"; then
-            echo "error: '${dependency}' in '${spec}' is not a workspace member" >&2
-            status=1
-        fi
-        if [ "${mode}" = require ] && [ "$(count_dependency "${direct}" "${dependency}")" = "0" ]; then
-            echo "error: ${package} must declare a direct dependency on ${dependency}" >&2
-            status=1
-        fi
-        # The closure capture is what every forbid check below reads, and an
-        # empty one empties the derived forbid set the same silent way a
-        # truncated member list would. `set -e` covers a cargo tree that fails;
-        # it says nothing about one that succeeds and returns less than it
-        # should. Each spec is the guarantee in hand: a `require:` or `allow:`
-        # dependency is in the closure by definition, so its absence means the
-        # capture is not the tree it is read as.
-        if [ "$(count_dependency "${closure}" "${dependency}")" = "0" ]; then
-            echo "error: ${dependency} is absent from ${package}'s closure capture;" >&2
-            echo "the forbid checks below would read an empty tree and pass." >&2
-            status=1
-        fi
-        reachable="${reachable}"$'\n'"${dependency}"
-    done
-
-    while IFS= read -r member; do
-        if contains_line "${reachable}" "${member}"; then
-            continue
-        fi
-        forbidden=$((forbidden + 1))
-        if [ "$(count_dependency "${closure}" "${member}")" != "0" ]; then
-            echo "error: ${package} must not depend on ${member}" >&2
-            status=1
-        fi
-    done <<<"${members}"
-
-    if [ "${forbidden}" -eq 0 ]; then
-        echo "error: no package is forbidden to ${package}; the member list constrains nothing" >&2
-        status=1
-    fi
-}
-
-check_closure pedant-syntax \
-    require:pedant-types
-
-check_closure pedant-snippet \
-    require:pedant-syntax \
-    allow:pedant-types
+check_tree_closure "syntax pedant-snippet" \
+    -p pedant-snippet --all-features -e "${EDGE_KINDS}" -- \
+    member:pedant-snippet member:pedant-syntax member:pedant-types \
+    require:pedant-snippet require:pedant-types direct:pedant-syntax
 
 # `pedant-lang` is the substrate's other consumer, and its closure carries the
 # same claim: it reaches `pedant-syntax` and `pedant-types` and nothing else, so
 # a `pedant-core` edge between the two sibling libraries fails here rather than
 # landing green.
-check_closure pedant-lang \
-    require:pedant-syntax \
-    require:pedant-types
+check_tree_closure "syntax pedant-lang" \
+    -p pedant-lang --all-features -e "${EDGE_KINDS}" -- \
+    member:pedant-lang member:pedant-syntax member:pedant-types \
+    require:pedant-lang direct:pedant-syntax direct:pedant-types
 
 # The other direction of the same sibling claim. `pedant-core` reaches the
 # substrate directly and nothing else. Its `pedant-syntax` edge is the one
 # `go-resolution` selects: default-off, versioned, and carrying the Go grammar
-# alone. `require:` rather than `allow:` is the point — the edge must stay
+# alone. `direct:` rather than `require:` is the point — the edge must stay
 # declared in this manifest. A `pedant-core` that reached the grammar through a
 # sibling would read it from beside itself, not below. Its forbid set is derived
 # the same way every other one is, so `pedant-snippet` and `pedant-lang` are
 # closed to it without being named here.
-check_closure pedant-core \
-    require:pedant-types \
-    require:pedant-syntax
+check_tree_closure "syntax pedant-core" \
+    -p pedant-core --all-features -e "${EDGE_KINDS}" -- \
+    member:pedant-core member:pedant-types member:pedant-syntax \
+    require:pedant-core direct:pedant-types direct:pedant-syntax
 
-if [ "${status}" -ne 0 ]; then
-    echo "error: syntax dependency closure drifted." >&2
-    exit 1
-fi
+assert_no_violations "syntax dependency closure drifted."
 
 echo "syntax dependency closure check: clean"

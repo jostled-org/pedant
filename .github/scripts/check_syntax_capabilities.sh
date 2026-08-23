@@ -31,15 +31,20 @@
 #     in practice a one-element list. A sentinel that only reads a file proves
 #     only that the `file_read` detector is live.
 #
-# `repository_check_lib.sh` owns the source listing and its count, the mirror,
-# the sentinel bodies, the reach predicate, and the pedant command because the
-# graph capability check makes the same argument about a third tree.
+# `repository_check_lib.sh` owns the tree listing and its count, the mirror, the
+# sentinel bodies, the reach proof, the pedant command, and the read-only
+# profile predicate, because the graph and Go capability checks make the same
+# argument about their own trees. This check states its trees and nothing else.
 #
 # Exit 0 clean, exit 1 on violation.
 
 set -euo pipefail
 
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# `CDPATH` is cleared inside the substitution: `dirname` yields a bare relative
+# path for a script invoked by a relative path, `cd` then consults `CDPATH`,
+# and a match there both enters the wrong directory and prints it — leaving
+# `script_dir` a two-line value naming a tree this repository does not own.
+script_dir="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=repository_check_lib.sh
 . "${script_dir}/repository_check_lib.sh"
@@ -58,58 +63,13 @@ require_tools cargo jq find mktemp dirname
 readonly SYNTAX_TREE="pedant-syntax/src"
 readonly SNIPPET_TREE="pedant-snippet/src"
 
-# The listing the mirror reproduces, and the count it is held to, taken per tree
-# so an empty tree is named on its own. `repository_check_lib.sh` owns both
-# because the graph check mirrors a third tree from the same listing.
-#
-# The listing is captured before the mirror reads it. Feeding the loop from a
-# process substitution puts `find` in a subshell whose exit status neither
-# `set -e` nor `pipefail` observes, so a `find` that died after emitting one
-# path would leave one sentinel and a count of one, and the equality inside
-# `mirror_sentinels` would compare that against itself and pass.
-sentinels=0
-tree_sources=""
-for tree in "${SYNTAX_TREE}" "${SNIPPET_TREE}"; do
-    if [ ! -d "${tree}" ]; then
-        echo "error: ${tree} is missing from the repository." >&2
-        exit 1
-    fi
-    read_rust_sources "${tree}"
-    if [ "${RUST_SOURCE_COUNT}" -eq 0 ]; then
-        echo "error: ${tree} holds no Rust source." >&2
-        echo "An empty tree has no capability to report, so the profile below would" >&2
-        echo "pass without constraining anything." >&2
-        exit 1
-    fi
-    sentinels=$((sentinels + RUST_SOURCE_COUNT))
-    tree_sources="${tree_sources}${RUST_SOURCE_LISTING}"$'\n'
-done
-
-mirror="$(mktemp -d)"
-trap 'rm -rf "${mirror}"' EXIT
-
 # Each sentinel takes the mirrored path of one real source, so the file set the
-# reach guard ranges over is the file set the profile ranges over. A count that
-# disagrees with the one above returns 1, and `set -e` stops here.
-mirror_sentinels "${mirror}" "${tree_sources}" "${sentinels}"
-
-reach="$(pedant_capabilities "${mirror}/${SYNTAX_TREE}" "${mirror}/${SNIPPET_TREE}")"
-assert_sentinel_reach "${reach}" "${sentinels}" "${SYNTAX_TREE} and ${SNIPPET_TREE}"
-
-predicate='
-all(.findings[];
-     .capability == "file_read"
-     and (.location.file | test("(^|/)pedant-snippet/src/")))
-and any(.findings[];
-     .capability == "file_read"
-     and (.location.file | test("(^|/)pedant-snippet/src/")))
-'
+# reach guard ranges over is the file set the profile ranges over.
+assert_capability_detectors_live "the first-party syntax surface" \
+    "${SYNTAX_TREE}" "${SNIPPET_TREE}"
 
 profile="$(pedant_capabilities "${SYNTAX_TREE}" "${SNIPPET_TREE}")"
 
-assert_jq "${profile}" "${predicate}" -- \
-    "error: first-party syntax capability profile drifted." \
-    "Expected only file_read findings, every one under ${SNIPPET_TREE}," \
-    "and at least one such finding."
+assert_only_file_read_under "${profile}" "${SNIPPET_TREE}" "first-party syntax"
 
 echo "syntax capability profile check: clean"

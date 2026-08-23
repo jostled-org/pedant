@@ -6,8 +6,22 @@
 //! here, before any source is opened, and every admitted path is canonicalized
 //! and confined to the repository root first, so a link cannot widen what the
 //! snapshot goes on to read.
+//!
+//! The walk is a worklist rather than a recursion, and it remembers every
+//! canonical directory it has entered. Confinement stops a link leaving the
+//! root; it does not stop one pointing back inside it, which resolves to a
+//! directory the walk may already hold. Without the memory that mints a second
+//! package unit for one import path, and a link to an ancestor never
+//! terminates. A heap worklist is the other half: depth is then bounded by the
+//! entry budget rather than by the stack, so a deep tree earns a typed refusal
+//! instead of taking the process down.
 
+use std::borrow::Cow;
+use std::collections::{BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
+
+use crate::resolution::capacity::admits_one_more;
+use crate::resolution::identity::index_of;
 
 use super::limits::GoResolutionLimits;
 use super::paths;
@@ -21,6 +35,9 @@ const SOURCE_EXTENSION: &str = ".go";
 
 /// The directory names Go reserves from package discovery outright.
 const RESERVED_DIRECTORIES: &[&str] = &["testdata", "vendor"];
+
+/// One listing's admitted sources and admitted subdirectories, in that order.
+type AdmittedEntries = (Box<[PathBuf]>, Box<[PathBuf]>);
 
 /// One directory of one module that holds at least one Go source.
 pub(super) struct GoPackageDirectory {
@@ -49,17 +66,18 @@ impl EntryBudget {
         Self { limits, visited: 0 }
     }
 
-    /// Admit `entries` more directory entries, or refuse before any of them is
-    /// examined.
-    fn spend(&mut self, entries: usize) -> Result<(), GoSnapshotError> {
-        let requested = u32::try_from(entries).unwrap_or(u32::MAX);
-        let visited = self.visited.saturating_add(requested);
-        match visited > self.limits.max_directory_entries {
-            true => Err(GoSnapshotError::DirectoryEntryLimitExceeded {
+    /// Admit one more directory entry, or refuse before it is examined.
+    ///
+    /// Charged per entry rather than per listing: a directory holding ten
+    /// million entries has to be refused at the ceiling, not after ten million
+    /// paths were allocated in order to count them.
+    fn spend(&mut self) -> Result<(), GoSnapshotError> {
+        match admits_one_more(index_of(self.visited), self.limits.max_directory_entries) {
+            false => Err(GoSnapshotError::DirectoryEntryLimitExceeded {
                 limit: self.limits.max_directory_entries,
             }),
-            false => {
-                self.visited = visited;
+            true => {
+                self.visited = self.visited.saturating_add(1);
                 Ok(())
             }
         }
@@ -80,29 +98,33 @@ pub(super) fn package_directories(
         root,
         module,
         budget,
+        walked: BTreeSet::from([module.to_path_buf()]),
+        pending: VecDeque::from([module.to_path_buf()]),
         found: Vec::new(),
     };
-    walk.descend(module)?;
+    while let Some(directory) = walk.pending.pop_front() {
+        walk.descend(&directory)?;
+    }
     Ok(walk.found.into_boxed_slice())
 }
 
-/// One module's walk: where it is rooted, what it has spent, and what it found.
+/// One module's walk: where it is rooted, what it has spent, where it has been,
+/// what it has left to enter, and what it found.
 struct PackageWalk<'a> {
     root: &'a Path,
     module: &'a Path,
     budget: &'a mut EntryBudget,
+    walked: BTreeSet<PathBuf>,
+    pending: VecDeque<PathBuf>,
     found: Vec<GoPackageDirectory>,
 }
 
 impl PackageWalk<'_> {
-    /// Admit one directory, then descend into the subdirectories it admits.
+    /// Admit one directory, then queue the subdirectories it admits.
     fn descend(&mut self, directory: &Path) -> Result<(), GoSnapshotError> {
-        let entries = self.listing(directory)?;
-        let sources = admitted_sources(self.root, &entries)?;
+        let (sources, subdirectories) = self.listing(directory)?;
         self.retain(directory, sources)?;
-        for child in admitted_directories(self.root, &entries)?.iter() {
-            self.descend(child)?;
-        }
+        self.pending.extend(subdirectories.into_vec());
         Ok(())
     }
 
@@ -122,60 +144,98 @@ impl PackageWalk<'_> {
         Ok(())
     }
 
-    /// Every entry one directory holds, name-sorted and charged to the budget.
-    fn listing(&mut self, directory: &Path) -> Result<Box<[PathBuf]>, GoSnapshotError> {
+    /// One directory's entries, name-sorted and charged one by one, split into
+    /// the sources and the subdirectories it admits.
+    fn listing(&mut self, directory: &Path) -> Result<AdmittedEntries, GoSnapshotError> {
         let read = std::fs::read_dir(directory)
             .map_err(|source| directory_error(self.root, directory, source))?;
         let mut entries: Vec<PathBuf> = Vec::new();
         for entry in read {
+            self.budget.spend()?;
             let held = entry.map_err(|source| directory_error(self.root, directory, source))?;
             entries.push(held.path());
         }
-        self.budget.spend(entries.len())?;
         entries.sort();
-        Ok(entries.into_boxed_slice())
+        self.admitted(&entries)
+    }
+
+    /// Every admitted entry of one listing, canonicalized once and split by the
+    /// type the canonical path turns out to have.
+    ///
+    /// One pass and one canonicalization per entry. Two passes over the same
+    /// listing resolved every name twice and asked the filesystem for the type
+    /// of each of them twice more.
+    fn admitted(&mut self, entries: &[PathBuf]) -> Result<AdmittedEntries, GoSnapshotError> {
+        let mut sources: Vec<PathBuf> = Vec::new();
+        let mut subdirectories: Vec<PathBuf> = Vec::new();
+        let named = entries
+            .iter()
+            .map(|entry| (entry, entry_name(entry)))
+            .filter(|(_, name)| !is_excluded_name(name));
+        for (entry, name) in named {
+            let held = paths::canonical_in_root(self.root, entry)?;
+            self.sort_entry(held, &name, (&mut sources, &mut subdirectories));
+        }
+        Ok((
+            sources.into_boxed_slice(),
+            subdirectories.into_boxed_slice(),
+        ))
+    }
+
+    /// File one resolved entry under the list its type and name put it in.
+    fn sort_entry(
+        &mut self,
+        canonical: Option<PathBuf>,
+        name: &str,
+        admitted: (&mut Vec<PathBuf>, &mut Vec<PathBuf>),
+    ) {
+        let (sources, subdirectories) = admitted;
+        let Some(canonical) = canonical else {
+            return;
+        };
+        match (canonical.is_dir(), name.ends_with(SOURCE_EXTENSION)) {
+            (true, _) => subdirectories.extend(self.walkable(canonical)),
+            (false, true) => sources.push(canonical),
+            (false, false) => (),
+        }
+    }
+
+    /// One subdirectory this walk may still enter, recorded as entered.
+    ///
+    /// A directory that declares its own module belongs to that module's tree,
+    /// and one this walk already entered yields nothing: a link inside the root
+    /// resolves to a directory the walk may already hold.
+    fn walkable(&mut self, canonical: PathBuf) -> Option<PathBuf> {
+        match holds_manifest(&canonical) || self.walked.contains(&canonical) {
+            true => None,
+            false => {
+                self.walked.insert(canonical.clone());
+                Some(canonical)
+            }
+        }
     }
 }
 
-/// Every Go source one listing admits, canonical and confined.
-fn admitted_sources(root: &Path, entries: &[PathBuf]) -> Result<Box<[PathBuf]>, GoSnapshotError> {
-    let mut admitted = Vec::new();
-    for entry in entries.iter().filter(|entry| is_source(entry)) {
-        admitted.extend(paths::canonical_in_root(root, entry)?.filter(|path| path.is_file()));
-    }
-    Ok(admitted.into_boxed_slice())
-}
-
-/// Every subdirectory one listing admits, canonical and confined.
-fn admitted_directories(
-    root: &Path,
-    entries: &[PathBuf],
-) -> Result<Box<[PathBuf]>, GoSnapshotError> {
-    let mut admitted = Vec::new();
-    for entry in entries.iter().filter(|entry| is_walkable(entry)) {
-        admitted.extend(
-            paths::canonical_in_root(root, entry)?
-                .filter(|path| path.is_dir() && !holds_manifest(path)),
-        );
-    }
-    Ok(admitted.into_boxed_slice())
-}
-
-/// Whether one entry is a Go source by name.
-fn is_source(entry: &Path) -> bool {
-    entry_name(entry).ends_with(SOURCE_EXTENSION)
-}
-
-/// Whether one entry names a directory a package walk may enter.
+/// Whether one entry's name keeps it out of every Go build.
 ///
-/// The name alone answers this: dot-prefixed and underscore-prefixed
-/// directories and the two reserved names are excluded whatever they hold, so
-/// nothing inside them is ever listed.
-fn is_walkable(entry: &Path) -> bool {
-    let name = entry_name(entry);
-    let reserved =
-        name.starts_with('.') || name.starts_with('_') || RESERVED_DIRECTORIES.contains(&&*name);
-    !reserved
+/// The Go toolchain ignores a dot-prefixed and an underscore-prefixed name
+/// wherever it appears, so an editor lock file, a source parked out of the
+/// build, and a generated cgo intermediate are all outside the build a snapshot
+/// describes. One rule for files and directories, because it is one rule.
+fn is_ignored_name(name: &str) -> bool {
+    name.starts_with('.') || name.starts_with('_')
+}
+
+/// Whether one entry is worth resolving at all, by its name alone.
+///
+/// The reserved directory names join the ignored prefixes before the entry is
+/// resolved rather than after, so nothing inside a reserved tree is ever
+/// listed and a `vendor` link leaving the root is excluded exactly as Go
+/// excludes it instead of refusing the snapshot for escaping. No name Go
+/// compiles is lost to the shared filter: a `.go` source cannot be called
+/// `testdata` or `vendor`.
+fn is_excluded_name(name: &str) -> bool {
+    is_ignored_name(name) || RESERVED_DIRECTORIES.contains(&name)
 }
 
 /// Whether a directory declares its own module, which makes it another
@@ -185,11 +245,14 @@ fn holds_manifest(directory: &Path) -> bool {
 }
 
 /// One entry's file name, lossily, which is what the name rules read.
-fn entry_name(entry: &Path) -> Box<str> {
+///
+/// Borrowed whenever the name is already UTF-8, which every name a Go build
+/// compiles is; only a lossy rendering allocates.
+fn entry_name(entry: &Path) -> Cow<'_, str> {
     entry
         .file_name()
-        .map(|name| name.to_string_lossy().into_owned().into_boxed_str())
-        .unwrap_or_default()
+        .map(std::ffi::OsStr::to_string_lossy)
+        .unwrap_or(Cow::Borrowed(""))
 }
 
 /// A directory listing failure, named repository-relative when it can be.

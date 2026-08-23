@@ -15,6 +15,7 @@ pub const GO_PREDICATES: &[&str] = &[
     "go_graph_copies_every_reference_candidate_certainty_and_gap",
     "go_graph_is_deterministic_and_rust_graph_bytes_stay_exact",
     "go_graph_limits_refuse_before_partial_records",
+    "go_graph_projects_a_holderless_method_at_the_receiver_level",
     "go_graph_projects_one_package_and_definition_node_per_report_claim",
     "go_graph_refuses_stale_resolution_before_allocation",
     "go_graph_uses_existing_queries_and_rust_cache_answers_stay_exact",
@@ -51,29 +52,6 @@ pub const PAIRED_ARGUMENT_TYPES: &[(&str, &str)] = &[
     ("GoProjectResolution", "RustTargetResolution"),
 ];
 
-/// The Go core spellings no source outside the Go adapter may name.
-pub const GO_CORE_SPELLINGS: &[&str] = &[
-    "GoResolutionSnapshot",
-    "GoProjectResolution",
-    "GoResolutionUnit",
-    "GoSnapshotModuleId",
-    "GoSnapshotUnitId",
-    "GoSnapshotEdge",
-    "GoUnitBinding",
-    "go-resolution",
-];
-
-/// The Rust core spellings no Go adapter source may name.
-pub const RUST_CORE_SPELLINGS: &[&str] = &[
-    "RustResolutionSnapshot",
-    "RustTargetResolution",
-    "RustSnapshotUnitId",
-    "RustSnapshotEdge",
-    "RustUnitBinding",
-    "RustResolutionUnit",
-    "GraphCache",
-];
-
 /// The one source that owns the Go entry points.
 pub const GO_ENTRY_OWNER: &str = "src/go/entry.rs";
 
@@ -86,22 +64,11 @@ pub const GO_VOCABULARY_OWNER: &str = "src/go/mapping.rs";
 /// The one source that owns the Go planner.
 pub const GO_PLANNER: &str = "src/go/projection.rs";
 
-/// The sole neutral assembler, and the passes it must allocate through.
+/// The sole neutral assembler the Go planner reaches.
+///
+/// The passes it runs are the neutral model's, beside every other claim about
+/// an owner no language owns.
 pub const ASSEMBLY_OWNER: &str = "src/projection/assembly.rs";
-
-/// Every pass the sole assembler runs after its state exists, in order.
-pub const ASSEMBLY_PASSES: &[&str] = &[
-    "assemble_containers",
-    "assemble_sources",
-    "assemble_definitions",
-    "assemble_declared_containers",
-    "assemble_containment",
-    "check_containment_forest",
-    "assemble_references",
-    "assemble_dependencies",
-    "assemble_candidates",
-    "state . finish",
-];
 
 /// The three record insertions every draft reaches the graph through.
 ///

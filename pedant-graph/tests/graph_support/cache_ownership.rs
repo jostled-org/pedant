@@ -11,7 +11,7 @@
 use std::collections::BTreeSet;
 
 use super::inventory::{CACHE_SOURCES, PRODUCTION_SOURCES, RUST_SOURCES, SOURCES};
-use super::scan::{code_only, discovered_sources, parsed, source};
+use super::scan::{code_only, discovered_sources, naming, parsed, source};
 use super::surface::{
     declared_items, declares_only, derived_paths, item_label, public_fields, public_signatures,
     public_use_leaves,
@@ -376,16 +376,7 @@ fn declares_inherent_impl(path: &str, name: &str) -> bool {
 
 /// The language-neutral cache module names no resolution type at all.
 fn assert_cache_names_no_resolution_type() {
-    let offenders: Vec<String> = CACHE_SOURCES
-        .iter()
-        .flat_map(|path| {
-            let code = code_only(source(path));
-            CORE_SPELLINGS
-                .iter()
-                .filter(move |spelling| code.contains(**spelling))
-                .map(move |spelling| format!("{path} names {spelling}"))
-        })
-        .collect();
+    let offenders = naming(CACHE_SOURCES, CORE_SPELLINGS, "the resolution type");
     assert!(
         offenders.is_empty(),
         "the language-neutral cache module names a resolution type: {offenders:?}"

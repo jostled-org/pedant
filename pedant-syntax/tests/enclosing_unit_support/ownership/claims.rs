@@ -35,6 +35,7 @@ const MODULE_INVENTORY: &[&str] = &[
     "go/limits.rs",
     "go/mod.rs",
     "go/reference.rs",
+    "go/retention.rs",
     "go/scope.rs",
     "go/signature.rs",
     "go/span.rs",

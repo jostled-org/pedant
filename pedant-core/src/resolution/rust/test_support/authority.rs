@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use crate::resolution::path_normalization;
-use crate::resolution::rust::identity::TargetId;
+use crate::resolution::rust::identity::{TargetId, position};
 use crate::resolution::rust::project::RustProject;
 
 /// Proof-facing form of a lexical relative-path normalization failure.
@@ -36,6 +36,5 @@ pub fn normalize_relative_path(
 /// cannot break, so proving both snapshot operations refuse it needs a
 /// construction path that only the proof feature compiles.
 pub fn unknown_target_id(project: &RustProject) -> TargetId {
-    let index = u32::try_from(project.targets().len()).unwrap_or(u32::MAX);
-    TargetId::new(project.authority, index)
+    TargetId::new(project.authority, position(project.targets().len()))
 }

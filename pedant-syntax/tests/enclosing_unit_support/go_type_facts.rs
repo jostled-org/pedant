@@ -13,6 +13,7 @@
 
 use pedant_syntax::go::{
     GoBindingFact, GoDeclarationFact, GoDeclarationKind, GoFileFacts, GoInitializerForm,
+    GoSignatureRole, GoSignatureTermFact,
 };
 
 use crate::go_fact_source::complete_facts;
@@ -49,6 +50,11 @@ const INITIALIZERS: &[&str] = &[
     "client|none",
     "held|none",
     "linked|none",
+    "n|none",
+    "picked|none",
+    "picked|none",
+    "format|none",
+    "args|none",
 ];
 
 /// What every bound name's own declaration writes as its type, in binding order.
@@ -85,6 +91,11 @@ const DECLARED_TYPES: &[&str] = &[
     "client|alias|Client|false",
     "held|-|Config|false",
     "linked|alias|Client|true",
+    "n|-|int|false",
+    "picked|-|-|false",
+    "picked|-|-|false",
+    "format|-|string|false",
+    "args|-|any|false",
 ];
 
 /// What every declaration states as the single type its callable returns, in
@@ -94,6 +105,11 @@ const DECLARED_TYPES: &[&str] = &[
 /// declaration that is no callable, a callable stating no result, several
 /// results, an unnamed composite, and a pointer wrapping a shape the model names
 /// no type for all state none here.
+///
+/// `build` is the row that keeps the parenthesized form from being dropped.
+/// `(sum int)` is the normal spelling of a named result, and the grammar writes
+/// it as a parameter list holding one declaration — a reader that stopped at the
+/// list would name no type for the most ordinary single-result signature in Go.
 const DECLARED_RESULTS: &[&str] = &[
     "Limit|-|-|false",
     "Shared|-|-|false",
@@ -104,7 +120,7 @@ const DECLARED_RESULTS: &[&str] = &[
     "Run|-|error|false",
     "Handle|-|-|false",
     "Alias|-|-|false",
-    "build|-|-|false",
+    "build|-|int|false",
     "Run|-|error|false",
     "shapes|-|-|false",
     "spawn|-|Config|true",
@@ -116,6 +132,11 @@ const DECLARED_RESULTS: &[&str] = &[
     "Embedder|-|-|false",
     "Config|-|-|false",
     "Handle|-|-|false",
+    "classify|-|-|false",
+    "Sink|-|-|false",
+    "Write|-|error|false",
+    "Close|-|error|false",
+    "logf|-|-|false",
 ];
 
 /// What every embedded declaration writes as its type.
@@ -136,6 +157,42 @@ const EMBEDDED_TYPES: &[&str] = &[
     "Handle|-|Handle|true",
 ];
 
+/// Every term every callable's signature states, in declaration order and, for
+/// each callable, parameters before results.
+///
+/// A method set is compared term by term, so each half of a term is a claim of
+/// its own: the role says which list wrote it, the position says where in that
+/// list, the qualifier and name say which type, and the variadic flag says the
+/// term absorbs the rest of the call.
+///
+/// Arity is what the terms exist for. `Write([]byte) error` binds no name at
+/// all, so a reader of bindings alone cannot tell it from `Close() error`; the
+/// two rows below differ by exactly one parameter term. `logf` states the
+/// variadic tail, and `table` and `boxed` state terms whose shape names no
+/// single type — a gap this model reports rather than guesses at.
+const SIGNATURE_TERMS: &[&str] = &[
+    "Run|parameter|0|-|int|false|false",
+    "Run|result|0|-|error|false|false",
+    "build|parameter|0|-|int|false|false",
+    "build|result|0|-|int|false|false",
+    "Run|parameter|0|-|int|false|false",
+    "Run|result|0|-|error|false|false",
+    "shapes|parameter|0|-|int|false|false",
+    "spawn|result|0|-|Config|true|false",
+    "fetch|result|0|alias|Client|false|false",
+    "pair|result|0|-|int|false|false",
+    "pair|result|1|-|error|false|false",
+    "table|result|0|-|-|false|false",
+    "boxed|result|0|-|-|true|false",
+    "serve|parameter|0|alias|Client|false|false",
+    "classify|parameter|0|-|int|false|false",
+    "Write|parameter|0|-|-|false|false",
+    "Write|result|0|-|error|false|false",
+    "Close|result|0|-|error|false|false",
+    "logf|parameter|0|-|string|false|false",
+    "logf|parameter|1|-|any|false|true",
+];
+
 /// 7.T2 (Invariants 1-3): one bounded inventory states the written type, the
 /// initializer, and the declared result of every name Step 7 resolves.
 #[test]
@@ -146,6 +203,52 @@ fn go_file_facts_state_every_written_type_and_initializer() {
     assert_declared_types(&facts);
     assert_declared_results(&facts);
     assert_embedded_types(&facts);
+    assert_signature_terms(&facts);
+}
+
+/// Every signature term, compared as one ordered list.
+fn assert_signature_terms(facts: &GoFileFacts<'_>) {
+    let stated: Box<[String]> = facts
+        .signature_terms()
+        .iter()
+        .map(|term| signature_row(facts, term))
+        .collect();
+    let borrowed: Box<[&str]> = stated.iter().map(String::as_str).collect();
+    assert_eq!(
+        &*borrowed, SIGNATURE_TERMS,
+        "a signature states one term per type its source writes, in the order it writes them"
+    );
+}
+
+/// One signature term as this module compares it: the callable that states it,
+/// the role, the position, then the qualifier, the name, the pointer form, and
+/// the variadic form of the type written there.
+fn signature_row(facts: &GoFileFacts<'_>, term: &GoSignatureTermFact<'_>) -> String {
+    let declared = facts
+        .declarations()
+        .get(term.declaration() as usize)
+        .expect("every term names a declaration the inventory states");
+    format!(
+        "{}|{}|{}|{}|{}|{}|{}",
+        declared.name(),
+        role_name(term.role()),
+        term.position(),
+        term.type_qualifier().unwrap_or("-"),
+        term.type_name().unwrap_or("-"),
+        term.pointer(),
+        term.variadic()
+    )
+}
+
+/// The spelling one signature role is written down as.
+///
+/// Spelled out rather than derived from `Debug`, so a third role is a table
+/// this module must revise rather than a row whose text changes under it.
+fn role_name(role: GoSignatureRole) -> &'static str {
+    match role {
+        GoSignatureRole::Parameter => "parameter",
+        GoSignatureRole::Result => "result",
+    }
 }
 
 /// Every binding's initializer evidence, compared as one ordered list.

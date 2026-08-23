@@ -37,8 +37,11 @@ const APP_DEFINITIONS: &[&str] = &[
 ///
 /// `blank.Zero()` and `text.Join()` state what the blank and dot forms do not
 /// bind. Both packages declare the member the call names, so both calls would
-/// resolve if either form bound a qualifier; the qualifier is missing and the
-/// call is a dynamic dispatch instead.
+/// resolve if either form bound a qualifier; the qualifier binds nothing, so the
+/// call names a receiver this tier cannot read and states `UnsupportedSyntax`.
+/// The gap is not `DynamicDispatch`: nothing here is chosen at run time, and a
+/// consumer counting dispatch sites over Go would count each unbound qualifier
+/// as one.
 const APP_REFERENCES: &[&str] = &[
     "x#production|Import|x/util|aliased.go:3|resolved|x/util#production::util|",
     "x#production|Import|x/text|aliased.go:4|resolved|x/text#production::text|",
@@ -48,16 +51,16 @@ const APP_REFERENCES: &[&str] = &[
     "x#production|Call|Join|aliased.go:9|resolved|x/text#production::Join|",
     "x#production|Call|Join|aliased.go:9|-||MissingDefinition",
     "x#production|Value|blank|aliased.go:9|-||MissingDefinition",
-    "x#production|Call|Zero|aliased.go:9|-||DynamicDispatch",
+    "x#production|Call|Zero|aliased.go:9|-||UnsupportedSyntax",
     "x#production|Import|x/text|dotted.go:3|resolved|x/text#production::text|",
     "x#production|Import|x/util|dotted.go:4|resolved|x/util#production::util|",
     "x#production|Type|string|dotted.go:7|-||ExternalDefinition",
     "x#production|Call|Join|dotted.go:8|resolved|x/text#production::Join|",
     "x#production|Call|Name|dotted.go:8|resolved|x/util#production::Name|",
     "x#production|Value|tx|dotted.go:8|-||MissingDefinition",
-    "x#production|Call|Join|dotted.go:8|-||DynamicDispatch",
+    "x#production|Call|Join|dotted.go:8|-||UnsupportedSyntax",
     "x#production|Value|text|dotted.go:8|-||MissingDefinition",
-    "x#production|Call|Join|dotted.go:8|-||DynamicDispatch",
+    "x#production|Call|Join|dotted.go:8|-||UnsupportedSyntax",
     "x#production|Import|example.com/outside|outside.go:2|-||ExternalDefinition",
     "x#production|Type|string|outside.go:4|-||ExternalDefinition",
     "x#production|Call|Elsewhere|outside.go:5|-||ExternalDefinition",
@@ -65,7 +68,7 @@ const APP_REFERENCES: &[&str] = &[
     "x#production|Type|string|renamed.go:4|-||ExternalDefinition",
     "x#production|Call|Join|renamed.go:5|resolved|x/textutil#production::Join|",
     "x#production|Value|textutil|renamed.go:5|-||MissingDefinition",
-    "x#production|Call|Join|renamed.go:5|-||DynamicDispatch",
+    "x#production|Call|Join|renamed.go:5|-||UnsupportedSyntax",
 ];
 
 /// 5.T1 (Invariant 12): imports are file-scoped, and the default name, the

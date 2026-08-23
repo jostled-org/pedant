@@ -1,13 +1,12 @@
 //! Reading one source into its exact bytes, digest, IR, and module shape.
 //!
-//! The per-source byte ceiling bounds the read itself: at most one byte past
-//! the ceiling ever enters memory, and the length the ceiling is compared
-//! against is the length that was actually read. A separate stat could not
-//! state that, because a file may grow between the stat and the read.
+//! The byte ceilings bound the read itself, through the one bounded reader
+//! `resolution::read` owns: at most one byte past the per-source ceiling ever
+//! enters memory, and the length both ceilings are compared against is the
+//! length that was actually read. This module states which ceilings apply and
+//! what each refusal is called here; it does not restate the read.
 
 use std::fmt;
-use std::fs::File;
-use std::io::Read;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -15,6 +14,7 @@ use crate::hash::digest_bytes;
 use crate::ir::extract as extract_ir;
 use crate::ir::extract::{self, ParseCompatibility};
 use crate::observe::{self, Observation};
+use crate::resolution::read::{self, ReadBounds, ReadFault};
 use crate::resolution::rust::edition::CargoEdition;
 use crate::resolution::rust::limits::ResolutionLimits;
 
@@ -50,8 +50,8 @@ pub(super) fn read_source(
     budget: ReadBudget,
 ) -> Result<ReadSource, SourceClosureFailure> {
     observe::record(Observation::SourceRead(request.relative));
-    let bytes = read_bounded(request, budget)?;
-    check_total(request, budget, byte_count(&bytes))?;
+    let bytes = read::bounded(request.canonical, bounds(budget))
+        .map_err(|fault| refusal(fault, request, budget))?;
     let text = decode(bytes, request)?;
     check_syntax_depth(&text, request, budget)?;
     let parsed = parse(&text, request)?;
@@ -68,47 +68,37 @@ pub(super) fn read_source(
 
 /// The byte length of an already-stored source, for the running total.
 pub(super) fn byte_length(source: &RustSource) -> u64 {
-    u64::try_from(source.text.len()).unwrap_or(u64::MAX)
+    read::byte_count(source.text.as_bytes())
 }
 
-/// Read at most one byte past the per-source ceiling, then hold the bytes that
-/// actually arrived to it.
-fn read_bounded(
-    request: &ReadRequest<'_>,
-    budget: ReadBudget,
-) -> Result<Vec<u8>, SourceClosureFailure> {
-    let ceiling = budget.limits.max_source_file_bytes;
-    let mut bytes = Vec::new();
-    File::open(request.canonical)
-        .and_then(|file| file.take(ceiling.saturating_add(1)).read_to_end(&mut bytes))
-        .map_err(|source| read_failure(request.site, request.relative, source))?;
-    match byte_count(&bytes) > ceiling {
-        true => Err(limit_failure(
-            ResolutionLimit::SourceFileBytes,
-            (request.site, Some(Box::from(&**request.relative))),
-            ceiling,
-        )),
-        false => Ok(bytes),
+/// The two byte ceilings this read runs under, and the total already spent.
+fn bounds(budget: ReadBudget) -> ReadBounds {
+    ReadBounds {
+        source_bytes: budget.limits.max_source_file_bytes,
+        total_bytes: budget.limits.max_total_source_bytes,
+        consumed: budget.consumed,
     }
 }
 
-/// The read length, as the ceilings count it.
-fn byte_count(bytes: &[u8]) -> u64 {
-    u64::try_from(bytes.len()).unwrap_or(u64::MAX)
-}
-
-fn check_total(
+/// The Rust seam's own failure for one refused read.
+fn refusal(
+    fault: ReadFault,
     request: &ReadRequest<'_>,
     budget: ReadBudget,
-    length: u64,
-) -> Result<(), SourceClosureFailure> {
-    match budget.consumed.saturating_add(length) > budget.limits.max_total_source_bytes {
-        true => Err(limit_failure(
+) -> SourceClosureFailure {
+    let site = (request.site, Some(Box::from(&**request.relative)));
+    match fault {
+        ReadFault::Unreadable(source) => read_failure(request.site, request.relative, source),
+        ReadFault::SourceBytes => limit_failure(
+            ResolutionLimit::SourceFileBytes,
+            site,
+            budget.limits.max_source_file_bytes,
+        ),
+        ReadFault::TotalBytes => limit_failure(
             ResolutionLimit::TotalSourceBytes,
-            (request.site, Some(Box::from(&**request.relative))),
+            site,
             budget.limits.max_total_source_bytes,
-        )),
-        false => Ok(()),
+        ),
     }
 }
 

@@ -8,10 +8,8 @@
 use pedant_types::ReferenceKind;
 
 use super::answer::Answer;
-use super::implementations::Implementations;
+use super::implementations::{Implementations, InterfaceSlot};
 use super::index::{Index, Slot};
-use super::methods;
-use super::types::Receiver;
 
 /// What one selected member states: an interface dispatch, or a static answer.
 pub(super) fn selected(
@@ -49,6 +47,10 @@ fn targets(
 
 /// The concrete method every implementor of one interface method's interface
 /// answers under that name.
+///
+/// Each implementor's method set was walked once when the relations were
+/// compared, so the answers are read from that table rather than walked again
+/// per dispatch site.
 fn implementing_methods(
     index: &Index,
     implementations: &Implementations,
@@ -58,8 +60,9 @@ fn implementing_methods(
     let interface = index.slot(method).and_then(|slot| slot.holder);
     interface
         .into_iter()
-        .flat_map(|holder| implementations.implementors(holder).iter())
-        .flat_map(|concrete| methods::members(index, Receiver { slot: *concrete }, name).into_vec())
+        .flat_map(|holder| implementations.implementors(InterfaceSlot::new(holder)))
+        .flat_map(|concrete| implementations.answering(*concrete, name))
+        .map(|member| member.slot)
         .filter(|slot| index.slot(*slot).is_some_and(Slot::is_concrete_method))
         .collect()
 }

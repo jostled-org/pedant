@@ -8,13 +8,19 @@
 /// The entry points a pure projection may never reach.
 ///
 /// Each is the exact production spelling a widening change would introduce.
+/// Both adapters are named, because each has a loader and a resolver of its own
+/// and a scan that knew one of them would let the other's arrive. The Go loader
+/// is named by the call rather than by its type, because the adapter's own
+/// argument type is spelled `GoProjectResolution` and carries that prefix.
 pub const FORBIDDEN_ENTRY_POINTS: &[&str] = &[
     "RustProject::load",
+    "GoProject::load",
     "snapshot_resolution",
     "snapshot_target",
     "snapshot_package",
     "SemanticContext",
     "RustResolver",
+    "GoResolver",
     "resolve_syntactic",
     "resolve_semantic",
     "syn::parse_file",
@@ -23,6 +29,65 @@ pub const FORBIDDEN_ENTRY_POINTS: &[&str] = &[
     "std::process",
     "Command::new",
     "include_str!",
+];
+
+/// The Go vocabulary, in the exact production spelling it would arrive under.
+///
+/// One table, forbidden over a different source set by each predicate that
+/// names it: the neutral family, the Rust adapter, and the cache may name none
+/// of these, and outside the Go adapter only the crate root that declares it
+/// behind its own feature may. Two tables would let a type added to one escape
+/// the other's scan.
+pub const GO_VOCABULARY: &[&str] = &[
+    "GoProject",
+    "GoProjectResolution",
+    "GoResolutionLimits",
+    "GoResolutionSnapshot",
+    "GoResolutionUnit",
+    "GoResolver",
+    "GoSnapshotEdge",
+    "GoSnapshotModuleId",
+    "GoSnapshotUnitId",
+    "GoUnitBinding",
+    "build_go_graph",
+    "go-resolution",
+    "go_resolution",
+    "resolution::go",
+];
+
+/// The Rust vocabulary, in the exact production spelling it would arrive under.
+///
+/// The counterpart of [`GO_VOCABULARY`], forbidden over the neutral family and
+/// over the Go adapter. The retained cache handle is Rust's too: it is the one
+/// surface a Rust build keeps a projection on, and a Go source naming it would
+/// be retaining through a store no Go claim keys.
+pub const RUST_VOCABULARY: &[&str] = &[
+    "GraphCache",
+    "RustResolutionSnapshot",
+    "RustResolutionUnit",
+    "RustSnapshotEdge",
+    "RustSnapshotFingerprint",
+    "RustSnapshotUnitId",
+    "RustTargetResolution",
+    "RustUnitBinding",
+];
+
+/// Every pass the sole assembler runs after its state exists, in order.
+///
+/// Modelled beside the neutral owner rather than beside either adapter: one
+/// assembler answers for every language, so which passes it runs and in which
+/// order is nobody's language.
+pub const ASSEMBLY_PASSES: &[&str] = &[
+    "assemble_containers",
+    "assemble_sources",
+    "assemble_definitions",
+    "assemble_declared_containers",
+    "assemble_containment",
+    "check_containment_forest",
+    "assemble_references",
+    "assemble_dependencies",
+    "assemble_candidates",
+    "state . finish",
 ];
 
 /// Spellings that would let a production path abort instead of refuse.
@@ -68,7 +133,7 @@ pub const ERROR_OWNERS: &[(&str, &[&str])] = &[
     ),
     (
         "GraphBuildError::SnapshotFingerprintMismatch",
-        &["src/go/validation.rs", "src/rust/validation.rs"],
+        &["src/projection/validation.rs"],
     ),
     (
         "GraphBuildError::MissingUnitBinding",
@@ -84,7 +149,7 @@ pub const ERROR_OWNERS: &[(&str, &[&str])] = &[
     ),
     (
         "GraphBuildError::SharedUnitBinding",
-        &["src/rust/validation.rs"],
+        &["src/projection/validation.rs"],
     ),
     (
         "GraphBuildError::RepeatedUnitContainer",
@@ -100,7 +165,7 @@ pub const ERROR_OWNERS: &[(&str, &[&str])] = &[
     ),
     (
         "GraphBuildError::MissingDependencyUnit",
-        &["src/go/validation.rs", "src/rust/validation.rs"],
+        &["src/projection/validation.rs"],
     ),
     (
         "GraphBuildError::MissingSourceNode",
@@ -166,10 +231,12 @@ pub const ERROR_OWNERS: &[(&str, &[&str])] = &[
 /// Placing the report's own records is the neutral placement owner's job, so
 /// the validators that placement reaches are modelled there. What is left to a
 /// planner is the pairing of every reference with the record that answered it,
-/// and the refusal a binding that names no snapshot instance earns — neutral
-/// because what a graph cannot do with an absent instance is the same in every
-/// language, whichever identity the adapter looked up.
-pub const PLANNED_VALIDATORS: &[&str] = &["resolved_references", "bound_instance"];
+/// the refusal a binding that names no snapshot instance earns, and the refusal
+/// two report units naming one build unit earn — all three neutral, because
+/// what a graph cannot do with an absent instance or a doubled join is the same
+/// in every language, whichever identity the adapter looked up.
+pub const PLANNED_VALIDATORS: &[&str] =
+    &["resolved_references", "bound_instance", "distinct_binding"];
 
 /// The Rust-specific validators the Rust planner must reach, in the order it
 /// reaches them.
@@ -177,9 +244,13 @@ pub const RUST_PLANNED_VALIDATORS: &[&str] = &[
     "check_root_target",
     "check_snapshot_identity",
     "stated_binding",
-    "distinct_binding",
-    "dependency_unit",
 ];
+
+/// The neutral validator both adapters' snapshot-identity checks must reach.
+///
+/// Which two fingerprints answer for a pairing is the adapter's; that unequal
+/// fingerprints refuse the build is not, and one owner states it for both.
+pub const FINGERPRINT_VALIDATORS: &[&str] = &["matching_fingerprint"];
 
 /// The neutral validators the placement owner must reach before it states a
 /// source or an identity.
@@ -196,54 +267,47 @@ pub const PLACED_VALIDATORS: &[&str] = &[
     "placed_slot",
 ];
 
-/// The neutral validators the source projection must reach before it states a
-/// record.
-pub const PROJECTED_VALIDATORS: &[&str] = &[
-    "definition_identity",
-    "optional_identity",
-    "stated_reference_kind",
-];
+/// The neutral validator every adapter's source projection must reach before
+/// it states a record.
+///
+/// One: the refusal a definition kind the adapter's own reading does not name
+/// earns. Everything else a fragment is made of is derived by the shared draft
+/// owner, so the joins it proves are modelled there instead.
+pub const PROJECTED_VALIDATORS: &[&str] = &["stated_definition_kind"];
 
 /// The neutral validators the shared drafts must reach before they copy a
 /// site's answer.
 ///
-/// A reference site and its candidates are the shared report's, so the drafts
-/// copy them once for every adapter, and every join they carry is proved
-/// against the current report's own identity table where that copy is made.
-pub const DRAFTED_VALIDATORS: &[&str] = &["definition_identity", "optional_identity"];
+/// A reference site, its candidates, and a dependency edge's two endpoints are
+/// the shared report's and the shared snapshot's, so the drafts copy them once
+/// for every adapter, and every join and every unnamed kind is refused against
+/// the current report where that copy is made.
+pub const DRAFTED_VALIDATORS: &[&str] = &[
+    "definition_identity",
+    "optional_identity",
+    "stated_reference_kind",
+    "dependency_unit",
+];
 
 /// The Go validators the Go planner must reach, in the order it reaches them.
-pub const GO_PLANNED_VALIDATORS: &[&str] = &["check_snapshot_identity", "definition_kind"];
+pub const GO_PLANNED_VALIDATORS: &[&str] = &["check_snapshot_identity"];
 
 /// The neutral validators the Go placement owner must reach before it states a
 /// unit.
 ///
-/// One: the dangling-binding refusal it shares with the Rust planner. Its
-/// sibling list below is what stays Go-specific.
-pub const GO_PLACED_NEUTRAL_VALIDATORS: &[&str] = &["bound_instance"];
+/// Three it shares with the Rust planner: the dangling binding, the build unit
+/// two report units both bound, and the table slot a stated unit position owns.
+/// Its sibling list below is what stays Go-specific.
+pub const GO_PLACED_NEUTRAL_VALIDATORS: &[&str] =
+    &["bound_instance", "distinct_binding", "unit_slot"];
 
 /// The Go validators the Go placement owner must reach before it states a unit.
 pub const GO_PLACED_VALIDATORS: &[&str] = &[
     "stated_binding",
     "package_declaration",
-    "module_unit",
     "distinct_declaration",
-    "dependency_unit",
     "holder_kind",
 ];
-
-/// The Go vocabulary validators the Go projection must reach before it states a
-/// record.
-pub const GO_PROJECTED_VALIDATORS: &[&str] = &["definition_kind"];
-
-/// The Rust vocabulary validators the source projection must reach before it
-/// states a record.
-///
-/// The shared report vocabulary carries kinds no Rust projection has a node or
-/// a record for. Reading one is a join like any other, so the refusal it earns
-/// is built by the adapter's validation owner rather than by the pass that met
-/// it.
-pub const RUST_PROJECTED_VALIDATORS: &[&str] = &["definition_kind"];
 
 /// The neutral validators the assembly tables must reach before a binding is
 /// dropped or overwritten.

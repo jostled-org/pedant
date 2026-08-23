@@ -37,8 +37,8 @@ impl fmt::Debug for GoSnapshotModuleId {
 pub struct GoSnapshotModule {
     pub(super) id: GoSnapshotModuleId,
     pub(super) path: Arc<str>,
-    pub(super) directory: Box<str>,
-    pub(super) manifest: Box<str>,
+    pub(super) directory: Arc<str>,
+    pub(super) manifest: Arc<str>,
     pub(super) depth: u32,
 }
 

@@ -6,8 +6,7 @@
 //! a resolver answer "which name does this occurrence see" without inventing
 //! definitions.
 
-use crate::go::context::{FactContext, named_children, text};
-use crate::go::scope::GoScopeKind;
+use crate::go::context::{FactContext, named_children, named_nodes, text};
 use crate::go::span::GoFactSpan;
 use crate::go::written_type::{WrittenType, field_type, type_parts};
 use crate::tree_sitter::Node;
@@ -150,10 +149,11 @@ impl<'source> GoBindingFact<'source> {
 /// Every name `node` binds, in the order the source writes them.
 pub(super) fn bindings_at<'source>(
     node: Node<'_>,
+    kind: &str,
     source: &'source str,
     context: FactContext,
 ) -> Box<[GoBindingFact<'source>]> {
-    match node.kind() {
+    match kind {
         "parameter_declaration" | "variadic_parameter_declaration" => {
             parameters(node, source, context)
         }
@@ -163,12 +163,6 @@ pub(super) fn bindings_at<'source>(
         "type_spec" | "type_alias" => body_type(node, source, context),
         _ => Box::new([]),
     }
-}
-
-/// Whether a name written here binds locally rather than declaring a package
-/// member.
-fn inside_a_body(context: FactContext) -> bool {
-    !matches!(context.scope_kind, GoScopeKind::File)
 }
 
 /// One binding of `name_node`, carrying the type its source writes.
@@ -288,7 +282,7 @@ fn composite<'source>(
     address: bool,
 ) -> Option<GoInitializer<'source>> {
     let declared = stated.child_by_field_name("type")?;
-    let written = type_parts(declared, source, false);
+    let written = type_parts(declared, false).written(source);
     Some(GoInitializer {
         form: match address {
             true => GoInitializerForm::CompositeLiteralAddress,
@@ -340,15 +334,15 @@ fn body_names<'source>(
     source: &'source str,
     context: FactContext,
 ) -> Box<[GoBindingFact<'source>]> {
-    match inside_a_body(context) {
-        true => {
+    match context.at_file_scope() {
+        false => {
             let written = field_type(node, "type", source);
             named_children(node)
                 .iter()
                 .map(|&name| binding(kind, name, written, source, context))
                 .collect()
         }
-        false => Box::new([]),
+        true => Box::new([]),
     }
 }
 
@@ -358,7 +352,7 @@ fn body_type<'source>(
     source: &'source str,
     context: FactContext,
 ) -> Box<[GoBindingFact<'source>]> {
-    let named = inside_a_body(context)
+    let named = (!context.at_file_scope())
         .then(|| node.child_by_field_name("name"))
         .flatten();
     named
@@ -376,9 +370,13 @@ fn body_type<'source>(
 }
 
 /// Every identifier one expression list holds directly.
+///
+/// Collected rather than iterated, because the caller needs the count before it
+/// needs the names: a declaration binding one name carries what its initializer
+/// states, and one binding several does not.
 fn identifiers<'tree>(list: Node<'tree>) -> Box<[Node<'tree>]> {
     let mut cursor = list.walk();
-    list.named_children(&mut cursor)
+    named_nodes(list, &mut cursor)
         .filter(|child| child.kind() == "identifier")
         .collect()
 }

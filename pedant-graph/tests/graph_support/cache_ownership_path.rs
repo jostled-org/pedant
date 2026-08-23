@@ -7,16 +7,19 @@
 //!
 //! Every input is a compile-time source read through [`super::scan`].
 
+use super::call_graph::{declared_call_graph, recursive_functions};
 use super::projection_ownership::assert_identities_are_minted_by_one_owner;
-use super::scan::{code_only, declaring_sources, function_body, method_body, position_of, source};
-use super::surface::{declared_call_graph, recursive_functions};
+use super::scan::{code_only, declaring_sources, method_body, position_of, source};
 
 /// Direct and cached construction reach one planner and one checked assembler,
 /// a hit returns before either runs, and no graph-building call returns to
 /// itself.
+///
+/// That the direct entry validates, then plans, then assembles is the same
+/// claim for every adapter and is read by [`super::ownership`], once per
+/// adapter, rather than a second time here.
 pub fn assert_projection_has_one_planner_and_assembler() {
     assert_one_planner_and_one_assembler();
-    assert_direct_builders_reach_both();
     assert_hits_return_before_planning();
     assert_identities_are_minted_by_one_owner();
     assert_no_graph_building_call_cycle();
@@ -40,18 +43,6 @@ fn assert_one_planner_and_one_assembler() {
             "{owner} declares {declaration} exactly once"
         );
     }
-}
-
-/// The direct projection entry validates, plans, and assembles, in that order.
-fn assert_direct_builders_reach_both() {
-    let body = function_body("src/rust/projection.rs", "project");
-    let validated = position_of(&body, "validate", "the projection entry");
-    let planned = position_of(&body, "plan", "the projection entry");
-    let assembled = position_of(&body, "assembly :: assemble", "the projection entry");
-    assert!(
-        validated < planned && planned < assembled,
-        "the direct entry validates, then plans, then assembles"
-    );
 }
 
 /// A cached lookup validates before it observes, and a hit returns before the

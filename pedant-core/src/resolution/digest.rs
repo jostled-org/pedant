@@ -7,6 +7,13 @@
 //!
 //! One owner, because a second framing rule would let a Rust snapshot and a Go
 //! snapshot disagree about what "the same claim" means.
+//!
+//! One exception exists and must stay: `crate::hash` frames the persisted
+//! supply-chain attestation the same way but with big-endian lengths. That
+//! stream is hashed into receipts already committed to repositories, so
+//! unifying its byte order would invalidate every one of them. It is a
+//! different claim about different bytes, and it is named here so a later
+//! reader finds it admitted rather than merging the two.
 
 use sha2::{Digest, Sha256};
 

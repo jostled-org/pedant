@@ -13,7 +13,7 @@
 //! the unit reads, and every record the report states is placed in exactly one
 //! of them.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, btree_map};
 use std::sync::Arc;
 
 use pedant_types::{
@@ -143,12 +143,10 @@ impl DefinitionTable {
             let file = SymbolDefinition::span(definition).file();
             let (fragment, source) = validation::instantiated_source(sources, reported, file)?;
             let stated = DefinitionIdentity::stated(source.shared(), definition);
-            let occurrence = occurrences.get(&stated).copied().unwrap_or_default();
             placed.push(PlacedDefinition {
                 fragment,
-                identity: Arc::new(stated.at(occurrence)),
+                identity: Arc::new(counted(occurrences.entry(stated))),
             });
-            occurrences.insert(stated, occurrence.saturating_add(1));
         }
         Ok(Self {
             placed: placed.into_boxed_slice(),
@@ -167,6 +165,28 @@ impl DefinitionTable {
         self.placed
             .get(index_of(definition))
             .map(|placed| placed.fragment)
+    }
+}
+
+/// The identity one stated definition takes at its own occurrence, counting it.
+///
+/// The table is reached once per definition rather than twice: the entry
+/// already holds the identity the ordinal is applied to, so probing it and then
+/// inserting under the same key would walk a tree of four string comparisons
+/// and a span for a second time to answer a question the first walk answered.
+fn counted(held: btree_map::Entry<'_, DefinitionIdentity, u32>) -> DefinitionIdentity {
+    match held {
+        btree_map::Entry::Vacant(slot) => {
+            let identity = slot.key().at(0);
+            slot.insert(1);
+            identity
+        }
+        btree_map::Entry::Occupied(mut held) => {
+            let occurrence = *held.get();
+            let identity = held.key().at(occurrence);
+            *held.get_mut() = occurrence.saturating_add(1);
+            identity
+        }
     }
 }
 
@@ -197,7 +217,8 @@ pub(crate) struct SourceSet {
 impl SourceSet {
     /// One placement per source each planned unit instantiates.
     pub(crate) fn new(units: Box<[UnitPlan]>) -> Result<Self, GraphBuildError> {
-        let mut placed: Vec<PlacedSource> = Vec::new();
+        let stated = units.iter().map(|unit| unit.sources.len()).sum();
+        let mut placed: Vec<PlacedSource> = Vec::with_capacity(stated);
         let located: Vec<BTreeMap<Arc<str>, u32>> = units
             .iter()
             .enumerate()

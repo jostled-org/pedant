@@ -139,6 +139,33 @@ func doubled() int {
     ),
 ];
 
+/// One main module whose sole package declares a method and not the type that
+/// receives it.
+///
+/// Go requires a method's receiver base type to be declared in the same
+/// package, so `Missing` names a type no source here holds and the resolver
+/// identifies no receiver for `Drift`. It exists because that is the one
+/// repository shape reaching a method the report states under no holder at all,
+/// and the loader and the resolver both admit it.
+pub const GO_UNDECLARED_RECEIVER_CORPUS: &[FixtureFile] = &[
+    (
+        "repo/go.mod",
+        r#"module example.com/orphan
+
+go 1.22
+"#,
+    ),
+    (
+        "repo/orphan.go",
+        r#"package orphan
+
+func (m Missing) Drift() int {
+	return 1
+}
+"#,
+    ),
+];
+
 /// One main module with no requirement, no test file, and one declaration.
 ///
 /// The smallest repository the loader admits, so a lowered ceiling refuses over

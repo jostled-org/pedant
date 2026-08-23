@@ -116,6 +116,27 @@ pub fn declaring_sources(spelling: &str) -> Vec<&'static str> {
         .collect()
 }
 
+/// Every source of `sources` whose code names one of `spellings`, in the order
+/// the sources are stated.
+///
+/// The one reader behind every "these sources may not name this vocabulary"
+/// claim. Comments are dropped and every space with them, so prose describing a
+/// forbidden spelling does not read as the thing it describes and a spelling the
+/// formatter split across two lines is still the spelling it is.
+pub fn naming(sources: &[&str], spellings: &[&str], vocabulary: &str) -> Vec<String> {
+    let mut offenders: Vec<String> = Vec::new();
+    for path in sources {
+        let code = compact(source(path));
+        offenders.extend(
+            spellings
+                .iter()
+                .filter(|spelling| code.contains(**spelling))
+                .map(|spelling| format!("{path} names {vocabulary} {spelling}")),
+        );
+    }
+    offenders
+}
+
 /// One parsed production source.
 pub fn parsed(path: &str) -> syn::File {
     syn::parse_file(source(path)).unwrap_or_else(|error| panic!("{path}: {error}"))

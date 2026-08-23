@@ -14,23 +14,33 @@ struct Frame {
 }
 
 /// Every context the walk currently stands inside.
-pub(super) struct Frames(Vec<Frame>);
+pub(super) struct Frames {
+    /// What an empty stack reads as: the file scope the walk opened before it
+    /// entered its first node.
+    base: FactContext,
+    open: Vec<Frame>,
+}
 
 impl Frames {
-    /// A stack holding nothing, which reads as the file context.
-    pub(super) fn new() -> Self {
-        Self(Vec::new())
+    /// A stack holding nothing, based on the file scope `file` names.
+    ///
+    /// The index is handed in rather than written down. Zero was true only
+    /// while nothing could be retained ahead of the file scope, and a fact
+    /// recognized at `source_file` would have shifted it to one — silently
+    /// rescoping every fact in the file to whatever landed at zero instead.
+    pub(super) fn new(file: u32) -> Self {
+        Self {
+            base: FactContext::at_file(file),
+            open: Vec::new(),
+        }
     }
 
     /// The context the walk is standing in.
-    ///
-    /// An empty stack is the file context: the root opens the file scope, whose
-    /// index is always zero because it is the first fact retained.
     pub(super) fn context(&self) -> FactContext {
-        self.0
+        self.open
             .last()
             .map(|frame| frame.context)
-            .unwrap_or(FactContext::at_file(0))
+            .unwrap_or(self.base)
     }
 
     /// Open `next` for the children of `node`, unless it changes nothing.
@@ -41,7 +51,7 @@ impl Frames {
         if next == context {
             return;
         }
-        self.0.push(Frame {
+        self.open.push(Frame {
             node: node.id(),
             context: next,
         });
@@ -49,9 +59,12 @@ impl Frames {
 
     /// Close the context `node` opened, if it opened one.
     pub(super) fn close(&mut self, node: Node<'_>) {
-        let opened = self.0.last().is_some_and(|frame| frame.node == node.id());
+        let opened = self
+            .open
+            .last()
+            .is_some_and(|frame| frame.node == node.id());
         if opened {
-            self.0.pop();
+            self.open.pop();
         }
     }
 }

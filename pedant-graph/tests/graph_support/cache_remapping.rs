@@ -56,9 +56,11 @@ const DENSE_IDENTITIES: &[&str] = &["GraphNodeId", "GraphReferenceId", "GraphEdg
 ///
 /// Variants are columns too: an identity stored in one arm of an enum is stored
 /// by every value of that type.
+///
+/// The declared name is not a column here. Every record is read out of the map
+/// that keys it by name, so the key is the one place the name is written.
 pub struct DeclaredRecord {
     path: &'static str,
-    name: String,
     columns: Vec<(String, String)>,
 }
 
@@ -70,8 +72,9 @@ pub struct DeclaredRecord {
 /// could not tell an argument from a stored column.
 pub fn assert_retained_projections_hold_no_dense_identity() {
     let declared = declared_records();
+    assert_roots_are_declared_where_modelled(&declared);
     let reached = reached_from_roots(&declared);
-    let names: BTreeSet<&str> = reached.iter().map(|record| record.name.as_str()).collect();
+    let names: BTreeSet<&str> = reached.iter().map(|(name, _)| *name).collect();
     for expected in REACHED_PROJECTION_TYPES {
         assert!(
             names.contains(expected),
@@ -80,7 +83,7 @@ pub fn assert_retained_projections_hold_no_dense_identity() {
     }
     let offenders: Vec<String> = reached
         .iter()
-        .flat_map(|record| dense_columns(record))
+        .flat_map(|(name, record)| dense_columns(name, record))
         .collect();
     assert!(
         offenders.is_empty(),
@@ -88,44 +91,83 @@ pub fn assert_retained_projections_hold_no_dense_identity() {
     );
 }
 
-/// Every column one declared record holds, by name.
+/// Every column every record declared under one name holds.
+///
+/// One name may be several declarations, so every one of them answers. A map
+/// resolving a name to whichever source was walked last would silently drop the
+/// other declaration's columns from every claim read through here.
 pub fn declared_columns(name: &str) -> Vec<String> {
     let declared = declared_records();
-    let record = declared
+    let held = declared
         .get(name)
         .unwrap_or_else(|| panic!("no production source declares {name}"));
-    record
-        .columns
-        .iter()
+    held.iter()
+        .flat_map(|record| &record.columns)
         .map(|(column, _)| column.clone())
         .collect()
 }
 
-/// Every record this crate's production sources declare, by name.
-fn declared_records() -> BTreeMap<String, DeclaredRecord> {
-    SOURCES
-        .iter()
-        .flat_map(|entry| declared_in(entry.path))
-        .map(|record| (record.name.clone(), record))
-        .collect()
+/// Every root of the retained projection is declared by exactly the source the
+/// model names, and by no other.
+///
+/// The model carries the declaring path beside each name, and a walk keyed by
+/// name alone would answer for a type of that name wherever it came from. The
+/// path is what binds a root to the declaration this case is actually about.
+fn assert_roots_are_declared_where_modelled(declared: &BTreeMap<String, Vec<DeclaredRecord>>) {
+    for (path, name) in RETAINED_PROJECTION_ROOTS {
+        let sites: Vec<&str> = declared
+            .get(*name)
+            .map(|held| held.iter().map(|record| record.path).collect())
+            .unwrap_or_default();
+        assert_eq!(
+            sites,
+            vec![*path],
+            "{name} is declared by exactly the source the retained model names"
+        );
+    }
 }
 
-/// Every record one production source declares.
-fn declared_in(path: &'static str) -> Vec<DeclaredRecord> {
+/// Every record this crate's production sources declare, keyed by name.
+///
+/// A name answers with every declaration that carries it. Two adapters each
+/// state their own `Inputs`, their own `Vocabulary`, and their own planned
+/// units, so a map of one record per name would resolve an ambiguous name to
+/// whichever source came last in the inventory and read the other adapter's
+/// columns for nothing — which is exactly how a dense identity stored one side
+/// of a collision would escape the scan below.
+fn declared_records() -> BTreeMap<String, Vec<DeclaredRecord>> {
+    let mut found: BTreeMap<String, Vec<DeclaredRecord>> = BTreeMap::new();
+    for entry in SOURCES {
+        for (name, record) in declared_in(entry.path) {
+            found.entry(name).or_default().push(record);
+        }
+    }
+    found
+}
+
+/// Every record one production source declares, beside the name it is declared
+/// under.
+fn declared_in(path: &'static str) -> Vec<(String, DeclaredRecord)> {
     let file = parsed(path);
     declared_items(&file.items)
         .into_iter()
         .filter_map(|item| match item {
-            syn::Item::Struct(found) => Some(DeclaredRecord {
-                path,
-                name: found.ident.to_string(),
-                columns: stated_columns(found.fields.iter()),
-            }),
-            syn::Item::Enum(found) => Some(DeclaredRecord {
-                path,
-                name: found.ident.to_string(),
-                columns: stated_columns(found.variants.iter().flat_map(|variant| &variant.fields)),
-            }),
+            syn::Item::Struct(found) => Some((
+                found.ident.to_string(),
+                DeclaredRecord {
+                    path,
+                    columns: stated_columns(found.fields.iter()),
+                },
+            )),
+            syn::Item::Enum(found) => Some((
+                found.ident.to_string(),
+                DeclaredRecord {
+                    path,
+                    columns: stated_columns(
+                        found.variants.iter().flat_map(|variant| &variant.fields),
+                    ),
+                },
+            )),
             _ => None,
         })
         .collect()
@@ -145,18 +187,27 @@ fn stated_columns<'a>(fields: impl Iterator<Item = &'a syn::Field>) -> Vec<(Stri
 }
 
 /// Every declared record reachable from the retained projection roots.
-fn reached_from_roots(declared: &BTreeMap<String, DeclaredRecord>) -> Vec<&DeclaredRecord> {
-    let mut visited: BTreeSet<&str> = BTreeSet::new();
+///
+/// A name reaches every declaration that states it. Following one of them would
+/// make the walk depend on inventory order, and the columns it never read would
+/// be exactly the ones nothing else examines.
+fn reached_from_roots(
+    declared: &BTreeMap<String, Vec<DeclaredRecord>>,
+) -> Vec<(&str, &DeclaredRecord)> {
+    let mut visited: BTreeSet<String> = BTreeSet::new();
     let mut pending: Vec<String> = RETAINED_PROJECTION_ROOTS
         .iter()
         .map(|(_, name)| (*name).to_owned())
         .collect();
-    let mut reached: Vec<&DeclaredRecord> = Vec::new();
+    let mut reached: Vec<(&str, &DeclaredRecord)> = Vec::new();
     while let Some(name) = pending.pop() {
-        let found = declared
-            .get(&name)
-            .filter(|record| visited.insert(record.name.as_str()));
-        reached.extend(found);
+        let Some((declared_name, found)) = declared.get_key_value(&name) else {
+            continue;
+        };
+        if !visited.insert(name) {
+            continue;
+        }
+        reached.extend(found.iter().map(|record| (declared_name.as_str(), record)));
         pending.extend(
             found
                 .iter()
@@ -181,7 +232,7 @@ fn named_types(stated: &str) -> Vec<String> {
 
 /// Every column of one declared record whose stated type names a dense
 /// identity.
-fn dense_columns(record: &DeclaredRecord) -> Vec<String> {
+fn dense_columns(name: &str, record: &DeclaredRecord) -> Vec<String> {
     record
         .columns
         .iter()
@@ -190,9 +241,7 @@ fn dense_columns(record: &DeclaredRecord) -> Vec<String> {
                 .iter()
                 .any(|identity| stated.contains(identity))
         })
-        .map(|(column, stated)| {
-            format!("{}::{}::{column} holds {stated}", record.path, record.name)
-        })
+        .map(|(column, stated)| format!("{}::{name}::{column} holds {stated}", record.path))
         .collect()
 }
 

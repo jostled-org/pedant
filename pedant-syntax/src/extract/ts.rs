@@ -15,6 +15,22 @@ use crate::tree_sitter::{node_text, walk_descendants};
 #[cfg(feature = "_ts_generic")]
 use crate::unit::SourceUnitKind;
 
+// Why an offering refuses.
+//
+// One backend can. The Go fact inventory runs beneath two ceilings and answers
+// with a `GoFactError` rather than an empty inventory, because an empty one
+// reads as "this file declares nothing". Every other backend answers by
+// recognizing nothing, which is a real answer: a `Declaration` is the whole of
+// what the shared recognizer can say.
+//
+// A build linking no Go grammar has no refusal to name, so the name is
+// uninhabited there and every offering below is `Ok` by construction. One name
+// rather than a second copy of the two functions that carry it.
+#[cfg(feature = "ts-go")]
+use crate::go::GoFactError as DeclarationRefusal;
+#[cfg(not(feature = "ts-go"))]
+use std::convert::Infallible as DeclarationRefusal;
+
 /// One recognized grammar node: the byte range to return and the node naming it.
 ///
 /// The range rather than a node, because a declaration's text is not always one
@@ -40,14 +56,14 @@ pub(crate) fn collect<'s>(
     source: &'s str,
     language: SyntaxLanguage,
     selector: &mut UnitSelector<'s>,
-) {
+) -> Result<(), DeclarationRefusal> {
     let Some(parsed) = crate::tree_sitter::parse_bound(source, language) else {
-        return;
+        return Ok(());
     };
-    if parsed.has_errors() {
-        return;
+    match parsed.has_errors() {
+        true => Ok(()),
+        false => offer_declarations(parsed.root(), source, language, selector),
     }
-    offer_declarations(parsed.root(), source, language, selector);
 }
 
 /// Offer every recognized declaration beneath `root` to `selector`.
@@ -59,44 +75,40 @@ pub(crate) fn collect<'s>(
 /// Go is routed away from the walk below before it starts. Its declarations are
 /// part of [`GoFileFacts`](crate::go::GoFileFacts), which capability
 /// attribution and Go resolution both read, so recognizing them a second time
-/// here would be a second grammar mapping that could answer differently.
+/// here would be a second grammar mapping that could answer differently. One
+/// `match` decides that, so the routing and the standing down are one answer:
+/// recognizing nothing for Go would still cost a whole-tree traversal.
 pub(crate) fn offer_declarations<'s>(
     root: Node<'_>,
     source: &'s str,
     language: SyntaxLanguage,
     selector: &mut UnitSelector<'s>,
-) {
-    #[cfg(feature = "ts-go")]
-    if matches!(language, SyntaxLanguage::Go) {
-        crate::go::offer_unit_declarations(root, source, selector);
+) -> Result<(), DeclarationRefusal> {
+    match language {
+        #[cfg(feature = "ts-go")]
+        SyntaxLanguage::Go => crate::go::offer_unit_declarations(root, source, selector),
+        #[cfg(feature = "_ts_generic")]
+        other => offer_recognized(root, source, other, selector),
+        #[cfg(not(feature = "_ts_generic"))]
+        _ => Ok(()),
     }
-    #[cfg(feature = "_ts_generic")]
-    if !go_owns(language) {
-        offer_recognized(root, source, language, selector);
-    }
-}
-
-/// Whether the Go fact inventory owns this language's declarations.
-///
-/// Read by the generic walk rather than by the Go route, because it is the
-/// generic walk that must stand down: recognizing nothing for Go still costs a
-/// whole-tree traversal per extraction.
-#[cfg(feature = "_ts_generic")]
-fn go_owns(language: SyntaxLanguage) -> bool {
-    cfg!(feature = "ts-go") && matches!(language, SyntaxLanguage::Go)
 }
 
 /// Offer every declaration the shared recognizer names beneath `root`.
 ///
 /// Absent from a build whose only grammar is Go, which the recognizer answers
 /// for nothing: the walk would visit every node to recognize none of them.
+///
+/// Answers `Ok` in every build it exists in. A `Declaration` is the whole of
+/// what this recognizer can say, and a language it holds no matcher for
+/// recognizes nothing rather than refusing.
 #[cfg(feature = "_ts_generic")]
 fn offer_recognized<'s>(
     root: Node<'_>,
     source: &'s str,
     language: SyntaxLanguage,
     selector: &mut UnitSelector<'s>,
-) {
+) -> Result<(), DeclarationRefusal> {
     let bytes = source.as_bytes();
     walk_descendants(root, |node| {
         let Some(declaration) = recognize(node, language) else {
@@ -111,6 +123,7 @@ fn offer_recognized<'s>(
         let name = declaration.name.map(|node| node_text(node, bytes));
         selector.keep(declaration.kind, name, declaration.range);
     });
+    Ok(())
 }
 
 /// The declaration `node` represents in `language`, if any.

@@ -15,7 +15,7 @@ use super::cache_ownership::assert_cache_modules_are_discovered;
 use super::inventory::{
     CACHE_SOURCES, PRODUCTION_SOURCES, SOURCES, TEST_ROOT, TEST_SUPPORT_SOURCES,
 };
-use super::scan::{code_only, compact};
+use super::scan::{compact, naming};
 
 /// Every predicate the cache family registers at the one root.
 pub const CACHE_PREDICATES: &[&str] = &[
@@ -225,16 +225,7 @@ fn assembly() -> String {
 
 /// No production source states a file, process, or network site.
 fn assert_states_no_capability() {
-    let offenders: Vec<String> = SOURCES
-        .iter()
-        .flat_map(|entry| {
-            let code = code_only(entry.text);
-            CAPABILITY_SPELLINGS
-                .iter()
-                .filter(move |spelling| code.contains(**spelling))
-                .map(move |spelling| format!("{} names {spelling}", entry.path))
-        })
-        .collect();
+    let offenders = naming(PRODUCTION_SOURCES, CAPABILITY_SPELLINGS, "the capability");
     assert!(
         offenders.is_empty(),
         "graph production sources state no file, process, or network site: {offenders:?}"
@@ -248,16 +239,8 @@ fn assert_states_no_trait_object() {
         .map(|owner| format!("{owner}<{}", "dyn"))
         .chain(std::iter::once(format!("&{}", "dyn")))
         .collect::<Vec<String>>();
-    let offenders: Vec<String> = SOURCES
-        .iter()
-        .flat_map(|entry| {
-            let code = compact(entry.text);
-            spellings
-                .iter()
-                .filter(move |spelling| code.contains(spelling.as_str()))
-                .map(move |spelling| format!("{} names {spelling}", entry.path))
-        })
-        .collect();
+    let borrowed: Vec<&str> = spellings.iter().map(String::as_str).collect();
+    let offenders = naming(PRODUCTION_SOURCES, &borrowed, "the trait object");
     assert!(
         offenders.is_empty(),
         "graph production sources state no trait object: {offenders:?}"

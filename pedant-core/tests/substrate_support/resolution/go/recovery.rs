@@ -199,6 +199,7 @@ fn variant_of(error: &GoSnapshotError) -> &'static str {
     match error {
         GoSnapshotError::OutOfRoot { .. } => "OutOfRoot",
         GoSnapshotError::NonUtf8Path { .. } => "NonUtf8Path",
+        GoSnapshotError::PathRead { .. } => "PathRead",
         GoSnapshotError::DirectoryRead { .. } => "DirectoryRead",
         GoSnapshotError::SourceRead { .. } => "SourceRead",
         GoSnapshotError::NonUtf8Source { .. } => "NonUtf8Source",
@@ -211,6 +212,7 @@ fn variant_of(error: &GoSnapshotError) -> &'static str {
             ..
         } => "IncompleteSource:Recovered",
         GoSnapshotError::MissingPackageClause { .. } => "MissingPackageClause",
+        GoSnapshotError::MissingStoredSource { .. } => "MissingStoredSource",
         GoSnapshotError::ConflictingPackageClause { .. } => "ConflictingPackageClause",
         GoSnapshotError::FactExtraction { .. } => "FactExtraction",
         GoSnapshotError::DirectoryEntryLimitExceeded { .. } => "DirectoryEntryLimitExceeded",

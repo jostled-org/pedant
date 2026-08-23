@@ -5,6 +5,8 @@
 //! apart leaves exactly one body that grows the table, which is what makes the
 //! ceiling stated there dominate every unit a snapshot holds.
 
+use crate::resolution::capacity::admits_one_more;
+
 use super::discovery::GoPackageDirectory;
 use super::limits::GoResolutionLimits;
 use super::packages::{PackageSite, UnitDraft, directory_units};
@@ -65,11 +67,10 @@ impl UnitTable {
 
 /// One more package unit must still fit under the configured ceiling.
 fn check_unit_capacity(held: usize, limits: GoResolutionLimits) -> Result<(), GoSnapshotError> {
-    let ceiling = usize::try_from(limits.max_units).unwrap_or(usize::MAX);
-    match held.saturating_add(1) > ceiling {
-        true => Err(GoSnapshotError::UnitLimitExceeded {
+    match admits_one_more(held, limits.max_units) {
+        true => Ok(()),
+        false => Err(GoSnapshotError::UnitLimitExceeded {
             limit: limits.max_units,
         }),
-        false => Ok(()),
     }
 }

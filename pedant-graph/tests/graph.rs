@@ -20,8 +20,9 @@ use graph_support::{
     analysis_selection, analysis_source_boundary, analysis_traversal, cache_analysis,
     cache_analysis_lifetime, cache_analysis_retention, cache_analysis_sharing, cache_exact,
     cache_ownership, cache_ownership_path, cache_ownership_state, cache_projection,
-    cache_remapping, cache_revision, cache_source_boundary, contract, defensive, evidence,
-    go_ownership, isolation, ownership, projection_exactness, projection_ownership, topology, wire,
+    cache_remapping, cache_revision, cache_rust_only, cache_source_boundary, contract, defensive,
+    evidence, go_ownership, isolation, ownership, projection_exactness, projection_ownership,
+    topology, wire,
 };
 
 #[cfg(feature = "go")]
@@ -95,7 +96,7 @@ fn rust_direct_and_cached_projection_bytes_stay_exact_after_neutral_assembly() {
 
 #[test]
 fn graph_cache_remains_rust_only_after_neutral_assembly() {
-    projection_exactness::assert_cache_remains_rust_only();
+    cache_rust_only::assert_cache_remains_rust_only();
 }
 
 #[test]
@@ -416,6 +417,12 @@ fn go_graph_refuses_stale_resolution_before_allocation() {
 #[test]
 fn go_graph_limits_refuse_before_partial_records() {
     go_defensive::assert_limits_refuse_before_partial_records();
+}
+
+#[cfg(feature = "go")]
+#[test]
+fn go_graph_projects_a_holderless_method_at_the_receiver_level() {
+    go_defensive::assert_holderless_method_projects_at_the_receiver_level();
 }
 
 #[test]

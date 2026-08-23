@@ -41,6 +41,7 @@ mod source;
 mod store;
 mod unit;
 mod unit_table;
+mod written_type_fact;
 
 /// Proof-only restatement of the snapshot claims a fingerprint covers.
 #[cfg(feature = "resolution-test-support")]
@@ -68,6 +69,7 @@ pub use snapshot_error::{GoSnapshotError, GoSourceDefect};
 pub use snapshot_module::{GoSnapshotEdge, GoSnapshotModule, GoSnapshotModuleId};
 pub use source::GoSource;
 pub use unit::{GoPackageContext, GoResolutionUnit, GoSnapshotUnitId};
+pub use written_type_fact::GoWrittenTypeRecord;
 
 /// The closed grammar vocabulary a retained Go fact inventory speaks.
 ///

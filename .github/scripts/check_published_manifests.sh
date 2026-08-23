@@ -18,14 +18,21 @@
 
 set -euo pipefail
 
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# `CDPATH` is cleared inside the substitution: `dirname` yields a bare relative
+# path for a script invoked by a relative path, `cd` then consults `CDPATH`, and
+# a match there both enters the wrong directory and prints it — leaving
+# `script_dir` a two-line value naming a tree this repository does not own.
+script_dir="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=repository_check_lib.sh
 . "${script_dir}/repository_check_lib.sh"
 
 cd_repo_root
 
-require_tools cargo git jq
+# `rg` joins the list because `workspace_metadata` now classifies cargo's own
+# output: without it, an unavailable registry would be reported as manifest
+# drift rather than as a machine to retry on.
+require_tools cargo git jq rg
 
 metadata="$(workspace_metadata)"
 repo_root="$(pwd)"

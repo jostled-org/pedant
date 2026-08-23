@@ -9,14 +9,17 @@
 use std::collections::BTreeSet;
 
 use pedant_graph::{
-    CodeGraph, GraphAnalysis, GraphAnalysisLimits, GraphDirection, GraphEdgeSelection,
+    CodeGraph, GraphAnalysis, GraphAnalysisLimits, GraphDirection, GraphEdgeSelection, GraphNodeId,
 };
 use serde_json::Value;
 
 use super::cache_exact;
 use super::go_corpus::GO_CORPUS;
-use super::go_fixture::{GoFixture, close_repository, project_go, projected};
+use super::go_fixture::{GoFixture, GoResolved, close_repository, project_go, projected};
 use super::projection_exactness;
+use super::wire::{
+    CERTAINTIES, EDGE_KINDS, LOCATION_KINDS, NODE_CATEGORIES, ORIGIN_KINDS, REFERENCE_KINDS,
+};
 
 /// The ceilings every query in these cases is admitted under.
 fn query_limits() -> GraphAnalysisLimits {
@@ -33,49 +36,79 @@ const WIRE_KEYS: &[&str] = &[
     "edges",
 ];
 
-/// Every node category the graph owns.
-const NODE_CATEGORIES: &[&str] = &["file", "container", "function", "type", "value"];
-
-/// Every reference kind the graph owns.
-const REFERENCE_KINDS: &[&str] = &["call", "import", "implementation", "reference"];
-
-/// Every edge kind the graph owns.
-const EDGE_KINDS: &[&str] = &[
-    "call",
-    "import",
-    "implementation",
-    "reference",
-    "depends_on",
-];
-
-/// Every certainty the graph owns.
-const CERTAINTIES: &[&str] = &["resolved", "possible"];
-
-/// Every location kind the graph owns.
-const LOCATION_KINDS: &[&str] = &["file", "span"];
-
-/// Every edge origin kind the graph owns.
-const ORIGIN_KINDS: &[&str] = &["reference", "dependency"];
-
-/// Equal repository bytes produce equal Go graph bytes whatever order the
-/// files were written in, and the retained Rust answers are unchanged.
+/// One Go repository states one snapshot whatever order its files were written
+/// in, and one snapshot states one set of graph bytes.
+///
+/// Two claims, and the first is what makes the second worth reading. The Go
+/// discovery walk sorts every directory entry, so the order the corpus happened
+/// to be written in is already gone by the time a projection sees anything.
+/// That is asserted rather than assumed: without it the comparison below would
+/// be the assembler called twice over one input and could not fail. What the
+/// projection is then held to is that one snapshot, read twice, states one set
+/// of version-1 bytes.
+///
+/// The fingerprint is not what answers the first claim, and must not be read as
+/// though it were: it covers the canonical repository root, and two fixtures
+/// are two temporary directories, so two snapshots of one corpus never share
+/// one. What a projection reads is each package context's source membership and
+/// each source's normalized path and exact bytes, and those already agree.
 pub fn assert_go_graph_is_deterministic_and_rust_stays_exact() {
     let forward = GoFixture::build(GO_CORPUS);
     let reversed = GoFixture::written(GO_CORPUS.iter().rev().copied());
-    let first = compact(&projected(&forward.resolve()));
-    let again = compact(&projected(&forward.resolve()));
-    let second = compact(&projected(&reversed.resolve()));
+    let written = forward.resolve();
+    let rewritten = reversed.resolve();
     close_repository(forward);
     close_repository(reversed);
     assert_eq!(
+        snapshot_sources(&written),
+        snapshot_sources(&rewritten),
+        "both walks read the same sources, with the same bytes, in one order"
+    );
+    assert_eq!(
+        instantiated_sources(&written),
+        instantiated_sources(&rewritten),
+        "both walks give every package context the same source membership"
+    );
+
+    let first = compact(&projected(&written));
+    let again = compact(&projected(&written));
+    let second = compact(&projected(&rewritten));
+    assert_eq!(
         first, second,
-        "directory enumeration order is not part of what a repository states"
+        "one repository states one set of version-1 bytes"
     );
     assert_eq!(
         first, again,
-        "the same repository projects the same bytes twice"
+        "the same snapshot projects the same bytes twice"
     );
     projection_exactness::assert_rust_projection_bytes_stay_exact();
+}
+
+/// Every source one Go snapshot holds, as the normalized path and the exact
+/// bytes read at it, in the order the walk stored them.
+fn snapshot_sources(resolved: &GoResolved) -> Vec<String> {
+    resolved
+        .snapshot
+        .sources()
+        .iter()
+        .map(|source| format!("{}|{:02x?}", source.path(), source.digest()))
+        .collect()
+}
+
+/// The sources each package context instantiates, in snapshot unit order.
+fn instantiated_sources(resolved: &GoResolved) -> Vec<String> {
+    resolved
+        .snapshot
+        .units()
+        .iter()
+        .map(|unit| {
+            unit.sources()
+                .iter()
+                .map(|path| &**path)
+                .collect::<Vec<&str>>()
+                .join(",")
+        })
+        .collect()
 }
 
 /// A Go graph serializes to the version-1 object and to no new branch of it.
@@ -196,9 +229,6 @@ pub fn assert_existing_queries_consume_a_go_graph() {
         "the declared partition finds the containers a Go graph states"
     );
     let start = roots[0];
-    let neighbors = analysis
-        .neighbors(start, 3, GraphDirection::Outgoing)
-        .unwrap_or_else(|error| panic!("a Go graph answers a bounded neighborhood: {error}"));
     let subgraph = analysis
         .subgraph(start, 0, GraphDirection::Outgoing)
         .unwrap_or_else(|error| panic!("a Go graph answers an induced subgraph: {error}"));
@@ -206,6 +236,15 @@ pub fn assert_existing_queries_consume_a_go_graph() {
         subgraph.nodes(),
         &[start],
         "the induced subgraph reached in no steps is the seed alone"
+    );
+
+    let reaching = reaching_node(&graph);
+    let neighbors = analysis
+        .neighbors(reaching, 3, GraphDirection::Outgoing)
+        .unwrap_or_else(|error| panic!("a Go graph answers a bounded neighborhood: {error}"));
+    assert!(
+        neighbors.iter().next().is_some(),
+        "a Go graph answers a non-empty neighborhood"
     );
 
     let components = analysis.strongly_connected_components();
@@ -243,11 +282,27 @@ pub fn assert_existing_queries_consume_a_go_graph() {
     );
     for reached in neighbors.iter() {
         assert!(
-            analysis.path(start, reached.node()).is_ok(),
+            analysis.path(reaching, reached.node()).is_ok(),
             "every reached node is reachable by the path query too"
         );
     }
     cache_exact::assert_exact_build_matches_direct();
+}
+
+/// The first node this selection gives an outgoing edge.
+///
+/// The bounded walk is seeded from here rather than from a declared-partition
+/// root. A root is a container, and a container states no code relation of its
+/// own — the one edge two containers can share is a dependency, which this
+/// selection excludes. A walk from a root therefore reaches nothing at all, and
+/// every claim about what it found would hold over an empty answer.
+fn reaching_node(graph: &CodeGraph) -> GraphNodeId {
+    graph
+        .edges()
+        .iter()
+        .find(|edge| GraphEdgeSelection::code_relations().allows(edge))
+        .map(|edge| edge.source())
+        .unwrap_or_else(|| panic!("the corpus states an edge this selection admits"))
 }
 
 /// The compact version-1 bytes one graph serializes to.

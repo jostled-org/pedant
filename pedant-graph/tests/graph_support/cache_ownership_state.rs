@@ -17,8 +17,8 @@
 
 use super::inventory::{PRODUCTION_SOURCES, SOURCES};
 use super::scan::{
-    code_only, compact, declaring_sources, method_body, method_body_of, position_of, source,
-    subject_methods,
+    code_only, compact, declaring_sources, method_body, method_body_of, naming, position_of,
+    source, subject_methods,
 };
 
 /// The one module holding a cached graph's derived state behind a lock.
@@ -71,17 +71,15 @@ const COUNTER_ADVANCES: &[&str] = &["fetch_add", "saturating_add", "wrapping_add
 /// Written down exactly rather than as a permitted set: a second module that
 /// advanced a plain `u64` hit count would be a site this table does not hold,
 /// and a module in the table that grew a second advance would state a count this
-/// table does not match. Five of the six are arithmetic over stated totals —
-/// candidate tallies, occurrence tallies, an admitted node count, and the plan
-/// positions a Go build gives its modules — and none of them is a cache
-/// statistic. The sixth is the cache's one saturating owner.
+/// table does not match. Three of the four are arithmetic over stated totals —
+/// the plan positions a Go build gives its modules, occurrence tallies, and the
+/// one capacity owner's node and candidate totals — and none of them is a cache
+/// statistic. The fourth is the cache's one saturating owner.
 const COUNTER_ADVANCE_SITES: &[(&str, usize)] = &[
     ("src/cache/state.rs", 1),
-    ("src/go/placement.rs", 2),
-    ("src/go/projection.rs", 1),
+    ("src/go/placement.rs", 1),
     ("src/projection/placement.rs", 1),
-    ("src/projection/state.rs", 1),
-    ("src/rust/projection.rs", 1),
+    ("src/projection/state.rs", 2),
 ];
 
 /// The exact spellings a classification reaches a counter through.
@@ -291,7 +289,11 @@ pub fn assert_counter_updates_are_saturating_and_single_owned() {
 /// Nobody outside the modelled holders names a counter's storage.
 fn assert_counter_storage_is_held_by_its_owners() {
     assert_is_modelled(COUNTER_HOLDERS, "counter holder");
-    let offenders = sources_naming(COUNTER_REPRESENTATIONS, COUNTER_HOLDERS);
+    let offenders = sources_naming(
+        COUNTER_REPRESENTATIONS,
+        COUNTER_HOLDERS,
+        "the counter storage",
+    );
     assert!(
         offenders.is_empty(),
         "a counter is held by exactly the modelled owners: {offenders:?}"
@@ -381,7 +383,7 @@ fn classifications_inside_updates(code: &str) -> usize {
 /// algorithm.
 fn assert_statistics_reach_only_their_readers() {
     assert_is_modelled(STATISTIC_READERS, "statistic reader");
-    let offenders = sources_naming(STATISTIC_SPELLINGS, STATISTIC_READERS);
+    let offenders = sources_naming(STATISTIC_SPELLINGS, STATISTIC_READERS, "the statistic");
     assert!(
         offenders.is_empty(),
         "a statistic cannot reach identity, order, assembly, or an algorithm: {offenders:?}"
@@ -389,18 +391,13 @@ fn assert_statistics_reach_only_their_readers() {
 }
 
 /// Every production source outside `permitted` that names one of `spellings`.
-fn sources_naming(spellings: &[&str], permitted: &[&str]) -> Vec<String> {
-    PRODUCTION_SOURCES
+fn sources_naming(spellings: &[&str], permitted: &[&str], vocabulary: &str) -> Vec<String> {
+    let scanned: Vec<&str> = PRODUCTION_SOURCES
         .iter()
-        .filter(|path| !permitted.contains(*path))
-        .flat_map(|path| {
-            let code = compact(source(path));
-            spellings
-                .iter()
-                .filter(move |spelling| code.contains(**spelling))
-                .map(move |spelling| format!("{path} names {spelling}"))
-        })
-        .collect()
+        .copied()
+        .filter(|path| !permitted.contains(path))
+        .collect();
+    naming(&scanned, spellings, vocabulary)
 }
 
 /// Every path an allow-list names is a production source this crate scans.

@@ -13,16 +13,19 @@
 use std::sync::Arc;
 
 use pedant_types::{
-    Language, ResolutionGap, ResolutionRecord, ResolutionTier, SourceSpan, SymbolReference,
+    Language, ReferenceKind, ResolutionGap, ResolutionRecord, ResolutionTier, SourceSpan,
+    SymbolDefinition, SymbolReference,
 };
 
 use crate::edge::{DependencyEvidence, EdgeDraft, GraphCertainty, GraphEdgeKind, GraphEdgeOrigin};
 use crate::error::GraphBuildError;
-use crate::id::{GraphNodeId, GraphReferenceId};
+use crate::id::{GraphNodeId, GraphReferenceId, position};
 use crate::node::{GraphNodeKind, GraphNodeLocation, NodeDraft};
 use crate::reference::{GraphReferenceKind, ReferenceDraft};
 
-use super::placement::{DefinitionIdentity, DefinitionTable, SourceIdentity};
+use super::placement::{
+    DefinitionIdentity, DefinitionTable, PlacedSource, SourceIdentity, SourceRecords,
+};
 use super::state::ProjectionCapacity;
 use super::validation;
 
@@ -106,6 +109,32 @@ pub(crate) struct DefinitionProjection {
 }
 
 impl DefinitionProjection {
+    /// One report definition, at the graph kind the adapter's own reading named
+    /// for it.
+    ///
+    /// Only the kind is the adapter's. The identity, the language, and the
+    /// logical owner are the shared report's, so every adapter copies them the
+    /// one way rather than each stating its own reading of the same record.
+    pub(crate) fn stated<Named>(
+        table: &DefinitionTable,
+        reported: (u32, &SymbolDefinition),
+        named: Named,
+    ) -> Result<Self, GraphBuildError>
+    where
+        Named: Fn(&SymbolDefinition) -> Result<GraphNodeKind, GraphBuildError>,
+    {
+        let (at, definition) = reported;
+        Ok(Self {
+            identity: Arc::clone(validation::definition_identity(table, at)?),
+            language: definition.language(),
+            kind: named(definition)?,
+            parent: validation::optional_identity(
+                table,
+                definition.parent().map(|parent| parent.index()),
+            )?,
+        })
+    }
+
     /// The node this definition is minted from, in one file node's bytes.
     pub(crate) fn draft(&self, file: GraphNodeId) -> NodeDraft {
         NodeDraft {
@@ -121,11 +150,13 @@ impl DefinitionProjection {
 }
 
 /// One candidate edge, before any dense identity exists.
+///
+/// The edge kind is not held: it is decided by the referring site, so every
+/// candidate of one record would store the same value and a reader would have
+/// two statements of one fact to keep in step.
 pub(crate) struct CandidateProjection {
     /// The definition this candidate names.
     pub(crate) target: Arc<DefinitionIdentity>,
-    /// The edge kind the referring site produces.
-    pub(crate) kind: GraphEdgeKind,
     /// How much the candidate is known.
     pub(crate) certainty: GraphCertainty,
 }
@@ -138,9 +169,8 @@ impl CandidateProjection {
     /// disagree about what a candidate names.
     pub(crate) fn stated(
         table: &DefinitionTable,
-        answered: (&ResolutionRecord, GraphEdgeKind),
+        record: &ResolutionRecord,
     ) -> Result<Box<[Self]>, GraphBuildError> {
-        let (record, kind) = answered;
         record
             .candidates()
             .iter()
@@ -149,24 +179,24 @@ impl CandidateProjection {
                     validation::definition_identity(table, candidate.definition().index())?;
                 Ok(Self {
                     target: Arc::clone(target),
-                    kind,
                     certainty: GraphCertainty::of(candidate.certainty()),
                 })
             })
             .collect()
     }
 
-    /// The edge this candidate is minted from.
+    /// The edge this candidate is minted from, at the kind its site produces.
     pub(crate) fn draft(
         &self,
         site: (GraphNodeId, GraphReferenceId),
         target: GraphNodeId,
+        kind: GraphEdgeKind,
     ) -> EdgeDraft {
         let (source, reference) = site;
         EdgeDraft {
             source,
             target,
-            kind: self.kind,
+            kind,
             certainty: self.certainty,
             origin: GraphEdgeOrigin::Reference { reference },
         }
@@ -184,7 +214,11 @@ pub(crate) struct ReferenceProjection {
     /// The exact referring range.
     pub(crate) span: SourceSpan,
     /// Why the answer is incomplete, when it is.
-    pub(crate) gaps: Box<[ResolutionGap]>,
+    ///
+    /// Shared rather than owned: a retained fragment drafts its records again
+    /// on every build that reuses it, and copying the answer each time would
+    /// spend on the one path that exists to spend nothing.
+    pub(crate) gaps: Arc<[ResolutionGap]>,
     /// The definition the site sits inside, when the report states one.
     pub(crate) enclosing: Option<Arc<DefinitionIdentity>>,
     /// Every candidate the answer offered, in stated order.
@@ -193,21 +227,22 @@ pub(crate) struct ReferenceProjection {
 
 impl ReferenceProjection {
     /// One reference site and every candidate its answer offered, at the graph
-    /// kind the adapter's own vocabulary named for it.
+    /// kind the adapter's own reading named for it.
     ///
-    /// Only the kind is the adapter's. The site, the answer's gaps, the
-    /// enclosing definition, and the candidates are the shared report's, so
-    /// every adapter copies them the one way rather than each stating its own
-    /// reading of the same record.
+    /// Only the naming is the adapter's, and the refusal a kind it does not
+    /// name earns is taken here: both reference paths reach one call rather
+    /// than each stating the same refusal before it. The site, the answer's
+    /// gaps, the enclosing definition, and the candidates are the shared
+    /// report's, so every adapter copies them the one way.
     pub(crate) fn stated(
         table: &DefinitionTable,
         reported: (&SymbolReference, &ResolutionRecord),
-        kind: GraphReferenceKind,
+        named: Option<GraphReferenceKind>,
     ) -> Result<Self, GraphBuildError> {
         let (reference, record) = reported;
         Ok(Self {
             language: reference.language(),
-            kind,
+            kind: validation::stated_reference_kind(named, reference)?,
             text: Arc::from(reference.text()),
             span: SymbolReference::span(reference).clone(),
             gaps: record.gaps().into(),
@@ -217,10 +252,7 @@ impl ReferenceProjection {
                     .enclosing_definition()
                     .map(|enclosing| enclosing.index()),
             )?,
-            candidates: CandidateProjection::stated(
-                table,
-                (record, GraphEdgeKind::of_reference(kind)),
-            )?,
+            candidates: CandidateProjection::stated(table, record)?,
         })
     }
 
@@ -232,9 +264,25 @@ impl ReferenceProjection {
             kind: self.kind,
             text: Arc::clone(&self.text),
             span: self.span.clone(),
-            gaps: self.gaps.iter().copied().collect(),
+            gaps: Arc::clone(&self.gaps),
         }
     }
+}
+
+/// What one adapter's own dependency edge declares, before a plan position
+/// exists.
+///
+/// The two endpoints arrive already looked up: which snapshot identity an edge
+/// names and which table answers for it is the adapter's, and what a graph
+/// cannot do with an endpoint nothing answers for is the same in every
+/// language.
+pub(crate) struct StatedDependency {
+    /// The plan positions the depending and depended-on endpoints bound.
+    pub(crate) bound: (Option<u32>, Option<u32>),
+    /// How much the declaration is known.
+    pub(crate) certainty: GraphCertainty,
+    /// The declaration that is its own evidence.
+    pub(crate) evidence: DependencyEvidence,
 }
 
 /// One `DependsOn` edge, stated between unit positions.
@@ -250,6 +298,38 @@ pub(crate) struct DependencyProjection {
 }
 
 impl DependencyProjection {
+    /// One projection per stated dependency edge, in the order they are stated.
+    ///
+    /// The edge's own position and the refusal an unbound endpoint earns belong
+    /// to every adapter alike, so they are stated once here and the adapter
+    /// supplies only what its own snapshot declares.
+    pub(crate) fn stated<Edge, Declared>(
+        edges: &[Edge],
+        declared: Declared,
+    ) -> Result<Box<[Self]>, GraphBuildError>
+    where
+        Declared: Fn(&Edge) -> StatedDependency,
+    {
+        edges
+            .iter()
+            .enumerate()
+            .map(|(index, edge)| Self::bound(position(index), declared(edge)))
+            .collect()
+    }
+
+    /// One projection, with both endpoints proved against the plan.
+    fn bound(edge: u32, declared: StatedDependency) -> Result<Self, GraphBuildError> {
+        let (depending, depended) = declared.bound;
+        let source = validation::dependency_unit(depending, (edge, declared.evidence.alias()))?;
+        let target = validation::dependency_unit(depended, (edge, declared.evidence.alias()))?;
+        Ok(Self {
+            source,
+            target,
+            certainty: declared.certainty,
+            evidence: declared.evidence,
+        })
+    }
+
     /// The edge this declaration is minted from, between two containers.
     pub(crate) fn draft(&self, source: GraphNodeId, target: GraphNodeId) -> EdgeDraft {
         EdgeDraft {
@@ -283,6 +363,53 @@ pub(crate) struct SourceFragment {
     pub(crate) definitions: Box<[DefinitionProjection]>,
     /// Every reference stated in it, in report order.
     pub(crate) references: Box<[ReferenceProjection]>,
+}
+
+impl SourceFragment {
+    /// Everything one placed source contributes to a graph, derived from the
+    /// report that placed it.
+    ///
+    /// Two decisions are the adapter's and nothing else is: which graph node
+    /// kind one report definition takes, and what one report reference kind
+    /// denotes. Both arrive as the adapter's own reading, so the walk over the
+    /// placed records, every join through the current report's identity table,
+    /// and every refusal those joins earn are written once for every language.
+    pub(crate) fn derived<Named>(
+        placed: (&PlacedSource, &DefinitionTable),
+        records: &SourceRecords<'_>,
+        named: (Named, fn(ReferenceKind) -> Option<GraphReferenceKind>),
+    ) -> Result<Self, GraphBuildError>
+    where
+        Named: Fn(&SymbolDefinition) -> Result<GraphNodeKind, GraphBuildError>,
+    {
+        let (source, table) = placed;
+        let (definition_kind, reference_kind) = named;
+        Ok(Self {
+            source: source.source.shared(),
+            definitions: records
+                .definitions
+                .iter()
+                .copied()
+                .map(|reported| DefinitionProjection::stated(table, reported, &definition_kind))
+                .collect::<Result<_, GraphBuildError>>()?,
+            references: records
+                .references
+                .iter()
+                .copied()
+                .map(|reported| stated_reference(table, reported, reference_kind))
+                .collect::<Result<_, GraphBuildError>>()?,
+        })
+    }
+}
+
+/// One placed reference, at the kind the adapter's own reading named for it.
+fn stated_reference(
+    table: &DefinitionTable,
+    reported: (&SymbolReference, &ResolutionRecord),
+    named: fn(ReferenceKind) -> Option<GraphReferenceKind>,
+) -> Result<ReferenceProjection, GraphBuildError> {
+    let (reference, _) = reported;
+    ReferenceProjection::stated(table, reported, named(reference.kind()))
 }
 
 /// One fragment beside the unit the current report places it under.

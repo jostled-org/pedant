@@ -25,6 +25,20 @@ pub enum GoProjectError {
         /// The offending path, rendered lossily for the message only.
         path: Box<str>,
     },
+    /// A path beneath the repository root could not be resolved.
+    ///
+    /// Absence is not this: a path nothing holds is reported by the stage that
+    /// asked for it. This is a path the filesystem refused to answer for — a
+    /// denied permission, a symlink loop, an over-long name — which must not
+    /// read as a declaration the repository never made.
+    #[error("failed to resolve {path}: {source}")]
+    PathRead {
+        /// The path that could not be resolved.
+        path: Box<str>,
+        /// The underlying I/O failure.
+        #[source]
+        source: std::io::Error,
+    },
     /// A manifest could not be read.
     #[error("failed to read {path}: {source}")]
     ManifestRead {
@@ -130,6 +144,18 @@ pub enum GoProjectError {
         first: Box<str>,
         /// The directory that declared it again, repository-relative.
         second: Box<str>,
+    },
+    /// A module index the loader itself minted names no admitted module.
+    ///
+    /// Defensive: every index handed to a depth or directory lookup is one
+    /// `retain_module` just returned. It refuses rather than answering, because
+    /// a depth taken as zero restarts the replacement-depth count that bounds
+    /// the module graph, and a directory taken as empty renders as the
+    /// repository root in a conflict refusal.
+    #[error("module record {index} was admitted but is not held")]
+    MissingAdmittedModule {
+        /// The project-local module index that names no record.
+        index: u32,
     },
     /// The project holds more module manifests than the configured limit allows.
     #[error("project holds more than {limit} module manifests")]

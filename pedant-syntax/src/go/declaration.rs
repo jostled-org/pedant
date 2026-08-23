@@ -1,9 +1,8 @@
 //! The declarations one Go source states, and which grammar nodes state them.
 
 use crate::go::context::{FactContext, named_children, text};
-use crate::go::scope::GoScopeKind;
 use crate::go::span::GoFactSpan;
-use crate::go::written_type::{WrittenType, field_type, type_parts};
+use crate::go::written_type::{ReadType, WrittenType, result_type, type_parts};
 use crate::tree_sitter::Node;
 
 /// What one Go declaration declares.
@@ -160,30 +159,43 @@ impl<'source> GoDeclarationFact<'source> {
 /// declaring a package member.
 pub(super) fn declarations_at<'source>(
     node: Node<'_>,
+    kind: &str,
     source: &'source str,
     context: FactContext,
 ) -> Box<[GoDeclarationFact<'source>]> {
-    match node.kind() {
-        "function_declaration" => {
-            package_callable(node, GoDeclarationKind::Function, source, context)
-        }
-        "method_declaration" => package_callable(node, GoDeclarationKind::Method, source, context),
+    match kind {
+        "function_declaration" => callable_declaration(
+            node,
+            GoDeclarationKind::Function,
+            source,
+            context,
+            context.at_file_scope(),
+            None,
+        ),
+        "method_declaration" => callable_declaration(
+            node,
+            GoDeclarationKind::Method,
+            source,
+            context,
+            context.at_file_scope(),
+            None,
+        ),
+        "method_elem" => callable_declaration(
+            node,
+            GoDeclarationKind::InterfaceMethod,
+            source,
+            context,
+            context.declaration_kind == Some(GoDeclarationKind::Interface),
+            context.declaration,
+        ),
         "type_spec" => package_spec(node, declared_kind(node), source, context),
         "type_alias" => package_spec(node, GoDeclarationKind::TypeAlias, source, context),
         "const_spec" => package_names(node, GoDeclarationKind::Constant, source, context),
         "var_spec" => package_names(node, GoDeclarationKind::Variable, source, context),
         "field_declaration" => struct_members(node, source, context),
-        "method_elem" => {
-            interface_member(node, GoDeclarationKind::InterfaceMethod, source, context)
-        }
         "type_elem" => interface_embed(node, source, context),
         _ => Box::new([]),
     }
-}
-
-/// Whether a declaration written here is a package member.
-fn at_package_scope(context: FactContext) -> bool {
-    matches!(context.scope_kind, GoScopeKind::File)
 }
 
 /// One declaration naming `name_node`, covering `span`.
@@ -239,21 +251,36 @@ fn embedding<'source>(
     }
 }
 
-/// A package-level `func`, with or without a receiver.
-fn package_callable<'source>(
+/// One `func` declaration, whether a package states it or an interface does.
+///
+/// The one shape a function, a method, and an interface method share: a gate
+/// its caller answers, the name its `name` field states, the whole node as its
+/// extent, the declaration that holds it, and the single result its signature
+/// declares. A gate that fails states no declaration at all, which is how a
+/// `func` written inside a body and a method element written outside an
+/// interface both answer nothing.
+fn callable_declaration<'source>(
     node: Node<'_>,
     kind: GoDeclarationKind,
     source: &'source str,
     context: FactContext,
+    admitted: bool,
+    parent: Option<u32>,
 ) -> Box<[GoDeclarationFact<'source>]> {
-    let named = at_package_scope(context)
+    admitted
         .then(|| node.child_by_field_name("name"))
-        .flatten();
-    named
+        .flatten()
         .map(|name| {
             returning(
-                declaration(kind, name, GoFactSpan::of_node(node), source, context, None),
-                field_type(node, "result", source),
+                declaration(
+                    kind,
+                    name,
+                    GoFactSpan::of_node(node),
+                    source,
+                    context,
+                    parent,
+                ),
+                result_type(node, source),
             )
         })
         .into_iter()
@@ -267,7 +294,8 @@ fn package_spec<'source>(
     source: &'source str,
     context: FactContext,
 ) -> Box<[GoDeclarationFact<'source>]> {
-    let named = at_package_scope(context)
+    let named = context
+        .at_file_scope()
         .then(|| node.child_by_field_name("name"))
         .flatten();
     named
@@ -297,7 +325,7 @@ fn states_general_terms(node: Node<'_>) -> bool {
     let mut walk = body.walk();
     body.named_children(&mut walk)
         .filter(|element| element.kind() == "type_elem")
-        .any(|element| element.named_child(0).and_then(embedded_name).is_none())
+        .any(|element| embedded_type(element.named_child(0), false).name.is_none())
 }
 
 /// Every name one package-level `const` or `var` specification states.
@@ -307,7 +335,7 @@ fn package_names<'source>(
     source: &'source str,
     context: FactContext,
 ) -> Box<[GoDeclarationFact<'source>]> {
-    match at_package_scope(context) {
+    match context.at_file_scope() {
         true => named_children(node)
             .iter()
             .map(|&name| declaration(kind, name, spec_span(node), source, context, None))
@@ -350,24 +378,57 @@ fn embedded_member<'source>(
     source: &'source str,
     context: FactContext,
 ) -> Box<[GoDeclarationFact<'source>]> {
-    node.child_by_field_name("type")
-        .and_then(|written| {
-            embedded_name(written).map(|name| {
-                embedding(
-                    declaration(
-                        GoDeclarationKind::EmbeddedField,
-                        name,
-                        GoFactSpan::of_node(node),
-                        source,
-                        context,
-                        context.declaration,
-                    ),
-                    type_parts(written, source, embedded_star(node)),
-                )
-            })
+    embedded_declaration(
+        node,
+        node.child_by_field_name("type"),
+        embedded_star(node),
+        source,
+        context,
+    )
+}
+
+/// One declaration for an element written as a bare type.
+///
+/// The one tail a struct field and an interface element share: both are named
+/// by the identifier the type recognizer found, both cover the whole element,
+/// both belong to the declaration that holds them, and both carry the qualified
+/// type their source wrote. An element naming no single type declares nothing
+/// here, which is how an interface stating a union embeds no method set.
+fn embedded_declaration<'source>(
+    node: Node<'_>,
+    written: Option<Node<'_>>,
+    pointer: bool,
+    source: &'source str,
+    context: FactContext,
+) -> Box<[GoDeclarationFact<'source>]> {
+    let read = embedded_type(written, pointer);
+    read.name
+        .map(|name| {
+            embedding(
+                declaration(
+                    GoDeclarationKind::EmbeddedField,
+                    name,
+                    GoFactSpan::of_node(node),
+                    source,
+                    context,
+                    context.declaration,
+                ),
+                read.written(source),
+            )
         })
         .into_iter()
         .collect()
+}
+
+/// The type an element writes, read once for both the name and the spelling.
+///
+/// An absent element names nothing, which is the same answer a shape this model
+/// states no single type for gives, so both routes read one recognizer rather
+/// than a second copy of its five arms.
+fn embedded_type<'tree>(written: Option<Node<'tree>>, pointer: bool) -> ReadType<'tree> {
+    written
+        .map(|declared| type_parts(declared, pointer))
+        .unwrap_or_default()
 }
 
 /// Whether a struct embeds `*T` rather than `T`.
@@ -381,34 +442,6 @@ fn embedded_star(node: Node<'_>) -> bool {
     node.children(&mut walk).any(|child| child.kind() == "*")
 }
 
-/// A method an interface declares.
-fn interface_member<'source>(
-    node: Node<'_>,
-    kind: GoDeclarationKind,
-    source: &'source str,
-    context: FactContext,
-) -> Box<[GoDeclarationFact<'source>]> {
-    let named = (context.declaration_kind == Some(GoDeclarationKind::Interface))
-        .then(|| node.child_by_field_name("name"))
-        .flatten();
-    named
-        .map(|name| {
-            returning(
-                declaration(
-                    kind,
-                    name,
-                    GoFactSpan::of_node(node),
-                    source,
-                    context,
-                    context.declaration,
-                ),
-                field_type(node, "result", source),
-            )
-        })
-        .into_iter()
-        .collect()
-}
-
 /// An interface element written as a bare type, which embeds that interface.
 fn interface_embed<'source>(
     node: Node<'_>,
@@ -418,24 +451,7 @@ fn interface_embed<'source>(
     let written = (context.declaration_kind == Some(GoDeclarationKind::Interface))
         .then(|| node.named_child(0))
         .flatten();
-    written
-        .and_then(|written| {
-            embedded_name(written).map(|name| {
-                embedding(
-                    declaration(
-                        GoDeclarationKind::EmbeddedField,
-                        name,
-                        GoFactSpan::of_node(node),
-                        source,
-                        context,
-                        context.declaration,
-                    ),
-                    type_parts(written, source, false),
-                )
-            })
-        })
-        .into_iter()
-        .collect()
+    embedded_declaration(node, written, false, source, context)
 }
 
 /// What a `type` specification's underlying type makes it.
@@ -444,17 +460,6 @@ fn declared_kind(node: Node<'_>) -> GoDeclarationKind {
         Some("struct_type") => GoDeclarationKind::Struct,
         Some("interface_type") => GoDeclarationKind::Interface,
         _ => GoDeclarationKind::DefinedType,
-    }
-}
-
-/// The identifier a bare embedded type names.
-fn embedded_name<'tree>(declared: Node<'tree>) -> Option<Node<'tree>> {
-    match declared.kind() {
-        "type_identifier" => Some(declared),
-        "qualified_type" => declared.child_by_field_name("name"),
-        "pointer_type" => declared.named_child(0).and_then(embedded_name),
-        "generic_type" => declared.child_by_field_name("type").and_then(embedded_name),
-        _ => None,
     }
 }
 

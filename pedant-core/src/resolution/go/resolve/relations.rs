@@ -16,25 +16,18 @@ use super::index::Index;
 /// Every structural relation the concrete types of one package context hold.
 ///
 /// One site per proved or possible pair, written at the concrete type's own
-/// name and naming the interface it answers.
+/// name and naming the interface it answers. The comparison already partitioned
+/// its relations by the context declaring each concrete type, so this reads one
+/// bucket rather than rescanning every relation the corpus states.
 pub(super) fn of_unit(
     index: &Index,
     implementations: &Implementations,
     unit: usize,
 ) -> Vec<Denotation> {
     implementations
-        .relations()
-        .iter()
-        .filter(|relation| declares(index, relation, unit))
+        .of_unit(unit)
         .filter_map(|relation| implementation(index, relation))
         .collect()
-}
-
-/// Whether one package context declares the concrete type of one relation.
-fn declares(index: &Index, relation: &Relation, unit: usize) -> bool {
-    index
-        .slot(relation.concrete)
-        .is_some_and(|slot| slot.unit == unit)
 }
 
 /// One structural relation, as the site its concrete type is named at.
@@ -44,13 +37,13 @@ fn declares(index: &Index, relation: &Relation, unit: usize) -> bool {
 /// corpus could not read, and an answer resolved beside that gap would claim
 /// the comparison proved what it explicitly did not.
 fn implementation(index: &Index, relation: &Relation) -> Option<Denotation> {
-    let concrete = index.slot(relation.concrete)?;
+    let concrete = index.slot(relation.concrete.slot())?;
     Some(Denotation {
         kind: ReferenceKind::Implementation,
-        text: Arc::from(implementing_form(&concrete.name, relation.pointer)),
+        text: implementing_form(&concrete.name, relation.pointer),
         span: concrete.site.clone(),
-        enclosing: Some(relation.concrete),
-        candidates: Box::from([relation.interface]),
+        enclosing: Some(relation.concrete.slot()),
+        candidates: Box::from([relation.interface.slot()]),
         gap: relation.gap,
         conditional: concrete.conditional,
         possible_only: relation.gap.is_some(),
@@ -61,10 +54,11 @@ fn implementation(index: &Index, relation: &Relation) -> Option<Denotation> {
 ///
 /// A type whose answering methods all receive a value implements as itself; one
 /// answering with a method that receives a pointer implements only as `*T`, and
-/// the site says so rather than claiming the value form does.
-fn implementing_form(name: &str, pointer: bool) -> Box<str> {
+/// the site says so rather than claiming the value form does. The value form
+/// shares the name the slot already holds rather than copying it.
+fn implementing_form(name: &Arc<str>, pointer: bool) -> Arc<str> {
     match pointer {
-        true => format!("*{name}").into_boxed_str(),
-        false => Box::from(name),
+        true => Arc::from(format!("*{name}")),
+        false => Arc::clone(name),
     }
 }

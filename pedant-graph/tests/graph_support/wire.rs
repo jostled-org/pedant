@@ -1,4 +1,10 @@
 //! Tier propagation and the exact version-1 serialized contract.
+//!
+//! The tag vocabulary is stated here for every producer. It is the graph's own,
+//! not a language's, so a second adapter reads the same lists rather than
+//! writing its own copy of them.
+
+use std::collections::BTreeSet;
 
 use pedant_graph::{
     GraphCertainty, GraphCollection, GraphDependencyKind, GraphEdgeKind, GraphReferenceKind,
@@ -10,6 +16,61 @@ use super::corpus::MINIMAL_CORPUS;
 use super::fixture;
 use super::promotion::promoted_resolution;
 use super::render;
+use super::surface::serialized_tags;
+
+/// Every node category the graph owns.
+pub const NODE_CATEGORIES: &[&str] = &["file", "container", "function", "type", "value"];
+
+/// Every node location kind the graph owns.
+pub const LOCATION_KINDS: &[&str] = &["file", "span"];
+
+/// Every reference kind the graph owns.
+pub const REFERENCE_KINDS: &[&str] = &["call", "import", "implementation", "reference"];
+
+/// Every edge kind the graph owns.
+pub const EDGE_KINDS: &[&str] = &[
+    "call",
+    "import",
+    "implementation",
+    "reference",
+    "depends_on",
+];
+
+/// Every certainty the graph owns.
+pub const CERTAINTIES: &[&str] = &["resolved", "possible"];
+
+/// Every edge origin kind the graph owns.
+pub const ORIGIN_KINDS: &[&str] = &["reference", "dependency"];
+
+/// Every written-down tag list, beside the declaration it must equal.
+const DECLARED_TAGS: &[(&str, &str, &str, &[&str])] = &[
+    (
+        "node categories",
+        "src/node.rs",
+        "GraphNodeKind",
+        NODE_CATEGORIES,
+    ),
+    (
+        "location kinds",
+        "src/node.rs",
+        "GraphNodeLocation",
+        LOCATION_KINDS,
+    ),
+    (
+        "reference kinds",
+        "src/reference.rs",
+        "GraphReferenceKind",
+        REFERENCE_KINDS,
+    ),
+    ("edge kinds", "src/edge.rs", "GraphEdgeKind", EDGE_KINDS),
+    ("certainties", "src/edge.rs", "GraphCertainty", CERTAINTIES),
+    (
+        "origin kinds",
+        "src/edge.rs",
+        "GraphEdgeOrigin",
+        ORIGIN_KINDS,
+    ),
+];
 
 /// The exact compact serialization of the minimal corpus.
 const MINIMAL_JSON: &str = r#"{"schema_version":1,"tier":"syntactic","nodes":[{"id":0,"language":"rust","name":"app","kind":{"category":"container","level":"library"},"location":null},{"id":1,"language":"rust","name":"src/lib.rs","kind":{"category":"file"},"location":{"kind":"file","path":"src/lib.rs"}},{"id":2,"language":"rust","name":"run","kind":{"category":"function","declaration":"function"},"location":{"kind":"span","file":1,"span":{"file":"src/lib.rs","start":{"line":0,"column":7},"end":{"line":0,"column":10}}}},{"id":3,"language":"rust","name":"work","kind":{"category":"function","declaration":"function"},"location":{"kind":"span","file":1,"span":{"file":"src/lib.rs","start":{"line":1,"column":7},"end":{"line":1,"column":11}}}}],"containment":[{"parent":0,"child":1},{"parent":0,"child":2},{"parent":0,"child":3}],"references":[{"id":0,"source":2,"language":"rust","kind":"call","text":"work","span":{"file":"src/lib.rs","start":{"line":0,"column":15},"end":{"line":0,"column":19}},"gaps":[],"edges":[0]}],"edges":[{"id":0,"source":2,"target":3,"kind":"call","certainty":"resolved","origin":{"kind":"reference","reference":0}}]}"#;
@@ -174,8 +235,30 @@ pub fn assert_json_covers_every_variant() {
         );
     }
 
+    assert_every_tag_list_is_the_declared_set();
     assert_layout_free(&text);
     assert_layout_free(&build_text);
+}
+
+/// Every written-down tag list is exactly the set its declaration serializes.
+///
+/// The lists stay written down, because they are what a reader compares real
+/// bytes against and a set derived from the declaration alone would agree with
+/// whatever the crate happens to emit. Holding each list to its own declaration
+/// is what turns an upper bound into a set: an entry that stopped being a
+/// variant would otherwise sit in a list nothing ever selects, admitting a tag
+/// the graph can no longer emit.
+fn assert_every_tag_list_is_the_declared_set() {
+    for (subject, path, name, written) in DECLARED_TAGS {
+        assert_eq!(
+            serialized_tags(path, name),
+            written
+                .iter()
+                .map(|tag| (*tag).to_owned())
+                .collect::<BTreeSet<String>>(),
+            "the {subject} this crate writes down are exactly what {name} serializes"
+        );
+    }
 }
 
 fn assert_layout_free(text: &str) {

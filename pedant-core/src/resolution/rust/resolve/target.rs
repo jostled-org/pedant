@@ -13,19 +13,20 @@
 //! language's wrapper states its own subset of it here, so adding a kind for
 //! one language cannot quietly become a kind another one accepts.
 
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use pedant_types::{ReferenceKind, ResolutionReport, ResolutionUnit, ResolutionUnitId, SymbolKind};
 
+use crate::resolution::binding::{self, BindingFault};
+use crate::resolution::line_index::{LineIndex, SourceLines, keyed_lines, source_lines};
 use crate::resolution::rust::fingerprint::RustSnapshotFingerprint;
-use crate::resolution::rust::identity::{PackageId, TargetId, position};
+use crate::resolution::rust::identity::{PackageId, TargetId};
 use crate::resolution::rust::snapshot::{
     RustResolutionSnapshot, RustResolutionUnit, RustSnapshotUnitId,
 };
 use crate::resolution::rust::warning;
 
-use crate::resolution::sites::{self, SiteError, SourceTexts};
+use crate::resolution::sites::{self, SiteError};
 
 use super::error::RustResolutionError;
 
@@ -97,10 +98,35 @@ impl RustTargetResolution {
         snapshot: &RustResolutionSnapshot,
         report: ResolutionReport,
     ) -> Result<Self, RustResolutionError> {
+        let lines = source_lines(snapshot.sources());
+        Self::bound(snapshot, report, &lines)
+    }
+
+    /// The same boundary, over line tables the resolver already built.
+    ///
+    /// The resolver indexes every snapshot source before it states a single
+    /// coordinate, and those are the tables this boundary proves the stated
+    /// coordinates against. Rebuilding them here would rescan every source byte
+    /// to reach the same answer.
+    pub(super) fn try_new_indexed<'snapshot>(
+        snapshot: &'snapshot RustResolutionSnapshot,
+        report: ResolutionReport,
+        lines: Box<[LineIndex<'snapshot>]>,
+    ) -> Result<Self, RustResolutionError> {
+        let keyed = keyed_lines(snapshot.sources(), lines);
+        Self::bound(snapshot, report, &keyed)
+    }
+
+    /// Bind one report to the snapshot its coordinates are proved against.
+    fn bound(
+        snapshot: &RustResolutionSnapshot,
+        report: ResolutionReport,
+        lines: &SourceLines<'_>,
+    ) -> Result<Self, RustResolutionError> {
         let units = bind_units(snapshot, report.units())?;
         validate_definition_kinds(&report)?;
         validate_reference_kinds(&report)?;
-        validate_snapshot_sites(snapshot, &report)?;
+        validate_snapshot_sites(lines, &report)?;
         Ok(Self {
             root_target: snapshot.root_target(),
             snapshot_fingerprint: snapshot.fingerprint(),
@@ -166,71 +192,50 @@ fn bind_units(
     snapshot: &RustResolutionSnapshot,
     units: &[ResolutionUnit],
 ) -> Result<Box<[RustUnitBinding]>, RustResolutionError> {
-    if units.len() != snapshot.units().len() {
-        return Err(RustResolutionError::UnitMapping {
-            unit: position(units.len()),
-            reason: Box::from("the report and the snapshot hold different unit counts"),
-        });
-    }
-    let keyed = keyed_units(snapshot);
-    units.iter().map(|unit| bind_unit(&keyed, unit)).collect()
+    binding::bind_by_key(units, snapshot.units(), unit_key, bound).map_err(unit_refusal)
 }
 
-/// Every snapshot unit under its stable key, so binding a report of N units
-/// formats N keys rather than one key per candidate per report unit.
-fn keyed_units(snapshot: &RustResolutionSnapshot) -> BTreeMap<Arc<str>, &RustResolutionUnit> {
-    snapshot
-        .units()
-        .iter()
-        .map(|unit| (unit_key(unit), unit))
-        .collect()
-}
-
-fn bind_unit(
-    keyed: &BTreeMap<Arc<str>, &RustResolutionUnit>,
-    unit: &ResolutionUnit,
-) -> Result<RustUnitBinding, RustResolutionError> {
-    let found = keyed
-        .get(unit.key())
-        .ok_or_else(|| RustResolutionError::UnitMapping {
-            unit: unit.id().index(),
-            reason: Box::from("no snapshot unit carries this key"),
-        })?;
-    Ok(RustUnitBinding {
+/// One report unit bound to the snapshot unit its key selected.
+fn bound(unit: &ResolutionUnit, found: &RustResolutionUnit) -> RustUnitBinding {
+    RustUnitBinding {
         unit: unit.id(),
         snapshot_unit: found.id(),
         package: found.package(),
         target: found.target(),
-    })
+    }
+}
+
+/// The Rust seam's own error for one report that does not describe the
+/// snapshot.
+fn unit_refusal(fault: BindingFault) -> RustResolutionError {
+    match fault {
+        BindingFault::UnitCountMismatch { report, snapshot } => {
+            RustResolutionError::UnitCountMismatch { report, snapshot }
+        }
+        BindingFault::UnknownKey { unit } => RustResolutionError::UnitMapping {
+            unit,
+            reason: Box::from("no snapshot unit carries this key"),
+        },
+    }
 }
 
 /// Prove every definition names a kind a Rust resolution emits.
 fn validate_definition_kinds(report: &ResolutionReport) -> Result<(), RustResolutionError> {
-    match report
-        .definitions()
-        .iter()
-        .find(|definition| !is_rust_definition_kind(definition.kind()))
-    {
+    match binding::first_unsupported_definition(report, is_rust_definition_kind) {
         None => Ok(()),
-        Some(definition) => Err(RustResolutionError::UnsupportedDefinitionKind {
-            definition: definition.id().index(),
-            kind: definition.kind(),
-        }),
+        Some((definition, kind)) => {
+            Err(RustResolutionError::UnsupportedDefinitionKind { definition, kind })
+        }
     }
 }
 
 /// Prove every reference names a kind a Rust resolution emits.
 fn validate_reference_kinds(report: &ResolutionReport) -> Result<(), RustResolutionError> {
-    match report
-        .references()
-        .iter()
-        .find(|reference| !is_rust_reference_kind(reference.kind()))
-    {
+    match binding::first_unsupported_reference(report, is_rust_reference_kind) {
         None => Ok(()),
-        Some(reference) => Err(RustResolutionError::UnsupportedReferenceKind {
-            reference: reference.id().index(),
-            kind: reference.kind(),
-        }),
+        Some((reference, kind)) => {
+            Err(RustResolutionError::UnsupportedReferenceKind { reference, kind })
+        }
     }
 }
 
@@ -278,19 +283,10 @@ fn is_rust_reference_kind(kind: ReferenceKind) -> bool {
 /// snapshot's texts and one typed error to that walk, and two functions spelled
 /// alike in one module would read as a single route stated twice.
 fn validate_snapshot_sites(
-    snapshot: &RustResolutionSnapshot,
+    lines: &SourceLines<'_>,
     report: &ResolutionReport,
 ) -> Result<(), RustResolutionError> {
-    sites::validate_sites(&snapshot_texts(snapshot), report).map_err(refusal)
-}
-
-/// The text of every source this snapshot holds, keyed by its path.
-fn snapshot_texts(snapshot: &RustResolutionSnapshot) -> SourceTexts<'_> {
-    snapshot
-        .sources()
-        .iter()
-        .map(|source| (source.path(), source.text()))
-        .collect()
+    sites::validate_sites(lines, report).map_err(refusal)
 }
 
 /// The Rust seam's own error for one refused site.

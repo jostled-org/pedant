@@ -16,6 +16,20 @@ pub enum RustResolutionError {
         /// Why the unit does not describe a snapshot unit.
         reason: Box<str>,
     },
+    /// The report and the snapshot state different numbers of units.
+    ///
+    /// Its own variant rather than a [`Self::UnitMapping`] refusal, because no
+    /// report-local unit identifier is the one that failed: the two sides
+    /// disagree about how many units there are before any key is compared, and
+    /// reporting a count where an identifier is documented reads as a unit that
+    /// exists.
+    #[error("the report states {report} units and this snapshot holds {snapshot}")]
+    UnitCountMismatch {
+        /// How many units the report states.
+        report: u32,
+        /// How many units the snapshot holds.
+        snapshot: u32,
+    },
     /// A site names a file this snapshot does not hold.
     #[error("{file} is not a source of this snapshot")]
     UnknownFile {

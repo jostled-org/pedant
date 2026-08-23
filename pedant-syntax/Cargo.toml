@@ -31,6 +31,12 @@ _ts = ["dep:tree-sitter"]
 # inventory and the recognizer states none of them. A build whose only grammar
 # is Go therefore compiles no generic recognizer at all, rather than one with
 # no language left to recognize.
+#
+# That claim is checked, not merely stated: every Go-only row of
+# `.github/scripts/check_go_dependency_closure.sh` forbids this feature by name.
+# Forbidding the five sibling grammars would not forbid it — nothing else has to
+# be on for it to be on — so a one-character slip would compile the whole
+# generic recognizer into every Go build with nothing red.
 _ts_generic = ["_ts"]
 
 [dependencies]

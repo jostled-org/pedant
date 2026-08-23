@@ -6,6 +6,7 @@
 //! them, so it outlives the project it came from.
 
 use std::path::Path;
+use std::sync::Arc;
 
 use super::discovery::{EntryBudget, package_directories};
 use super::fingerprint::{self, GoSnapshotFingerprint};
@@ -183,9 +184,9 @@ fn snapshot_modules(project: &GoProject) -> Box<[GoSnapshotModule]> {
         .enumerate()
         .map(|(index, module)| GoSnapshotModule {
             id: GoSnapshotModuleId::new(position(index)),
-            path: std::sync::Arc::clone(&module.path),
-            directory: module.directory.clone(),
-            manifest: module.manifest.clone(),
+            path: Arc::clone(&module.path),
+            directory: Arc::clone(&module.directory),
+            manifest: Arc::clone(&module.manifest),
             depth: module.depth,
         })
         .collect()

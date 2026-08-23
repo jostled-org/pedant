@@ -87,6 +87,12 @@ fn backend(language: SyntaxLanguage) -> Option<Backend> {
 
 impl Backend {
     /// Select the narrowest declaration this backend recognizes at `at`.
+    ///
+    /// A backend that refuses states no declaration set, which this boundary
+    /// reports as absence — the same answer it gives for a parser that fails.
+    /// The refusal is mapped here rather than inside the backend, because a
+    /// backend that answered "this file declares nothing" would be making a
+    /// claim about the source it just declined to read.
     #[cfg(any(feature = "rust", feature = "_ts"))]
     fn extract(self, source: &str, at: Location) -> Option<SourceUnit> {
         let source = self.parsed_source(source);
@@ -96,7 +102,7 @@ impl Backend {
             Self::Rust => crate::extract::rust::collect(source, &mut selector),
             #[cfg(feature = "_ts")]
             Self::TreeSitter(language) => {
-                crate::extract::ts::collect(source, language, &mut selector);
+                crate::extract::ts::collect(source, language, &mut selector).ok()?
             }
         }
         selector.finish()

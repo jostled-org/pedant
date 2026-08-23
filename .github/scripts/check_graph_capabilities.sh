@@ -5,7 +5,11 @@
 
 set -euo pipefail
 
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# `CDPATH` is cleared inside the substitution: `dirname` yields a bare relative
+# path for a script invoked by a relative path, `cd` then consults `CDPATH`,
+# and a match there both enters the wrong directory and prints it — leaving
+# `script_dir` a two-line value naming a tree this repository does not own.
+script_dir="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=repository_check_lib.sh
 . "${script_dir}/repository_check_lib.sh"
@@ -15,25 +19,7 @@ require_tools cargo jq find mktemp dirname
 
 readonly GRAPH_SOURCE_TREE="pedant-graph/src"
 
-if [ ! -d "${GRAPH_SOURCE_TREE}" ]; then
-    echo "error: ${GRAPH_SOURCE_TREE} is missing from the repository" >&2
-    exit 1
-fi
-
-read_rust_sources "${GRAPH_SOURCE_TREE}"
-sources="${RUST_SOURCE_LISTING}"
-sentinels="${RUST_SOURCE_COUNT}"
-if [ "${sentinels}" -eq 0 ]; then
-    echo "error: ${GRAPH_SOURCE_TREE} holds no Rust source" >&2
-    exit 1
-fi
-
-mirror="$(mktemp -d)"
-trap 'rm -rf "${mirror}"' EXIT
-mirror_sentinels "${mirror}" "${sources}" "${sentinels}"
-
-reach="$(pedant_capabilities "${mirror}/${GRAPH_SOURCE_TREE}")"
-assert_sentinel_reach "${reach}" "${sentinels}" "${GRAPH_SOURCE_TREE}"
+assert_capability_detectors_live "graph projection" "${GRAPH_SOURCE_TREE}"
 
 profile="$(pedant_capabilities "${GRAPH_SOURCE_TREE}")"
 # shellcheck disable=SC2016

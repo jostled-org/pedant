@@ -23,6 +23,14 @@ fn nested_source(depth: usize) -> String {
     source
 }
 
+/// A source whose one parameter is written `depth` pointers deep.
+fn pointer_source(depth: usize) -> String {
+    let mut source = String::from("package widget\n\nfunc deep(x ");
+    source.push_str(&"*".repeat(depth));
+    source.push_str("int) {\n}\n");
+    source
+}
+
 /// The longest chain of enclosing scopes the inventory states.
 ///
 /// Every scope names the scope that holds it, and each link is one syntax level
@@ -104,4 +112,38 @@ fn go_fact_limits_refuse_before_descent_or_insertion() {
         facts(FACT_SOURCE, GoFactLimits::new(u32::MAX, total)).is_ok(),
         "the exact fact count is admitted"
     );
+}
+
+/// 2.T3 (Invariant 5): a written type is read without recursion, so the depth
+/// ceiling is the only thing that stops a deep one.
+///
+/// The written-type reader runs inside the walk's `enter`, at the parameter
+/// declaration, before `descend` has paid any depth for the chain it is about
+/// to follow. A recursive reader therefore spends the stack on a source no
+/// ceiling has refused yet — and under the four-level ceiling below, the walk
+/// never descends far enough to refuse at all. The chain here is deeper than a
+/// test thread's stack holds frames for, so a reader that recursed dies here
+/// rather than reporting.
+#[test]
+fn go_written_types_are_read_without_recursion() {
+    let deep = pointer_source(30_000);
+
+    assert_eq!(
+        facts(&deep, GoFactLimits::new(4, u32::MAX)),
+        Err(GoFactError::SyntaxDepthExceeded { limit: 4 }),
+        "the ceiling refuses the chain, rather than the reader spending the stack on it"
+    );
+
+    let reached = facts(&deep, GoFactLimits::UNBOUNDED).expect("an unbounded inventory");
+    let bound = reached
+        .bindings()
+        .first()
+        .expect("the parameter binds one name");
+    assert_eq!(bound.name(), "x");
+    assert_eq!(
+        bound.type_name(),
+        Some("int"),
+        "the chain names the type it wraps"
+    );
+    assert!(bound.pointer(), "the chain is a pointer form");
 }

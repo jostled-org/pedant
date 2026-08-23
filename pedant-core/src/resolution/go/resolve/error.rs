@@ -14,6 +14,19 @@ pub enum GoResolutionError {
         /// Why the unit does not describe a snapshot unit.
         reason: Box<str>,
     },
+    /// The report and the snapshot state different numbers of units.
+    ///
+    /// Named apart from [`GoResolutionError::UnitMapping`] because a count
+    /// mismatch identifies no report-local unit: reporting the report's own
+    /// count in a field documented as a unit identifier states one number in
+    /// the place of another.
+    #[error("the report states {report} units and this snapshot holds {snapshot}")]
+    UnitCountMismatch {
+        /// How many units the report states.
+        report: u32,
+        /// How many units the snapshot holds.
+        snapshot: u32,
+    },
     /// A site names a definition position this resolution never recorded.
     ///
     /// Every candidate and every enclosing definition is a position the index

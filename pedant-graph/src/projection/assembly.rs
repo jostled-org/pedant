@@ -12,10 +12,11 @@
 //! which identity each record takes, whether containment is a forest, and which
 //! ceiling refuses are decided here and nowhere else.
 
+use crate::edge::GraphEdgeKind;
 use crate::error::GraphBuildError;
 use crate::graph::CodeGraph;
 use crate::id::{GraphNodeId, GraphReferenceId, position};
-use crate::limits::GraphLimits;
+use crate::limits::{GraphCollection, GraphLimits};
 
 use super::draft::{FragmentSlot, ProjectionPlan, ReferenceProjection};
 use super::forest;
@@ -76,17 +77,25 @@ fn assemble_containers(
 /// One node per entry, because the placement that made this plan refused a unit
 /// stating one path twice. A repeat reaching here would mint a second file node
 /// the plan holds no records for and move every dense identity after it.
+///
+/// The walk is the unit-and-source product in exactly the order the placement
+/// built it, so the node each entry mints is the node its fragment answers for
+/// and the running position is that fragment's own. Both readings are recorded:
+/// the unit scope answers a path, and the fragment table answers a position.
 fn assemble_sources(
     state: &mut ProjectionState,
     plan: &ProjectionPlan,
 ) -> Result<(), GraphBuildError> {
+    let mut placed = Vec::with_capacity(plan.fragments.len());
     for (index, unit) in plan.units.iter().enumerate() {
         let reported = position(index);
         for path in &unit.sources {
             let node = state.insert_node(unit.file_draft(path))?;
             state.bind_file(reported, path, node)?;
+            placed.push(node);
         }
     }
+    state.bind_sources(placed.into_boxed_slice());
     Ok(())
 }
 
@@ -100,7 +109,7 @@ fn assemble_definitions(
         let projection = validation::planned_definition(plan, *at, stated)?;
         let unit = validation::fragment_unit(plan, at.fragment)?;
         let source = validation::fragment_source(plan, at.fragment, stated)?;
-        let file = validation::source_node(state, unit, source.path())?;
+        let file = validation::source_node(state.fragment_file(at.fragment), unit, source.path())?;
         let node = state.insert_node(projection.draft(file))?;
         state.bind_definition(&projection.identity, node);
     }
@@ -149,7 +158,7 @@ fn contain_units(
     state: &mut ProjectionState,
     plan: &ProjectionPlan,
 ) -> Result<Box<[GraphNodeId]>, GraphBuildError> {
-    let mut roots = Vec::new();
+    let mut roots = Vec::with_capacity(plan.units.len());
     for (index, unit) in plan.units.iter().enumerate() {
         let child = validation::unit_container(state, position(index))?;
         match unit.parent {
@@ -172,7 +181,7 @@ fn contain_sources(
         let reported = position(index);
         let container = validation::unit_container(state, reported)?;
         for path in &unit.sources {
-            let node = validation::source_node(state, reported, path)?;
+            let node = validation::source_node(state.file(reported, path), reported, path)?;
             state.contain(container, node);
         }
     }
@@ -210,7 +219,8 @@ fn assemble_references<'plan>(
     state: &mut ProjectionState,
     plan: &'plan ProjectionPlan,
 ) -> Result<Box<[AssembledReference<'plan>]>, GraphBuildError> {
-    let mut assembled = Vec::with_capacity(plan.references.len());
+    let mut assembled =
+        Vec::with_capacity(state.reserved(GraphCollection::Reference, plan.references.len()));
     for (index, at) in plan.references.iter().enumerate() {
         let stated = position(index);
         let projection = validation::planned_reference(plan, *at, stated)?;
@@ -241,7 +251,11 @@ fn reference_source(
     let unit = validation::fragment_unit(plan, at.fragment)?;
     match &projection.enclosing {
         Some(enclosing) => validation::definition_node(state, enclosing, reference),
-        None => validation::source_node(state, unit, projection.span.file()),
+        None => validation::source_node(
+            state.fragment_file(at.fragment),
+            unit,
+            projection.span.file(),
+        ),
     }
 }
 
@@ -262,16 +276,18 @@ fn assemble_dependencies(
 ///
 /// Each edge names the record that produced it, and the store links the two in
 /// the same step it mints the identity, so no record can claim an edge the
-/// graph does not hold.
+/// graph does not hold. The edge kind is the site's, read once per record from
+/// the projection the record was minted from.
 fn assemble_candidates(
     state: &mut ProjectionState,
     references: &[AssembledReference<'_>],
 ) -> Result<(), GraphBuildError> {
     for (index, assembled) in references.iter().enumerate() {
         let stated = position(index);
+        let kind = GraphEdgeKind::of_reference(assembled.projection.kind);
         for candidate in &assembled.projection.candidates {
             let target = validation::definition_node(state, &candidate.target, stated)?;
-            state.insert_edge(candidate.draft((assembled.source, assembled.id), target))?;
+            state.insert_edge(candidate.draft((assembled.source, assembled.id), target, kind))?;
         }
     }
     Ok(())

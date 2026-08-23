@@ -5,8 +5,11 @@
 //! ownership case reads the surface through this module, so one walk decides
 //! what "declared" means and a record moved into an inline `mod` cannot escape
 //! two cases by escaping one walk.
+//!
+//! What those declarations call is a separate question, answered by
+//! [`super::call_graph`] over the same walk.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use super::scan::{self, parsed};
 
@@ -112,6 +115,71 @@ pub fn declared_error_variants() -> BTreeSet<String> {
         .iter()
         .map(|variant| variant.ident.to_string())
         .collect()
+}
+
+/// The one renaming rule [`serialized_tags`] applies, as the parsed attribute
+/// renders it.
+const SNAKE_CASE: &str = "rename_all = \"snake_case\"";
+
+/// Every tag one declared enum serializes its variants to.
+///
+/// Read from the declaration rather than written down a second time. A written
+/// tag list is an upper bound on its own: a variant that stopped existing would
+/// leave the list admitting a token the wire can no longer carry, and no
+/// selection over real bytes would ever fail. Comparing the list with this set
+/// is what makes it the set.
+///
+/// Exactly one renaming rule is admitted and no per-variant renaming at all,
+/// because exactly that is what the graph's own vocabulary states. A type that
+/// grew a second rule fails here rather than being read under the wrong one.
+pub fn serialized_tags(path: &str, name: &str) -> BTreeSet<String> {
+    let file = parsed(path);
+    let declared = declared_items(&file.items)
+        .into_iter()
+        .find_map(|item| match item {
+            syn::Item::Enum(found) if found.ident == name => Some(found),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("{path} declares no {name} enum"));
+    let stated: Vec<String> = declared.attrs.iter().map(scan::token_text).collect();
+    assert!(
+        stated
+            .iter()
+            .any(|attribute| attribute.contains(SNAKE_CASE)),
+        "{name} must state {SNAKE_CASE}, stating {stated:?}"
+    );
+    let renamed: Vec<String> = declared
+        .variants
+        .iter()
+        .filter(|variant| {
+            variant
+                .attrs
+                .iter()
+                .any(|attribute| attribute.path().is_ident("serde"))
+        })
+        .map(|variant| variant.ident.to_string())
+        .collect();
+    assert!(
+        renamed.is_empty(),
+        "{name} renames a variant of its own, which this reader does not apply: {renamed:?}"
+    );
+    declared
+        .variants
+        .iter()
+        .map(|variant| snake_case(&variant.ident.to_string()))
+        .collect()
+}
+
+/// One declared name under the `snake_case` renaming rule.
+fn snake_case(name: &str) -> String {
+    let mut written = String::new();
+    for character in name.chars() {
+        if character.is_uppercase() && !written.is_empty() {
+            written.push('_');
+        }
+        written.extend(character.to_lowercase());
+    }
+    written
 }
 
 /// Every name one source publicly re-exports, optionally from one module.
@@ -357,114 +425,4 @@ fn is_closed_type(block: &syn::ItemImpl) -> bool {
 
 fn is_public(visibility: &syn::Visibility) -> bool {
     matches!(visibility, syn::Visibility::Public(_))
-}
-
-/// Every function one source declares, beside the declared functions its body
-/// calls.
-///
-/// Names are the whole model: two functions declared with one name — an
-/// accessor each of two records states — merge into one entry, so the answer
-/// over-approximates rather than losing a call. An over-approximated call graph
-/// can only reject a shape a real one would accept, never accept one it would
-/// reject.
-pub fn declared_call_graph(path: &str) -> BTreeMap<String, BTreeSet<String>> {
-    let file = parsed(path);
-    let bodies = declared_bodies(&declared_items(&file.items));
-    let declared: BTreeSet<&str> = bodies.keys().map(String::as_str).collect();
-    bodies
-        .iter()
-        .map(|(name, body)| (name.clone(), calls(body, &declared)))
-        .collect()
-}
-
-/// Every free function and method one source declares, beside its body text
-/// with every space dropped.
-fn declared_bodies(items: &[&syn::Item]) -> BTreeMap<String, String> {
-    let mut found: BTreeMap<String, String> = BTreeMap::new();
-    for item in items {
-        for (name, body) in item_bodies(item) {
-            found.entry(name).or_default().push_str(&body);
-        }
-    }
-    found
-}
-
-/// The functions one declared item states, as name and compacted body.
-fn item_bodies(item: &syn::Item) -> Vec<(String, String)> {
-    match item {
-        syn::Item::Fn(function) => vec![compacted(&function.sig, &function.block)],
-        syn::Item::Impl(block) => block.items.iter().filter_map(impl_body).collect(),
-        _ => Vec::new(),
-    }
-}
-
-/// One implementation member's name beside its body, when it is a method.
-fn impl_body(item: &syn::ImplItem) -> Option<(String, String)> {
-    match item {
-        syn::ImplItem::Fn(method) => Some(compacted(&method.sig, &method.block)),
-        _ => None,
-    }
-}
-
-/// One function's name beside its body with every space dropped.
-fn compacted(signature: &syn::Signature, body: &syn::Block) -> (String, String) {
-    (
-        signature.ident.to_string(),
-        scan::token_text(body).split_whitespace().collect(),
-    )
-}
-
-/// Every declared function one body calls.
-fn calls(body: &str, declared: &BTreeSet<&str>) -> BTreeSet<String> {
-    declared
-        .iter()
-        .filter(|name| is_called(body, name))
-        .map(|name| (*name).to_owned())
-        .collect()
-}
-
-/// Whether one body calls one declared function by name.
-///
-/// The name must start where no identifier character precedes it, so a call to
-/// `index_of` is not read as a call to a function named `of`.
-fn is_called(body: &str, name: &str) -> bool {
-    let needle = format!("{name}(");
-    body.match_indices(&needle)
-        .any(|(at, _)| at == 0 || !is_name_char(body.as_bytes()[at - 1]))
-}
-
-fn is_name_char(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || byte == b'_'
-}
-
-/// Every function that sits on, or reaches, a cycle of calls.
-///
-/// Functions with no remaining outgoing call are dropped in turn; whatever
-/// cannot be dropped can still reach a call that returns to it.
-pub fn recursive_functions(calls: &BTreeMap<String, BTreeSet<String>>) -> Vec<String> {
-    let mut remaining: BTreeSet<&str> = calls.keys().map(String::as_str).collect();
-    loop {
-        let settled: Vec<&str> = remaining
-            .iter()
-            .copied()
-            .filter(|name| reaches_none(calls, name, &remaining))
-            .collect();
-        match settled.is_empty() {
-            true => return remaining.iter().map(|name| (*name).to_owned()).collect(),
-            false => remaining.retain(|name| !settled.contains(name)),
-        }
-    }
-}
-
-/// Whether one function calls nothing that is still remaining.
-fn reaches_none(
-    calls: &BTreeMap<String, BTreeSet<String>>,
-    name: &str,
-    remaining: &BTreeSet<&str>,
-) -> bool {
-    calls
-        .get(name)
-        .into_iter()
-        .flatten()
-        .all(|called| !remaining.contains(called.as_str()))
 }

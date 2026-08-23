@@ -36,7 +36,7 @@ pub struct GraphReference {
     kind: GraphReferenceKind,
     text: Arc<str>,
     span: SourceSpan,
-    gaps: Box<[ResolutionGap]>,
+    gaps: Arc<[ResolutionGap]>,
     edges: Box<[GraphEdgeId]>,
 }
 
@@ -52,8 +52,12 @@ pub(crate) struct ReferenceDraft {
     pub(crate) text: Arc<str>,
     /// Where the site sits.
     pub(crate) span: SourceSpan,
-    /// Why the answer is incomplete, copied from the report record.
-    pub(crate) gaps: Box<[ResolutionGap]>,
+    /// Why the answer is incomplete, shared with the projection that stated it.
+    ///
+    /// A retained projection drafts its records again on every build that
+    /// reuses it, so the answer travels as one allocation rather than a copy
+    /// per build.
+    pub(crate) gaps: Arc<[ResolutionGap]>,
 }
 
 impl GraphReference {

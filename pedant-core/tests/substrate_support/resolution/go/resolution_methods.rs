@@ -32,6 +32,13 @@ const STORE: &str = "x/store#production";
 
 /// Every definition the package states, which is what a method's parent claim
 /// is read against: a concrete method is a child of its receiver's named type.
+///
+/// `Orphan` is the one method with no parent at all. Its receiver names an
+/// `Unknown` no source declares, so the type that would hold it is not in the
+/// corpus and the row states no holder. Filing it under `app` instead would make
+/// the package a method holder — a containment Go declares for nothing — and
+/// would disagree with the method set beside it, which records `Orphan` under no
+/// type.
 const APP_DEFINITIONS: &[&str] = &[
     "x#production|Package|app|foreign.go:0|",
     "x#production|Function|Foreign|foreign.go:4|app",
@@ -81,6 +88,15 @@ const APP_DEFINITIONS: &[&str] = &[
     "x#production|Field|Shared|zgaps.go:15|Unbound",
     "x#production|Function|Outside|zgaps.go:18|app",
     "x#production|Function|Unimported|zgaps.go:23|app",
+    "x#production|Method|Orphan|zowner.go:2|",
+    "x#production|Struct|Upper|zpaths.go:2|app",
+    "x#production|Field|Base|zpaths.go:3|Upper",
+    "x#production|Struct|Lower|zpaths.go:6|app",
+    "x#production|Field|Base|zpaths.go:7|Lower",
+    "x#production|Struct|Diamond|zpaths.go:10|app",
+    "x#production|Field|Upper|zpaths.go:11|Diamond",
+    "x#production|Field|Lower|zpaths.go:12|Diamond",
+    "x#production|Function|Ambiguous|zpaths.go:15|app",
     "x#production|Struct|Doubled|zshadow.go:4|app",
     "x#production|Field|Shared|zshadow.go:5|Doubled",
     "x#production|Function|Twinned|zshadow.go:8|app",
@@ -114,10 +130,18 @@ const APP_DEFINITIONS: &[&str] = &[
 /// `Crossed` carries the same rule over a *result*. `Fetch` returns
 /// `store.Node`, and a declared result names its package through the imports of
 /// the file that declared it rather than the file asking, so this tier states no
-/// receiver type and `foreign.go:15` keeps the dynamic-dispatch gap. That gap is
-/// the honest answer, and it is the row that moves: a resolver reading the
+/// receiver type and `foreign.go:15` keeps the unsupported-syntax gap. That gap
+/// is the honest answer, and it is the row that moves: a resolver reading the
 /// result's name without its qualifier finds `app`'s own `Node` and publishes a
 /// resolved edge into the wrong package.
+///
+/// The gap is `UnsupportedSyntax` rather than `DynamicDispatch` at every such
+/// row — `foreign.go:15`, `receivers.go:28`, and `zgaps.go:15`. Nothing is
+/// chosen at run time there: `Fetch()`'s result is one function's one declared
+/// type, `all[0]` indexes a slice of one named type, and `zgaps.go:15` is a
+/// *type* reference, which no dispatch can reach. Each is a receiver form this
+/// tier does not read, and a consumer counting dynamic-dispatch sites over Go
+/// would otherwise count every one of them.
 ///
 /// The last four call rows are the embedding this tier admits and the three it
 /// refuses, each written beside a local decoy. `zembed.go:25` reaches `Ping`
@@ -132,9 +156,22 @@ const APP_DEFINITIONS: &[&str] = &[
 ///
 /// The embedded type sites beside them carry the same claim one step earlier.
 /// `zgaps.go:11` stays external rather than binding the local `Stringer`,
-/// `zgaps.go:15` keeps the dynamic gap an unbound qualifier leaves at every
-/// other site, and `zshadow.go:5` names both packages' `Shared` rather than
-/// choosing.
+/// `zgaps.go:15` keeps the unsupported-syntax gap an unbound qualifier leaves at
+/// every other site, and `zshadow.go:5` names both packages' `Shared` rather
+/// than choosing.
+///
+/// `zowner.go` states the receiver the corpus does not hold. `Unknown` is
+/// missing and `Orphan`'s definition states no holder, so the pair of rows is
+/// what a consumer reads instead of an owner the resolver invented.
+///
+/// `zpaths.go:17` closes the table with the selector depth alone cannot decide.
+/// `Upper` and `Lower` each embed `Base`, and `Diamond` embeds both, so
+/// `d.Ping()` reaches one `Ping` through two embedding paths at one depth. Go
+/// counts paths rather than types, so the selector is ambiguous and the row
+/// stays possible with that gap. A resolver keying its widened level by the type
+/// reached collapses the two paths, resolves the call, and publishes a static
+/// target for a program `go build` rejects — and every other row here stays
+/// green while it does.
 const APP_REFERENCES: &[&str] = &[
     "x#production|Import|x/store|foreign.go:2|resolved|x/store#production::store|",
     "x#production|Type|string|foreign.go:4|-||ExternalDefinition",
@@ -144,7 +181,7 @@ const APP_REFERENCES: &[&str] = &[
     "x#production|Type|Node|foreign.go:10|resolved|x/store#production::Node|",
     "x#production|Type|string|foreign.go:13|-||ExternalDefinition",
     "x#production|Call|Fetch|foreign.go:14|resolved|x#production::Fetch|",
-    "x#production|Call|Label|foreign.go:15|-||DynamicDispatch",
+    "x#production|Call|Label|foreign.go:15|-||UnsupportedSyntax",
     "x#production|Type|Node|plat_linux.go:2|possible|x#production::Node|ConditionalCompilation",
     "x#production|Type|string|plat_linux.go:2|-||ExternalDefinition,ConditionalCompilation",
     "x#production|Type|Node|plat_windows.go:2|possible|x#production::Node|ConditionalCompilation",
@@ -170,7 +207,7 @@ const APP_REFERENCES: &[&str] = &[
     "x#production|Call|Label|receivers.go:24|resolved|x#production::Label|",
     "x#production|Type|Node|receivers.go:27|resolved|x#production::Node|",
     "x#production|Type|string|receivers.go:27|-||ExternalDefinition",
-    "x#production|Call|Label|receivers.go:28|-||DynamicDispatch",
+    "x#production|Call|Label|receivers.go:28|-||UnsupportedSyntax",
     "x#production|Type|string|receivers.go:31|-||ExternalDefinition",
     "x#production|Type|Node|receivers.go:32|resolved|x#production::Node|",
     "x#production|Call|Rename|receivers.go:33|resolved|x#production::Rename|",
@@ -225,13 +262,22 @@ const APP_REFERENCES: &[&str] = &[
     "x#production|Type|Stringer|zgaps.go:6|resolved|x#production::Stringer|",
     "x#production|Type|string|zgaps.go:6|-||ExternalDefinition",
     "x#production|Type|Stringer|zgaps.go:11|-||ExternalDefinition",
-    "x#production|Type|Shared|zgaps.go:15|-||DynamicDispatch",
+    "x#production|Type|Shared|zgaps.go:15|-||UnsupportedSyntax",
     "x#production|Type|string|zgaps.go:18|-||ExternalDefinition",
     "x#production|Type|Printed|zgaps.go:19|resolved|x#production::Printed|",
     "x#production|Call|String|zgaps.go:20|-||MissingDefinition",
     "x#production|Type|string|zgaps.go:23|-||ExternalDefinition",
     "x#production|Type|Unbound|zgaps.go:24|resolved|x#production::Unbound|",
     "x#production|Call|Promote|zgaps.go:25|-||MissingDefinition",
+    "x#production|Type|Unknown|zowner.go:2|-||MissingDefinition",
+    "x#production|Type|string|zowner.go:2|-||ExternalDefinition",
+    "x#production|Type|Base|zpaths.go:3|resolved|x#production::Base|",
+    "x#production|Type|Base|zpaths.go:7|resolved|x#production::Base|",
+    "x#production|Type|Upper|zpaths.go:11|resolved|x#production::Upper|",
+    "x#production|Type|Lower|zpaths.go:12|resolved|x#production::Lower|",
+    "x#production|Type|string|zpaths.go:15|-||ExternalDefinition",
+    "x#production|Type|Diamond|zpaths.go:16|resolved|x#production::Diamond|",
+    "x#production|Call|Ping|zpaths.go:17|possible|x#production::Ping|Ambiguous",
     "x#production|Import|x/store|zshadow.go:2|resolved|x/store#production::store|",
     "x#production|Type|Shared|zshadow.go:5|possible|x#production::Shared,x/store#production::Shared|Ambiguous",
     "x#production|Type|string|zshadow.go:8|-||ExternalDefinition",
@@ -279,13 +325,18 @@ const PROMOTED_NAMES: &[&str] = &["Label", "Ping", "Promote", "String", "Trace"]
 /// answering level would answer `types.go:20` and `types.go:8`. Both stay green
 /// in every other table.
 ///
-/// The last four rows are what the embedding boundary decides. `zembed.go:25`
+/// The last rows are what the embedding boundary decides. `zembed.go:25`
 /// reaches `types.go:16` through `*Base`, so the star the source wrote changes
 /// no identity and no depth. The three empty rows are the embeddings this tier
 /// cannot admit — external, unbound, and ambiguous — and each names a site the
 /// same corpus holds: `zgaps.go:6` declares a local `String`, and `zembed.go:6`
 /// a local `Promote`. A resolver that answered from the embedding package
 /// rather than the embedded one would fill all three.
+///
+/// `zpaths.go:17` reaches `types.go:16` too, and the site alone cannot tell it
+/// apart from `zembed.go:25`: both name one declaration at one depth. What
+/// separates them is the certainty in `APP_REFERENCES` — the diamond's row is
+/// possible with an `Ambiguous` gap, and the pointer embedding's is resolved.
 const PROMOTION_DEPTHS: &[&str] = &[
     "Call|Label|foreign.go:6|store/store.go:4",
     "Call|Label|foreign.go:15|",
@@ -304,6 +355,7 @@ const PROMOTION_DEPTHS: &[&str] = &[
     "Call|Ping|zembed.go:25|types.go:16",
     "Call|String|zgaps.go:20|",
     "Call|Promote|zgaps.go:25|",
+    "Call|Ping|zpaths.go:17|types.go:16",
     "Call|Promote|zshadow.go:10|",
 ];
 

@@ -33,15 +33,16 @@ impl ManifestDocument {
     /// Normalization comes first: it is pure path arithmetic, it refuses a path
     /// the root does not contain before the read rather than after it, and it
     /// gives the observation the same repository-relative shape the revision
-    /// re-check and the source readers record.
+    /// re-check and the source readers record. The observation follows the
+    /// read, so one event means one manifest that was read to its end.
     pub(super) fn read(root: &Path, path: &Path) -> Result<Self, RustProjectError> {
         let relative = relative_text(root, path)?;
-        observe::record(Observation::ManifestRead(&relative));
         let text =
             std::fs::read_to_string(path).map_err(|source| RustProjectError::ManifestRead {
                 path: path_text(path),
                 source,
             })?;
+        observe::record(Observation::ManifestRead(&relative));
         let table =
             text.parse::<toml::Table>()
                 .map_err(|error| RustProjectError::ManifestParse {

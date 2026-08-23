@@ -153,6 +153,10 @@ pub(super) fn conditions_of(name: &str, facts: &GoFileFacts<'_>) -> Box<[GoBuild
 /// operating-system term, and a single trailing term may be either. The test
 /// suffix is removed first, so `parse_linux_test.go` is a Linux file in the
 /// test context rather than a file about a platform named `test`.
+///
+/// A term only constrains a build when something is written before it. Go's own
+/// rule requires a non-empty segment ahead of the first `_`, so `linux.go` and
+/// `wasm.go` are ordinary sources every build compiles.
 fn platform_suffixes(name: &str) -> Box<[GoBuildCondition]> {
     let stem = stem(name);
     let base = stem.strip_suffix(TEST_SUFFIX).unwrap_or(stem);
@@ -171,24 +175,39 @@ fn platform_suffixes(name: &str) -> Box<[GoBuildCondition]> {
 /// An instruction-set term may be preceded by an operating-system one, and a
 /// lone trailing term may be either. A trailing segment that names neither
 /// states no predicate, so `zz_generated.go` is an ordinary source.
+///
+/// An empty `leading` means the whole stem is the term, which Go does not read
+/// as a constraint at all: `linux.go` compiles everywhere.
 fn trailing_terms<'name>(leading: &'name str, tail: &'name str) -> Vec<&'name str> {
     match (
+        leading.is_empty(),
         PLATFORM_ARCHITECTURES.contains(&tail),
         PLATFORM_SYSTEMS.contains(&tail),
     ) {
-        (true, _) => system_before(leading)
+        (true, _, _) => Vec::new(),
+        (false, true, _) => system_before(leading)
             .into_iter()
             .chain(std::iter::once(tail))
             .collect(),
-        (false, true) => vec![tail],
-        (false, false) => Vec::new(),
+        (false, false, true) => vec![tail],
+        (false, false, false) => Vec::new(),
     }
 }
 
 /// The operating-system term written before an instruction-set term.
+///
+/// It needs something written before it in turn: `amd64.go` and `linux_amd64.go`
+/// both end in an instruction set, and only the second names an operating
+/// system, because only the second has a segment ahead of the one it would read
+/// as one.
 fn system_before(leading: &str) -> Option<&str> {
-    let previous = leading.strip_suffix('_')?.rsplit('_').next()?;
-    PLATFORM_SYSTEMS.contains(&previous).then_some(previous)
+    let stated = leading.strip_suffix('_')?;
+    let previous = stated.rsplit('_').next()?;
+    let named = stated.strip_suffix(previous)?;
+    match named.is_empty() {
+        true => None,
+        false => PLATFORM_SYSTEMS.contains(&previous).then_some(previous),
+    }
 }
 
 /// Whether a source imports the foreign-function pseudo-package.

@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use crate::hash::digest_bytes;
 use crate::observe::{self, Observation};
+use crate::resolution::capacity::admits_one_more;
 use crate::resolution::rust::dependency::RustDependency;
 use crate::resolution::rust::edition::CargoEdition;
 use crate::resolution::rust::error::RustProjectError;
@@ -107,7 +108,7 @@ fn collect_manifests(
         if seen.contains(&path) {
             continue;
         }
-        check_manifest_limit(entries.len().saturating_add(1), limits)?;
+        check_manifest_limit(entries.len(), limits)?;
         let document = ManifestDocument::read(root, &path)?;
         let entry = read_entry(root, document, (&members, workspace.as_ref()))?;
         pending.extend(edge_manifests(&entry));
@@ -148,13 +149,12 @@ fn edge_manifests(entry: &ManifestEntry) -> impl Iterator<Item = PathBuf> + '_ {
     entry.edges.iter().filter_map(|edge| edge.manifest.clone())
 }
 
-fn check_manifest_limit(count: usize, limits: ResolutionLimits) -> Result<(), RustProjectError> {
-    let ceiling = usize::try_from(limits.max_manifests).unwrap_or(usize::MAX);
-    match count > ceiling {
-        true => Err(RustProjectError::LimitExceeded {
+fn check_manifest_limit(held: usize, limits: ResolutionLimits) -> Result<(), RustProjectError> {
+    match admits_one_more(held, limits.max_manifests) {
+        true => Ok(()),
+        false => Err(RustProjectError::LimitExceeded {
             limit: limits.max_manifests,
         }),
-        false => Ok(()),
     }
 }
 

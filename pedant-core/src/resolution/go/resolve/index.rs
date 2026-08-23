@@ -7,9 +7,16 @@
 //! questions reads a table rather than rescanning the corpus.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
-use pedant_syntax::go::GoDeclarationKind;
-use pedant_types::{DefinitionHandle, ResolutionUnitHandle, SourceSpan, SymbolKind};
+use pedant_syntax::go::{GoDeclarationKind, GoFactSpan};
+use pedant_types::{
+    DefinitionHandle, ResolutionUnitHandle, SourcePosition, SourceSpan, SymbolKind,
+};
+
+use crate::resolution::identity::position;
+
+use super::error::GoResolutionError;
 
 /// A named type, as the source that mentioned it wrote it.
 ///
@@ -25,10 +32,14 @@ pub(super) struct TypeName {
 }
 
 /// One named type an in-snapshot package embeds.
+///
+/// The name is shared rather than copied: one identity is cloned once per
+/// reached type per embedding level of every method-set walk, and a `Box<str>`
+/// there allocates a second copy of a name the slot already holds.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct EmbeddedType {
     pub(super) unit: usize,
-    pub(super) name: Box<str>,
+    pub(super) name: Arc<str>,
 }
 
 /// One embedding, as the type it names and the form the source wrote.
@@ -50,7 +61,9 @@ pub(super) struct Slot {
     /// definition, which no declaration states.
     pub(super) declared: Option<GoDeclarationKind>,
     pub(super) unit: usize,
-    pub(super) name: Box<str>,
+    /// The declared name, shared with the report handle and with every
+    /// embedding identity that reaches it, so one name is allocated once.
+    pub(super) name: Arc<str>,
     /// Where the declared name itself is written, which is the site a relation
     /// stated about this definition is reported at.
     pub(super) site: SourceSpan,
@@ -110,16 +123,35 @@ impl Slot {
     }
 }
 
+/// The report span one grammar span occupies in its own file.
+///
+/// One owner for every stage that writes a site: the definition pass, the
+/// reference pass, and the package clause all state the same four coordinates
+/// against the same path, and a copy per stage is one conversion a later fix
+/// reaches only part of. The path is shared rather than copied, because every
+/// caller already holds the snapshot's own handle on it.
+pub(super) fn site(path: &Arc<str>, span: GoFactSpan) -> SourceSpan {
+    SourceSpan::new(
+        Arc::clone(path),
+        SourcePosition::new(position(span.start_line()), position(span.start_column())),
+        SourcePosition::new(position(span.end_line()), position(span.end_column())),
+    )
+}
+
 /// One package context's own tables.
+///
+/// The member and declaration tables nest rather than key on a tuple: a tuple
+/// key has no borrowed form, so every read of one would allocate its key parts
+/// only to drop them again, and the member table is the hottest read in the
+/// stage. Nested, both levels probe with a borrowed name and allocate nothing.
 pub(super) struct UnitIndex {
     pub(super) handle: ResolutionUnitHandle,
     /// The slot of this unit's one package definition.
     pub(super) package: usize,
     names: BTreeMap<Box<str>, Vec<usize>>,
-    members: BTreeMap<(Box<str>, Box<str>), Vec<usize>>,
     holders: BTreeMap<Box<str>, Vec<usize>>,
     embeds: BTreeMap<Box<str>, Vec<Embedding>>,
-    declarations: BTreeMap<(Box<str>, u32), usize>,
+    declarations: BTreeMap<Box<str>, BTreeMap<u32, usize>>,
 }
 
 impl UnitIndex {
@@ -130,7 +162,6 @@ impl UnitIndex {
             handle,
             package,
             names: BTreeMap::new(),
-            members: BTreeMap::new(),
             holders: BTreeMap::new(),
             embeds: BTreeMap::new(),
             declarations: BTreeMap::new(),
@@ -143,11 +174,7 @@ impl UnitIndex {
     }
 
     /// Record one member of a named type.
-    pub(super) fn hold(&mut self, owner: &str, member: &str, slot: usize) {
-        self.members
-            .entry((Box::from(owner), Box::from(member)))
-            .or_default()
-            .push(slot);
+    pub(super) fn hold(&mut self, owner: &str, slot: usize) {
         self.holders.entry(Box::from(owner)).or_default().push(slot);
     }
 
@@ -162,20 +189,14 @@ impl UnitIndex {
     /// Record which slot one source's declaration became.
     pub(super) fn state(&mut self, source: &str, declaration: u32, slot: usize) {
         self.declarations
-            .insert((Box::from(source), declaration), slot);
+            .entry(Box::from(source))
+            .or_default()
+            .insert(declaration, slot);
     }
 
     /// Every definition one package-scope name selects.
     pub(super) fn named(&self, name: &str) -> &[usize] {
         self.names.get(name).map(Vec::as_slice).unwrap_or_default()
-    }
-
-    /// Every member one named type declares directly.
-    pub(super) fn member(&self, owner: &str, member: &str) -> &[usize] {
-        self.members
-            .get(&(Box::from(owner), Box::from(member)))
-            .map(Vec::as_slice)
-            .unwrap_or_default()
     }
 
     /// Every member one named type declares directly, whatever it is called.
@@ -196,9 +217,7 @@ impl UnitIndex {
 
     /// The definition one source's declaration became.
     pub(super) fn declared(&self, source: &str, declaration: u32) -> Option<usize> {
-        self.declarations
-            .get(&(Box::from(source), declaration))
-            .copied()
+        self.declarations.get(source)?.get(&declaration).copied()
     }
 }
 
@@ -226,10 +245,25 @@ impl Index {
         self.units.get(unit)
     }
 
-    /// The tables of the unit at one snapshot-local position, for a stage still
-    /// filling them.
-    pub(super) fn unit_mut(&mut self, unit: usize) -> Option<&mut UnitIndex> {
-        self.units.get_mut(unit)
+    /// The tables of the unit at one snapshot-local position, refusing an
+    /// absence rather than passing over it.
+    ///
+    /// A stage filling a unit's tables was handed the position the same walk
+    /// opened the index at, so an absence here is a hole in this resolution's
+    /// own inventory. Ignoring it costs the join every later stage reads
+    /// through, with nothing said; refusing states which context is missing.
+    pub(super) fn tables_mut(&mut self, unit: usize) -> Result<&mut UnitIndex, GoResolutionError> {
+        self.units.get_mut(unit).ok_or_else(|| unopened(unit))
+    }
+
+    /// The handle of the unit at one snapshot-local position.
+    pub(super) fn unit_handle(
+        &self,
+        unit: usize,
+    ) -> Result<ResolutionUnitHandle, GoResolutionError> {
+        self.unit(unit)
+            .map(|found| found.handle.clone())
+            .ok_or_else(|| unopened(unit))
     }
 
     /// The definition at one position.
@@ -240,5 +274,13 @@ impl Index {
     /// Every definition the report states, in the order they were stated.
     pub(super) fn stated(&self) -> &[Slot] {
         &self.slots
+    }
+}
+
+/// The refusal one unopened package context earns.
+fn unopened(unit: usize) -> GoResolutionError {
+    GoResolutionError::UnitMapping {
+        unit: position(unit),
+        reason: Box::from("no index was opened for this package context"),
     }
 }

@@ -20,9 +20,8 @@ const STORE: &str = "store.rs";
 const WALK: &str = "discovery.rs";
 const CONSTRUCTOR: &str = "unit_table.rs";
 
-/// The store's one interning body, and the three bodies it drives.
+/// The store's one interning body, and the two bodies it drives.
 const INTERN: &str = "intern";
-const BYTE_CHECK: &str = "checked_byte_length";
 const READER: &str = "read_and_walk";
 const EXTRACTION: &str = "extract";
 
@@ -35,9 +34,13 @@ const SOURCE_DIGEST: &str = "digest_bytes";
 const INVENTORY: &str = "conditions_of";
 
 /// The ceilings the store owns.
+///
+/// The two byte ceilings are stated as the bounds handed to the one bounded
+/// reader rather than as checks the store runs itself: the length a ceiling is
+/// compared against has to be the length that was read, which only the reader
+/// holds.
 const SOURCE_CHECK: &str = "check_source_capacity";
-const PER_FILE_CHECK: &str = "check_source_bytes";
-const TOTAL_CHECK: &str = "check_total_bytes";
+const BYTE_BOUNDS: &str = "bounds";
 
 /// The tables the store and the constructor grow.
 const SOURCE_RETENTION: &str = "stored.push";
@@ -50,8 +53,7 @@ const WALKER: &str = "descend";
 const DIRECTORY_OWNER: &str = "retain";
 const BUDGET_CHECK: &str = "spend";
 const CONFINEMENT: &str = "canonical_in_root";
-const SOURCE_ADMISSION: &str = "admitted_sources";
-const DIRECTORY_ADMISSION: &str = "admitted_directories";
+const ENTRY_ADMISSION: &str = "admitted";
 const DIRECTORY_RETENTION: &str = "found.push";
 
 /// The constructor's unit ceiling and the body that grows the unit table.
@@ -60,7 +62,11 @@ const UNIT_OWNER: &str = "retain_unit";
 
 /// The two filesystem routes the snapshot takes, each of which must have one
 /// site.
-const FILE_READ: &str = "read";
+///
+/// The source route is the bounded reader, which is the only body that opens a
+/// source at all: an unbounded `std::fs::read` beside it would be a second
+/// route past the byte ceilings.
+const FILE_READ: &str = "bounded";
 const DIRECTORY_READ: &str = "read_dir";
 
 /// 4.T8 (Invariants 4, 5): canonical confinement dominates every source read,
@@ -74,8 +80,7 @@ fn go_snapshot_limit_checks_dominate_source_and_unit_retention() {
     assert_walk_confines_and_budgets_before_retention();
     assert_unit_check_dominates_unit_retention();
     assert_single_site(SOURCE_CHECK, STORE);
-    assert_single_site(PER_FILE_CHECK, STORE);
-    assert_single_site(TOTAL_CHECK, STORE);
+    assert_single_site(BYTE_BOUNDS, STORE);
     assert_single_site(UNIT_CHECK, CONSTRUCTOR);
     assert_single_site(BUDGET_CHECK, WALK);
     assert_single_site(DIRECTORY_READ, WALK);
@@ -145,25 +150,23 @@ fn assert_store_checks_dominate_retention() {
         );
     }
 
-    let sized = statement_naming(intern, BYTE_CHECK)
-        .unwrap_or_else(|| panic!("`{INTERN}` should state `{BYTE_CHECK}`"));
     let read = statement_naming(intern, READER)
         .unwrap_or_else(|| panic!("`{INTERN}` should state `{READER}`"));
+    let charged = statement_naming_field(intern, "consumed.saturating_add")
+        .unwrap_or_else(|| panic!("`{INTERN}` should charge the total it read"));
     assert!(
-        sized < read,
-        "`{INTERN}` must size a source (statement {sized}) before reading it (statement {read})"
+        read < charged,
+        "`{INTERN}` must read a source (statement {read}) before charging its length (statement {charged})"
     );
 
-    let sizing = &method(&store, BYTE_CHECK).block;
-    for check in [PER_FILE_CHECK, TOTAL_CHECK] {
-        assert!(
-            statement_naming(sizing, check).is_some(),
-            "`{BYTE_CHECK}` must be the body that states `{check}`"
-        );
-    }
-    assert!(
-        statement_naming(&method(&store, READER).block, FILE_READ).is_some(),
-        "`{READER}` must be the one body that opens a source"
+    let reader = &method(&store, READER).block;
+    let opened = statement_naming(reader, FILE_READ)
+        .unwrap_or_else(|| panic!("`{READER}` must be the one body that opens a source"));
+    let bounded = statement_naming(reader, BYTE_BOUNDS)
+        .unwrap_or_else(|| panic!("`{READER}` should hand its byte ceilings to the read"));
+    assert_eq!(
+        opened, bounded,
+        "`{READER}` must bound the same statement that opens the source"
     );
 }
 
@@ -195,12 +198,10 @@ fn assert_walk_confines_and_budgets_before_retention() {
         "`{DIRECTORY_OWNER}` must be the one body that grows `{DIRECTORY_RETENTION}`"
     );
 
-    for admission in [SOURCE_ADMISSION, DIRECTORY_ADMISSION] {
-        assert!(
-            statement_naming(&free(&walk, admission).block, CONFINEMENT).is_some(),
-            "`{admission}` must confine every path it admits"
-        );
-    }
+    assert!(
+        statement_naming(&method(&walk, ENTRY_ADMISSION).block, CONFINEMENT).is_some(),
+        "`{ENTRY_ADMISSION}` must confine every path it admits"
+    );
     assert_confinement_is_owned_by_the_two_stages();
 }
 

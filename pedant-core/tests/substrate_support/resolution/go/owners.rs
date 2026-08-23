@@ -44,6 +44,7 @@ pub const GO_MODULES: &[&str] = &[
     "test_support.rs",
     "unit.rs",
     "unit_table.rs",
+    "written_type_fact.rs",
 ];
 
 /// Every module of the Go resolution stage, relative to `src/resolution/go`.
@@ -105,6 +106,7 @@ pub const SNAPSHOT_MODULES: &[&str] = &[
     "test_support.rs",
     "unit.rs",
     "unit_table.rs",
+    "written_type_fact.rs",
 ];
 
 /// The shared resolution owners the Go loader reaches, relative to
@@ -114,11 +116,14 @@ pub const SNAPSHOT_MODULES: &[&str] = &[
 /// about what the Go loader may read has to include them: an escape or an
 /// environment read hidden here would answer for Go too.
 pub const SHARED_MODULES: &[&str] = &[
+    "binding.rs",
+    "capacity.rs",
     "digest.rs",
     "identity.rs",
     "line_index.rs",
     "path_normalization.rs",
     "paths.rs",
+    "read.rs",
     "sites.rs",
 ];
 

@@ -8,10 +8,11 @@
 //! that holds a snapshot and a resolution can therefore prove they describe the
 //! same repository state before it joins them.
 //!
-//! Every field is hashed with its own length, and every list with its own
-//! element count, so no two different claims can produce one byte stream by
-//! running two fields or two lists together. Both are fixed-width, so one
-//! repository state states one digest on every host.
+//! This is the sole Rust fingerprint computation; the framing it hashes
+//! through is `ClaimDigest`'s. Every field is hashed with its own length, and
+//! every list with its own element count, so no two different claims can
+//! produce one byte stream by running two fields or two lists together. Both
+//! are fixed-width, so one repository state states one digest on every host.
 
 use std::fmt;
 use std::path::Path;
@@ -84,7 +85,7 @@ pub struct RustSnapshotFingerprint {
 }
 
 impl RustSnapshotFingerprint {
-    /// The sole fingerprint computation in this repository.
+    /// The sole Rust fingerprint computation; the framing is `ClaimDigest`'s.
     ///
     /// The canonical root enters as its operating-system bytes. A root is never
     /// held to UTF-8, and a lossy rendering gives two roots that differ only in

@@ -4,8 +4,11 @@
 //! One normalized path is read, hashed, parsed, and walked for facts exactly
 //! once even when several package contexts instantiate it. Every ceiling this
 //! store owns is checked before the state it would pay for is retained, and the
-//! byte ceilings are read from the file's own metadata, so an oversized source
-//! is refused before its bytes enter this process at all.
+//! byte ceilings bound the read itself: at most one byte past the per-file
+//! ceiling ever enters memory, and the length both ceilings are compared
+//! against — and the length the running total is charged — is the length that
+//! actually arrived. A separate stat could not state that, because a file may
+//! grow between the stat and the read.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -17,6 +20,8 @@ use pedant_syntax::tree_sitter::parse_bound;
 
 use crate::hash::digest_bytes;
 use crate::observe::{self, Observation};
+use crate::resolution::capacity::admits_one_more;
+use crate::resolution::read::{self, ReadBounds, ReadFault};
 
 use super::condition::conditions_of;
 use super::facts::GoSourceFacts;
@@ -32,6 +37,12 @@ pub(super) struct GoSourceStore {
     indexes: BTreeMap<Arc<str>, usize>,
     stored: Vec<GoSource>,
     consumed: u64,
+}
+
+/// One source read under the byte ceilings, and the length it was charged.
+struct ReadSource {
+    source: GoSource,
+    bytes: u64,
 }
 
 impl GoSourceStore {
@@ -57,20 +68,20 @@ impl GoSourceStore {
             return Ok(Arc::clone(stored.0));
         }
         check_source_capacity(self.stored.len(), self.limits)?;
-        let bytes = self.checked_byte_length(canonical, &relative)?;
-        let source = self.read_and_walk(canonical, &relative)?;
-        self.consumed = self.consumed.saturating_add(bytes);
+        let read = self.read_and_walk(canonical, &relative)?;
+        self.consumed = self.consumed.saturating_add(read.bytes);
         self.indexes
             .insert(Arc::clone(&relative), self.stored.len());
-        self.stored.push(source);
+        self.stored.push(read.source);
         Ok(relative)
     }
 
     /// The declared package name of one already-stored source.
     ///
-    /// A source the snapshot never interned is a store inconsistency rather
-    /// than a source that declares nothing, so the caller is told it is absent
-    /// instead of being answered.
+    /// Absence here is a store inconsistency rather than a source that declares
+    /// nothing: no source without a package clause is ever retained, so the
+    /// caller reports the disagreement instead of reading it as a fact about
+    /// the repository.
     pub(super) fn package_name(&self, path: &str) -> Option<&str> {
         self.indexes
             .get(path)
@@ -85,46 +96,45 @@ impl GoSourceStore {
         sources.into_boxed_slice()
     }
 
-    /// The file's own byte length, refused before it is read when either byte
-    /// ceiling cannot pay for it.
-    fn checked_byte_length(
-        &self,
-        canonical: &Path,
-        relative: &str,
-    ) -> Result<u64, GoSnapshotError> {
-        let bytes = std::fs::metadata(canonical)
-            .map_err(|source| GoSnapshotError::SourceRead {
-                path: Box::from(relative),
-                source,
-            })?
-            .len();
-        check_source_bytes(bytes, relative, self.limits)?;
-        check_total_bytes(self.consumed, bytes, self.limits)?;
-        Ok(bytes)
-    }
-
-    /// Read one confined source, parse it once, and walk it for facts once.
+    /// Read one confined source under both byte ceilings, parse it once, and
+    /// walk it for facts once.
+    ///
+    /// The read is announced before it is attempted, so a source this store
+    /// opened and failed part-way through still counts as opened. Under-
+    /// reporting is the unsafe direction: a claim that a path was never opened
+    /// is proved from this stream.
     fn read_and_walk(
         &self,
         canonical: &Path,
         relative: &Arc<str>,
-    ) -> Result<GoSource, GoSnapshotError> {
-        let bytes = std::fs::read(canonical).map_err(|source| GoSnapshotError::SourceRead {
-            path: Box::from(&**relative),
-            source,
-        })?;
+    ) -> Result<ReadSource, GoSnapshotError> {
         observe::record(Observation::SourceRead(relative));
+        let bytes = read::bounded(canonical, self.bounds())
+            .map_err(|fault| byte_refusal(fault, relative, self.limits))?;
+        let charged = read::byte_count(&bytes);
         let text = String::from_utf8(bytes).map_err(|_| GoSnapshotError::NonUtf8Source {
             path: Box::from(&**relative),
         })?;
         let facts = extract(&text, relative, fact_limits(self.limits))?;
-        Ok(GoSource {
-            digest: digest_bytes(text.as_bytes()),
-            conditions: facts.0,
-            facts: facts.1,
-            path: Arc::clone(relative),
-            text: Arc::from(text),
+        Ok(ReadSource {
+            source: GoSource {
+                digest: digest_bytes(text.as_bytes()),
+                conditions: facts.0,
+                facts: facts.1,
+                path: Arc::clone(relative),
+                text: Arc::from(text),
+            },
+            bytes: charged,
         })
+    }
+
+    /// The two byte ceilings this store reads under, and the total it has spent.
+    fn bounds(&self) -> ReadBounds {
+        ReadBounds {
+            source_bytes: self.limits.max_source_file_bytes,
+            total_bytes: self.limits.max_total_source_bytes,
+            consumed: self.consumed,
+        }
     }
 }
 
@@ -154,7 +164,7 @@ fn extract(
     observe::record(Observation::SiteVisit(relative));
     require_package_clause(&facts, relative)?;
     Ok((
-        conditions_of(file_name(relative), &facts),
+        conditions_of(paths::file_name(relative), &facts),
         GoSourceFacts::of(&facts),
     ))
 }
@@ -177,11 +187,6 @@ fn incomplete(relative: &str, defect: GoSourceDefect) -> GoSnapshotError {
     }
 }
 
-/// The last segment of a normalized repository-relative path.
-fn file_name(relative: &str) -> &str {
-    relative.rsplit('/').next().unwrap_or(relative)
-}
-
 /// The two fact ceilings a snapshot converts its own limits into.
 fn fact_limits(limits: GoResolutionLimits) -> GoFactLimits {
     GoFactLimits::new(limits.max_syntax_depth, limits.max_facts_per_source)
@@ -189,40 +194,27 @@ fn fact_limits(limits: GoResolutionLimits) -> GoFactLimits {
 
 /// One more source must still fit under the configured ceiling.
 fn check_source_capacity(held: usize, limits: GoResolutionLimits) -> Result<(), GoSnapshotError> {
-    let ceiling = usize::try_from(limits.max_source_files).unwrap_or(usize::MAX);
-    match held.saturating_add(1) > ceiling {
-        true => Err(GoSnapshotError::SourceFileLimitExceeded {
+    match admits_one_more(held, limits.max_source_files) {
+        true => Ok(()),
+        false => Err(GoSnapshotError::SourceFileLimitExceeded {
             limit: limits.max_source_files,
         }),
-        false => Ok(()),
     }
 }
 
-/// One source's own bytes must sit under the per-file ceiling.
-fn check_source_bytes(
-    bytes: u64,
-    relative: &str,
-    limits: GoResolutionLimits,
-) -> Result<(), GoSnapshotError> {
-    match bytes > limits.max_source_file_bytes {
-        true => Err(GoSnapshotError::SourceBytesLimitExceeded {
+/// The store's own error for one refused read.
+fn byte_refusal(fault: ReadFault, relative: &str, limits: GoResolutionLimits) -> GoSnapshotError {
+    match fault {
+        ReadFault::Unreadable(source) => GoSnapshotError::SourceRead {
+            path: Box::from(relative),
+            source,
+        },
+        ReadFault::SourceBytes => GoSnapshotError::SourceBytesLimitExceeded {
             path: Box::from(relative),
             limit: limits.max_source_file_bytes,
-        }),
-        false => Ok(()),
-    }
-}
-
-/// The store's bytes together must stay under the total ceiling.
-fn check_total_bytes(
-    consumed: u64,
-    bytes: u64,
-    limits: GoResolutionLimits,
-) -> Result<(), GoSnapshotError> {
-    match consumed.saturating_add(bytes) > limits.max_total_source_bytes {
-        true => Err(GoSnapshotError::TotalSourceBytesLimitExceeded {
+        },
+        ReadFault::TotalBytes => GoSnapshotError::TotalSourceBytesLimitExceeded {
             limit: limits.max_total_source_bytes,
-        }),
-        false => Ok(()),
+        },
     }
 }

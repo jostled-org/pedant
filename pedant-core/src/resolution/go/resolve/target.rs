@@ -13,17 +13,17 @@
 //! language's wrapper states its own subset of it, so a kind added for one
 //! language cannot quietly become a kind another one accepts.
 
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use pedant_types::{ReferenceKind, ResolutionReport, ResolutionUnit, ResolutionUnitId, SymbolKind};
 
+use crate::resolution::binding::{self, BindingFault};
 use crate::resolution::go::fingerprint::GoSnapshotFingerprint;
-use crate::resolution::go::identity::position;
 use crate::resolution::go::snapshot::GoResolutionSnapshot;
 use crate::resolution::go::snapshot_module::GoSnapshotModuleId;
 use crate::resolution::go::unit::{GoPackageContext, GoResolutionUnit, GoSnapshotUnitId};
-use crate::resolution::sites::{self, SiteError, SourceTexts};
+use crate::resolution::line_index::source_lines;
+use crate::resolution::sites::{self, SiteError};
 
 use super::error::GoResolutionError;
 
@@ -134,71 +134,49 @@ fn bind_units(
     snapshot: &GoResolutionSnapshot,
     units: &[ResolutionUnit],
 ) -> Result<Box<[GoUnitBinding]>, GoResolutionError> {
-    if units.len() != snapshot.units().len() {
-        return Err(GoResolutionError::UnitMapping {
-            unit: position(units.len()),
-            reason: Box::from("the report and the snapshot hold different unit counts"),
-        });
-    }
-    let keyed = keyed_units(snapshot);
-    units.iter().map(|unit| bind_unit(&keyed, unit)).collect()
+    binding::bind_by_key(units, snapshot.units(), unit_key, bound).map_err(unit_refusal)
 }
 
-/// Every snapshot unit under its stable key, so binding a report of N units
-/// formats N keys rather than one key per candidate per report unit.
-fn keyed_units(snapshot: &GoResolutionSnapshot) -> BTreeMap<Arc<str>, &GoResolutionUnit> {
-    snapshot
-        .units()
-        .iter()
-        .map(|unit| (unit_key(unit), unit))
-        .collect()
-}
-
-fn bind_unit(
-    keyed: &BTreeMap<Arc<str>, &GoResolutionUnit>,
-    unit: &ResolutionUnit,
-) -> Result<GoUnitBinding, GoResolutionError> {
-    let found = keyed
-        .get(unit.key())
-        .ok_or_else(|| GoResolutionError::UnitMapping {
-            unit: unit.id().index(),
-            reason: Box::from("no snapshot package context carries this key"),
-        })?;
-    Ok(GoUnitBinding {
+/// One report unit bound to the snapshot package context its key selected.
+fn bound(unit: &ResolutionUnit, found: &GoResolutionUnit) -> GoUnitBinding {
+    GoUnitBinding {
         unit: unit.id(),
         snapshot_unit: found.id(),
         module: found.module(),
         context: found.context(),
-    })
+    }
+}
+
+/// The Go seam's own error for one report that does not describe the snapshot.
+fn unit_refusal(fault: BindingFault) -> GoResolutionError {
+    match fault {
+        BindingFault::UnitCountMismatch { report, snapshot } => {
+            GoResolutionError::UnitCountMismatch { report, snapshot }
+        }
+        BindingFault::UnknownKey { unit } => GoResolutionError::UnitMapping {
+            unit,
+            reason: Box::from("no snapshot package context carries this key"),
+        },
+    }
 }
 
 /// Prove every definition names a kind a Go resolution emits.
 fn validate_definition_kinds(report: &ResolutionReport) -> Result<(), GoResolutionError> {
-    match report
-        .definitions()
-        .iter()
-        .find(|definition| !is_go_definition_kind(definition.kind()))
-    {
+    match binding::first_unsupported_definition(report, is_go_definition_kind) {
         None => Ok(()),
-        Some(definition) => Err(GoResolutionError::UnsupportedDefinitionKind {
-            definition: definition.id().index(),
-            kind: definition.kind(),
-        }),
+        Some((definition, kind)) => {
+            Err(GoResolutionError::UnsupportedDefinitionKind { definition, kind })
+        }
     }
 }
 
 /// Prove every reference names a kind a Go resolution emits.
 fn validate_reference_kinds(report: &ResolutionReport) -> Result<(), GoResolutionError> {
-    match report
-        .references()
-        .iter()
-        .find(|reference| !is_go_reference_kind(reference.kind()))
-    {
+    match binding::first_unsupported_reference(report, is_go_reference_kind) {
         None => Ok(()),
-        Some(reference) => Err(GoResolutionError::UnsupportedReferenceKind {
-            reference: reference.id().index(),
-            kind: reference.kind(),
-        }),
+        Some((reference, kind)) => {
+            Err(GoResolutionError::UnsupportedReferenceKind { reference, kind })
+        }
     }
 }
 
@@ -249,16 +227,7 @@ fn validate_snapshot_sites(
     snapshot: &GoResolutionSnapshot,
     report: &ResolutionReport,
 ) -> Result<(), GoResolutionError> {
-    sites::validate_sites(&snapshot_texts(snapshot), report).map_err(refusal)
-}
-
-/// The text of every source this snapshot holds, keyed by its path.
-fn snapshot_texts(snapshot: &GoResolutionSnapshot) -> SourceTexts<'_> {
-    snapshot
-        .sources()
-        .iter()
-        .map(|source| (source.path(), source.text()))
-        .collect()
+    sites::validate_sites(&source_lines(snapshot.sources()), report).map_err(refusal)
 }
 
 /// The Go seam's own error for one refused site.

@@ -66,7 +66,13 @@ set -uo pipefail
 # `set -e` is deliberately off, so a failed `cd` here would leave `script_dir`
 # empty, turn the `.` line into a silent no-op, and reduce `cargo_run` and its
 # siblings to "command not found" — a step that verified nothing.
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || script_dir=""
+#
+# `CDPATH` is cleared inside the substitution. Both callers invoke this script
+# by a relative path, so `dirname` yields a bare relative directory, `cd` then
+# consults `CDPATH`, and a match there both enters the wrong directory and
+# prints it — leaving `script_dir` a two-line value naming another tree, which
+# is where the classifier would be sourced from.
+script_dir="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || script_dir=""
 if [ -z "${script_dir}" ]; then
     echo "ERROR: cannot resolve the directory holding ${BASH_SOURCE[0]}" >&2
     exit 75
@@ -210,6 +216,7 @@ SPECS
             cat <<SPECS
 exact pedant-syntax enclosing_unit ts-go go_file_facts_are_complete_ordered_and_source_bound
 exact pedant-syntax enclosing_unit ts-go go_fact_limits_refuse_before_descent_or_insertion
+exact pedant-syntax enclosing_unit ts-go go_written_types_are_read_without_recursion
 exact pedant-syntax enclosing_unit rust,ts-go go_fact_limit_checks_dominate_descent_and_insertion
 exact pedant-lang capability ts-go go_capability_output_and_recovery_are_byte_exact_after_fact_migration
 exact pedant-lang capability none go_capability_without_grammar_retains_text_findings_and_unavailable_attribution
@@ -326,6 +333,7 @@ exact pedant-graph graph go go_graph_copies_every_reference_candidate_certainty_
 exact pedant-graph graph go go_local_replacement_projects_one_resolved_dependency_edge
 exact pedant-graph graph go go_graph_refuses_stale_resolution_before_allocation
 exact pedant-graph graph go go_graph_limits_refuse_before_partial_records
+exact pedant-graph graph go go_graph_projects_a_holderless_method_at_the_receiver_level
 exact pedant-graph graph go go_graph_validation_and_limits_dominate_draft_allocation
 exact pedant-graph graph go go_graph_is_deterministic_and_rust_graph_bytes_stay_exact
 exact pedant-graph graph go go_graph_uses_schema_v1_without_new_wire_branches
@@ -365,32 +373,51 @@ SPECS
     esac
 }
 
-# Every package one step's specifications name, first appearance first.
+# Every `<package> <profile>` pair one step's specifications compile, first
+# appearance first.
 #
 # The lint gate is derived from the matrix rather than written down beside it,
-# so a step that grows a package cannot keep an unlinted one.
-go_route_packages() {
-    local spec kind package seen=" "
+# so a step that grows a package cannot keep an unlinted one. The profile is
+# half of that derivation, not decoration: `pedant-graph`'s `go` and
+# `pedant-core`'s `go-resolution` are both default-off, so a gate that dropped
+# the profile would compile none of the Go adapter and the first clippy pass
+# over the code a step introduced would land ten steps later.
+#
+# `semantic` is the one profile that maps back to `default`, for the reason the
+# header gives: it pulls the ra_ap_* tree and a ~10-minute build, so it is
+# linted at the acceptance freeze rather than at every step that names it.
+#
+# A `crate` specification states no profile and runs the package's whole test
+# set, which is a default-feature build.
+go_route_gates() {
+    local spec kind package profile pair seen=$'\n'
     while IFS= read -r spec; do
         [ -n "${spec}" ] || continue
         kind="${spec%% *}"
+        # Word splitting is the point: a specification is fixed, space-separated
+        # fields, and none of them may contain a space.
+        # shellcheck disable=SC2086
+        set -- ${spec}
         case "${kind}" in
-            exact | root | crate) ;;
+            exact | root) package="$2" profile="$4" ;;
+            crate) package="$2" profile="default" ;;
             *) continue ;;
         esac
-        package="${spec#* }"
-        package="${package%% *}"
-        case "${seen}" in
-            *" ${package} "*) continue ;;
+        case "${profile}" in
+            semantic) profile="default" ;;
         esac
-        seen="${seen}${package} "
-        printf '%s\n' "${package}"
+        pair="${package} ${profile}"
+        case "${seen}" in
+            *$'\n'"${pair}"$'\n'*) continue ;;
+        esac
+        seen="${seen}${pair}"$'\n'
+        printf '%s\n' "${pair}"
     done <<< "$1"
 }
 
 # Run one step of the Go plan's matrix, listing every command it selects.
 go_route() {
-    local step="$1" specs packages package spec excluded_label
+    local step="$1" specs gates gate package profile spec excluded_label
     specs="$(go_route_specs "${step}")" || {
         echo "ERROR: ${GO_PLAN_IDENTITY} has no step ${step}" >&2
         echo "       Fix PLAN_STEP, or add the step's matrix to verify_step.sh." >&2
@@ -400,11 +427,27 @@ go_route() {
         "${GO_PLAN_IDENTITY}" "${step}"
 
     plan_command fmt cargo fmt --check
-    packages="$(go_route_packages "${specs}")"
-    while IFS= read -r package; do
-        [ -n "${package}" ] || continue
-        plan_command "clippy_${package}" cargo clippy -p "${package}" -- -D warnings
-    done <<< "${packages}"
+    gates="$(go_route_gates "${specs}")"
+    while IFS= read -r gate; do
+        [ -n "${gate}" ] || continue
+        package="${gate%% *}"
+        profile="${gate#* }"
+        case "${profile}" in
+            default)
+                plan_command "clippy_${package}" \
+                    cargo clippy --locked -p "${package}" -- -D warnings
+                ;;
+            none)
+                plan_command "clippy_${package}_none" \
+                    cargo clippy --locked -p "${package}" --no-default-features -- -D warnings
+                ;;
+            *)
+                plan_command "clippy_${package}_${profile}" \
+                    cargo clippy --locked -p "${package}" \
+                    --no-default-features --features "${profile}" -- -D warnings
+                ;;
+        esac
+    done <<< "${gates}"
 
     while IFS= read -r spec; do
         [ -n "${spec}" ] || continue
@@ -413,21 +456,24 @@ go_route() {
         # shellcheck disable=SC2086
         set -- ${spec}
         case "$1" in
-            exact) plan_command "exact_$2_$3_$5" "${EXACT_TEST}" "$2" "$3" "$4" "$5" ;;
+            # The profile is part of the label as well as the argv: two
+            # specifications differing only in profile would otherwise write one
+            # another's receipt in PROOF_OUTPUT_DIR.
+            exact) plan_command "exact_$2_$3_$4_$5" "${EXACT_TEST}" "$2" "$3" "$4" "$5" ;;
             root)
                 case "$4" in
-                    default) plan_command "root_$2_$3" cargo test -p "$2" --test "$3" ;;
+                    default) plan_command "root_$2_$3" cargo test --locked -p "$2" --test "$3" ;;
                     none)
                         plan_command "root_$2_$3_none" \
-                            cargo test -p "$2" --test "$3" --no-default-features
+                            cargo test --locked -p "$2" --test "$3" --no-default-features
                         ;;
                     *)
                         plan_command "root_$2_$3_$4" \
-                            cargo test -p "$2" --test "$3" --no-default-features --features "$4"
+                            cargo test --locked -p "$2" --test "$3" --no-default-features --features "$4"
                         ;;
                 esac
                 ;;
-            crate) plan_command "test_$2" cargo test -p "$2" ;;
+            crate) plan_command "test_$2" cargo test --locked -p "$2" ;;
             excluded)
                 excluded_label="$(basename -- "$2")"
                 excluded_label="${excluded_label//-/_}"

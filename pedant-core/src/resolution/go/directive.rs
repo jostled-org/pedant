@@ -29,7 +29,7 @@ pub(super) fn parse(text: &str) -> Result<Box<[GoDirective]>, GoDirectiveError> 
     for (index, raw) in text.lines().enumerate() {
         let line = line_number(index);
         let tokens = tokenize(raw, line)?;
-        block = fold_line(&mut directives, block, (&tokens, line))?;
+        block = fold_line(&mut directives, block, (tokens, line))?;
     }
     match block {
         Some((verb, line)) => Err(GoDirectiveError {
@@ -46,10 +46,14 @@ type BlockState = Option<(Box<str>, u32)>;
 
 /// Apply one tokenized line to the directive list, returning the block state
 /// that survives it.
+///
+/// The tokens arrive owned and are moved through: `tokenize` allocates each one
+/// exactly once, and every reader above takes the same allocation rather than a
+/// copy of it.
 fn fold_line(
     directives: &mut Vec<GoDirective>,
     block: BlockState,
-    line: (&[Box<str>], u32),
+    line: (Box<[Box<str>]>, u32),
 ) -> Result<BlockState, GoDirectiveError> {
     match block {
         Some(open) => Ok(fold_inside_block(directives, open, line)),
@@ -62,11 +66,11 @@ fn fold_line(
 fn fold_inside_block(
     directives: &mut Vec<GoDirective>,
     open: (Box<str>, u32),
-    line: (&[Box<str>], u32),
+    line: (Box<[Box<str>]>, u32),
 ) -> BlockState {
     let (verb, opened) = open;
     let (tokens, number) = line;
-    let (arguments, closed) = split_close(tokens);
+    let (arguments, closed) = split_close(tokens.into_vec());
     record(directives, (&verb, arguments), number);
     match closed {
         true => None,
@@ -78,46 +82,90 @@ fn fold_inside_block(
 /// directive.
 fn fold_at_top_level(
     directives: &mut Vec<GoDirective>,
-    line: (&[Box<str>], u32),
+    line: (Box<[Box<str>]>, u32),
 ) -> Result<BlockState, GoDirectiveError> {
     let (tokens, number) = line;
-    let Some((verb, rest)) = tokens.split_first() else {
+    let mut tokens = tokens.into_vec();
+    let Some(verb) = held_verb(&mut tokens, number)? else {
         return Ok(None);
     };
-    if &**verb == ")" {
-        return Err(GoDirectiveError {
-            line: number,
-            message: Box::from("a block is closed without being opened"),
-        });
-    }
-    let (opens, body) = match rest.split_first() {
-        Some((token, tail)) if &**token == "(" => (true, tail),
-        _ => (false, rest),
-    };
+    let opens = first_is(&tokens, "(");
+    let body = tokens.split_off(usize::from(opens));
     let (arguments, closed) = split_close(body);
-    record(directives, (verb, arguments), number);
+    check_close(opens, closed, number)?;
+    record(directives, (&verb, arguments), number);
     Ok(match opens && !closed {
-        true => Some((verb.clone(), number)),
+        true => Some((verb, number)),
         false => None,
     })
 }
 
-/// A line's arguments, and whether the line closed its block.
-fn split_close(tokens: &[Box<str>]) -> (&[Box<str>], bool) {
-    match tokens.split_last() {
-        Some((last, head)) if &**last == ")" => (head, true),
-        _ => (tokens, false),
+/// The verb one top-level line opens with, moved out of its own token list.
+///
+/// A line stating nothing opens no directive. A line opening with `)` closes a
+/// block that was never opened.
+fn held_verb(tokens: &mut Vec<Box<str>>, line: u32) -> Result<Option<Box<str>>, GoDirectiveError> {
+    let Some(verb) = pop_first(tokens) else {
+        return Ok(None);
+    };
+    match &*verb == ")" {
+        true => Err(closed_unopened(line)),
+        false => Ok(Some(verb)),
     }
 }
 
+/// The first token of a line, moved out of it.
+fn pop_first(tokens: &mut Vec<Box<str>>) -> Option<Box<str>> {
+    match tokens.is_empty() {
+        true => None,
+        false => Some(tokens.remove(0)),
+    }
+}
+
+/// A top-level line's `)` closes only the block that same line opened.
+///
+/// Without this, `split_close` strips the token either way and the malformed
+/// `require example.com/x v1.0.0 )` is admitted as a well-formed requirement.
+fn check_close(opens: bool, closed: bool, line: u32) -> Result<(), GoDirectiveError> {
+    match closed && !opens {
+        false => Ok(()),
+        true => Err(closed_unopened(line)),
+    }
+}
+
+/// The one refusal a stray `)` earns.
+fn closed_unopened(line: u32) -> GoDirectiveError {
+    GoDirectiveError {
+        line,
+        message: Box::from("a block is closed without being opened"),
+    }
+}
+
+/// A line's arguments, and whether the line ended with a `)`.
+fn split_close(tokens: Vec<Box<str>>) -> (Vec<Box<str>>, bool) {
+    let mut arguments = tokens;
+    match arguments.last().is_some_and(|last| &**last == ")") {
+        false => (arguments, false),
+        true => {
+            arguments.pop();
+            (arguments, true)
+        }
+    }
+}
+
+/// Whether a line's remaining tokens open with `token`.
+fn first_is(tokens: &[Box<str>], token: &str) -> bool {
+    tokens.first().is_some_and(|held| &**held == token)
+}
+
 /// Record one directive, unless the line stated no arguments for it.
-fn record(directives: &mut Vec<GoDirective>, entry: (&str, &[Box<str>]), line: u32) {
+fn record(directives: &mut Vec<GoDirective>, entry: (&str, Vec<Box<str>>), line: u32) {
     let (verb, arguments) = entry;
     match arguments.is_empty() {
         true => (),
         false => directives.push(GoDirective {
             verb: verb.into(),
-            arguments: arguments.to_vec().into_boxed_slice(),
+            arguments: arguments.into_boxed_slice(),
             line,
         }),
     }

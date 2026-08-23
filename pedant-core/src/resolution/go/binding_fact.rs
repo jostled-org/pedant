@@ -4,14 +4,14 @@ use pedant_syntax::go::{
     GoBindingFact, GoBindingKind, GoFactSpan, GoInitializer, GoInitializerForm,
 };
 
+use super::written_type_fact::GoWrittenTypeRecord;
+
 /// The type one short variable declaration's initializer names, retained by the
 /// snapshot rather than borrowed from the parse it came from.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GoInitializerRecord {
     form: GoInitializerForm,
-    qualifier: Option<Box<str>>,
-    name: Box<str>,
-    pointer: bool,
+    written: GoWrittenTypeRecord,
 }
 
 impl GoInitializerRecord {
@@ -19,9 +19,7 @@ impl GoInitializerRecord {
     fn of(fact: GoInitializer<'_>) -> Self {
         Self {
             form: fact.form(),
-            qualifier: fact.qualifier().map(Box::from),
-            name: Box::from(fact.name()),
-            pointer: fact.pointer(),
+            written: GoWrittenTypeRecord::of(fact.qualifier(), Some(fact.name()), fact.pointer()),
         }
     }
 
@@ -30,20 +28,28 @@ impl GoInitializerRecord {
         self.form
     }
 
+    /// The type the initializer names, as its source spells it.
+    pub fn written_type(&self) -> &GoWrittenTypeRecord {
+        &self.written
+    }
+
     /// The package qualifier written before the name, when the source writes
     /// one.
     pub fn qualifier(&self) -> Option<&str> {
-        self.qualifier.as_deref()
+        self.written.qualifier()
     }
 
     /// The name the initializer states, in its source spelling.
+    ///
+    /// An initializer is only retained when its shape names a type, so the
+    /// written name is always present here.
     pub fn name(&self) -> &str {
-        &self.name
+        self.written.name().unwrap_or_default()
     }
 
     /// Whether the initializer states a pointer form.
     pub fn pointer(&self) -> bool {
-        self.pointer
+        self.written.pointer()
     }
 }
 
@@ -60,9 +66,7 @@ pub struct GoBindingRecord {
     span: GoFactSpan,
     scope: u32,
     declaration: Option<u32>,
-    type_qualifier: Option<Box<str>>,
-    type_name: Option<Box<str>>,
-    pointer: bool,
+    written: GoWrittenTypeRecord,
     initializer: Option<GoInitializerRecord>,
 }
 
@@ -75,9 +79,11 @@ impl GoBindingRecord {
             span: fact.span(),
             scope: fact.scope(),
             declaration: fact.declaration(),
-            type_qualifier: fact.type_qualifier().map(Box::from),
-            type_name: fact.type_name().map(Box::from),
-            pointer: fact.pointer(),
+            written: GoWrittenTypeRecord::of(
+                fact.type_qualifier(),
+                fact.type_name(),
+                fact.pointer(),
+            ),
             initializer: fact.initializer().map(GoInitializerRecord::of),
         }
     }
@@ -107,19 +113,24 @@ impl GoBindingRecord {
         self.declaration
     }
 
+    /// The type this binding declares, as its source spells it.
+    pub fn written_type(&self) -> &GoWrittenTypeRecord {
+        &self.written
+    }
+
     /// The package qualifier of the written type, when the source states one.
     pub fn type_qualifier(&self) -> Option<&str> {
-        self.type_qualifier.as_deref()
+        self.written.qualifier()
     }
 
     /// The name of the written type, when the source states one.
     pub fn type_name(&self) -> Option<&str> {
-        self.type_name.as_deref()
+        self.written.name()
     }
 
     /// Whether the written type is a pointer.
     pub fn pointer(&self) -> bool {
-        self.pointer
+        self.written.pointer()
     }
 
     /// The type this binding's initializer names, for a short variable

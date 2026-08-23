@@ -37,13 +37,23 @@
 # graphs are default-off, so no other job in this repository lints the adapters
 # or denies a missing doc on them.
 #
+# Every cargo command here runs through `cargo_capture`, so a registry outage or
+# a full disk leaves with 75 and the caller retries. Twenty-nine cargo invocations
+# reported as "the Go configuration matrix drifted" would blame this change for
+# the machine, which is the one mistake `cargo_infrastructure.sh` exists to
+# prevent.
+#
 # Runs beneath the caller's build lease and inherited `CARGO_TARGET_DIR`, opens
 # no temporary root, and reaches no network beyond what the lockfile already
 # pins. Exit 0 clean, exit 1 on violation.
 
 set -euo pipefail
 
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# `CDPATH` is cleared inside the substitution: `dirname` yields a bare relative
+# path for a script invoked by a relative path, `cd` then consults `CDPATH`, and
+# a match there both enters the wrong directory and prints it — leaving
+# `script_dir` a two-line value naming a tree this repository does not own.
+script_dir="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=repository_check_lib.sh
 . "${script_dir}/repository_check_lib.sh"
@@ -58,17 +68,16 @@ readonly GO_PREDICATE='(^|::)go_[a-z_0-9]+: test$'
 
 # What libtest prints for any test at all, so an empty binary is told apart
 # from a binary that holds no Go row.
-readonly ANY_PREDICATE=': test$'
+#
+# The listing is captured with cargo's diagnostics merged into it, because that
+# combined stream is what the infrastructure classifier reads. So the row shape
+# is anchored on both ends: a libtest identity is one whitespace-free path, and
+# a cargo warning whose text happened to end in `: test` would carry spaces and
+# answer for nothing.
+readonly ANY_PREDICATE='^\S+: test$'
 
 # Deny a missing doc on every Go-enabled documentation build.
 readonly DOC_FLAGS="-D missing_docs"
-
-status=0
-
-violation() {
-    echo "error: $*" >&2
-    status=1
-}
 
 # Count the lines of a listing that match a pattern.
 #
@@ -91,13 +100,24 @@ count_matching() {
 # List one test root, prove the selection, then run it.
 #
 # `expected` is the number of Go predicates the configuration must select.
+#
+# The listing's status is read rather than left to `set -e`. A listing that
+# failed to build is one row's failure, and aborting the script on it would
+# leave every later row unrun and the aggregate summary below unreached — the
+# paired run at the end of this function already folds into that summary, so the
+# two halves of one row would report through two different contracts.
 check_root() {
     local label="$1" expected="$2"
     shift 2
-    local listing selected found
+    local listing selected found run_failed=""
 
     printf '[go-config] %s: cargo test %s\n' "${label}" "$*"
-    listing="$(cargo test --locked "$@" -- --list)"
+    cargo_capture "${label}_list" cargo test --locked "$@" -- --list || {
+        printf '%s\n' "${CARGO_CAPTURE_OUTPUT}" >&2
+        violation "${label} could not list its tests"
+        return
+    }
+    listing="${CARGO_CAPTURE_OUTPUT}"
 
     selected="$(count_matching "${listing}" "${ANY_PREDICATE}")"
     if [ "${selected}" -eq 0 ]; then
@@ -114,15 +134,20 @@ check_root() {
     printf '[go-config] %s: %s of %s selected rows are Go predicates\n' \
         "${label}" "${found}" "${selected}"
 
-    cargo test --locked "$@" || violation "${label} failed"
+    cargo_capture "${label}_run" cargo test --locked "$@" || run_failed=1
+    printf '%s\n' "${CARGO_CAPTURE_OUTPUT}"
+    [ -z "${run_failed}" ] || violation "${label} failed"
 }
 
 # Run one lint or documentation command that no other job reaches.
 check_command() {
     local label="$1"
     shift
+    local failed=""
     printf '[go-config] %s: %s\n' "${label}" "$*"
-    "$@" || violation "${label} failed"
+    cargo_capture "${label}" "$@" || failed=1
+    printf '%s\n' "${CARGO_CAPTURE_OUTPUT}"
+    [ -z "${failed}" ] || violation "${label} failed"
 }
 
 # ---------------------------------------------------------------------------
@@ -156,9 +181,9 @@ check_root core-go-only 26 \
     -p pedant-core --no-default-features --features go-resolution --test substrate
 check_root core-go-and-probe 30 \
     -p pedant-core --no-default-features --features go-resolution,resolution-test-support --test substrate
-check_root graph-go-only 12 \
+check_root graph-go-only 13 \
     -p pedant-graph --no-default-features --features go --test graph
-check_root syntax-go-only 3 \
+check_root syntax-go-only 4 \
     -p pedant-syntax --no-default-features --features ts-go --test enclosing_unit
 check_root lang-go-only 13 \
     -p pedant-lang --no-default-features --features ts-go --test capability
@@ -172,7 +197,7 @@ check_root lang-default-off 11 \
 # All-feature: everything the crate publishes, at once.
 # ---------------------------------------------------------------------------
 
-check_root graph-all-features 12 \
+check_root graph-all-features 13 \
     -p pedant-graph --all-features --test graph
 
 # ---------------------------------------------------------------------------
@@ -203,9 +228,6 @@ check_command doc-core-go env RUSTDOCFLAGS="${DOC_FLAGS}" \
 check_command doc-graph-all-features env RUSTDOCFLAGS="${DOC_FLAGS}" \
     cargo doc --locked --no-deps -p pedant-graph --all-features
 
-if [ "${status}" -ne 0 ]; then
-    echo "error: the Go configuration matrix drifted." >&2
-    exit 1
-fi
+assert_no_violations "the Go configuration matrix drifted."
 
 echo "go configuration matrix check: clean"

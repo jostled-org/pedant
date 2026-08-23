@@ -178,6 +178,22 @@ pub const CALL_SHAPES: &[FixtureFile] = &[
 /// All three promoted calls must state `MissingDefinition`: the corpus holds no
 /// such member, which is what the embedding rule says a chain leaving the
 /// snapshot leaves behind.
+///
+/// `zpaths.go` writes the embedding shape depth alone cannot tell apart.
+/// `Upper` and `Lower` each embed `Base`, and `Diamond` embeds both, so
+/// `d.Ping()` reaches one `Ping` through two embedding paths at one depth. Go
+/// counts paths rather than types: the selector is ambiguous and `go build`
+/// rejects it. A resolver keying its widened level by the type reached collapses
+/// the two paths into one and publishes a resolved call target for a program
+/// that does not compile.
+///
+/// `zowner.go` writes the receiver this tier cannot identify at all: `Orphan`
+/// receives an `Unknown` no source declares. The method belongs to a type the
+/// corpus does not hold, so the report states no holder for it and the receiver
+/// type beside it carries the gap that says why. A resolver falling back to the
+/// package makes `Package` a method holder — a containment Go never declares —
+/// while the method set beside it records nothing, so the definition invents an
+/// owner the method sets disagree with.
 pub const METHOD_SETS: &[FixtureFile] = &[
     MANIFEST,
     (
@@ -219,6 +235,14 @@ pub const METHOD_SETS: &[FixtureFile] = &[
     (
         "repo/zshadow.go",
         "package app\n\nimport . \"x/store\"\n\ntype Doubled struct {\n\tShared\n}\n\nfunc Twinned() string {\n\tvar d Doubled\n\treturn d.Promote()\n}\n",
+    ),
+    (
+        "repo/zowner.go",
+        "package app\n\nfunc (u Unknown) Orphan() string {\n\treturn \"orphan\"\n}\n",
+    ),
+    (
+        "repo/zpaths.go",
+        "package app\n\ntype Upper struct {\n\tBase\n}\n\ntype Lower struct {\n\tBase\n}\n\ntype Diamond struct {\n\tUpper\n\tLower\n}\n\nfunc Ambiguous() string {\n\tvar d Diamond\n\treturn d.Ping()\n}\n",
     ),
 ];
 

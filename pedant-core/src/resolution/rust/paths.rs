@@ -12,10 +12,7 @@ pub(super) use crate::resolution::paths::path_text;
 pub(super) fn canonical_root(root: &Path) -> Result<PathBuf, RustProjectError> {
     crate::resolution::paths::canonical_root(root).map_err(|error| RustProjectError::InvalidRoot {
         path: path_text(root),
-        reason: match error {
-            RootError::Unreadable(source) => source.to_string().into_boxed_str(),
-            RootError::NotADirectory => Box::from("the project root is not a directory"),
-        },
+        reason: RootError::reason(error),
     })
 }
 

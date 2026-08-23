@@ -33,7 +33,13 @@ set -uo pipefail
 # `set -e` is deliberately off, so a failed `cd` here would leave `script_dir`
 # empty, turn the `.` line into a silent no-op, and reduce the classifier API to
 # "command not found" — a step that verified nothing.
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || script_dir=""
+#
+# `CDPATH` is cleared inside the substitution. A caller that invokes this helper
+# by a relative path leaves `dirname` a bare relative directory, `cd` then
+# consults `CDPATH`, and a match there both enters the wrong directory and
+# prints it — leaving `script_dir` a two-line value naming another tree, which
+# is where the classifier would be sourced from.
+script_dir="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || script_dir=""
 if [ -z "${script_dir}" ]; then
     echo "error: cannot resolve the directory holding ${BASH_SOURCE[0]}" >&2
     exit 75
@@ -97,11 +103,22 @@ CARGO_CAPTURED_OUTPUT=""
 # unavailable machine and a subshell would swallow that exit. Both call sites
 # below read the same capture, so the replay, the receipt, and the
 # classification are stated once.
+#
+# The capture is removed on exit as well as in line. A signal during the build
+# below leaves this function without reaching its own `rm`, and a transcript
+# nobody owns outlives the run that made it; the trap is what closes that. It is
+# cleared again before the function returns, so the next run's trap is the only
+# one armed and a status leaving here is never the trap's.
 capture_cargo() {
     local label="$1"
     shift
     local capture
     capture="$(mktemp "${TMPDIR:-/tmp}/run_exact_rust_test.XXXXXX")" || exit 75
+    # The path is expanded as the trap is set, not as it fires: `capture` is a
+    # local, and a trap that read it after this function returned would reach an
+    # unset name under `set -u` and remove nothing while reporting an error.
+    # shellcheck disable=SC2064
+    trap "rm -f -- \"${capture}\"" EXIT
 
     local code=0
     "$@" > "${capture}" 2>&1 || code=$?
@@ -113,6 +130,7 @@ capture_cargo() {
     classified="$(cargo_classify "${code}" "${capture}")"
     CARGO_CAPTURED_OUTPUT="$(cat -- "${capture}")"
     rm -f -- "${capture}"
+    trap - EXIT
     if [ "${classified}" != "${code}" ]; then
         printf '[cargo_infrastructure] %s: INFRASTRUCTURE (exit %s reclassified as %s)\n' \
             "${label}" "${code}" "${classified}"
@@ -121,8 +139,11 @@ capture_cargo() {
 }
 
 # ---------- list, then resolve one identity ----------
+# `--locked` on both invocations: a step receipt is only worth what the
+# lockfile it resolved against says, and a helper that quietly rewrote
+# `Cargo.lock` mid-plan would still report the step verified.
 capture_cargo "list_${package}_${target}" \
-    cargo test -p "${package}" --test "${target}" \
+    cargo test --locked -p "${package}" --test "${target}" \
     ${feature_flags[@]+"${feature_flags[@]}"} -- --list --format terse
 
 if [ "$(cargo_worst)" -ne 0 ]; then
@@ -167,7 +188,7 @@ printf '[run_exact_rust_test] %s --test %s (%s): %s\n' \
     "${package}" "${target}" "${profile}" "${identity}"
 
 capture_cargo "exact_${package}_${target}_${predicate}" \
-    cargo test -p "${package}" --test "${target}" \
+    cargo test --locked -p "${package}" --test "${target}" \
     ${feature_flags[@]+"${feature_flags[@]}"} -- --exact "${identity}"
 
 status="$(cargo_worst)"
@@ -178,8 +199,12 @@ fi
 # A green status over a filter that matched nothing is the failure this helper
 # exists to prevent, so the receipt is refused unless libtest reports the one
 # selected test as executed.
+#
+# The needle carries libtest's whole summary prefix. A bare `1 passed` is a
+# suffix of `11 passed` and of `21 passed`, so a run that executed eleven tests
+# would satisfy a claim about the one this helper selected.
 case "${CARGO_CAPTURED_OUTPUT}" in
-    *"1 passed"*) ;;
+    *"test result: ok. 1 passed"*) ;;
     *)
         echo "error: ${identity} reported success but no test executed" >&2
         exit 1

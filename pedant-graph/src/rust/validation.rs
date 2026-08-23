@@ -4,8 +4,8 @@
 //! What the neutral family beside it proves is the shape of a plan: that a
 //! stated slot names a record, that a join names a node, that a source was
 //! placed. What is proved here is the pairing this adapter was handed — the
-//! snapshot, the resolution, the bindings between them, and the two report
-//! vocabularies a Rust projection has a node and a record for.
+//! snapshot, the resolution, the bindings between them, and the snapshot bytes
+//! a retained projection is keyed against.
 //!
 //! The producer's own validator makes most of these unreachable in ordinary
 //! use. They are still checked here, because a graph that silently dropped a
@@ -14,16 +14,12 @@
 //! sealed.
 
 use pedant_core::resolution::rust::{
-    RustResolutionSnapshot, RustSnapshotEdge, RustSnapshotUnitId, RustTargetResolution,
-    RustUnitBinding,
+    RustResolutionSnapshot, RustSnapshotUnitId, RustTargetResolution, RustUnitBinding,
 };
-use pedant_types::{ResolutionUnit, SymbolDefinition};
+use pedant_types::ResolutionUnit;
 
 use crate::error::GraphBuildError;
-use crate::node::GraphNodeKind;
 use crate::projection::validation as neutral;
-
-use super::mapping::Vocabulary;
 
 /// Both values must have been requested for the same Cargo target.
 pub(crate) fn check_root_target(
@@ -39,15 +35,14 @@ pub(crate) fn check_root_target(
 /// The supplied snapshot must be the one the resolution was validated against.
 ///
 /// Equal root targets do not prove equal sources: an edit that leaves every
-/// manifest and target identity alone still produces another snapshot.
+/// manifest and target identity alone still produces another snapshot. Which
+/// two fingerprints answer for a Rust pairing is stated here; the comparison
+/// and the refusal it earns belong to the neutral owner every adapter shares.
 pub(crate) fn check_snapshot_identity(
     snapshot: &RustResolutionSnapshot,
     resolution: &RustTargetResolution,
 ) -> Result<(), GraphBuildError> {
-    match snapshot.fingerprint() == resolution.snapshot_fingerprint() {
-        true => Ok(()),
-        false => Err(GraphBuildError::SnapshotFingerprintMismatch),
-    }
+    neutral::matching_fingerprint(snapshot.fingerprint(), resolution.snapshot_fingerprint())
 }
 
 /// The build unit this resolution binds one report unit to.
@@ -64,19 +59,6 @@ pub(crate) fn stated_binding(
         .ok_or(GraphBuildError::MissingUnitBinding {
             unit: unit.id().index(),
         })
-}
-
-/// One build unit is bound by one report unit.
-///
-/// A second report unit naming it would give every source that unit
-/// instantiates two owners, so the collision is refused where it is made rather
-/// than left to the containment check, which would name a doubled node instead
-/// of the doubled binding.
-pub(crate) fn distinct_binding(held: Option<u32>, unit: u32) -> Result<(), GraphBuildError> {
-    match held {
-        None => Ok(()),
-        Some(held) => Err(GraphBuildError::SharedUnitBinding { held, unit }),
-    }
 }
 
 /// The digest of the bytes one unit's source was snapshotted from.
@@ -96,33 +78,4 @@ pub(crate) fn source_digest(
             unit,
             path: Box::from(path),
         })
-}
-
-/// The unit position one snapshot dependency endpoint resolves to.
-///
-/// The refusal names the edge rather than the unit, because a snapshot unit
-/// identity is opaque outside the snapshot that issued it and the report's own
-/// unit order is a different order.
-pub(crate) fn dependency_unit(
-    bound: Option<u32>,
-    stated: (u32, &RustSnapshotEdge),
-) -> Result<u32, GraphBuildError> {
-    let (edge, declaration) = stated;
-    bound.ok_or_else(|| GraphBuildError::MissingDependencyUnit {
-        edge,
-        alias: Box::from(declaration.name()),
-    })
-}
-
-/// The node kind one report definition takes in a Rust projection.
-///
-/// The refusal names the report-local definition whose kind this projection has
-/// no node for. `RustTargetResolution` proves the Rust subset before it
-/// publishes a report, so this answers only for a report that reached the
-/// projection without that proof.
-pub(crate) fn definition_kind(
-    vocabulary: &Vocabulary,
-    definition: &SymbolDefinition,
-) -> Result<GraphNodeKind, GraphBuildError> {
-    neutral::stated_definition_kind(vocabulary.definition(definition.kind()), definition)
 }

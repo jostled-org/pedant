@@ -50,14 +50,23 @@ impl GoScopeFact {
     }
 }
 
-/// The scope `node` opens, if any.
+/// The scope a node of this kind opens, if it opens one.
 ///
 /// A statement that can bind a name in its own header — `if`, `for`, `switch`,
 /// and `select` — opens a scope of its own, because the name it binds is
 /// visible in its body but not after it.
-pub(super) fn scope_kind_at(node: Node<'_>) -> Option<GoScopeKind> {
-    match node.kind() {
-        "source_file" => Some(GoScopeKind::File),
+///
+/// Each clause opens one too. The Go specification makes every `case` and
+/// `default` an implicit block, so a name `case 1` binds is invisible to `case
+/// 2`. A reader picks the innermost binding that opens before an occurrence, so
+/// clauses sharing one scope hand a sibling's binding to an occurrence that
+/// cannot see it — a wrong answer rather than a withheld one.
+///
+/// The file scope is absent here. The walk opens it itself, before it enters
+/// its first node, so the context stack's base always names a scope the
+/// inventory already holds and no node kind can open a second one.
+pub(super) fn scope_kind_at(kind: &str) -> Option<GoScopeKind> {
+    match kind {
         "function_declaration" | "method_declaration" | "func_literal" => {
             Some(GoScopeKind::Declaration)
         }
@@ -66,7 +75,11 @@ pub(super) fn scope_kind_at(node: Node<'_>) -> Option<GoScopeKind> {
         | "for_statement"
         | "expression_switch_statement"
         | "type_switch_statement"
-        | "select_statement" => Some(GoScopeKind::Block),
+        | "select_statement"
+        | "expression_case"
+        | "default_case"
+        | "type_case"
+        | "communication_case" => Some(GoScopeKind::Block),
         _ => None,
     }
 }

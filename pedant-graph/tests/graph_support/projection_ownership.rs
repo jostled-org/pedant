@@ -16,8 +16,9 @@
 use std::collections::BTreeSet;
 
 use super::inventory::{CACHE_SOURCES, GO_SOURCES, PROJECTION_SOURCES, RUST_SOURCES, SOURCES};
+use super::ownership_model::{GO_VOCABULARY, INSERTION_OWNER, RUST_VOCABULARY};
 use super::scan::{
-    code_only, compact, declaring_sources, discovered_sources, function_body, method_body, parsed,
+    code_only, declaring_sources, discovered_sources, function_body, method_body, naming, parsed,
     source,
 };
 use super::surface::{declared_items, declares_only, item_label};
@@ -71,30 +72,26 @@ const DRAFT_RECORDS: &[&str] = &[
     "ReferenceProjection",
     "SourceFragment",
     "StatedContainer",
+    "StatedDependency",
     "UnitDeclaration",
     "UnitPlan",
 ];
 
-/// The language vocabulary no neutral source may name.
+/// The language vocabulary that is no language's type name.
 ///
-/// Each is the exact production spelling an adapter type would arrive under.
-/// The neutral family holds drafts a language filled in; the moment it reads
-/// one of these, the assembler has a language of its own and a second one would
-/// have to be written for the next.
-const LANGUAGE_SPELLINGS: &[&str] = &[
+/// The resolution crate itself, the graph naming each adapter declares, and
+/// either adapter's own module path. Each is a way a language would arrive in
+/// the neutral family without one of its records being named at all. The record
+/// names themselves are the two written-down vocabularies this scan is run
+/// with beside these, so a type added to either is forbidden here by the same
+/// entry that forbids it everywhere else.
+const NEUTRAL_FORBIDDEN: &[&str] = &[
     "pedant_core",
-    "RustResolutionSnapshot",
-    "RustTargetResolution",
-    "RustSnapshotUnitId",
-    "RustSnapshotEdge",
-    "RustSnapshotFingerprint",
-    "RustUnitBinding",
-    "RustResolutionUnit",
     "Vocabulary",
     "crate::rust",
     "super::rust",
-    "GoResolutionSnapshot",
-    "GoProjectResolution",
+    "crate::go",
+    "super::go",
 ];
 
 /// The dense identities only the record store may mint.
@@ -103,9 +100,6 @@ const MINTED_IDENTITIES: &[&str] = &[
     "GraphReferenceId::new",
     "GraphEdgeId::new",
 ];
-
-/// The sole checked insertion owner every minted identity passes through.
-const INSERTION_OWNER: &str = "fn admit";
 
 /// Both Rust entries into the neutral assembler, beside the owner declaring
 /// them.
@@ -199,17 +193,19 @@ fn assert_the_family_root_only_declares() {
 }
 
 /// No neutral source names a language adapter's vocabulary.
+///
+/// Both languages' written-down vocabularies are forbidden here, beside the
+/// spellings that carry a language without naming one of its records. The
+/// neutral family holds drafts a language filled in; the moment it reads one of
+/// these, the assembler has a language of its own and a second one would have
+/// to be written for the next.
 fn assert_the_neutral_family_names_no_language() {
-    let offenders: Vec<String> = PROJECTION_SOURCES
-        .iter()
-        .flat_map(|path| {
-            let code = compact(source(path));
-            LANGUAGE_SPELLINGS
-                .iter()
-                .filter(move |spelling| code.contains(**spelling))
-                .map(move |spelling| format!("{path} names {spelling}"))
-        })
+    let forbidden: Vec<&str> = [GO_VOCABULARY, RUST_VOCABULARY, NEUTRAL_FORBIDDEN]
+        .into_iter()
+        .flatten()
+        .copied()
         .collect();
+    let offenders = naming(PROJECTION_SOURCES, &forbidden, "the language spelling");
     assert!(
         offenders.is_empty(),
         "the neutral projection family names a language vocabulary: {offenders:?}"
@@ -253,15 +249,11 @@ fn assert_the_assembler_has_one_owner() {
         vec![ASSEMBLY_OWNER],
         "{ASSEMBLER_DECLARATION} is declared by exactly the neutral assembly owner"
     );
-    let adapter: Vec<&str> = [("rust", RUST_SOURCES), ("go", GO_SOURCES)]
+    let adapter: Vec<&str> = [RUST_SOURCES, GO_SOURCES]
         .into_iter()
-        .flat_map(|(family, sources)| {
-            sources.iter().copied().filter(move |path| {
-                NEUTRALIZED_MODULES
-                    .iter()
-                    .any(|name| *path == format!("src/{family}/{name}.rs"))
-            })
-        })
+        .flatten()
+        .copied()
+        .filter(|path| NEUTRALIZED_MODULES.contains(&module_stem(path)))
         .collect();
     assert!(
         adapter.is_empty(),
@@ -274,6 +266,18 @@ fn assert_the_assembler_has_one_owner() {
         1,
         "the one assembler seals exactly one graph"
     );
+}
+
+/// The module name one adapter source states, without its family or extension.
+///
+/// The path is trimmed rather than rebuilt: assembling `src/{family}/{name}.rs`
+/// for every family and every neutralized name allocates a string per pair to
+/// answer a question about one stem.
+fn module_stem(path: &str) -> &str {
+    path.strip_prefix("src/")
+        .and_then(|rest| rest.split_once('/'))
+        .and_then(|(_, file)| file.strip_suffix(".rs"))
+        .unwrap_or_else(|| panic!("{path} is not an adapter module of this crate"))
 }
 
 /// Both Rust entries reach the neutral assembler, and neither states one of its
@@ -299,26 +303,19 @@ fn assert_rust_entries_reach_the_neutral_assembler() {
 ///
 /// The derived answers read identities back out of a graph they were handed,
 /// which is not minting. Every module on the graph-building path must take each
-/// identity from the one checked insertion owner instead.
+/// identity from the one checked insertion owner instead — both adapters
+/// included, because an adapter that minted a node identity of its own would
+/// hand the assembler a plan naming positions no assembly ever allocated.
 ///
 /// Published so the cache's own path predicate states this claim by reaching
-/// the owner of it rather than by scanning the same three families again.
+/// the owner of it rather than by scanning the same four families again.
 pub fn assert_identities_are_minted_by_one_owner() {
-    let offenders: Vec<&str> = SOURCES
-        .iter()
-        .filter(|entry| {
-            [PROJECTION_SOURCES, RUST_SOURCES, CACHE_SOURCES]
-                .into_iter()
-                .any(|family| family.contains(&entry.path))
-        })
-        .filter(|entry| {
-            let code = compact(entry.text);
-            MINTED_IDENTITIES
-                .iter()
-                .any(|spelling| code.contains(*spelling))
-        })
-        .map(|entry| entry.path)
+    let building: Vec<&str> = [PROJECTION_SOURCES, RUST_SOURCES, GO_SOURCES, CACHE_SOURCES]
+        .into_iter()
+        .flatten()
+        .copied()
         .collect();
+    let offenders = naming(&building, MINTED_IDENTITIES, "the minting spelling");
     assert!(
         offenders.is_empty(),
         "only the record store mints graph identities: {offenders:?}"

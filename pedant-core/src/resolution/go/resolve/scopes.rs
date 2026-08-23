@@ -10,6 +10,7 @@ use pedant_syntax::go::GoScopeFact;
 
 use crate::resolution::go::binding_fact::GoBindingRecord;
 use crate::resolution::go::facts::GoSourceFacts;
+use crate::resolution::identity::index_of;
 
 /// The scopes holding one position, innermost first, closing with the file
 /// scope.
@@ -23,7 +24,7 @@ fn chain(facts: &GoSourceFacts, scope: u32) -> Box<[u32]> {
         held.push(index);
         current = facts
             .scopes()
-            .get(index as usize)
+            .get(index_of(index))
             .and_then(GoScopeFact::parent);
     }
     held.into_boxed_slice()

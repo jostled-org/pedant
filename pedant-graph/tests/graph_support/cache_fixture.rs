@@ -103,14 +103,24 @@ pub fn direct(stated: Pair<'_>, limits: GraphLimits, subject: &str) -> CodeGraph
 /// here is a claim about the direct surface itself and is stated once, by
 /// [`assert_direct_builders_agree`], rather than at every cached row.
 pub fn assert_matches_direct(cached: &CodeGraph, stated: Pair<'_>, subject: &str) {
-    let direct = direct(stated, GraphLimits::default(), subject);
-    assert_eq!(
-        cached, &direct,
-        "{subject}: cached and direct graphs differ"
+    assert_equals_direct(
+        cached,
+        &direct(stated, GraphLimits::default(), subject),
+        subject,
     );
+}
+
+/// One graph equals a direct build already projected, value for value and byte
+/// for byte, and states the schema version this crate emits.
+///
+/// The direct graph is taken rather than projected here, so a case that
+/// compares one cached graph through several readings pays for one direct build
+/// instead of one per reading.
+pub fn assert_equals_direct(cached: &CodeGraph, minted: &CodeGraph, subject: &str) {
+    assert_eq!(cached, minted, "{subject}: cached and direct graphs differ");
     assert_eq!(
         json(cached),
-        json(&direct),
+        json(minted),
         "{subject}: cached and direct version-1 bytes differ"
     );
     assert_eq!(

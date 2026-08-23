@@ -96,7 +96,11 @@ readonly COLD_TARGET_BUDGET_KIB WARM_TARGET_BUDGET_KIB OWNED_TEMP_BUDGET_KIB
 REQUIRED_TOOLS="cargo cat cp date dirname du env git jq mkdir mktemp rg rm tar"
 readonly REQUIRED_TOOLS
 
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# `CDPATH` is cleared inside the substitution: `dirname` yields a bare relative
+# path for a script invoked by a relative path, `cd` then consults `CDPATH`, and
+# a match there both enters the wrong directory and prints it — leaving
+# `script_dir` a two-line value naming a tree this repository does not own.
+script_dir="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly script_dir
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=cargo_infrastructure.sh

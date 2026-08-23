@@ -16,7 +16,11 @@
 
 set -uo pipefail
 
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || script_dir=""
+# `CDPATH` is cleared inside the substitution: a table invoked by a relative
+# path leaves `dirname` a bare relative directory, `cd` then consults `CDPATH`,
+# and a match there both enters the wrong directory and prints it — leaving
+# `script_dir` a two-line value naming the wrong helper as the subject.
+script_dir="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || script_dir=""
 if [ -z "${script_dir}" ]; then
     echo "error: cannot resolve the directory holding ${BASH_SOURCE[0]}" >&2
     exit 75
@@ -110,6 +114,16 @@ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 41 filtered out
 VACUOUS_RUN='running 0 tests
 
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 42 filtered out
+'
+
+# A summary whose count merely ends in the digit the helper is looking for.
+#
+# The helper selects one identity, so eleven executed tests is a filter that did
+# not do what the receipt claims. A substring test for `1 passed` reads this as
+# the selected one having run.
+MULTI_RUN='running 11 tests
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 31 filtered out
 '
 
 FAILING_RUN='running 1 test
@@ -219,6 +233,38 @@ test_vacuous_selection_is_refused() {
     esac
 }
 
+# A count that merely ends in `1` is not the one identity this helper selected.
+test_a_wider_summary_is_refused() {
+    run_row "${SUITE}" 0 "${MULTI_RUN}" 0 \
+        pedant-types serialization default go_resolution_vocabulary_has_exact_wire_spellings
+    [ "${ROW_STATUS}" -eq 1 ] \
+        || fail "a run reporting 11 passed must not answer for one identity, got ${ROW_STATUS}"
+    case "${ROW_OUTPUT}" in
+        *"no test executed"*) ;;
+        *) fail "the wider-summary refusal must say no test executed" ;;
+    esac
+}
+
+# A receipt is only worth what the lockfile it resolved against says. A helper
+# that let cargo rewrite `Cargo.lock` mid-plan would report the step verified
+# against a resolution the plan never stated.
+test_both_invocations_pin_the_lockfile() {
+    run_row "${SUITE}" 0 "${PASSING_RUN}" 0 \
+        pedant-types serialization default go_resolution_vocabulary_has_exact_wire_spellings
+    local line locked=0 invocations=0
+    while IFS= read -r line; do
+        [ -n "${line}" ] || continue
+        invocations=$((invocations + 1))
+        case "${line}" in
+            "test --locked -p "*) locked=$((locked + 1)) ;;
+        esac
+    done <<< "${ROW_ARGV}"
+    [ "${invocations}" -eq 2 ] \
+        || fail "one selection run is one listing and one exact run, got ${invocations}"
+    [ "${locked}" -eq "${invocations}" ] \
+        || fail "every cargo invocation must pin the lockfile, ${locked} of ${invocations} did"
+}
+
 test_code_failure_keeps_its_status() {
     run_row "${SUITE}" 0 "${FAILING_RUN}" 101 \
         pedant-types serialization default go_resolution_vocabulary_has_exact_wire_spellings
@@ -263,6 +309,8 @@ test_none_profile_disables_default_features
 test_named_profile_enables_exactly_its_features
 test_success_runs_one_full_identity_exactly
 test_vacuous_selection_is_refused
+test_a_wider_summary_is_refused
+test_both_invocations_pin_the_lockfile
 test_code_failure_keeps_its_status
 test_infrastructure_failure_reclassifies_to_75
 test_infrastructure_failure_while_listing_reclassifies_to_75

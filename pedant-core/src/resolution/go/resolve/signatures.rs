@@ -13,32 +13,39 @@
 //! as evidence it does not have rather than as a mismatch.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use pedant_syntax::go::{GoDeclarationKind, GoSignatureRole};
 
 use crate::resolution::go::facts::GoSourceFacts;
 use crate::resolution::go::signature_fact::GoSignatureTermRecord;
+use crate::resolution::go::unit::GoResolutionUnit;
+use crate::resolution::identity::position;
 
-use super::corpus::Corpus;
+use super::corpus::{Corpus, UnitSource};
+use super::error::GoResolutionError;
 use super::imports::FileImports;
-use super::index::{Index, Slot};
+use super::index::Index;
 use super::lookup::{self, Outcome};
+use super::types;
 use super::universe;
 
 /// One file, and everything canonicalizing a term written in it depends on.
 struct Written<'a> {
     unit: usize,
+    path: &'a Arc<str>,
     facts: &'a GoSourceFacts,
-    imports: FileImports<'a>,
+    imports: &'a FileImports<'a>,
 }
 
 impl<'a> Written<'a> {
     /// Read one source of one package context.
-    fn of(corpus: &Corpus<'a>, unit: usize, facts: &'a GoSourceFacts) -> Self {
+    fn of(unit: usize, held: UnitSource<'a>) -> Self {
         Self {
             unit,
-            facts,
-            imports: FileImports::of(corpus, facts),
+            path: held.path,
+            facts: held.source.facts(),
+            imports: held.imports,
         }
     }
 
@@ -66,9 +73,7 @@ impl<'a> Written<'a> {
             .filter(|term| term.declaration() == declaration && term.role() == role)
             .map(|term| self.term_type(index, corpus, term))
             .collect();
-        let named = named?;
-        let borrowed: Box<[&str]> = named.iter().map(|term| &**term).collect();
-        Some(borrowed.join(",").into_boxed_str())
+        Some(named?.join(",").into_boxed_str())
     }
 
     /// The canonical text one term states.
@@ -126,23 +131,14 @@ impl<'a> Written<'a> {
     /// The unit declaring the one type a bare name selects in this file.
     ///
     /// Several would be an ambiguous type name, which is a Go program error
-    /// rather than a choice, so it states no canonical package here.
+    /// rather than a choice, so it states no canonical package here. The rule
+    /// is the shared one every stage asking "exactly one type" reads, keyed on
+    /// the declaring package because that is what a canonical name opens with.
     fn declaring_unit(&self, index: &Index, name: &str) -> Option<usize> {
-        let Outcome::Found(found) = lookup::bare(index, (self.unit, &self.imports), name) else {
+        let Outcome::Found(found) = lookup::bare(index, (self.unit, self.imports), name) else {
             return None;
         };
-        let mut units: Vec<usize> = found
-            .iter()
-            .filter_map(|slot| index.slot(*slot))
-            .filter(|slot| Slot::is_type(slot))
-            .map(|slot| slot.unit)
-            .collect();
-        units.sort_unstable();
-        units.dedup();
-        match *units {
-            [only] => Some(only),
-            _ => None,
-        }
+        types::unique_type(index, &found, |_, slot| slot.unit)
     }
 }
 
@@ -154,31 +150,38 @@ pub(super) struct Signatures {
 
 impl Signatures {
     /// Read every callable the corpus declares.
-    pub(super) fn of(index: &Index, corpus: &Corpus<'_>) -> Self {
+    pub(super) fn of(index: &Index, corpus: &Corpus<'_>) -> Result<Self, GoResolutionError> {
         let mut signatures = Self::default();
-        for (position, unit) in corpus.units().iter().enumerate() {
-            for path in unit.sources() {
-                let Some(source) = corpus.source(path) else {
-                    continue;
-                };
-                let written = Written::of(corpus, position, source.facts());
-                signatures.state_source(index, corpus, (&written, path));
-            }
+        for (unit, held) in corpus.units().iter().enumerate() {
+            signatures.state_unit(index, corpus, (unit, held))?;
         }
-        signatures
+        Ok(signatures)
+    }
+
+    /// State every callable one package context's sources declare.
+    fn state_unit(
+        &mut self,
+        index: &Index,
+        corpus: &Corpus<'_>,
+        stated: (usize, &GoResolutionUnit),
+    ) -> Result<(), GoResolutionError> {
+        let (unit, held) = stated;
+        for source in corpus.sources_of(held)?.iter() {
+            self.state_source(index, corpus, &Written::of(unit, *source));
+        }
+        Ok(())
     }
 
     /// State the canonical signature of every callable one source declares.
-    fn state_source(&mut self, index: &Index, corpus: &Corpus<'_>, site: (&Written<'_>, &str)) {
-        let (written, path) = site;
+    fn state_source(&mut self, index: &Index, corpus: &Corpus<'_>, written: &Written<'_>) {
         for (declaration, record) in written.facts.declarations().iter().enumerate() {
-            let ordinal = u32::try_from(declaration).unwrap_or(u32::MAX);
+            let ordinal = position(declaration);
             let canonical = is_callable(record.kind())
                 .then(|| written.canonical(index, corpus, ordinal))
                 .flatten();
             let slot = index
                 .unit(written.unit)
-                .and_then(|tables| tables.declared(path, ordinal));
+                .and_then(|tables| tables.declared(written.path, ordinal));
             if let Some((slot, canonical)) = slot.zip(canonical) {
                 self.stated.insert(slot, canonical);
             }
@@ -193,13 +196,25 @@ impl Signatures {
 }
 
 /// Whether one declaration kind writes a signature.
+///
+/// Every Go kind is named. A kind added to the grammar inventory is therefore a
+/// compile error here rather than a declaration that quietly states no
+/// signature — which a comparison reads as evidence the corpus does not have,
+/// leaving every relation over it possible and nothing red.
 fn is_callable(kind: GoDeclarationKind) -> bool {
-    matches!(
-        kind,
+    match kind {
         GoDeclarationKind::Function
-            | GoDeclarationKind::Method
-            | GoDeclarationKind::InterfaceMethod
-    )
+        | GoDeclarationKind::Method
+        | GoDeclarationKind::InterfaceMethod => true,
+        GoDeclarationKind::Struct
+        | GoDeclarationKind::Interface
+        | GoDeclarationKind::DefinedType
+        | GoDeclarationKind::TypeAlias
+        | GoDeclarationKind::Constant
+        | GoDeclarationKind::Variable
+        | GoDeclarationKind::Field
+        | GoDeclarationKind::EmbeddedField => false,
+    }
 }
 
 /// One import path, as the prefix a canonical name opens with.

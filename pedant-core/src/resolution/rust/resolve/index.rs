@@ -120,14 +120,14 @@ struct NodeContext<'a> {
     file: usize,
     condition: RustCfgCondition,
     source: &'a RustSource,
-    lines: &'a LineIndex,
+    lines: &'a LineIndex<'a>,
 }
 
 /// Add every definition to `builder` and index what it produced.
 pub(super) fn build(
     builder: &mut ResolutionReportBuilder,
     snapshot: &RustResolutionSnapshot,
-    corpus: (&Graph, &Units, &[LineIndex]),
+    corpus: (&Graph, &Units, &[LineIndex<'_>]),
 ) -> Result<Index, RustResolutionError> {
     let (graph, units, lines) = corpus;
     let mut draft = Draft {
@@ -144,7 +144,7 @@ pub(super) fn build(
 
 fn add_node(
     builder: &mut ResolutionReportBuilder,
-    corpus: (&RustResolutionSnapshot, &Graph, &Units, &[LineIndex]),
+    corpus: (&RustResolutionSnapshot, &Graph, &Units, &[LineIndex<'_>]),
     draft: &mut Draft,
     node: usize,
 ) -> Result<(), RustResolutionError> {
@@ -267,7 +267,6 @@ fn declaring_slot(graph: &Graph, draft: &Draft, node: usize) -> Option<usize> {
 fn span_of(context: &NodeContext<'_>, definition: &DefinitionSite) -> Option<SourceSpan> {
     coordinates::span(
         context.lines,
-        context.source.text(),
         context.source.shared_path(),
         definition.range,
     )

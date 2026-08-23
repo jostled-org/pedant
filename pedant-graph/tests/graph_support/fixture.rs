@@ -7,7 +7,7 @@
 //! closes it deliberately before it projects.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use pedant_core::resolution::rust::{
     CargoTargetKind, ResolutionLimits, RustProject, RustResolutionSnapshot, RustResolver,
@@ -16,6 +16,69 @@ use pedant_core::resolution::rust::{
 use pedant_graph::{CodeGraph, build_rust_graph};
 
 use super::corpus::{BUILD_SCRIPT_CORPUS, GRAPH_CORPUS};
+
+/// One temporary directory holding one materialized repository.
+///
+/// Owns the directory, every write into it, and the proof that it is gone.
+/// Both language fixtures hold one: materializing a repository is the same job
+/// whatever loader is going to read it, and so is releasing it.
+pub struct TempRepository {
+    directory: tempfile::TempDir,
+}
+
+impl TempRepository {
+    /// Materialize `files` beneath a fresh temporary directory, in the order
+    /// the caller states them.
+    ///
+    /// Directory enumeration is the filesystem's, not a loader's, so writing
+    /// one corpus in two orders is how a case perturbs what a walk sees without
+    /// changing what the repository says.
+    pub fn written<'a>(files: impl Iterator<Item = (&'a str, &'a str)>) -> Self {
+        let directory = tempfile::tempdir().expect("a temporary directory should be available");
+        let held = Self { directory };
+        for (relative, contents) in files {
+            held.write(relative, contents);
+        }
+        held
+    }
+
+    /// The repository root inside this directory.
+    pub fn root(&self) -> PathBuf {
+        self.directory.path().join("repo")
+    }
+
+    /// Write one file, creating every directory above it.
+    pub fn write(&self, relative: &str, contents: &str) {
+        let path = self.directory.path().join(relative);
+        let parent = path.parent().expect("a fixture path has a parent");
+        fs::create_dir_all(parent).unwrap_or_else(|error| panic!("{}: {error}", parent.display()));
+        fs::write(&path, contents.as_bytes())
+            .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+    }
+
+    /// Remove one stated file.
+    pub fn remove(&self, relative: &str) {
+        let path = self.directory.path().join(relative);
+        fs::remove_file(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+    }
+
+    /// Release the directory, prove it is gone, and answer with its root.
+    ///
+    /// The proof travels with the release rather than being restated by each
+    /// caller: a case that reads what a fixture produced after closing it must
+    /// not be reading files that happen to still exist.
+    pub fn close(self) -> PathBuf {
+        let root = self.root();
+        self.directory
+            .close()
+            .expect("the fixture directory should close");
+        assert!(
+            !root.exists(),
+            "the fixture repository must be gone before what it produced is read"
+        );
+        root
+    }
+}
 
 /// One declared target: its owning package, its Cargo kind, and its name.
 pub type DeclaredTarget = (&'static str, CargoTargetKind, &'static str);
@@ -30,7 +93,7 @@ const BUILD_SCRIPT_ROOT: DeclaredTarget =
 
 /// One materialized repository and the project loaded from it.
 pub struct Fixture {
-    directory: tempfile::TempDir,
+    repository: TempRepository,
     project: RustProject,
 }
 
@@ -45,19 +108,12 @@ pub struct Resolved {
 impl Fixture {
     /// Materialize `files` beneath a fresh temporary directory and load them.
     pub fn build(files: &[(&str, &str)]) -> Self {
-        let directory = tempfile::tempdir().expect("a temporary directory should be available");
-        for (relative, contents) in files {
-            write_file(directory.path(), relative, contents.as_bytes());
+        let repository = TempRepository::written(files.iter().copied());
+        let project = load(&repository, "fixture");
+        Self {
+            repository,
+            project,
         }
-        let root = directory.path().join("repo");
-        let project = RustProject::load(&root, ResolutionLimits::default())
-            .unwrap_or_else(|error| panic!("the fixture project should load: {error}"));
-        Self { directory, project }
-    }
-
-    /// The repository root inside this fixture.
-    pub fn root(&self) -> PathBuf {
-        self.directory.path().join("repo")
     }
 
     /// The identity of one declared target.
@@ -136,26 +192,26 @@ impl Fixture {
     /// those three would load a repository no case states.
     pub fn revise(&mut self, written: &[(&str, &str)], removed: &[&str]) {
         for (relative, contents) in written {
-            write_file(self.directory.path(), relative, contents.as_bytes());
+            self.repository.write(relative, contents);
         }
         for relative in removed {
-            let path = self.directory.path().join(relative);
-            fs::remove_file(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+            self.repository.remove(relative);
         }
-        self.project = RustProject::load(&self.root(), ResolutionLimits::default())
-            .unwrap_or_else(|error| panic!("the revised fixture project should load: {error}"));
+        self.project = load(&self.repository, "revised fixture");
     }
 
-    /// Release the repository, returning its root so a caller can prove the
-    /// directory is gone before it uses what the fixture produced.
+    /// Release the repository, proving the directory is gone and answering with
+    /// the root a caller can name it by.
     pub fn close(self) -> PathBuf {
-        let root = self.root();
         drop(self.project);
-        self.directory
-            .close()
-            .expect("the fixture directory should close");
-        root
+        self.repository.close()
     }
+}
+
+/// The project one materialized repository loads under the default ceilings.
+fn load(repository: &TempRepository, subject: &str) -> RustProject {
+    RustProject::load(&repository.root(), ResolutionLimits::default())
+        .unwrap_or_else(|error| panic!("the {subject} project should load: {error}"))
 }
 
 /// Materialize and resolve one corpus in one step.
@@ -204,15 +260,4 @@ pub fn project_corpus_library() -> (Fixture, Resolved, CodeGraph) {
 /// The build-script root, resolved and projected.
 pub fn project_build_script() -> (Fixture, Resolved, CodeGraph) {
     project_target(BUILD_SCRIPT_CORPUS, BUILD_SCRIPT_ROOT)
-}
-
-/// Write one fixture file, creating every directory above it.
-///
-/// Shared with the Go fixtures beside these: materializing a repository is the
-/// same job whatever language's loader is going to read it.
-pub fn write_file(base: &Path, relative: &str, contents: &[u8]) {
-    let path = base.join(relative);
-    let parent = path.parent().expect("a fixture path has a parent");
-    fs::create_dir_all(parent).unwrap_or_else(|error| panic!("{}: {error}", parent.display()));
-    fs::write(&path, contents).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
 }

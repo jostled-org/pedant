@@ -54,9 +54,7 @@ impl Vocabulary {
     /// A module is declared by its own `go.mod` and by nothing inside the
     /// packages it holds, so the plan states this container itself.
     pub(crate) fn module_root(&self) -> GraphNodeKind {
-        GraphNodeKind::Container {
-            level: Arc::clone(&self.module),
-        }
+        self.container(&self.module)
     }
 
     /// The node kind one Go definition takes, or `None` for a kind no Go report
@@ -81,7 +79,7 @@ impl Vocabulary {
         match kind {
             SymbolKind::Package => Some(self.container(&self.package)),
             SymbolKind::Function => Some(self.callable(&self.function)),
-            SymbolKind::Method => Some(self.callable(self.method_level(holder))),
+            SymbolKind::Method => self.method_level(holder).map(|level| self.callable(level)),
             SymbolKind::Struct => Some(self.declared_type(&self.structure)),
             SymbolKind::Interface => Some(self.declared_type(&self.interface)),
             SymbolKind::DefinedType => Some(self.declared_type(&self.defined_type)),
@@ -98,11 +96,43 @@ impl Vocabulary {
     }
 
     /// Which callable token one method takes, read from the definition that
-    /// holds it.
-    fn method_level(&self, holder: Option<SymbolKind>) -> &Arc<str> {
+    /// holds it, or `None` for a holder no Go method can have.
+    ///
+    /// Every holder a Go report can state is named, so a new `SymbolKind` is a
+    /// compile error here rather than a method quietly filed under the receiver
+    /// token. An interface's own method is the interface level; a method whose
+    /// receiver names a struct, a defined type, or a type alias is the receiver
+    /// level.
+    ///
+    /// No holder at all takes the receiver level beside them, because that is
+    /// where the Go resolver states a method whose receiver type it could not
+    /// identify. Go requires a method's receiver base type to be declared in
+    /// the same package, so an unidentifiable receiver names a type the corpus
+    /// does not hold — the method is still a receiver-level method, and
+    /// refusing it would turn a repository the resolver admits into a graph
+    /// that cannot be built. The package is named among the refusals instead:
+    /// a package holding a method is a containment Go declares for nothing, so
+    /// a report stating one is a report this projection will not draw from.
+    /// Every other holder earns the same refusal an unnamed kind earns.
+    fn method_level(&self, holder: Option<SymbolKind>) -> Option<&Arc<str>> {
         match holder {
-            Some(SymbolKind::Interface) => &self.interface_method,
-            _ => &self.method,
+            Some(SymbolKind::Interface) => Some(&self.interface_method),
+            None | Some(SymbolKind::Struct | SymbolKind::DefinedType | SymbolKind::TypeAlias) => {
+                Some(&self.method)
+            }
+            Some(
+                SymbolKind::Package
+                | SymbolKind::Module
+                | SymbolKind::Function
+                | SymbolKind::Method
+                | SymbolKind::Enum
+                | SymbolKind::Union
+                | SymbolKind::Trait
+                | SymbolKind::Constant
+                | SymbolKind::Variable
+                | SymbolKind::Static
+                | SymbolKind::Field,
+            ) => None,
         }
     }
 

@@ -13,22 +13,24 @@
 use std::sync::Arc;
 
 use pedant_syntax::go::GoReferenceKind;
-use pedant_types::{ReferenceKind, ResolutionGap, SourcePosition, SourceSpan};
+use pedant_types::{ReferenceKind, ResolutionGap};
 
+use crate::resolution::go::binding_fact::GoBindingRecord;
 use crate::resolution::go::facts::GoSourceFacts;
 use crate::resolution::go::import_fact::GoImportRecord;
 use crate::resolution::go::reference_fact::GoReferenceRecord;
 use crate::resolution::go::unit::GoResolutionUnit;
 
 use super::answer::Answer;
-use super::corpus::{Corpus, conditional};
+use super::corpus::{Corpus, UnitSource, conditional};
 use super::denotation::Denotation;
 use super::dispatch;
+use super::error::GoResolutionError;
 use super::implementations::Implementations;
 use super::imports::{FileImports, ImportTarget, target};
-use super::index::{Index, Slot};
+use super::index::{self, Index, Slot};
 use super::lookup::{self, Outcome};
-use super::methods;
+use super::methods::{self, Member};
 use super::relations;
 use super::scopes;
 use super::types::{self, Site};
@@ -38,8 +40,21 @@ struct FileSite<'a> {
     unit: usize,
     path: &'a Arc<str>,
     facts: &'a GoSourceFacts,
-    imports: FileImports<'a>,
+    imports: &'a FileImports<'a>,
     conditional: bool,
+}
+
+impl<'a> FileSite<'a> {
+    /// Read one source of one package context.
+    fn of(unit: usize, held: UnitSource<'a>) -> Self {
+        Self {
+            unit,
+            path: held.path,
+            facts: held.source.facts(),
+            imports: held.imports,
+            conditional: conditional(held.source),
+        }
+    }
 }
 
 /// Every reference one package context states: its sources' sites in source
@@ -49,33 +64,31 @@ pub(super) fn of_unit(
     corpus: &Corpus<'_>,
     implementations: &Implementations,
     unit: (usize, &GoResolutionUnit),
-) -> Box<[Denotation]> {
+) -> Result<Box<[Denotation]>, GoResolutionError> {
     let (position, held) = unit;
     let mut denoted = Vec::new();
-    for path in held.sources() {
-        let Some(source) = corpus.source(path) else {
-            continue;
-        };
-        let site = FileSite {
-            unit: position,
-            path,
-            facts: source.facts(),
-            imports: FileImports::of(corpus, source.facts()),
-            conditional: conditional(source),
-        };
-        denoted.extend(of_file(index, corpus, implementations, &site));
+    for source in corpus.sources_of(held)?.iter() {
+        of_file(
+            index,
+            corpus,
+            implementations,
+            &FileSite::of(position, *source),
+            &mut denoted,
+        );
     }
     denoted.extend(relations::of_unit(index, implementations, position));
-    denoted.into_boxed_slice()
+    Ok(denoted.into_boxed_slice())
 }
 
-/// Every reference one file states: its imports first, then its occurrences.
+/// Every reference one file states, drained into the context's own list: its
+/// imports first, then its occurrences.
 fn of_file(
     index: &Index,
     corpus: &Corpus<'_>,
     implementations: &Implementations,
     site: &FileSite<'_>,
-) -> Vec<Denotation> {
+    denoted: &mut Vec<Denotation>,
+) {
     let imported = site
         .facts
         .imports()
@@ -86,7 +99,7 @@ fn of_file(
         .references()
         .iter()
         .filter_map(|fact| denote(index, implementations, site, fact));
-    imported.chain(occurrences).collect()
+    denoted.extend(imported.chain(occurrences));
 }
 
 /// One import specification, which names the package it imports.
@@ -104,7 +117,7 @@ fn imported(
     Denotation {
         kind: ReferenceKind::Import,
         text: Arc::from(import.path()),
-        span: span_of(site.path, import.span()),
+        span: index::site(site.path, import.span()),
         enclosing: None,
         candidates: package.into_iter().collect(),
         gap: package
@@ -164,7 +177,7 @@ fn bare_call(index: &Index, site: &FileSite<'_>, fact: &GoReferenceRecord) -> De
             Answer::refused(ReferenceKind::Call, ResolutionGap::DynamicDispatch),
         ),
         false => {
-            let found = lookup::bare(index, (site.unit, &site.imports), fact.name());
+            let found = lookup::bare(index, (site.unit, site.imports), fact.name());
             stated(
                 index,
                 site,
@@ -190,7 +203,7 @@ fn plain(
     if covered(site, fact, fact.name()) || site.imports.named(fact.name()).is_some() {
         return None;
     }
-    let answer = from_outcome(lookup::bare(index, (site.unit, &site.imports), fact.name()));
+    let answer = from_outcome(lookup::bare(index, (site.unit, site.imports), fact.name()));
     Some(stated(
         index,
         site,
@@ -201,6 +214,11 @@ fn plain(
 
 /// A site written behind a qualifier: a package's member, or a member of the
 /// value the qualifier names.
+///
+/// The qualifier's own binding is resolved once here and handed to whichever
+/// branch reads it. Both branches ask the same lexical question — "does a
+/// binding cover this name?" — and each answer costs a linear scan of the
+/// file's bindings plus the scope chain it walks them against.
 fn qualified(
     index: &Index,
     implementations: &Implementations,
@@ -209,62 +227,98 @@ fn qualified(
     default: ReferenceKind,
 ) -> Denotation {
     let (fact, qualifier) = written;
-    match package_target(site, fact, qualifier) {
+    let bound = binding_of(site, fact, qualifier);
+    match package_target(site, bound, qualifier) {
         Some(package) => {
             let answer = from_outcome(lookup::qualified(index, package, fact.name()));
             stated(index, site, fact, classified(index, answer, default))
         }
-        None => member(index, implementations, site, written, default),
+        None => member(index, implementations, site, (fact, bound), default),
     }
+}
+
+/// The binding the receiver name inside one qualifier sees, when the qualifier
+/// reads a name at all.
+fn binding_of<'a>(
+    site: &'a FileSite<'a>,
+    fact: &GoReferenceRecord,
+    qualifier: &str,
+) -> Option<&'a GoBindingRecord> {
+    let base = types::plain_name(qualifier)?;
+    scopes::binding(site.facts, (fact.scope(), fact.span().start_byte()), base)
 }
 
 /// The package one qualifier binds, when an import binds it and no lexical
 /// binding covers it.
 fn package_target<'a>(
     site: &'a FileSite<'a>,
-    fact: &GoReferenceRecord,
+    bound: Option<&GoBindingRecord>,
     qualifier: &str,
 ) -> Option<ImportTarget<'a>> {
-    match covered(site, fact, qualifier) {
-        true => None,
-        false => site.imports.named(qualifier),
+    match bound {
+        Some(_) => None,
+        None => site.imports.named(qualifier),
     }
 }
 
 /// A member of the value one qualifier names.
+///
+/// A receiver whose binding this tier cannot read a named type from is a
+/// receiver form this tier does not resolve — an index expression, a field
+/// selection, a result named through another file's imports, a qualifier no
+/// import binds. None of those chooses its target at run time, so the gap says
+/// the syntax is unsupported rather than that the call dispatches: a consumer
+/// counting dynamic-dispatch sites over Go would otherwise count every one.
 fn member(
     index: &Index,
     implementations: &Implementations,
     site: &FileSite<'_>,
-    written: (&GoReferenceRecord, &str),
+    written: (&GoReferenceRecord, Option<&GoBindingRecord>),
     default: ReferenceKind,
 ) -> Denotation {
-    let (fact, qualifier) = written;
-    let receiver = types::concrete(index, receiver_site(site, fact), qualifier);
+    let (fact, bound) = written;
+    let receiver = bound.and_then(|bound| types::from_binding(index, receiver_site(site), bound));
     let Some(receiver) = receiver else {
         return stated(
             index,
             site,
             fact,
-            Answer::refused(default, ResolutionGap::DynamicDispatch),
+            Answer::refused(default, ResolutionGap::UnsupportedSyntax),
         );
     };
-    let found = methods::members(index, receiver, fact.name());
-    let answer = match found.is_empty() {
-        true => Answer::refused(default, ResolutionGap::MissingDefinition),
-        false => dispatch::selected(index, implementations, (default, fact.name()), found),
-    };
+    let found = methods::promoted(index, receiver, fact.name());
+    let answer = answered(index, implementations, (default, fact.name()), &found);
     stated(index, site, fact, answer)
 }
 
+/// What the members one selector reaches state.
+///
+/// A member several embedding paths reach at one depth is an ambiguous selector
+/// — a Go program error — so it names its definitions as possible candidates
+/// with the gap that says so, never as one resolved target.
+fn answered(
+    index: &Index,
+    implementations: &Implementations,
+    asked: (ReferenceKind, &str),
+    found: &[Member],
+) -> Answer {
+    let (default, name) = asked;
+    let slots: Box<[usize]> = found.iter().map(|member| member.slot).collect();
+    match (
+        slots.is_empty(),
+        found.iter().any(|member| member.multiples),
+    ) {
+        (true, _) => Answer::refused(default, ResolutionGap::MissingDefinition),
+        (false, true) => Answer::multiple(default, slots),
+        (false, false) => dispatch::selected(index, implementations, (default, name), slots),
+    }
+}
+
 /// Where one qualified site's receiver is read.
-fn receiver_site<'a>(site: &'a FileSite<'a>, fact: &GoReferenceRecord) -> Site<'a> {
+fn receiver_site<'a>(site: &'a FileSite<'a>) -> Site<'a> {
     Site {
         unit: site.unit,
-        facts: site.facts,
-        imports: &site.imports,
-        scope: fact.scope(),
-        offset: fact.span().start_byte(),
+        imports: site.imports,
     }
 }
 
@@ -314,7 +368,7 @@ fn stated(
     Denotation {
         kind: answer.kind,
         text: Arc::from(fact.name()),
-        span: span_of(site.path, fact.span()),
+        span: index::site(site.path, fact.span()),
         enclosing: fact
             .declaration()
             .and_then(|declaration| enclosing(index, site, declaration)),
@@ -332,17 +386,4 @@ fn stated(
 /// those became, so the answer is a join rather than a second containment walk.
 fn enclosing(index: &Index, site: &FileSite<'_>, declaration: u32) -> Option<usize> {
     index.unit(site.unit)?.declared(site.path, declaration)
-}
-
-/// The report span one grammar span occupies in its own file.
-fn span_of(path: &Arc<str>, span: pedant_syntax::go::GoFactSpan) -> SourceSpan {
-    SourceSpan::new(
-        Arc::clone(path),
-        SourcePosition::new(line(span.start_line()), line(span.start_column())),
-        SourcePosition::new(line(span.end_line()), line(span.end_column())),
-    )
-}
-
-fn line(value: usize) -> u32 {
-    u32::try_from(value).unwrap_or(u32::MAX)
 }

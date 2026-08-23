@@ -19,10 +19,9 @@ use pedant_types::{ResolutionRecord, ResolutionReport, SymbolDefinition, SymbolR
 use crate::error::GraphBuildError;
 use crate::graph::CodeGraph;
 use crate::limits::GraphLimits;
+use crate::node::GraphNodeKind;
 use crate::projection::assembly;
-use crate::projection::draft::{
-    DefinitionProjection, PlacedFragment, ProjectionPlan, ReferenceProjection, SourceFragment,
-};
+use crate::projection::draft::{PlacedFragment, ProjectionPlan, SourceFragment};
 use crate::projection::placement::{
     DefinitionTable, PlacedSource, RecordPlacement, SourceRecords, SourceSet,
 };
@@ -43,9 +42,18 @@ struct Inputs<'a> {
 }
 
 /// Everything one source's fragment is derived from.
+///
+/// One value, the way the Rust adapter's is: what a source contributes is
+/// decided from the identities, the naming, the report, and the placed records
+/// together, and splitting them across two arguments would let a pass read one
+/// source's records under another source's naming.
 struct StatedSource<'a> {
     /// The identities every join in this report travels through.
     table: &'a DefinitionTable,
+    /// The graph naming the current build maps Go symbols into.
+    vocabulary: &'a Vocabulary,
+    /// The report the placed records were stated by.
+    report: &'a ResolutionReport,
     /// The unit and source identity this fragment answers for.
     placed: &'a PlacedSource,
     /// The records the current report places in this source.
@@ -79,7 +87,15 @@ fn plan(
         resolved: neutral::resolved_references(report)?,
     };
     let planned: PlannedUnits = placement::plan_units(snapshot, resolution, &inputs.vocabulary)?;
-    let capacity = capacity(&inputs, (snapshot, planned.units.len()));
+    // The unit count is the plan's own, not the report's: a Go plan states a
+    // container for every admitted module beside every package context, and
+    // every assembly table is indexed by plan position.
+    let capacity = ProjectionCapacity::stated(
+        planned.units.len(),
+        report,
+        &inputs.resolved,
+        snapshot.edges().len(),
+    );
     let sources = SourceSet::new(planned.units)?;
     let table = DefinitionTable::new(report, &sources)?;
     let records = RecordPlacement::stated(report, &inputs.resolved, (&sources, &table))?;
@@ -97,26 +113,6 @@ fn plan(
     })
 }
 
-/// How many records the supplied inputs state, counted before one is allocated.
-///
-/// The unit count is the plan's own, not the report's: a Go plan states a
-/// container for every admitted module beside every package context, and the
-/// assembly tables are indexed by plan position.
-fn capacity(inputs: &Inputs<'_>, planned: (&GoResolutionSnapshot, usize)) -> ProjectionCapacity {
-    let (snapshot, units) = planned;
-    ProjectionCapacity {
-        units,
-        definitions: inputs.report.definitions().len(),
-        references: inputs.resolved.len(),
-        edges: inputs
-            .resolved
-            .iter()
-            .fold(snapshot.edges().len(), |total, (_, record)| {
-                total.saturating_add(record.candidates().len())
-            }),
-    }
-}
-
 /// One fragment per placed source, in placement order.
 fn plan_fragments<'a>(
     inputs: &Inputs<'a>,
@@ -130,84 +126,48 @@ fn plan_fragments<'a>(
         .map(|(placed, stated)| {
             let source = StatedSource {
                 table,
+                vocabulary: &inputs.vocabulary,
+                report: inputs.report,
                 placed,
                 records: stated,
             };
             Ok(PlacedFragment {
                 unit: placed.unit,
-                fragment: Arc::new(derived_fragment(inputs, &source)?),
+                fragment: Arc::new(derived_fragment(&source)?),
             })
         })
         .collect()
 }
 
 /// Everything one source contributes to a graph, derived from the report.
-fn derived_fragment(
-    inputs: &Inputs<'_>,
-    stated: &StatedSource<'_>,
-) -> Result<SourceFragment, GraphBuildError> {
-    Ok(SourceFragment {
-        source: stated.placed.source.shared(),
-        definitions: projected_definitions(inputs, stated)?,
-        references: projected_references(stated)?,
-    })
+///
+/// Both kind decisions are stated here and the neutral owner walks the placed
+/// records, so the only Go in a Go fragment is the two answers this hands it.
+fn derived_fragment(stated: &StatedSource<'_>) -> Result<SourceFragment, GraphBuildError> {
+    SourceFragment::derived(
+        (stated.placed, stated.table),
+        stated.records,
+        (
+            |definition: &SymbolDefinition| definition_kind(stated, definition),
+            mapping::reference_kind,
+        ),
+    )
 }
 
-/// One projection per definition the report places in this source, in report
-/// order.
-fn projected_definitions(
-    inputs: &Inputs<'_>,
-    stated: &StatedSource<'_>,
-) -> Result<Box<[DefinitionProjection]>, GraphBuildError> {
-    stated
-        .records
-        .definitions
-        .iter()
-        .copied()
-        .map(|(at, definition)| projected_definition(inputs, stated.table, (at, definition)))
-        .collect()
-}
-
-/// One definition projection, at the report position that states it.
+/// The node kind one report definition takes in a Go projection.
 ///
 /// The holder's own kind decides which callable token a method takes, so the
-/// report is read for it before the vocabulary is asked.
-fn projected_definition(
-    inputs: &Inputs<'_>,
-    table: &DefinitionTable,
-    reported: (u32, &SymbolDefinition),
-) -> Result<DefinitionProjection, GraphBuildError> {
-    let (at, definition) = reported;
-    let holder = placement::holder_kind(inputs.report, definition)?;
-    Ok(DefinitionProjection {
-        identity: Arc::clone(neutral::definition_identity(table, at)?),
-        language: definition.language(),
-        kind: validation::definition_kind(&inputs.vocabulary, definition, holder)?,
-        parent: neutral::optional_identity(
-            table,
-            definition.parent().map(|parent| parent.index()),
-        )?,
-    })
-}
-
-/// One projection per reference the report places in this source, in report
-/// order.
-fn projected_references(
+/// report is read for it before the naming is asked. The refusal names the
+/// report-local definition whose kind this projection has no node for:
+/// `GoProjectResolution` proves the Go subset before it publishes a report, so
+/// it answers only for a report that reached the projection without that proof.
+fn definition_kind(
     stated: &StatedSource<'_>,
-) -> Result<Box<[ReferenceProjection]>, GraphBuildError> {
-    stated
-        .records
-        .references
-        .iter()
-        .copied()
-        .map(|reported| {
-            let (reference, _) = reported;
-            let named = mapping::reference_kind(reference.kind());
-            ReferenceProjection::stated(
-                stated.table,
-                reported,
-                neutral::stated_reference_kind(named, reference)?,
-            )
-        })
-        .collect()
+    definition: &SymbolDefinition,
+) -> Result<GraphNodeKind, GraphBuildError> {
+    let holder = placement::holder_kind(stated.report, definition)?;
+    neutral::stated_definition_kind(
+        stated.vocabulary.definition(definition.kind(), holder),
+        definition,
+    )
 }

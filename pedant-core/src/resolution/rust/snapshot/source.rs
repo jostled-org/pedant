@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use crate::ir::FileIr;
+use crate::resolution::line_index::SnapshotSource;
 
 /// One Rust source a snapshot reached, read and parsed exactly once.
 #[derive(Debug)]
@@ -37,6 +38,16 @@ impl RustSource {
     /// The one-pass IR extracted while the source was snapshotted.
     pub fn ir(&self) -> &FileIr {
         &self.ir
+    }
+}
+
+impl SnapshotSource for RustSource {
+    fn path(&self) -> &str {
+        &self.path
+    }
+
+    fn text(&self) -> &str {
+        &self.text
     }
 }
 

@@ -29,7 +29,7 @@ pub(super) fn add_references(
     builder: &mut ResolutionReportBuilder,
     snapshot: &RustResolutionSnapshot,
     graph: &Graph,
-    parts: (&Index, &Units, &[LineIndex]),
+    parts: (&Index, &Units, &[LineIndex<'_>]),
 ) -> Result<Box<[ReferenceEntry]>, RustResolutionError> {
     let mut entries = Vec::new();
     for node in 0..graph.nodes.len() {
@@ -41,7 +41,7 @@ pub(super) fn add_references(
 fn add_node(
     builder: &mut ResolutionReportBuilder,
     snapshot: &RustResolutionSnapshot,
-    corpus: (&Graph, (&Index, &Units, &[LineIndex])),
+    corpus: (&Graph, (&Index, &Units, &[LineIndex<'_>])),
     target: (&mut Vec<ReferenceEntry>, usize),
 ) -> Result<(), RustResolutionError> {
     let (graph, (index, units, indexed)) = corpus;
@@ -70,7 +70,7 @@ fn add_node(
             node,
             site,
         };
-        let span = coordinates::span(lines, source.text(), source.shared_path(), reference.range);
+        let span = coordinates::span(lines, source.shared_path(), reference.range);
         entries.extend(add_site(builder, snapshot, &context, (reference, span))?);
     }
     Ok(())

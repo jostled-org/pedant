@@ -70,8 +70,12 @@ pub mod cache_projection;
 pub mod cache_remapping;
 /// One repository state, one change, the reuse it owes, and the direct graph.
 pub mod cache_revision;
+/// The retention surface that stayed Rust's once the assembler became neutral.
+pub mod cache_rust_only;
 /// The published package's dependency closure, inventory, and reading surface.
 pub mod cache_source_boundary;
+/// Which declared function reaches which, in one production source.
+pub mod call_graph;
 /// The public reading, identity, and lifecycle surface.
 pub mod contract;
 /// The temporary Cargo repositories every case projects, written out.
@@ -118,7 +122,7 @@ pub mod isolation;
 pub mod ownership;
 /// The written-down model those ownership cases are read against.
 pub mod ownership_model;
-/// The Rust answers and the cache surface, once the assembler became neutral.
+/// The Rust answers themselves, once the assembler became neutral.
 pub mod projection_exactness;
 /// The one language-neutral projection family, and who may enter it.
 pub mod projection_ownership;

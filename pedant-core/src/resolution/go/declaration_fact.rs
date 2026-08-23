@@ -3,6 +3,8 @@
 
 use pedant_syntax::go::{GoDeclarationFact, GoDeclarationKind, GoFactSpan};
 
+use super::written_type_fact::GoWrittenTypeRecord;
+
 /// One Go declaration, exactly as its source wrote it.
 ///
 /// The same claim [`GoDeclarationFact`] makes, with its borrowed name owned so
@@ -19,12 +21,8 @@ pub struct GoDeclarationRecord {
     receiver: Option<u32>,
     scope: u32,
     general_terms: bool,
-    result_qualifier: Option<Box<str>>,
-    result_name: Option<Box<str>>,
-    result_pointer: bool,
-    embedded_qualifier: Option<Box<str>>,
-    embedded_name: Option<Box<str>>,
-    embedded_pointer: bool,
+    result: GoWrittenTypeRecord,
+    embedded: GoWrittenTypeRecord,
 }
 
 impl GoDeclarationRecord {
@@ -39,12 +37,16 @@ impl GoDeclarationRecord {
             receiver: fact.receiver(),
             scope: fact.scope(),
             general_terms: fact.states_general_terms(),
-            result_qualifier: fact.result_qualifier().map(Box::from),
-            result_name: fact.result_name().map(Box::from),
-            result_pointer: fact.result_pointer(),
-            embedded_qualifier: fact.embedded_qualifier().map(Box::from),
-            embedded_name: fact.embedded_name().map(Box::from),
-            embedded_pointer: fact.embedded_pointer(),
+            result: GoWrittenTypeRecord::of(
+                fact.result_qualifier(),
+                fact.result_name(),
+                fact.result_pointer(),
+            ),
+            embedded: GoWrittenTypeRecord::of(
+                fact.embedded_qualifier(),
+                fact.embedded_name(),
+                fact.embedded_pointer(),
+            ),
         }
     }
 
@@ -94,30 +96,40 @@ impl GoDeclarationRecord {
         self.general_terms
     }
 
+    /// The single result this callable declares, as its source spells it.
+    pub fn result_type(&self) -> &GoWrittenTypeRecord {
+        &self.result
+    }
+
+    /// The type this field embeds, as its source spells it.
+    pub fn embedded_type(&self) -> &GoWrittenTypeRecord {
+        &self.embedded
+    }
+
     /// The package qualifier of the single result this callable declares.
     pub fn result_qualifier(&self) -> Option<&str> {
-        self.result_qualifier.as_deref()
+        self.result.qualifier()
     }
 
     /// The name of the single result this callable declares, absent whenever
     /// the source states no single named result.
     pub fn result_name(&self) -> Option<&str> {
-        self.result_name.as_deref()
+        self.result.name()
     }
 
     /// Whether the single declared result is a pointer form.
     pub fn result_pointer(&self) -> bool {
-        self.result_pointer
+        self.result.pointer()
     }
 
     /// The package qualifier of the type this field embeds.
     pub fn embedded_qualifier(&self) -> Option<&str> {
-        self.embedded_qualifier.as_deref()
+        self.embedded.qualifier()
     }
 
     /// The name of the type this field embeds.
     pub fn embedded_name(&self) -> Option<&str> {
-        self.embedded_name.as_deref()
+        self.embedded.name()
     }
 
     /// Whether the embedded type is written in pointer form.
@@ -126,6 +138,6 @@ impl GoDeclarationRecord {
     /// but not the same members: a value embedding `*T` carries every method
     /// `T` has, while one embedding `T` carries only those a value receives.
     pub fn embedded_pointer(&self) -> bool {
-        self.embedded_pointer
+        self.embedded.pointer()
     }
 }

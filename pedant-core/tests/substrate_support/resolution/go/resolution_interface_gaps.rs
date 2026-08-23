@@ -27,6 +27,19 @@ use crate::resolution::go::views::borrowed;
 /// `Left` and `Right` are the control rows: both answer `Pinger` from complete
 /// evidence and both resolve, so a resolver that reported everything incomplete
 /// fails here rather than passing by never proving anything.
+///
+/// `Upper` and `Lower` reach the same `Ping` through one embedding each and
+/// resolve; `Diamond` reaches it through both of them at one depth and stays
+/// possible. Go counts embedding paths rather than the types they arrive at, so
+/// a resolver keying its widened level by type alone answers `Diamond` resolved
+/// — a proved relation for a selector `go build` rejects. `Upper` and `Lower`
+/// are what keeps the fix honest: a resolver calling every repeated type
+/// ambiguous loses both of those rows.
+///
+/// `Carrier` embeds `Pinger` itself, so the only member answering `Ping` is the
+/// interface's own method. That relation is real Go, and a comparison admitting
+/// only a receiver's methods states nothing at all about `Carrier` — no
+/// relation, and no gap saying why none was stated.
 const GAPPED: &[&str] = &[
     "Implementation|Console|gaps.go:9|possible|Printer@gaps.go:4|ExternalDefinition",
     "Implementation|Ruler|gaps.go:24|possible|Scaled@gaps.go:19|UnsupportedSyntax",
@@ -34,6 +47,10 @@ const GAPPED: &[&str] = &[
     "Implementation|Left|gaps.go:49|resolved|Pinger@gaps.go:45|",
     "Implementation|Right|gaps.go:55|resolved|Pinger@gaps.go:45|",
     "Implementation|Both|gaps.go:61|possible|Pinger@gaps.go:45|Ambiguous",
+    "Implementation|Upper|gaps.go:66|resolved|Pinger@gaps.go:45|",
+    "Implementation|Lower|gaps.go:70|resolved|Pinger@gaps.go:45|",
+    "Implementation|Diamond|gaps.go:74|possible|Pinger@gaps.go:45|Ambiguous",
+    "Implementation|Carrier|gaps.go:79|resolved|Pinger@gaps.go:45|",
 ];
 
 /// What each ceiling does at its own excess and one above it.

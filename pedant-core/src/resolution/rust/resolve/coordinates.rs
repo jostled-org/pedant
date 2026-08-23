@@ -13,38 +13,19 @@ use pedant_types::{SourcePosition, SourceSpan};
 use crate::ir::facts::IrSpan;
 use crate::ir::sites::IrRange;
 use crate::resolution::line_index::LineIndex;
-use crate::resolution::rust::snapshot::RustResolutionSnapshot;
-
-/// One line index per snapshot source, in the store's own order.
-///
-/// A source is instantiated once per module scope and read by three passes, so
-/// indexing per instance rescanned the same bytes many times over to produce a
-/// table that depends on the text alone.
-pub(super) fn index_sources(snapshot: &RustResolutionSnapshot) -> Box<[LineIndex]> {
-    snapshot
-        .sources()
-        .iter()
-        .map(|source| LineIndex::new(source.text()))
-        .collect()
-}
 
 /// The report span one site range occupies, when the range exists in this
 /// source and is not empty.
-pub(super) fn span(
-    index: &LineIndex,
-    text: &str,
-    file: &Arc<str>,
-    range: IrRange,
-) -> Option<SourceSpan> {
-    let start = position(index, text, range.start)?;
-    let end = position(index, text, range.end)?;
+pub(super) fn span(index: &LineIndex<'_>, file: &Arc<str>, range: IrRange) -> Option<SourceSpan> {
+    let start = position(index, range.start)?;
+    let end = position(index, range.end)?;
     (start < end).then(|| SourceSpan::new(Arc::clone(file), start, end))
 }
 
-fn position(index: &LineIndex, text: &str, span: IrSpan) -> Option<SourcePosition> {
+fn position(index: &LineIndex<'_>, span: IrSpan) -> Option<SourcePosition> {
     let line = span.line.checked_sub(1)?;
     let (start, end) = index.line_bounds(line)?;
-    let content = text.get(start..end)?;
+    let content = index.source().get(start..end)?;
     let column = content
         .char_indices()
         .nth(span.column)

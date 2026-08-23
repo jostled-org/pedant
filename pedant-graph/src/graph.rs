@@ -151,6 +151,15 @@ impl GraphRecords {
         }
     }
 
+    /// How much a table sized from a stated count of one collection reserves.
+    ///
+    /// The ceilings a build is bounded by are the store's, so a table an
+    /// assembly sizes for its own pass asks the store rather than carrying a
+    /// second copy of the limits it would have to keep in step.
+    pub(crate) fn reserved(&self, collection: GraphCollection, stated: usize) -> usize {
+        reserved(stated, self.limits.ceiling(collection))
+    }
+
     /// Append one node, or refuse before the store is touched.
     pub(crate) fn insert_node(&mut self, draft: NodeDraft) -> Result<GraphNodeId, GraphBuildError> {
         let index = self.admit(GraphCollection::Node)?;

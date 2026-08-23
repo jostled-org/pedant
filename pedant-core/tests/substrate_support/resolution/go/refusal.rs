@@ -195,6 +195,7 @@ fn variant_of(error: &GoProjectError) -> &'static str {
         GoProjectError::InvalidRoot { .. } => "InvalidRoot",
         GoProjectError::OutOfRoot { .. } => "OutOfRoot",
         GoProjectError::NonUtf8Path { .. } => "NonUtf8Path",
+        GoProjectError::PathRead { .. } => "PathRead",
         GoProjectError::ManifestRead { .. } => "ManifestRead",
         GoProjectError::ManifestParse { .. } => "ManifestParse",
         GoProjectError::MissingModuleDeclaration { .. } => "MissingModuleDeclaration",
@@ -206,6 +207,7 @@ fn variant_of(error: &GoProjectError) -> &'static str {
         GoProjectError::MissingReplacementManifest { .. } => "MissingReplacementManifest",
         GoProjectError::ReplacementModuleMismatch { .. } => "ReplacementModuleMismatch",
         GoProjectError::ConflictingLocalModules { .. } => "ConflictingLocalModules",
+        GoProjectError::MissingAdmittedModule { .. } => "MissingAdmittedModule",
         GoProjectError::ManifestLimitExceeded { .. } => "ManifestLimitExceeded",
         GoProjectError::DependencyDepthLimitExceeded { .. } => "DependencyDepthLimitExceeded",
     }

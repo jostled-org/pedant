@@ -92,19 +92,45 @@ impl<'source> ParsedSyntax<'source> {
     /// inside a UTF-8 code point — when no recognized declaration contains it,
     /// and when the winning declaration opens at a byte offset the source does
     /// not hold. Every slot is `None` when the tree carries errors, because a
-    /// recovery tree states no complete declaration inventory to select from.
+    /// recovery tree states no complete declaration inventory to select from,
+    /// and every slot is `None` when the backend refuses.
+    ///
+    /// A Go session answers through [`GoFileFacts`](crate::go::GoFileFacts),
+    /// which is the sole Go declaration index and states the whole selection
+    /// rule for it. Restating that rule here is what let the two drift.
     pub fn enclosing_unit_anchors(&self, at: &[Location]) -> Box<[Option<SourceUnitAnchor>]> {
+        #[cfg(feature = "ts-go")]
+        if matches!(self.language, SyntaxLanguage::Go) {
+            return self.go_anchors(at);
+        }
         if self.has_errors() {
-            return at.iter().map(|_| None).collect();
+            return withheld(at);
         }
         let mut selector = UnitSelector::over(self.source, at);
-        offer_declarations(
+        match offer_declarations(
             self.tree.root_node(),
             self.source,
             self.language,
             &mut selector,
-        );
-        selector.finish_anchors()
+        ) {
+            Ok(()) => selector.finish_anchors(),
+            Err(_) => withheld(at),
+        }
+    }
+
+    /// The anchors the Go fact inventory answers.
+    ///
+    /// The recovery-tree rule travels inside the inventory rather than being
+    /// asked here: `go_file_facts` hands it [`Self::has_errors`], and the
+    /// inventory withholds every slot on a recovery tree. A refused extraction
+    /// withholds every slot too — a walk that states no declaration set is not
+    /// a file that declares nothing.
+    #[cfg(feature = "ts-go")]
+    fn go_anchors(&self, at: &[Location]) -> Box<[Option<SourceUnitAnchor>]> {
+        match self.go_file_facts(crate::go::GoFactLimits::UNBOUNDED) {
+            Ok(facts) => facts.enclosing_unit_anchors(at),
+            Err(_) => withheld(at),
+        }
     }
 
     /// Every structured Go grammar fact this session's source states.
@@ -139,14 +165,24 @@ impl<'source> ParsedSyntax<'source> {
 
     /// The narrowest recognized declaration containing `at`.
     ///
-    /// One slot of [`Self::enclosing_unit_anchors`], which owns the whole rule:
-    /// the error tree, the unaddressable location, the narrowest containing
-    /// declaration, and the anchor conversion. Nothing about selection is
-    /// stated twice, so the single answer and the batch answer cannot drift.
+    /// One slot of [`Self::enclosing_unit_anchors`], which owns the whole
+    /// route: which backend answers, the error tree, the unaddressable
+    /// location, the narrowest containing declaration, and the anchor
+    /// conversion. Nothing about selection is stated twice, so the single
+    /// answer and the batch answer cannot drift.
     pub fn enclosing_unit_anchor(&self, at: Location) -> Option<SourceUnitAnchor> {
         self.enclosing_unit_anchors(std::slice::from_ref(&at))
             .into_iter()
             .next()
             .flatten()
     }
+}
+
+/// One withheld slot per location the caller asked about.
+///
+/// The one spelling of "this session states no declaration set to select from",
+/// so a recovery tree and a refused backend answer identically rather than by
+/// two separate constructions.
+fn withheld(at: &[Location]) -> Box<[Option<SourceUnitAnchor>]> {
+    at.iter().map(|_| None).collect()
 }

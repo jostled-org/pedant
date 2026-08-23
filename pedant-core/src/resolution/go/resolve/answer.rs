@@ -44,4 +44,19 @@ impl Answer {
             possible_only: true,
         }
     }
+
+    /// One answer whose selector reaches its member by several embedding paths.
+    ///
+    /// Go rejects such a selector rather than choosing between the paths, so
+    /// the definitions it reaches stay possible however few they are: a single
+    /// candidate here is one definition an illegal selector names, not a target
+    /// the corpus proved.
+    pub(super) fn multiple(kind: ReferenceKind, candidates: Box<[usize]>) -> Self {
+        Self {
+            kind,
+            candidates,
+            gap: Some(ResolutionGap::Ambiguous),
+            possible_only: true,
+        }
+    }
 }

@@ -9,23 +9,30 @@
 
 use std::sync::Arc;
 
-use pedant_syntax::go::{GoDeclarationKind, GoFactSpan};
-use pedant_types::{
-    Language, ResolutionReportBuilder, ResolutionUnitHandle, SourcePosition, SourceSpan, SymbolKind,
-};
+use pedant_syntax::go::GoDeclarationKind;
+use pedant_types::{Language, ResolutionReportBuilder, SourceSpan, SymbolKind};
 
 use crate::resolution::go::binding_fact::GoBindingRecord;
 use crate::resolution::go::declaration_fact::GoDeclarationRecord;
 use crate::resolution::go::facts::GoSourceFacts;
-use crate::resolution::go::source::GoSource;
 use crate::resolution::go::unit::GoResolutionUnit;
+use crate::resolution::identity::{index_of, position};
 
-use super::corpus::{Corpus, conditional};
+use super::corpus::{Corpus, UnitSource, conditional};
 use super::error::GoResolutionError;
-use super::imports::FileImports;
-use super::index::{EmbeddedType, Embedding, Index, Slot, TypeName, UnitIndex};
+use super::index::{self, EmbeddedType, Embedding, Index, Slot, TypeName, UnitIndex};
 use super::lookup::{self, Outcome};
 use super::target::unit_key;
+use super::types;
+
+/// One source of one package context, as every stage below reads it.
+#[derive(Clone, Copy)]
+struct Site<'a> {
+    /// The package context whose tables record what the source declares.
+    unit: usize,
+    /// The source itself, joined to the names its own imports bind.
+    held: UnitSource<'a>,
+}
 
 /// State every unit, every package, and every declaration those packages hold.
 pub(super) fn state(
@@ -40,7 +47,9 @@ pub(super) fn state(
     for (position, unit) in corpus.units().iter().enumerate() {
         state_members(builder, &mut index, corpus, (position, unit))?;
     }
-    state_embeddings(&mut index, corpus);
+    for (position, unit) in corpus.units().iter().enumerate() {
+        state_embeddings(&mut index, corpus, (position, unit))?;
+    }
     for (position, unit) in corpus.units().iter().enumerate() {
         state_methods(builder, &mut index, corpus, (position, unit))?;
     }
@@ -55,25 +64,21 @@ fn open_unit(
     stated: (usize, &GoResolutionUnit),
 ) -> Result<UnitIndex, GoResolutionError> {
     let (position, unit) = stated;
-    let key = unit_key(unit);
-    let handle = builder.add_unit(
-        Language::Go,
-        Arc::clone(&key),
-        Arc::from(unit.import_path()),
-    )?;
+    let handle = builder.add_unit(Language::Go, unit_key(unit), Arc::from(unit.import_path()))?;
     let span = package_span(corpus, unit)?;
+    let name: Arc<str> = Arc::from(unit.package_name());
     let slot = index.push(Slot {
         handle: builder.add_definition(
             &handle,
             SymbolKind::Package,
-            Arc::from(unit.package_name()),
+            Arc::clone(&name),
             span.clone(),
             None,
         )?,
         kind: SymbolKind::Package,
         declared: None,
         unit: position,
-        name: Box::from(unit.package_name()),
+        name,
         site: span,
         holder: None,
         conditional: false,
@@ -95,20 +100,26 @@ fn package_span(
     corpus: &Corpus<'_>,
     unit: &GoResolutionUnit,
 ) -> Result<SourceSpan, GoResolutionError> {
-    let stated = unit
-        .sources()
+    let held = corpus.sources_of(unit)?;
+    let stated = held
         .first()
-        .and_then(|path| corpus.source(path).map(|source| (path, source)))
-        .and_then(|(path, source)| source.facts().package_span().map(|span| (path, span)));
+        .and_then(|source| Some((source.path, source.source.facts().package_span()?)));
     let (path, span) = stated.ok_or_else(|| GoResolutionError::UnitMapping {
         unit: unit.id().index(),
         reason: Box::from("no source of this package context states a package clause"),
     })?;
-    Ok(SourceSpan::new(
-        Arc::clone(path),
-        SourcePosition::new(line(span.start_line()), line(span.start_column())),
-        SourcePosition::new(line(span.end_line()), line(span.end_column())),
-    ))
+    Ok(index::site(path, span))
+}
+
+/// Every declaration one source writes, with the position it took in that
+/// source's own inventory.
+fn declarations(held: UnitSource<'_>) -> impl Iterator<Item = (u32, &GoDeclarationRecord)> {
+    held.source
+        .facts()
+        .declarations()
+        .iter()
+        .enumerate()
+        .map(|(ordinal, record)| (position(ordinal), record))
 }
 
 /// State every declaration one unit holds except its methods.
@@ -118,12 +129,16 @@ fn state_members(
     corpus: &Corpus<'_>,
     stated: (usize, &GoResolutionUnit),
 ) -> Result<(), GoResolutionError> {
-    let (position, unit) = stated;
-    for path in unit.sources() {
-        let Some(source) = corpus.source(path) else {
-            continue;
-        };
-        state_source_members(builder, index, (position, path, source))?;
+    let (unit, held) = stated;
+    for source in corpus.sources_of(held)?.iter() {
+        state_source_members(
+            builder,
+            index,
+            Site {
+                unit,
+                held: *source,
+            },
+        )?;
     }
     Ok(())
 }
@@ -132,48 +147,38 @@ fn state_members(
 fn state_source_members(
     builder: &mut ResolutionReportBuilder,
     index: &mut Index,
-    site: (usize, &str, &GoSource),
+    site: Site<'_>,
 ) -> Result<(), GoResolutionError> {
-    let (_, _, source) = site;
-    for (declaration, record) in source.facts().declarations().iter().enumerate() {
-        state_member(
-            builder,
-            index,
-            site,
-            (u32::try_from(declaration).unwrap_or(u32::MAX), record),
-        )?;
+    let members = declarations(site.held).filter(|(_, record)| !is_method(record));
+    for declared in members {
+        state_member(builder, index, site, declared)?;
     }
     Ok(())
 }
 
-/// State one non-method declaration, and record what it holds or embeds.
+/// Whether one declaration is a method a named type receives.
+fn is_method(record: &GoDeclarationRecord) -> bool {
+    record.kind() == GoDeclarationKind::Method
+}
+
+/// State one non-method declaration, and record what it holds.
 fn state_member(
     builder: &mut ResolutionReportBuilder,
     index: &mut Index,
-    site: (usize, &str, &GoSource),
+    site: Site<'_>,
     declared: (u32, &GoDeclarationRecord),
 ) -> Result<(), GoResolutionError> {
-    let (position, path, source) = site;
     let (_, record) = declared;
-    if record.kind() == GoDeclarationKind::Method {
-        return Ok(());
-    }
-    let parent = member_parent(index, position, (path, record));
+    let parent = member_parent(index, site, record);
     let slot = state_definition(builder, index, site, declared, parent)?;
-    record_membership(index, position, source, (record, slot));
-    Ok(())
+    record_membership(index, site, (record, slot))
 }
 
 /// The definition a non-method declaration is a child of.
-fn member_parent(
-    index: &Index,
-    position: usize,
-    declared: (&str, &GoDeclarationRecord),
-) -> Option<usize> {
-    let (path, record) = declared;
-    let unit = index.unit(position)?;
+fn member_parent(index: &Index, site: Site<'_>, record: &GoDeclarationRecord) -> Option<usize> {
+    let unit = index.unit(site.unit)?;
     match record.parent() {
-        Some(parent) => unit.declared(path, parent),
+        Some(parent) => unit.declared(site.held.path, parent),
         None => Some(unit.package),
     }
 }
@@ -181,122 +186,106 @@ fn member_parent(
 /// Record what one stated declaration contributes to lookup.
 fn record_membership(
     index: &mut Index,
-    position: usize,
-    source: &GoSource,
+    site: Site<'_>,
     stated: (&GoDeclarationRecord, usize),
-) {
+) -> Result<(), GoResolutionError> {
     let (record, slot) = stated;
-    let owner = record
-        .parent()
-        .and_then(|parent| source.facts().declarations().get(parent as usize))
-        .map(|holder| Box::<str>::from(holder.name()));
-    let Some(unit) = index.unit_mut(position) else {
-        return;
-    };
-    match (owner, record.kind()) {
-        (None, _) => unit.declare(record.name(), slot),
-        (Some(holder), _) => unit.hold(&holder, record.name(), slot),
+    let owner = holder_name(site, record);
+    let tables = index.tables_mut(site.unit)?;
+    match owner {
+        None => tables.declare(record.name(), slot),
+        Some(holder) => tables.hold(holder, slot),
     }
+    Ok(())
 }
 
-/// Resolve every embedded type after all package definitions are indexed.
-fn state_embeddings(index: &mut Index, corpus: &Corpus<'_>) {
-    for (position, unit) in corpus.units().iter().enumerate() {
-        for path in unit.sources() {
-            let Some(source) = corpus.source(path) else {
-                continue;
-            };
-            state_source_embeddings(index, corpus, position, source);
-        }
+/// The name of the declaration one member is written inside, absent at package
+/// scope.
+fn holder_name<'a>(site: Site<'a>, record: &GoDeclarationRecord) -> Option<&'a str> {
+    record
+        .parent()
+        .and_then(|parent| facts_of(site).declarations().get(index_of(parent)))
+        .map(GoDeclarationRecord::name)
+}
+
+/// The grammar facts one site's source retained.
+fn facts_of(site: Site<'_>) -> &GoSourceFacts {
+    site.held.source.facts()
+}
+
+/// Resolve every embedded type one unit writes, after all package definitions
+/// are indexed.
+fn state_embeddings(
+    index: &mut Index,
+    corpus: &Corpus<'_>,
+    stated: (usize, &GoResolutionUnit),
+) -> Result<(), GoResolutionError> {
+    let (unit, held) = stated;
+    for source in corpus.sources_of(held)?.iter() {
+        state_source_embeddings(
+            index,
+            Site {
+                unit,
+                held: *source,
+            },
+        )?;
     }
+    Ok(())
 }
 
 /// Resolve the embedded types written by one source through its own imports.
-fn state_source_embeddings(
-    index: &mut Index,
-    corpus: &Corpus<'_>,
-    position: usize,
-    source: &GoSource,
-) {
-    let imports = FileImports::of(corpus, source.facts());
-    for record in source
-        .facts()
-        .declarations()
-        .iter()
-        .filter(|record| record.kind() == GoDeclarationKind::EmbeddedField)
-    {
-        state_embedding(index, position, source, &imports, record);
+fn state_source_embeddings(index: &mut Index, site: Site<'_>) -> Result<(), GoResolutionError> {
+    let embeddings = declarations(site.held)
+        .filter(|(_, record)| record.kind() == GoDeclarationKind::EmbeddedField);
+    for (_, record) in embeddings {
+        state_embedding(index, site, record)?;
     }
+    Ok(())
 }
 
 /// Record one uniquely identified in-snapshot embedded type.
 fn state_embedding(
     index: &mut Index,
-    position: usize,
-    source: &GoSource,
-    imports: &FileImports<'_>,
+    site: Site<'_>,
     record: &GoDeclarationRecord,
-) {
-    let Some(parent) = record
-        .parent()
-        .and_then(|parent| source.facts().declarations().get(parent as usize))
-        .map(GoDeclarationRecord::name)
-    else {
-        return;
-    };
-    let Some(embedded) = embedded_type(index, position, imports, record) else {
-        return;
-    };
-    let Some(unit) = index.unit_mut(position) else {
-        return;
-    };
-    unit.embed(
-        parent,
-        Embedding {
-            embedded,
-            pointer: record.embedded_pointer(),
-        },
-    );
+) -> Result<(), GoResolutionError> {
+    let stated = holder_name(site, record).zip(embedded_type(index, site, record));
+    match stated {
+        None => Ok(()),
+        Some((parent, embedded)) => index.tables_mut(site.unit).map(|tables| {
+            tables.embed(
+                parent,
+                Embedding {
+                    embedded,
+                    pointer: record.embedded_pointer(),
+                },
+            )
+        }),
+    }
 }
 
 /// The unique in-snapshot type one embedded declaration names.
 fn embedded_type(
     index: &Index,
-    position: usize,
-    imports: &FileImports<'_>,
+    site: Site<'_>,
     record: &GoDeclarationRecord,
 ) -> Option<EmbeddedType> {
     let name = record.embedded_name()?;
+    let imports = site.held.imports;
     let outcome = match record.embedded_qualifier() {
         Some(qualifier) => imports
             .named(qualifier)
             .map(|target| lookup::qualified(index, target, name))
             .unwrap_or(Outcome::Missing),
-        None => lookup::bare(index, (position, imports), name),
+        None => lookup::bare(index, (site.unit, imports), name),
     };
     let Outcome::Found(found) = outcome else {
         return None;
     };
-    unique_embedded_type(index, &found)
-}
-
-/// One semantic type identity from every definition a written name selected.
-fn unique_embedded_type(index: &Index, found: &[usize]) -> Option<EmbeddedType> {
-    let mut types: Vec<EmbeddedType> = found
-        .iter()
-        .filter_map(|slot| index.slot(*slot))
-        .filter(|slot| slot.is_type())
-        .map(|slot| EmbeddedType {
-            unit: slot.unit,
-            name: slot.name.clone(),
-        })
-        .collect();
-    types.sort_unstable();
-    types.dedup();
-    match types.as_slice() {
-        [only] => Some(only.clone()),
-        _ => None,
-    }
+    types::unique_type(index, &found, |_, slot| EmbeddedType {
+        unit: slot.unit,
+        name: Arc::clone(&slot.name),
+    })
 }
 
 /// State every method one unit holds, beneath the named type that receives it.
@@ -306,12 +295,16 @@ fn state_methods(
     corpus: &Corpus<'_>,
     stated: (usize, &GoResolutionUnit),
 ) -> Result<(), GoResolutionError> {
-    let (position, unit) = stated;
-    for path in unit.sources() {
-        let Some(source) = corpus.source(path) else {
-            continue;
-        };
-        state_source_methods(builder, index, (position, path, source))?;
+    let (unit, held) = stated;
+    for source in corpus.sources_of(held)?.iter() {
+        state_source_methods(
+            builder,
+            index,
+            Site {
+                unit,
+                held: *source,
+            },
+        )?;
     }
     Ok(())
 }
@@ -320,72 +313,76 @@ fn state_methods(
 fn state_source_methods(
     builder: &mut ResolutionReportBuilder,
     index: &mut Index,
-    site: (usize, &str, &GoSource),
+    site: Site<'_>,
 ) -> Result<(), GoResolutionError> {
-    let (_, _, source) = site;
-    let methods: Box<[(u32, &GoDeclarationRecord)]> = source
-        .facts()
-        .declarations()
-        .iter()
-        .enumerate()
-        .filter(|(_, record)| record.kind() == GoDeclarationKind::Method)
-        .map(|(declaration, record)| (u32::try_from(declaration).unwrap_or(u32::MAX), record))
-        .collect();
-    for (declaration, record) in methods.iter() {
-        state_method(builder, index, site, (*declaration, record))?;
+    let methods = declarations(site.held).filter(|(_, record)| is_method(record));
+    for declared in methods {
+        state_method(builder, index, site, declared)?;
     }
     Ok(())
 }
 
 /// State one method beneath the named type that receives it.
+///
+/// A receiver this tier cannot identify names no holder at all. Go requires a
+/// method's receiver base type to be declared in the same package, so a
+/// receiver the corpus cannot name is a type the corpus does not hold. Filing
+/// the method under the package instead makes `Package` a method holder, which
+/// is a containment Go declares for nothing — and it disagrees with the method
+/// set beside it, which records nothing for the same absence. The receiver's
+/// own type reference already carries the gap that says why none was found.
 fn state_method(
     builder: &mut ResolutionReportBuilder,
     index: &mut Index,
-    site: (usize, &str, &GoSource),
+    site: Site<'_>,
     declared: (u32, &GoDeclarationRecord),
 ) -> Result<(), GoResolutionError> {
-    let (position, _, source) = site;
     let (_, record) = declared;
-    let receiver = receiver_type(index, position, (source.facts(), record));
-    let parent = receiver
-        .as_ref()
-        .map(|(slot, _)| *slot)
-        .or_else(|| index.unit(position).map(|unit| unit.package));
-    let slot = state_definition(builder, index, site, declared, parent)?;
-    hold_method(index, position, receiver, (record.name(), slot));
-    Ok(())
+    let receiver = receiver_type(index, site, (facts_of(site), record));
+    let slot = state_definition(
+        builder,
+        index,
+        site,
+        declared,
+        receiver.map(|(held, _)| held),
+    )?;
+    hold_method(index, site, receiver, (record.name(), slot))
 }
 
 /// The named type one method's receiver states, as the slot holding it and the
 /// name it is declared under.
-fn receiver_type(
+fn receiver_type<'a>(
     index: &Index,
-    position: usize,
-    declared: (&GoSourceFacts, &GoDeclarationRecord),
-) -> Option<(usize, Box<str>)> {
+    site: Site<'_>,
+    declared: (&'a GoSourceFacts, &GoDeclarationRecord),
+) -> Option<(usize, &'a str)> {
     let (facts, record) = declared;
-    let bound = facts.bindings().get(record.receiver()? as usize)?;
+    let bound = facts.bindings().get(index_of(record.receiver()?))?;
     let name = bound.type_name()?;
-    let unit = index.unit(position)?;
+    let unit = index.unit(site.unit)?;
     unit.named(name)
         .iter()
         .find(|slot| index.slot(**slot).is_some_and(Slot::is_type))
-        .map(|slot| (*slot, Box::from(name)))
+        .map(|slot| (*slot, name))
 }
 
 /// Record one method in the method set of the type that receives it.
+///
+/// A receiver this tier cannot identify holds nothing, which is exactly what
+/// its definition states: neither the report nor the method set names an owner
+/// for a method whose receiver type the corpus does not declare.
 fn hold_method(
     index: &mut Index,
-    position: usize,
-    receiver: Option<(usize, Box<str>)>,
+    site: Site<'_>,
+    receiver: Option<(usize, &str)>,
     stated: (&str, usize),
-) {
-    let (name, slot) = stated;
-    let Some((_, owner)) = receiver else {
-        return;
-    };
-    if let Some(unit) = index.unit_mut(position) {
-        unit.hold(&owner, name, slot);
+) -> Result<(), GoResolutionError> {
+    let (_, slot) = stated;
+    match receiver {
+        None => Ok(()),
+        Some((_, owner)) => index
+            .tables_mut(site.unit)
+            .map(|tables| tables.hold(owner, slot)),
     }
 }
 
@@ -393,50 +390,39 @@ fn hold_method(
 fn state_definition(
     builder: &mut ResolutionReportBuilder,
     index: &mut Index,
-    site: (usize, &str, &GoSource),
+    site: Site<'_>,
     declared: (u32, &GoDeclarationRecord),
     parent: Option<usize>,
 ) -> Result<usize, GoResolutionError> {
-    let (position, path, source) = site;
-    let (declaration, record) = declared;
+    let (ordinal, record) = declared;
     let held = parent
         .and_then(|slot| index.slot(slot))
         .map(|slot| slot.handle.clone());
+    let name: Arc<str> = Arc::from(record.name());
     let handle = builder.add_definition(
-        &unit_handle(index, position)?,
+        &index.unit_handle(site.unit)?,
         symbol_kind(record.kind()),
-        Arc::from(record.name()),
-        report_span(path, record.span()),
+        Arc::clone(&name),
+        index::site(site.held.path, record.span()),
         held.as_ref(),
     )?;
     let slot = index.push(Slot {
         handle,
         kind: symbol_kind(record.kind()),
         declared: Some(record.kind()),
-        unit: position,
-        name: Box::from(record.name()),
-        site: report_span(path, record.name_span()),
+        unit: site.unit,
+        name,
+        site: index::site(site.held.path, record.name_span()),
         holder: parent,
-        conditional: conditional(source),
-        pointer_receiver: receives_by_pointer(source.facts(), record),
+        conditional: conditional(site.held.source),
+        pointer_receiver: receives_by_pointer(facts_of(site), record),
         general_terms: record.states_general_terms(),
         result: result_type(record),
     });
-    if let Some(unit) = index.unit_mut(position) {
-        unit.state(path, declaration, slot);
-    }
-    Ok(slot)
-}
-
-/// The handle of the unit one declaration is stated in.
-fn unit_handle(index: &Index, position: usize) -> Result<ResolutionUnitHandle, GoResolutionError> {
     index
-        .unit(position)
-        .map(|unit| unit.handle.clone())
-        .ok_or_else(|| GoResolutionError::UnitMapping {
-            unit: u32::try_from(position).unwrap_or(u32::MAX),
-            reason: Box::from("no index was opened for this package context"),
-        })
+        .tables_mut(site.unit)?
+        .state(site.held.path, ordinal, slot);
+    Ok(slot)
 }
 
 /// The single result one callable declares, as a type a later stage can join.
@@ -447,15 +433,6 @@ fn result_type(record: &GoDeclarationRecord) -> Option<TypeName> {
     })
 }
 
-/// The report span one grammar span occupies in its own file.
-fn report_span(path: &str, span: GoFactSpan) -> SourceSpan {
-    SourceSpan::new(
-        Arc::from(path),
-        SourcePosition::new(line(span.start_line()), line(span.start_column())),
-        SourcePosition::new(line(span.end_line()), line(span.end_column())),
-    )
-}
-
 /// Whether one method's receiver is written in pointer form.
 ///
 /// A pointer receiver is what keeps a method out of its type's value method
@@ -464,12 +441,8 @@ fn report_span(path: &str, span: GoFactSpan) -> SourceSpan {
 fn receives_by_pointer(facts: &GoSourceFacts, record: &GoDeclarationRecord) -> bool {
     record
         .receiver()
-        .and_then(|binding| facts.bindings().get(binding as usize))
+        .and_then(|binding| facts.bindings().get(index_of(binding)))
         .is_some_and(GoBindingRecord::pointer)
-}
-
-fn line(value: usize) -> u32 {
-    u32::try_from(value).unwrap_or(u32::MAX)
 }
 
 /// What one Go declaration is in the shared report vocabulary.

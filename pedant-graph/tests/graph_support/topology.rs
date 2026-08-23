@@ -1,10 +1,16 @@
 //! Node inventory, unit-qualified source association, and the containment
 //! forest.
+//!
+//! The forest rule itself is language-neutral and lives here for both adapters:
+//! what changes between languages is which parent each node level admits, and
+//! that is a table each of them states. Everything else — totality, the count a
+//! missing node breaks, acyclicity, root-locality, the order the relation is
+//! written in, and its absence from the edges — is one claim proved once.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use pedant_core::resolution::rust::CargoTargetKind;
-use pedant_graph::{CodeGraph, GraphNodeId, GraphNodeKind};
+use pedant_graph::{CodeGraph, GraphNode, GraphNodeId, GraphNodeKind};
 
 use super::analysis_fixture::{definition, span_file};
 use super::corpus::{SHARED_SOURCE_CORPUS, TARGET_KIND_CORPUS};
@@ -161,48 +167,129 @@ pub fn assert_symbol_kinds_map_once() {
     );
 }
 
+/// One language's containment rule: every node level it states, beside the
+/// levels a node of that level admits as its parent.
+///
+/// A level admitting no parent is a root level. The table is the whole rule: a
+/// chain the language does not state fails on the level that admits nothing,
+/// and a node whose level the table never names fails rather than passing as a
+/// root of its own.
+pub type ContainmentLevels = &'static [(&'static str, &'static [&'static str])];
+
+/// The level every unit-qualified file node takes, in either language.
+pub const FILE_LEVEL: &str = "file";
+
+/// The level every declaration node takes, in either language.
+pub const DECLARATION_LEVEL: &str = "declaration";
+
+/// The level a Rust unit container takes, which roots its own forest.
+const UNIT_LEVEL: &str = "unit";
+
+/// The containment chains a Rust graph admits.
+///
+/// A unit container roots its own forest, every source that unit instantiates
+/// sits directly beneath it, and a declaration sits beneath the declaration
+/// that owns it or beneath the unit itself. A file node is a leaf: source
+/// location is an association, never a containment parent.
+const RUST_CONTAINMENT_LEVELS: ContainmentLevels = &[
+    (UNIT_LEVEL, &[]),
+    (FILE_LEVEL, &[UNIT_LEVEL]),
+    (DECLARATION_LEVEL, &[UNIT_LEVEL, DECLARATION_LEVEL]),
+];
+
+/// The containment level one Rust node states.
+fn rust_level(node: &GraphNode) -> &'static str {
+    match (render::is_file(node), render::is_definition(node)) {
+        (true, _) => FILE_LEVEL,
+        (_, true) => DECLARATION_LEVEL,
+        _ => UNIT_LEVEL,
+    }
+}
+
 /// Containment is one unit-local forest, and it never leaks into the edges.
 pub fn assert_containment_is_a_unit_local_forest() {
     let (_fixture, _resolved, graph) = fixture::project_corpus_library();
+    assert_containment_forest(&graph, RUST_CONTAINMENT_LEVELS, rust_level);
+    assert_eq!(
+        graph
+            .nodes()
+            .iter()
+            .filter(|node| node.location().is_none())
+            .count(),
+        4,
+        "each report unit contributes one root"
+    );
+}
 
-    let parents = containment_parents(&graph);
+/// Containment is total, acyclic, root-local, written in child order, exactly
+/// the chains one language's levels admit, and never restated as an edge.
+///
+/// The count is asserted beside the per-node walk, because a walk alone is
+/// answered by whatever nodes the graph happens to hold: a projection that
+/// dropped a node and its containment edge together would leave every remaining
+/// node correctly parented.
+pub fn assert_containment_forest<Level>(
+    graph: &CodeGraph,
+    levels: ContainmentLevels,
+    level_of: Level,
+) where
+    Level: Fn(&GraphNode) -> &'static str,
+{
+    assert!(
+        !graph.containment().is_empty() && !graph.edges().is_empty(),
+        "the corpus must state both containment ({}) and edges ({})",
+        graph.containment().len(),
+        graph.edges().len()
+    );
+    let parents = containment_parents(graph);
+    assert_eq!(
+        parents.len(),
+        graph.containment().len(),
+        "no node is contained twice"
+    );
     let roots: BTreeSet<GraphNodeId> = graph
         .nodes()
         .iter()
-        .filter(|node| node.location().is_none())
-        .map(|node| node.id())
+        .filter(|node| admitted_parents(levels, level_of(node)).is_empty())
+        .map(GraphNode::id)
         .collect();
-    assert_eq!(roots.len(), 4, "each report unit contributes one root");
+    assert!(
+        !roots.is_empty(),
+        "the corpus states a root to contain from"
+    );
     assert_eq!(
         graph.containment().len(),
         graph.nodes().len() - roots.len(),
-        "every non-root node has exactly one containment parent"
+        "every node but a root states exactly one containment parent"
     );
+
     for node in graph.nodes() {
-        assert_eq!(
-            parents.contains_key(&node.id()),
-            !roots.contains(&node.id()),
-            "node {} is parented exactly when it is not a unit root",
-            node.id().index()
-        );
+        let stated = level_of(node);
+        let admitted = admitted_parents(levels, stated);
+        let at = node.id().index();
+        match (admitted.is_empty(), parents.get(&node.id()).copied()) {
+            (true, None) => (),
+            (true, Some(parent)) => {
+                panic!(
+                    "{stated} node {at} is a root and states parent {}",
+                    parent.index()
+                )
+            }
+            (false, None) => panic!("{stated} node {at} is contained by nothing and is not a root"),
+            (false, Some(parent)) => {
+                let holder = graph
+                    .node(parent)
+                    .map(&level_of)
+                    .unwrap_or_else(|| panic!("node {at} names parent {}", parent.index()));
+                assert!(
+                    admitted.contains(&holder),
+                    "{stated} node {at} states a {holder} parent, which its level does not admit"
+                );
+            }
+        }
     }
 
-    let owners = unit_owners(&graph, &parents, &roots);
-    for edge in graph.containment() {
-        assert_eq!(
-            owners.get(&edge.parent()),
-            owners.get(&edge.child()),
-            "containment edge {}>{} crosses units",
-            edge.parent().index(),
-            edge.child().index()
-        );
-    }
-    assert_eq!(
-        owners.values().copied().collect::<BTreeSet<GraphNodeId>>(),
-        roots,
-        "the unit roots are exactly the owners the containment walk reaches"
-    );
-
+    assert_every_node_reaches_one_root(graph, &parents, &roots);
     assert!(
         graph
             .containment()
@@ -211,8 +298,66 @@ pub fn assert_containment_is_a_unit_local_forest() {
             .is_sorted(),
         "containment edges are sorted by child"
     );
+    assert_containment_stays_out_of_edges(graph);
+}
 
-    assert_containment_stays_out_of_edges(&graph);
+/// The parent levels one node level admits.
+fn admitted_parents(levels: ContainmentLevels, level: &str) -> &'static [&'static str] {
+    levels
+        .iter()
+        .find(|(stated, _)| *stated == level)
+        .map(|(_, admitted)| *admitted)
+        .unwrap_or_else(|| panic!("the containment model states no level named {level}"))
+}
+
+/// Every node reaches one root, and every containment edge stays inside one.
+fn assert_every_node_reaches_one_root(
+    graph: &CodeGraph,
+    parents: &BTreeMap<GraphNodeId, GraphNodeId>,
+    roots: &BTreeSet<GraphNodeId>,
+) {
+    let owners = root_owners(graph, parents, roots);
+    for edge in graph.containment() {
+        assert_eq!(
+            owners.get(&edge.parent()),
+            owners.get(&edge.child()),
+            "containment edge {}>{} crosses two roots",
+            edge.parent().index(),
+            edge.child().index()
+        );
+    }
+    assert_eq!(
+        owners.values().copied().collect::<BTreeSet<GraphNodeId>>(),
+        *roots,
+        "the roots are exactly the owners the containment walk reaches"
+    );
+}
+
+/// The root each node reaches, proving on the way that no containment chain
+/// returns to a node it already visited.
+fn root_owners(
+    graph: &CodeGraph,
+    parents: &BTreeMap<GraphNodeId, GraphNodeId>,
+    roots: &BTreeSet<GraphNodeId>,
+) -> BTreeMap<GraphNodeId, GraphNodeId> {
+    let mut owners = BTreeMap::new();
+    for node in graph.nodes() {
+        let mut seen: BTreeSet<GraphNodeId> = BTreeSet::new();
+        let mut current = node.id();
+        while !roots.contains(&current) {
+            assert!(
+                seen.insert(current),
+                "the containment chain above node {} returns to {}",
+                node.id().index(),
+                current.index()
+            );
+            current = *parents
+                .get(&current)
+                .unwrap_or_else(|| panic!("node {} reaches no root", node.id().index()));
+        }
+        owners.insert(node.id(), current);
+    }
+    owners
 }
 
 /// No pair the containment forest states appears among the graph's edges.
@@ -290,32 +435,13 @@ pub fn assert_parentage_is_separate_from_location() {
 }
 
 /// Each node's containment parent, keyed by child.
+///
+/// The one parent map every containment claim is read through, in either
+/// language: two builders would be two readings of one relation.
 pub fn containment_parents(graph: &CodeGraph) -> BTreeMap<GraphNodeId, GraphNodeId> {
     graph
         .containment()
         .iter()
         .map(|edge| (edge.child(), edge.parent()))
         .collect()
-}
-
-/// The unit root each node is reachable from.
-fn unit_owners(
-    graph: &CodeGraph,
-    parents: &BTreeMap<GraphNodeId, GraphNodeId>,
-    roots: &BTreeSet<GraphNodeId>,
-) -> BTreeMap<GraphNodeId, GraphNodeId> {
-    let mut owners = BTreeMap::new();
-    for node in graph.nodes() {
-        let mut current = node.id();
-        let mut steps = 0;
-        while !roots.contains(&current) {
-            current = *parents
-                .get(&current)
-                .unwrap_or_else(|| panic!("node {} reaches no unit root", node.id().index()));
-            steps += 1;
-            assert!(steps <= graph.nodes().len(), "containment is cyclic");
-        }
-        owners.insert(node.id(), current);
-    }
-    owners
 }

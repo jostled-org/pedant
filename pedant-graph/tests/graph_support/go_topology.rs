@@ -14,6 +14,35 @@ use pedant_types::{ResolutionReport, SymbolDefinition, SymbolKind};
 use super::go_corpus::{GO_CORPUS, GO_SHARED_SOURCE_CORPUS};
 use super::go_fixture::{GoResolved, project_go};
 use super::go_model::{MODULE_LEVEL, PACKAGE_LEVEL};
+use super::topology::{
+    ContainmentLevels, DECLARATION_LEVEL, FILE_LEVEL, assert_containment_forest,
+    containment_parents,
+};
+
+/// The containment chains a Go graph admits.
+///
+/// Two, and only two: a module contains a package and a package contains a
+/// file, and a module contains a package which contains a definition which
+/// contains its own declarations. A file node is a leaf — a definition is
+/// contained by the package or by the definition that declares it, never by the
+/// source its bytes sit in.
+const GO_CONTAINMENT_LEVELS: ContainmentLevels = &[
+    (MODULE_LEVEL, &[]),
+    (PACKAGE_LEVEL, &[MODULE_LEVEL]),
+    (FILE_LEVEL, &[PACKAGE_LEVEL]),
+    (DECLARATION_LEVEL, &[PACKAGE_LEVEL, DECLARATION_LEVEL]),
+];
+
+/// The containment level one Go node states.
+fn go_level(node: &GraphNode) -> &'static str {
+    match container_level(node) {
+        Some(level) if level == MODULE_LEVEL => MODULE_LEVEL,
+        Some(level) if level == PACKAGE_LEVEL => PACKAGE_LEVEL,
+        Some(_) => DECLARATION_LEVEL,
+        None if *node.kind() == GraphNodeKind::File => FILE_LEVEL,
+        None => DECLARATION_LEVEL,
+    }
+}
 
 /// One graph node's container level, when it is a container at all.
 pub fn container_level(node: &GraphNode) -> Option<&str> {
@@ -41,15 +70,6 @@ pub fn files(graph: &CodeGraph) -> Vec<&GraphNode> {
         .collect()
 }
 
-/// The parent every contained node states.
-pub fn parents(graph: &CodeGraph) -> BTreeMap<u32, u32> {
-    graph
-        .containment()
-        .iter()
-        .map(|edge| (edge.child().index(), edge.parent().index()))
-        .collect()
-}
-
 /// One module container node per admitted module, one package node per report
 /// unit, one file node per unit-qualified source, and one node per definition.
 ///
@@ -69,7 +89,7 @@ pub fn assert_one_package_and_definition_node_per_claim() {
 
 /// Every row of the inventory, read out of the built graph alone.
 fn stated_inventory(graph: &CodeGraph) -> Vec<String> {
-    let parents = parents(graph);
+    let parents = containment_parents(graph);
     let mut rows = vec![
         format!("packages|{}", named(&containers(graph, PACKAGE_LEVEL))),
         format!("modules|{}", containers(graph, MODULE_LEVEL).len()),
@@ -196,7 +216,7 @@ fn tokens<'a>(stated: impl Iterator<Item = (&'a str, &'a str)>) -> String {
 /// different rows instead of one silent pass.
 fn declared_inside(
     graph: &CodeGraph,
-    parents: &BTreeMap<u32, u32>,
+    parents: &BTreeMap<GraphNodeId, GraphNodeId>,
     declared: (&str, &str),
 ) -> String {
     let (name, holder) = declared;
@@ -204,7 +224,7 @@ fn declared_inside(
         .nodes()
         .iter()
         .filter(|node| node.name() == name)
-        .filter(|node| holds(graph, parents, node.id().index()) == Some(holder))
+        .filter(|node| holds(graph, parents, node.id()) == Some(holder))
         .filter_map(|node| declared_token(node).map(|(_, stated)| stated))
         .collect();
     match found.is_empty() {
@@ -227,11 +247,11 @@ fn declared_token(node: &GraphNode) -> Option<(&str, &str)> {
 /// The name of the node one contained node sits inside.
 fn holds<'graph>(
     graph: &'graph CodeGraph,
-    parents: &BTreeMap<u32, u32>,
-    node: u32,
+    parents: &BTreeMap<GraphNodeId, GraphNodeId>,
+    node: GraphNodeId,
 ) -> Option<&'graph str> {
     let parent = parents.get(&node)?;
-    graph.nodes().get(*parent as usize).map(|held| held.name())
+    graph.node(*parent).map(GraphNode::name)
 }
 
 /// The package clause each report unit declares, in report unit order.
@@ -300,105 +320,14 @@ fn located(graph: &CodeGraph, file: GraphNodeId) -> String {
         .unwrap_or_else(|| panic!("a span names file node {} the graph holds", file.index()))
 }
 
-/// Containment is total, acyclic, exactly module over package over file over
-/// definition, and stated nowhere else.
+/// Containment is total, acyclic, exactly the two chains a Go graph admits,
+/// and stated nowhere else.
+///
+/// The whole rule is the level table beside it, read by the one neutral forest
+/// case: what is Go's here is which parent each level admits, and nothing else.
 pub fn assert_containment_is_total_acyclic_and_relation_free() {
     let (_resolved, graph) = project_go(GO_CORPUS);
-    let parents = parents(&graph);
-    assert_eq!(
-        parents.len(),
-        graph.containment().len(),
-        "no node is contained twice"
-    );
-
-    let modules: BTreeSet<u32> = containers(&graph, MODULE_LEVEL)
-        .iter()
-        .map(|node| node.id().index())
-        .collect();
-    let packages: BTreeSet<u32> = containers(&graph, PACKAGE_LEVEL)
-        .iter()
-        .map(|node| node.id().index())
-        .collect();
-
-    for node in graph.nodes() {
-        let held = parents.get(&node.id().index()).copied();
-        assert_parent_is_exact(&graph, (node, held), (&modules, &packages));
-    }
-    assert_no_chain_returns_to_itself(&graph, &parents);
-    assert_containment_is_not_an_edge(&graph, &parents);
-}
-
-/// Every node states the one parent its level allows, and a module states none.
-fn assert_parent_is_exact(
-    graph: &CodeGraph,
-    stated: (&GraphNode, Option<u32>),
-    levels: (&BTreeSet<u32>, &BTreeSet<u32>),
-) {
-    let (node, held) = stated;
-    let (modules, packages) = levels;
-    let at = node.id().index();
-    let parent = match (modules.contains(&at), held) {
-        (true, parent) => {
-            assert_eq!(parent, None, "module node {at} is contained by nothing");
-            return;
-        }
-        (false, None) => panic!("node {at} is contained by nothing and is not a module"),
-        (false, Some(parent)) => parent,
-    };
-    let allowed = match (packages.contains(&at), *node.kind() == GraphNodeKind::File) {
-        (true, _) => modules.contains(&parent),
-        (_, true) => packages.contains(&parent),
-        _ => packages.contains(&parent) || is_declaration(graph, parent),
-    };
-    assert!(
-        allowed,
-        "node {at} ({:?}) states parent {parent}, which its level does not allow",
-        node.kind()
-    );
-}
-
-/// Whether one node is a declaration rather than a module, package, or file.
-fn is_declaration(graph: &CodeGraph, node: u32) -> bool {
-    graph
-        .nodes()
-        .get(node as usize)
-        .is_some_and(|held| match held.kind() {
-            GraphNodeKind::File => false,
-            GraphNodeKind::Container { level } => {
-                &**level != MODULE_LEVEL && &**level != PACKAGE_LEVEL
-            }
-            _ => true,
-        })
-}
-
-/// No containment chain returns to a node it already visited.
-fn assert_no_chain_returns_to_itself(graph: &CodeGraph, parents: &BTreeMap<u32, u32>) {
-    for node in graph.nodes() {
-        let mut seen: BTreeSet<u32> = BTreeSet::new();
-        let mut current = Some(node.id().index());
-        while let Some(at) = current {
-            assert!(
-                seen.insert(at),
-                "the containment chain above node {} returns to {at}",
-                node.id().index()
-            );
-            current = parents.get(&at).copied();
-        }
-    }
-}
-
-/// No containment pair is restated as a reference edge or a dependency edge.
-fn assert_containment_is_not_an_edge(graph: &CodeGraph, parents: &BTreeMap<u32, u32>) {
-    let restated: Vec<u32> = graph
-        .edges()
-        .iter()
-        .filter(|edge| parents.get(&edge.target().index()) == Some(&edge.source().index()))
-        .map(|edge| edge.id().index())
-        .collect();
-    assert!(
-        restated.is_empty(),
-        "containment is its own relation; these edges restate it: {restated:?}"
-    );
+    assert_containment_forest(&graph, GO_CONTAINMENT_LEVELS, go_level);
 }
 
 /// One snapshot source read once, and one file node per package context that
@@ -438,11 +367,12 @@ pub fn assert_shared_source_has_two_unit_file_nodes() {
         2,
         "the shared source takes one file node per package context"
     );
-    let owners: BTreeSet<u32> = nodes
+    let parents = containment_parents(&graph);
+    let owners: BTreeSet<GraphNodeId> = nodes
         .iter()
         .map(|node| {
-            parents(&graph)
-                .get(&node.id().index())
+            parents
+                .get(&node.id())
                 .copied()
                 .unwrap_or_else(|| panic!("file node {} states a parent", node.id().index()))
         })
@@ -453,10 +383,9 @@ pub fn assert_shared_source_has_two_unit_file_nodes() {
         "the two file nodes are qualified by two different package contexts"
     );
     assert!(
-        owners.iter().all(
-            |owner| graph.nodes().get(*owner as usize).map(container_level)
-                == Some(Some(PACKAGE_LEVEL))
-        ),
+        owners
+            .iter()
+            .all(|owner| graph.node(*owner).map(container_level) == Some(Some(PACKAGE_LEVEL))),
         "each shared file node sits beneath a package node"
     );
 }

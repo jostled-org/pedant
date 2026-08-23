@@ -5,7 +5,7 @@ use std::path::Path;
 
 use super::dependency::RustDependency;
 use super::error::RustProjectError;
-use super::identity::{PackageId, ProjectAuthority, TargetId};
+use super::identity::{PackageId, ProjectAuthority, TargetId, index_of};
 use super::limits::ResolutionLimits;
 use super::load;
 use super::manifest::ManifestFingerprint;
@@ -140,7 +140,7 @@ impl RustProject {
     /// Reject an identity issued by another project before it selects a record.
     fn select(&self, authority: ProjectAuthority, index: u32) -> Option<usize> {
         match authority == self.authority {
-            true => usize::try_from(index).ok(),
+            true => Some(index_of(index)),
             false => None,
         }
     }

@@ -10,9 +10,9 @@
 use super::analysis_ownership::{
     ANALYSIS_SOURCES, BETWEENNESS_OWNER, COMPONENT_OWNER, PARTITION_OWNER, SELECTION_OWNER,
 };
+use super::call_graph::{declared_call_graph, recursive_functions};
 use super::inventory::SOURCES;
 use super::scan::{code_only, compact, function_body, method_body, position_of, source};
-use super::surface::{declared_call_graph, recursive_functions};
 
 /// The spellings that allocate. A count taken to decide whether to allocate
 /// may name none of them.

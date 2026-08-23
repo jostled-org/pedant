@@ -23,11 +23,11 @@ use pedant_types::{ResolutionRecord, ResolutionReport, SymbolReference};
 use crate::edge::DependencyEvidence;
 use crate::error::GraphBuildError;
 use crate::graph::CodeGraph;
-use crate::id::position;
 use crate::limits::GraphLimits;
 use crate::projection::assembly;
 use crate::projection::draft::{
-    DependencyProjection, PlacedFragment, ProjectionPlan, SourceFragment, StatedContainer, UnitPlan,
+    DependencyProjection, PlacedFragment, ProjectionPlan, SourceFragment, StatedContainer,
+    StatedDependency, UnitPlan,
 };
 use crate::projection::placement::{DefinitionTable, RecordPlacement, SourceSet};
 use crate::projection::state::ProjectionCapacity;
@@ -89,12 +89,20 @@ pub(crate) fn plan(
         resolved: neutral::resolved_references(report)?,
     };
     let planned = plan_units(&inputs, resolution)?;
+    // Every count is stated by the report, the plan, or the snapshot. The store
+    // reserves no more than the ceiling it refuses at, so a build the limits
+    // will refuse costs no more memory than the graph it would have admitted.
+    let capacity = ProjectionCapacity::stated(
+        planned.units.len(),
+        report,
+        &inputs.resolved,
+        snapshot.edges().len(),
+    );
     let sources = SourceSet::new(planned.units.into_boxed_slice())?;
     let table = DefinitionTable::new(report, &sources)?;
     let placement = RecordPlacement::stated(report, &inputs.resolved, (&sources, &table))?;
     let fragments = plan_fragments(&inputs, (&sources, &table, &placement), reuse)?;
     let dependencies = plan_dependencies(&inputs, &planned.bound)?;
-    let capacity = capacity(&inputs);
     Ok(ProjectionPlan {
         tier: report.tier(),
         units: sources.finish(),
@@ -107,25 +115,6 @@ pub(crate) fn plan(
         dependencies,
         capacity,
     })
-}
-
-/// How many records the supplied inputs state, counted before one is allocated.
-///
-/// Every count is stated by the report or the snapshot. The store reserves no
-/// more than the ceiling it refuses at, so a build the limits will refuse costs
-/// no more memory than the graph it would have admitted.
-fn capacity(inputs: &Inputs<'_>) -> ProjectionCapacity {
-    ProjectionCapacity {
-        units: inputs.report.units().len(),
-        definitions: inputs.report.definitions().len(),
-        references: inputs.resolved.len(),
-        edges: inputs
-            .resolved
-            .iter()
-            .fold(inputs.snapshot.edges().len(), |total, (_, record)| {
-                total.saturating_add(record.candidates().len())
-            }),
-    }
 }
 
 /// One container plan per report unit, in report order.
@@ -145,7 +134,7 @@ fn plan_units(
         let reported = unit.id().index();
         let snapshot_unit = validation::stated_binding(resolution, unit)?;
         let instance = neutral::bound_instance(inputs.snapshot.unit(snapshot_unit), reported)?;
-        validation::distinct_binding(planned.bound.get(&snapshot_unit).copied(), reported)?;
+        neutral::distinct_binding(planned.bound.get(&snapshot_unit).copied(), reported)?;
         planned.bound.insert(snapshot_unit, reported);
         planned.units.push(UnitPlan {
             key: Arc::from(unit.key()),
@@ -230,26 +219,19 @@ fn plan_dependencies(
     inputs: &Inputs<'_>,
     bound: &BTreeMap<RustSnapshotUnitId, u32>,
 ) -> Result<Box<[DependencyProjection]>, GraphBuildError> {
-    inputs
-        .snapshot
-        .edges()
-        .iter()
-        .enumerate()
-        .map(|(index, edge)| {
-            let stated = (position(index), edge);
-            let source = validation::dependency_unit(bound.get(&edge.source()).copied(), stated)?;
-            let target = validation::dependency_unit(bound.get(&edge.target()).copied(), stated)?;
-            let (certainty, predicate) = mapping::activation(edge.activation());
-            Ok(DependencyProjection {
-                source,
-                target,
-                certainty,
-                evidence: DependencyEvidence::new(
-                    Arc::from(edge.name()),
-                    mapping::dependency_kind(edge.kind()),
-                    predicate,
-                ),
-            })
-        })
-        .collect()
+    DependencyProjection::stated(inputs.snapshot.edges(), |edge| {
+        let (certainty, predicate) = mapping::activation(edge.activation());
+        StatedDependency {
+            bound: (
+                bound.get(&edge.source()).copied(),
+                bound.get(&edge.target()).copied(),
+            ),
+            certainty,
+            evidence: DependencyEvidence::new(
+                Arc::from(edge.name()),
+                mapping::dependency_kind(edge.kind()),
+                predicate,
+            ),
+        }
+    })
 }

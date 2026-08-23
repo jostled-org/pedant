@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use super::condition::is_test_source;
 use super::discovery::GoPackageDirectory;
+use super::paths::file_name;
 use super::snapshot_error::GoSnapshotError;
 use super::store::GoSourceStore;
 use super::unit::GoPackageContext;
@@ -87,11 +88,11 @@ fn classify(
         let package =
             store
                 .package_name(&path)
-                .ok_or_else(|| GoSnapshotError::MissingPackageClause {
+                .ok_or_else(|| GoSnapshotError::MissingStoredSource {
                     path: Box::from(&*path),
                 })?;
         classified.push(ClassifiedSource {
-            test: is_test_source(&path),
+            test: is_test_source(file_name(&path)),
             package: Box::from(package),
             path,
         });
@@ -112,21 +113,28 @@ fn declared_package(
         .iter()
         .find(|source| !source.test)
         .map(|source| Box::from(&*source.package));
-    let internal = classified
-        .iter()
-        .filter(|source| source.test && !source.package.ends_with(EXTERNAL_SUFFIX))
-        .map(|source| Box::from(&*source.package))
-        .next();
-    let external = classified
-        .iter()
-        .filter(|source| source.test)
-        .find_map(|source| source.package.strip_suffix(EXTERNAL_SUFFIX).map(Box::from));
     production
-        .or(internal)
-        .or(external)
+        .or_else(|| internal_package(classified))
+        .or_else(|| suffixless_package(classified))
         .ok_or_else(|| GoSnapshotError::MissingPackageClause {
             path: Box::from(directory),
         })
+}
+
+/// The name a same-package test file states directly.
+fn internal_package(classified: &[ClassifiedSource]) -> Option<Box<str>> {
+    classified
+        .iter()
+        .find(|source| source.test && !source.package.ends_with(EXTERNAL_SUFFIX))
+        .map(|source| Box::from(&*source.package))
+}
+
+/// The name an external test clause states, with its suffix removed.
+fn suffixless_package(classified: &[ClassifiedSource]) -> Option<Box<str>> {
+    classified
+        .iter()
+        .filter(|source| source.test)
+        .find_map(|source| source.package.strip_suffix(EXTERNAL_SUFFIX).map(Box::from))
 }
 
 /// The context every classified source belongs to, or the clause that fits
@@ -172,22 +180,33 @@ fn drafts(
     assigned: (&[ClassifiedSource], &[GoPackageContext]),
 ) -> Box<[UnitDraft]> {
     let (_, contexts) = assigned;
-    let production = selected(assigned, &[GoPackageContext::Production]);
-    let internal = selected(
-        assigned,
-        &[GoPackageContext::Production, GoPackageContext::InternalTest],
-    );
-    let external = selected(assigned, &[GoPackageContext::ExternalTest]);
-    let held = |context: GoPackageContext| contexts.contains(&context);
     [
-        held(GoPackageContext::Production).then_some((GoPackageContext::Production, production)),
-        held(GoPackageContext::InternalTest).then_some((GoPackageContext::InternalTest, internal)),
-        held(GoPackageContext::ExternalTest).then_some((GoPackageContext::ExternalTest, external)),
+        GoPackageContext::Production,
+        GoPackageContext::InternalTest,
+        GoPackageContext::ExternalTest,
     ]
     .into_iter()
-    .flatten()
-    .map(|(context, sources)| draft(site, placement, (context, sources)))
+    .filter(|context| contexts.contains(context))
+    .map(|context| {
+        let sources = selected(assigned, compiled_by(context));
+        draft(site, placement, (context, sources))
+    })
     .collect()
+}
+
+/// Which contexts' sources Go compiles one unit from.
+///
+/// Asked only for a context the directory states, so a directory with no test
+/// files never selects and sorts the sources of the two test units it does not
+/// have.
+fn compiled_by(context: GoPackageContext) -> &'static [GoPackageContext] {
+    match context {
+        GoPackageContext::Production => &[GoPackageContext::Production],
+        GoPackageContext::InternalTest => {
+            &[GoPackageContext::Production, GoPackageContext::InternalTest]
+        }
+        GoPackageContext::ExternalTest => &[GoPackageContext::ExternalTest],
+    }
 }
 
 /// One unit, named against its module and directory.

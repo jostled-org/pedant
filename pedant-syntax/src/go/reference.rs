@@ -82,11 +82,12 @@ impl<'source> GoReferenceFact<'source> {
 /// declaration rather than a read.
 pub(super) fn reference_at<'source>(
     node: Node<'_>,
+    kind: &str,
     field: Option<&str>,
     source: &'source str,
     context: FactContext,
 ) -> Option<GoReferenceFact<'source>> {
-    match node.kind() {
+    match kind {
         "call_expression" => call(node, source, context),
         "selector_expression" => selector(node, field, source, context),
         "qualified_type" => qualified_type(node, source, context),

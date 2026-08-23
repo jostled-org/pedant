@@ -64,9 +64,10 @@ impl<'source> GoImportFact<'source> {
 /// The import `node` states, if it states one.
 pub(super) fn import_at<'source>(
     node: Node<'_>,
+    kind: &str,
     source: &'source str,
 ) -> Option<GoImportFact<'source>> {
-    if node.kind() != "import_spec" {
+    if kind != "import_spec" {
         return None;
     }
     let path = unquote(field_text(node, "path", source)?);

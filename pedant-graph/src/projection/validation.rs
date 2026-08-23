@@ -26,6 +26,22 @@ use super::draft::{
 use super::placement::{DefinitionIdentity, DefinitionTable, SourceIdentity, SourceSet};
 use super::state::{ProjectionState, SourceScope};
 
+/// The supplied snapshot must be the one the resolution was validated against.
+///
+/// Every adapter states its own two fingerprints and none of them states this
+/// refusal: what a graph cannot do with a resolution taken against other bytes
+/// is the same in every language, so the comparison and the refusal it earns
+/// have one owner and the adapters name only which two values to compare.
+pub(crate) fn matching_fingerprint<Fingerprint: PartialEq>(
+    snapshot: Fingerprint,
+    stated: Fingerprint,
+) -> Result<(), GraphBuildError> {
+    match snapshot == stated {
+        true => Ok(()),
+        false => Err(GraphBuildError::SnapshotFingerprintMismatch),
+    }
+}
+
 /// The snapshot instance one report unit's binding names.
 ///
 /// A binding the snapshot holds no instance for is dangling rather than
@@ -38,6 +54,38 @@ pub(crate) fn bound_instance<Instance>(
     unit: u32,
 ) -> Result<Instance, GraphBuildError> {
     held.ok_or(GraphBuildError::DanglingUnitBinding { unit })
+}
+
+/// One build unit is bound by one report unit.
+///
+/// A second report unit naming it would give every source that unit
+/// instantiates two owners, so the collision is refused where it is made rather
+/// than left to the containment check, which would name a doubled node instead
+/// of the doubled binding. Neutral because the claim is: the identity looked up
+/// is the adapter's, and a graph that silently dropped one of the two joins
+/// would be indistinguishable from a repository that has one.
+pub(crate) fn distinct_binding(held: Option<u32>, unit: u32) -> Result<(), GraphBuildError> {
+    match held {
+        None => Ok(()),
+        Some(held) => Err(GraphBuildError::SharedUnitBinding { held, unit }),
+    }
+}
+
+/// The plan position one stated dependency endpoint resolves to.
+///
+/// The refusal names the edge rather than the endpoint, because a snapshot
+/// identity is opaque outside the snapshot that issued it and the plan's own
+/// unit order is a different order. The alias travels as text, so the one
+/// refusal answers for a Cargo dependency name and a Go module path alike.
+pub(crate) fn dependency_unit(
+    bound: Option<u32>,
+    stated: (u32, &str),
+) -> Result<u32, GraphBuildError> {
+    let (edge, alias) = stated;
+    bound.ok_or_else(|| GraphBuildError::MissingDependencyUnit {
+        edge,
+        alias: Box::from(alias),
+    })
 }
 
 /// One unit instantiates one normalized path once.
@@ -242,14 +290,17 @@ pub(crate) fn stated_definition(
         .ok_or(GraphBuildError::MissingDefinitionNode { definition })
 }
 
-/// The container slot one planned unit's position owns.
+/// The table slot one stated unit position owns.
 ///
-/// The table is sized from the plan's own unit count, so a position outside it
-/// is a container bound for a unit this plan never stated.
-pub(crate) fn unit_slot(
-    held: Option<&mut Option<GraphNodeId>>,
+/// Every table this answers for is sized from a plan's own unit count, so a
+/// position outside it names a unit that plan never stated. Naming the slot
+/// type is the caller's: a container node and a stated declaration are the same
+/// claim over different values, and dropping either in silence would leave the
+/// record it belongs to rooted at nothing.
+pub(crate) fn unit_slot<Slot>(
+    held: Option<&mut Slot>,
     unit: u32,
-) -> Result<&mut Option<GraphNodeId>, GraphBuildError> {
+) -> Result<&mut Slot, GraphBuildError> {
     held.ok_or(GraphBuildError::MissingUnitBinding { unit })
 }
 
@@ -269,10 +320,12 @@ pub(crate) fn unbound_container(
 
 /// The file-node scope one planned unit's sources are bound in.
 ///
-/// The scope table is indexed by the unit's own position, so a position outside
-/// it is a unit this assembly bound no container for. Dropping the binding
-/// instead would lose the file node in silence and surface later as a missing
-/// source node naming a source this assembly did in fact mint.
+/// The scope table is opened at the plan's own unit count and indexed by plan
+/// position, so what is proved here is that the position sits inside that
+/// count. Nothing about a container is proved: a unit rooted at one of its own
+/// declarations has its sources bound before that node exists. Dropping the
+/// binding instead would lose the file node in silence and surface later as a
+/// missing source node naming a source this assembly did in fact mint.
 pub(crate) fn unit_scope(
     held: Option<&mut SourceScope>,
     unit: u32,
@@ -291,17 +344,19 @@ pub(crate) fn unit_container(
 }
 
 /// The unit-qualified file node one stated site sits in.
+///
+/// The node is looked up by the caller and refused here, so a scope read by
+/// path and a table read by fragment position take the one refusal rather than
+/// two spellings of it.
 pub(crate) fn source_node(
-    state: &ProjectionState,
+    held: Option<GraphNodeId>,
     unit: u32,
     path: &str,
 ) -> Result<GraphNodeId, GraphBuildError> {
-    state
-        .file(unit, path)
-        .ok_or_else(|| GraphBuildError::MissingSourceNode {
-            unit,
-            path: Box::from(path),
-        })
+    held.ok_or_else(|| GraphBuildError::MissingSourceNode {
+        unit,
+        path: Box::from(path),
+    })
 }
 
 /// The node one stable definition identity was minted as.

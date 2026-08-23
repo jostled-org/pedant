@@ -90,7 +90,7 @@ pub(super) fn resolve(
 /// Join every verified edge to the definition slot it names.
 fn build(
     snapshot: &RustResolutionSnapshot,
-    inventory: &Inventory,
+    inventory: &Inventory<'_>,
     targets: &SemanticDefinitionTargets,
 ) -> SemanticPromotion {
     let definitions = definition_sites(inventory);
@@ -147,7 +147,7 @@ fn join(
 /// derivation of it: re-deriving meant a second copy of that pass's scope
 /// filter and a second line index per node, and a definition the two copies
 /// disagreed about would silently promote nothing.
-fn definition_sites(inventory: &Inventory) -> BTreeMap<PromotionSite, usize> {
+fn definition_sites(inventory: &Inventory<'_>) -> BTreeMap<PromotionSite, usize> {
     inventory
         .index
         .slots()

@@ -9,12 +9,17 @@ use super::identity::GoModuleId;
 ///
 /// Every field is private and every view is borrowed, so a caller reads what the
 /// manifest declared and cannot restate it as something the loader never saw.
+///
+/// The three texts are shared rather than owned outright. Each is built once
+/// when the load seals, and each snapshot taken from the project restates every
+/// module it admitted, so an owned copy meant one deep copy of every module
+/// path, directory, and manifest name per snapshot.
 #[derive(Debug)]
 pub struct GoModule {
     pub(super) id: GoModuleId,
     pub(super) path: Arc<str>,
-    pub(super) directory: Box<str>,
-    pub(super) manifest: Box<str>,
+    pub(super) directory: Arc<str>,
+    pub(super) manifest: Arc<str>,
     pub(super) depth: u32,
 }
 

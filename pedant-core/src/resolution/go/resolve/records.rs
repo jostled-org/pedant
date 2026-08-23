@@ -10,10 +10,10 @@ use std::sync::Arc;
 
 use pedant_types::{
     CandidateInput, DefinitionHandle, ResolutionCertainty, ResolutionGap, ResolutionReportBuilder,
-    ResolutionUnitHandle,
 };
 
 use crate::resolution::go::limits::GoResolutionLimits;
+use crate::resolution::identity::position;
 
 use super::denotation::Denotation;
 use super::error::GoResolutionError;
@@ -50,7 +50,7 @@ fn write_one(
     let conditional = is_conditional(&named, denotation);
     let certainty = certainty_of(denotation, conditional);
     let handle = builder.add_reference(
-        &unit_handle(index, unit)?,
+        &index.unit_handle(unit)?,
         denotation.kind,
         Arc::clone(&denotation.text),
         denotation.span.clone(),
@@ -83,7 +83,7 @@ fn recorded(index: &Index, slot: usize) -> Result<&Slot, GoResolutionError> {
     index
         .slot(slot)
         .ok_or_else(|| GoResolutionError::DefinitionMapping {
-            slot: u32::try_from(slot).unwrap_or(u32::MAX),
+            slot: position(slot),
             reason: Box::from("no definition was recorded at this position"),
         })
 }
@@ -135,8 +135,15 @@ fn certainty_of(denotation: &Denotation, conditional: bool) -> ResolutionCertain
 }
 
 /// Why one answer is incomplete, before the report sorts them.
+///
+/// The fan-out gap is derived rather than restated. A site whose own answer
+/// already named its selector ambiguous — one an embedding graph reaches by
+/// several paths — would otherwise carry the same gap twice, and a reader
+/// counting gaps would count one incompleteness as two.
 fn gaps(denotation: &Denotation, conditional: bool) -> Box<[ResolutionGap]> {
-    let ambiguous = (denotation.candidates.len() > 1).then_some(ResolutionGap::Ambiguous);
+    let fanned =
+        denotation.candidates.len() > 1 && denotation.gap != Some(ResolutionGap::Ambiguous);
+    let ambiguous = fanned.then_some(ResolutionGap::Ambiguous);
     let stated = conditional.then_some(ResolutionGap::ConditionalCompilation);
     denotation
         .gap
@@ -158,15 +165,4 @@ fn enclosing(
         .enclosing
         .map(|slot| recorded(index, slot).map(|found| found.handle.clone()))
         .transpose()
-}
-
-/// The handle of the unit one reference is stated in.
-fn unit_handle(index: &Index, unit: usize) -> Result<ResolutionUnitHandle, GoResolutionError> {
-    index
-        .unit(unit)
-        .map(|found| found.handle.clone())
-        .ok_or_else(|| GoResolutionError::UnitMapping {
-            unit: u32::try_from(unit).unwrap_or(u32::MAX),
-            reason: Box::from("no index was opened for this package context"),
-        })
 }

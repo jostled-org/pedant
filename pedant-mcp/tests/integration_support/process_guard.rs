@@ -128,6 +128,13 @@ pub(crate) enum Outcome {
 
 /// One finished run, reported only after its whole tree is gone.
 pub(crate) struct Completed {
+    /// The process the guard contained, which names the whole tree.
+    ///
+    /// Teardown has already killed that tree and reaped its root, so a caller
+    /// holds this to state the claim rather than to act on it: a row asks
+    /// whether anything the server started outlived the guard, and a failure
+    /// message says which tree it was asking about.
+    pub(crate) tree_root: u32,
     /// How the child ended.
     pub(crate) outcome: Outcome,
     /// Every line the tree wrote to stdout, read or unread.
@@ -261,9 +268,11 @@ impl Guard {
     /// Shut the child down and return only after its whole tree is reaped.
     pub(crate) fn finish(mut self, budget: Duration) -> Result<Completed, Failure> {
         self.close_stdin();
+        let tree_root = self.child.id();
         let waited = self.wait(budget);
         let transcripts = self.teardown()?;
         Ok(Completed {
+            tree_root,
             outcome: waited?,
             stdout: transcripts.stdout,
             stderr: transcripts.stderr,

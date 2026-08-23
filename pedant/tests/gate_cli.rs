@@ -156,6 +156,7 @@ fn project_gate_tier1_invokes_no_toolchain() {
 fn project_gate_semantic_is_single_context_all_target_or_error() {
     semantic::semantic_is_single_context_all_target_or_error();
     ownership::semantic_context_is_loaded_once_before_iteration();
+    ownership::the_semantic_journey_is_the_only_budget_override();
 }
 
 /// The module, support, dependency, and release boundaries are exact.

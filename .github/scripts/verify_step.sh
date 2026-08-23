@@ -177,9 +177,16 @@ fi
 #
 # `exact <package> <target> <profile> <predicate>` selects one registered test
 # through the exact-test helper; `root <package> <target> <profile>` runs a whole
-# integration root; `crate <package>` runs a package's whole test set; and
-# `check <path>` runs one tracked repository check. The profile vocabulary is the
-# helper's: `default`, `none`, or a feature list.
+# integration root; `crate <package>` runs a package's whole test set;
+# `excluded <directory>` formats and lints one workspace-excluded crate through
+# its own manifest; and `check <path>` runs one tracked repository check. The
+# profile vocabulary is the helper's: `default`, `none`, or a feature list.
+#
+# A step that edits a workspace-excluded crate must state it: the route's
+# workspace-wide `cargo fmt --check` and its per-package clippy both resolve
+# through the root virtual manifest, so neither reaches a member the root
+# excludes. Without that entry the step would report as verified having never
+# compiled the source it changed.
 #
 # A step this plan does not have returns 1, which the caller reports as a plan
 # authoring error rather than routing to a generic run that proves none of the
@@ -280,7 +287,10 @@ SPECS
         9)
             cat <<SPECS
 exact pedant gate_cli semantic project_gate_semantic_is_single_context_all_target_or_error
+exact pedant supply_chain default supply_chain_process_guard_reaps_descendants_on_success_timeout_and_early_error
+exact pedant-mcp integration default mcp_stdio_guard_reaps_descendants_on_success_timeout_and_early_error
 root pedant gate_cli semantic
+excluded test-support/process-guard
 SPECS
             ;;
         10)
@@ -377,7 +387,7 @@ go_route_packages() {
 
 # Run one step of the Go plan's matrix, listing every command it selects.
 go_route() {
-    local step="$1" specs packages package spec
+    local step="$1" specs packages package spec excluded_label
     specs="$(go_route_specs "${step}")" || {
         echo "ERROR: ${GO_PLAN_IDENTITY} has no step ${step}" >&2
         echo "       Fix PLAN_STEP, or add the step's matrix to verify_step.sh." >&2
@@ -415,6 +425,14 @@ go_route() {
                 esac
                 ;;
             crate) plan_command "test_$2" cargo test -p "$2" ;;
+            excluded)
+                excluded_label="$(basename -- "$2")"
+                excluded_label="${excluded_label//-/_}"
+                plan_command "fmt_${excluded_label}" \
+                    cargo fmt --manifest-path "$2/Cargo.toml" --check
+                plan_command "clippy_${excluded_label}" \
+                    cargo clippy --locked --manifest-path "$2/Cargo.toml" --all-targets -- -D warnings
+                ;;
             check) plan_command "check_$(basename -- "$2")" "${ROOT}/$2" ;;
             *)
                 echo "ERROR: ${GO_PLAN_IDENTITY} step ${step} states an unknown route entry: $1" >&2

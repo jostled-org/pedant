@@ -100,10 +100,6 @@ pub(crate) fn semantic_is_single_context_all_target_or_error() {
         budget: SEMANTIC_BUDGET,
         ..RunOptions::default()
     };
-    assert_eq!(
-        options.budget, SEMANTIC_BUDGET,
-        "the semantic journey applies its localized ceiling"
-    );
     let fixture = ProjectFixture::build(SEMANTIC_CORPUS);
     let run = fixture.project_gate_with(&["--semantic", "--format", "json"], &options);
     assert_finished(&run, "the analyzed project");
@@ -128,13 +124,22 @@ pub(crate) fn semantic_is_single_context_all_target_or_error() {
     assert_refusal(&unloadable, "has no loadable semantic context");
 }
 
-/// The child reached its own end rather than the ceiling that bounds it.
+/// The child ran under the localized ceiling and reached its own end inside it.
 ///
 /// A journey killed at its budget publishes nothing, so every later reading of
 /// its output would be a reading of silence. This is the row that tells the two
 /// apart, and it is why the observed 120.03-second overrun could be diagnosed
 /// as a budget rather than as an empty semantic report.
+///
+/// Which ceiling the guard used is read from the guard's own record rather than
+/// from the options this module built, because the two disagree exactly when
+/// the wiring between them is gone — and a 180-second request served under the
+/// 120-second default is the failure this step exists to prevent.
 fn assert_finished(run: &Completed, label: &str) {
+    assert_eq!(
+        run.budget, SEMANTIC_BUDGET,
+        "{label}: the guard bounded this Tier 2 child by the localized ceiling"
+    );
     assert!(
         !run.timed_out(),
         "{label}: the Tier 2 child must finish inside the {}-second ceiling: {}",

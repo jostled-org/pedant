@@ -149,6 +149,13 @@ pub(crate) struct Completed {
     /// whether anything the child started outlived the guard, and a failure
     /// message says which tree it was asking about.
     pub(crate) tree_root: u32,
+    /// The ceiling the guard actually bounded this run by.
+    ///
+    /// Recorded by the wait itself rather than copied from the caller's
+    /// request, so a row can state which ceiling its child ran under. A journey
+    /// whose ceiling never reached the guard reads the shared default here even
+    /// though it asked for its own.
+    pub(crate) budget: Duration,
     /// How the child ended.
     pub(crate) outcome: Outcome,
     /// Everything the tree wrote to stdout, empty when nothing drained it.
@@ -261,6 +268,7 @@ impl Guard {
         let (stdout, stderr) = self.teardown()?;
         Ok(Completed {
             tree_root,
+            budget,
             outcome: waited?,
             stdout,
             stderr,

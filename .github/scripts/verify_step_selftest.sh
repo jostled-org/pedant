@@ -197,6 +197,33 @@ test_step_nine_owns_the_semantic_process_budget() {
     esac
 }
 
+# The localized ceiling is reached through the shared guard, so Step 9 also
+# edits that guard and the containment helper beneath it. Both other consumers
+# of the guard prove the same containment claim, and the helper lives in a crate
+# the workspace excludes: a route naming only the gate CLI would leave the step
+# reporting as verified having never built either.
+test_step_nine_covers_every_guard_surface_it_changes() {
+    run_verifier "${GO_PLAN}" 9 VERIFY_STEP_LIST_ONLY=1
+    local listing
+    listing="$(commands_of "${ROW_OUTPUT}")"
+    case "${listing}" in
+        *"pedant supply_chain default supply_chain_process_guard_reaps_descendants_on_success_timeout_and_early_error"*) ;;
+        *) fail "Go step 9 must run the supply-chain guard row that shares its guard" ;;
+    esac
+    case "${listing}" in
+        *"pedant-mcp integration default mcp_stdio_guard_reaps_descendants_on_success_timeout_and_early_error"*) ;;
+        *) fail "Go step 9 must run the MCP guard row that proves the same containment claim" ;;
+    esac
+    case "${listing}" in
+        *"cargo fmt --manifest-path test-support/process-guard/Cargo.toml --check"*) ;;
+        *) fail "Go step 9 must format the workspace-excluded containment helper" ;;
+    esac
+    case "${listing}" in
+        *"cargo clippy --locked --manifest-path test-support/process-guard/Cargo.toml --all-targets -- -D warnings"*) ;;
+        *) fail "Go step 9 must lint the workspace-excluded containment helper" ;;
+    esac
+}
+
 # The lint gate is derived from each step's specifications rather than written
 # beside them. A derivation that dropped a package would leave a crate the step
 # tests unlinted, which is the same silent narrowing by another route.
@@ -293,6 +320,7 @@ test_step_one_owns_the_exact_test_harness
 test_step_one_owns_the_repository_verifier_harness
 test_step_seven_owns_the_go_type_fact_contract
 test_step_nine_owns_the_semantic_process_budget
+test_step_nine_covers_every_guard_surface_it_changes
 test_every_go_step_lints_every_package_it_tests
 test_an_unrelated_valid_plan_keeps_generic_routing
 test_an_unrelated_plan_at_a_high_step_still_routes

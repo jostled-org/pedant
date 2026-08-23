@@ -97,6 +97,14 @@ pub(crate) fn guarded_run_leaves_no_descendant(row: &GuardRow) {
         completed.outcome,
         completed.transcript()
     );
+    // Which ceiling the wait used, read from the guard rather than from this
+    // row's request: the timeout row's outcome is the two agreeing, and a row
+    // served under a ceiling it never asked for would still time out somewhere.
+    assert_eq!(
+        completed.budget, row.budget,
+        "{}: the guard bounded the tree by the ceiling this row stated",
+        row.label
+    );
 
     let pid = descendant_pid(&pid_file, DESCENDANT_BUDGET)
         .unwrap_or_else(|| panic!("{}: the fixture left no descendant to reap", row.label));

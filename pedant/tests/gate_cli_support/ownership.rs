@@ -369,6 +369,75 @@ pub(crate) fn semantic_context_is_loaded_once_before_iteration() {
     );
 }
 
+/// Every gate CLI support site that binds a guarded-process ceiling, in tree
+/// order, each as its module and the value it states.
+///
+/// The plumbing sites come first because the fixture declares the option, fills
+/// it from the shared default, and hands it to the guard; the one localized
+/// widening follows.
+#[cfg(feature = "semantic")]
+const BUDGET_SITES: &[&str] = &[
+    "fixture.rs -> Duration",
+    "fixture.rs -> BUDGET",
+    "fixture.rs -> options.budget",
+    "semantic.rs -> SEMANTIC_BUDGET",
+];
+
+/// The Tier 2 module is the only gate CLI journey with a ceiling of its own.
+///
+/// The literal comparisons beside this one read the shared default and the
+/// widened constant. Both stay true when a second support module hands the same
+/// guard a wider `RunOptions` of its own: the default is still 120 seconds
+/// while an ordinary journey is no longer bound by it. This reads the support
+/// tree instead and requires the whole set of ceiling-stating sites, so a
+/// second override fails here rather than passing unseen.
+#[cfg(feature = "semantic")]
+pub(crate) fn the_semantic_journey_is_the_only_budget_override() {
+    assert_eq!(
+        budget_sites(),
+        BUDGET_SITES,
+        "one module states a guarded ceiling of its own, and it is the Tier 2 journey"
+    );
+}
+
+/// Every ceiling binding under the gate CLI support tree, in tree order.
+#[cfg(feature = "semantic")]
+fn budget_sites() -> Vec<String> {
+    let tree = manifest_dir().join("tests/gate_cli_support");
+    let mut sites = Vec::new();
+    for module in module_names(&tree) {
+        for line in read(&tree.join(&module)).lines() {
+            let code = line.split_once("//").map_or(line, |(head, _)| head);
+            for value in bound_budgets(code) {
+                sites.push(format!("{module} -> {value}"));
+            }
+        }
+    }
+    sites
+}
+
+/// Every ceiling one line binds, which is every occurrence rather than the
+/// first: a line may read one ceiling and bind another.
+#[cfg(feature = "semantic")]
+fn bound_budgets(code: &str) -> Vec<String> {
+    code.match_indices("budget")
+        .filter_map(|(at, name)| bound_value(&code[at + name.len()..]))
+        .collect()
+}
+
+/// The value one occurrence binds, when it binds one at all.
+///
+/// An occurrence that reads a ceiling — comparing it, printing it, passing it
+/// on — states no ceiling of its own, so only a field declaration, a
+/// struct-literal field, or an assignment counts.
+#[cfg(feature = "semantic")]
+fn bound_value(after_name: &str) -> Option<String> {
+    let tail = after_name.trim_start();
+    let assigned = tail.strip_prefix('=').filter(|rest| !rest.starts_with('='));
+    let value = tail.strip_prefix(':').or(assigned)?;
+    Some(value.trim().trim_end_matches([',', ';']).to_owned())
+}
+
 /// The module, support, dependency, and release boundaries this design states.
 pub(crate) fn repository_boundaries_are_exact() {
     assert_inventory(&manifest_dir().join(GATE_TREE), GATE_MODULES);

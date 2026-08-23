@@ -246,9 +246,24 @@ impl ProjectFixture {
         run.budget = options.budget;
         let completed =
             execute(&run).unwrap_or_else(|failure| panic!("the guarded run failed: {failure}"));
+        assert_bounded_by_stated_ceiling(&completed, options);
         assert_tree_is_gone(&completed);
         completed
     }
+}
+
+/// The guard bounded the child by the ceiling its row asked for.
+///
+/// The line above hands `options.budget` to the run, and nothing else in this
+/// root observes whether it arrived: a row that dropped that wiring would still
+/// pass every assertion its journey makes, and would only be caught by a child
+/// slow enough to overrun the default it silently fell back to. This reads the
+/// ceiling the wait itself used, so the fallback fails here instead.
+fn assert_bounded_by_stated_ceiling(completed: &Completed, options: &RunOptions<'_>) {
+    assert_eq!(
+        completed.budget, options.budget,
+        "the guard bounded the child by the ceiling this row stated"
+    );
 }
 
 /// Nothing the guarded child started outlived the guard that owned it.

@@ -301,6 +301,9 @@ exact pedant-core substrate ${core_go} go_interface_incompleteness_keeps_bounded
 exact pedant-core substrate ${core_go} go_interface_limit_checks_dominate_candidate_retention
 exact pedant-core substrate ${core_go} go_interface_resolution_is_order_independent
 root pedant-core substrate ${core_go}
+root pedant-syntax enclosing_unit ts-go
+root pedant-syntax enclosing_unit rust,ts-go
+root pedant-lang capability default
 root pedant-types serialization default
 root pedant-core substrate default
 SPECS

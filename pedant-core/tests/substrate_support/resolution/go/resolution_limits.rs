@@ -9,10 +9,10 @@
 //! stopped refusing admits all four at once, and a fail-fast sequence would
 //! report only the first of them.
 
-use pedant_core::resolution::go::{GoResolutionError, GoResolutionLimits};
+use pedant_core::resolution::go::GoResolutionLimits;
 
 use crate::resolution::fixture::FixtureFile;
-use crate::resolution::go::fixture::resolve;
+use crate::resolution::go::fixture::ceiling_outcome;
 use crate::resolution::go::resolution_fixtures::{
     LIMIT_FUNCTION, LIMIT_METHOD, LIMIT_PACKAGE, LIMIT_VALUE,
 };
@@ -84,29 +84,10 @@ fn answer(row: &Row) -> Box<str> {
     format!(
         "{}|{}|{}",
         row.label,
-        outcome(row.files, row.refused),
-        outcome(row.files, row.admitted)
+        ceiling_outcome(row.files, ceiling(row.refused)),
+        ceiling_outcome(row.files, ceiling(row.admitted))
     )
     .into_boxed_str()
-}
-
-/// What one corpus does under one lowered ceiling.
-///
-/// The refusing ceiling is restated from the error rather than assumed, because
-/// a check that refused at some other reference would otherwise read the same as
-/// one that refused at this row's own excess.
-fn outcome(files: &[FixtureFile], max_candidates_per_reference: u32) -> Box<str> {
-    let (tree, snapshot, resolved) = resolve(files, ceiling(max_candidates_per_reference));
-    let stated = match resolved {
-        Ok(_) => Box::from("published"),
-        Err(GoResolutionError::CandidateLimitExceeded { limit }) => {
-            format!("refused at ceiling {limit}").into_boxed_str()
-        }
-        Err(other) => format!("refused by {other}").into_boxed_str(),
-    };
-    drop(snapshot);
-    drop(tree);
-    stated
 }
 
 /// The documented defaults with only the candidate ceiling lowered.

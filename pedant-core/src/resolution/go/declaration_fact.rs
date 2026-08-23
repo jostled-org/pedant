@@ -18,11 +18,13 @@ pub struct GoDeclarationRecord {
     parent: Option<u32>,
     receiver: Option<u32>,
     scope: u32,
+    general_terms: bool,
     result_qualifier: Option<Box<str>>,
     result_name: Option<Box<str>>,
     result_pointer: bool,
     embedded_qualifier: Option<Box<str>>,
     embedded_name: Option<Box<str>>,
+    embedded_pointer: bool,
 }
 
 impl GoDeclarationRecord {
@@ -36,11 +38,13 @@ impl GoDeclarationRecord {
             parent: fact.parent(),
             receiver: fact.receiver(),
             scope: fact.scope(),
+            general_terms: fact.states_general_terms(),
             result_qualifier: fact.result_qualifier().map(Box::from),
             result_name: fact.result_name().map(Box::from),
             result_pointer: fact.result_pointer(),
             embedded_qualifier: fact.embedded_qualifier().map(Box::from),
             embedded_name: fact.embedded_name().map(Box::from),
+            embedded_pointer: fact.embedded_pointer(),
         }
     }
 
@@ -80,6 +84,16 @@ impl GoDeclarationRecord {
         self.scope
     }
 
+    /// Whether an interface states an element that is a type set rather than a
+    /// method or an embedded interface.
+    ///
+    /// A constraint's members are types rather than methods, so a structural
+    /// reader states what it cannot compare instead of comparing the methods it
+    /// happens to see.
+    pub fn states_general_terms(&self) -> bool {
+        self.general_terms
+    }
+
     /// The package qualifier of the single result this callable declares.
     pub fn result_qualifier(&self) -> Option<&str> {
         self.result_qualifier.as_deref()
@@ -102,12 +116,16 @@ impl GoDeclarationRecord {
     }
 
     /// The name of the type this field embeds.
-    ///
-    /// The pointer form the source wrote is not retained beside it. Embedding
-    /// `T` and embedding `*T` promote the same members from the same type
-    /// identity, so no resolution stage asks the question, and the syntax
-    /// inventory still states the written form for a reader that does.
     pub fn embedded_name(&self) -> Option<&str> {
         self.embedded_name.as_deref()
+    }
+
+    /// Whether the embedded type is written in pointer form.
+    ///
+    /// Embedding `T` and embedding `*T` promote members of one type identity,
+    /// but not the same members: a value embedding `*T` carries every method
+    /// `T` has, while one embedding `T` carries only those a value receives.
+    pub fn embedded_pointer(&self) -> bool {
+        self.embedded_pointer
     }
 }

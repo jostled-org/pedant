@@ -13,8 +13,10 @@
 //! caller.
 
 use crate::declaration_scan::{crate_path, parse_rust_file};
-use crate::resolution::go::owners::{RESOLVE_MODULES, go_module_paths};
-use crate::resolution::go::scan::{SourceScan, free_function, impl_method, statement_naming};
+use crate::resolution::go::owners::RESOLVE_MODULES;
+use crate::resolution::go::scan::{
+    assert_single_go_site, free_function, impl_method, statement_naming,
+};
 
 /// The sole record owner, relative to `src/resolution/go`.
 const RECORD_MODULE: &str = "resolve/records.rs";
@@ -47,8 +49,8 @@ fn go_resolution_limit_checks_dominate_candidate_retention() {
         "the record and wrapper owners must be modelled Go owners"
     );
 
-    assert_single_site(CANDIDATE_CHECK, RECORD_MODULE, 1);
-    assert_single_site(CANDIDATE_RETENTION, RECORD_MODULE, 1);
+    assert_single_go_site(CANDIDATE_CHECK, RECORD_MODULE, 1);
+    assert_single_go_site(CANDIDATE_RETENTION, RECORD_MODULE, 1);
 
     let records = parse_rust_file(&go_path(RECORD_MODULE));
     let body = &free_function(&records, RECORD_OWNER)
@@ -74,7 +76,7 @@ fn assert_wrapper_proves_before_publishing() {
         .block;
     let published = body.stmts.len() - 1;
     for claim in WRAPPER_CLAIMS {
-        assert_single_site(claim, WRAPPER_MODULE, 1);
+        assert_single_go_site(claim, WRAPPER_MODULE, 1);
         let stated = statement_naming(body, claim)
             .unwrap_or_else(|| panic!("`{WRAPPER_OWNER}` should state `{claim}`"));
         assert!(
@@ -82,30 +84,6 @@ fn assert_wrapper_proves_before_publishing() {
             "`{WRAPPER_OWNER}` must prove `{claim}` (statement {stated}) before it publishes (statement {published})"
         );
     }
-}
-
-/// `route` is reached exactly `count` times across the Go surface, all of them
-/// in `owner`.
-fn assert_single_site(route: &str, owner: &str, count: usize) {
-    let naming: Box<[(Box<str>, usize)]> = go_module_paths()
-        .iter()
-        .map(|(label, path)| {
-            (
-                label.clone(),
-                SourceScan::of_file(&parse_rust_file(path)).reaches(route),
-            )
-        })
-        .filter(|(_, reached)| *reached > 0)
-        .collect();
-    let reported: Box<[(&str, usize)]> = naming
-        .iter()
-        .map(|(label, reached)| (&**label, *reached))
-        .collect();
-    assert_eq!(
-        &*reported,
-        [(owner, count)],
-        "`{route}` must have exactly {count} site(s), in {owner}"
-    );
 }
 
 fn go_path(module: &str) -> std::path::PathBuf {

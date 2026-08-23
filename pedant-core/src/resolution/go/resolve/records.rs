@@ -15,9 +15,9 @@ use pedant_types::{
 
 use crate::resolution::go::limits::GoResolutionLimits;
 
+use super::denotation::Denotation;
 use super::error::GoResolutionError;
 use super::index::{Index, Slot};
-use super::references::Denotation;
 
 /// State one record per reference of one package context.
 pub(super) fn write(
@@ -48,7 +48,7 @@ fn write_one(
     check_candidate_capacity(denotation, limits)?;
     let named = named_definitions(index, denotation)?;
     let conditional = is_conditional(&named, denotation);
-    let certainty = certainty_of(&denotation.candidates, conditional);
+    let certainty = certainty_of(denotation, conditional);
     let handle = builder.add_reference(
         &unit_handle(index, unit)?,
         denotation.kind,
@@ -118,9 +118,18 @@ fn is_conditional(named: &[&Slot], denotation: &Denotation) -> bool {
     denotation.conditional || named.iter().any(|found| found.conditional)
 }
 
-fn certainty_of(candidates: &[usize], conditional: bool) -> ResolutionCertainty {
-    match (candidates.len(), conditional) {
-        (1, false) => ResolutionCertainty::Resolved,
+/// How certain one answer is.
+///
+/// One candidate no predicate governs is the only resolved answer, and an
+/// answer whose target is chosen at run time is never one however few
+/// candidates it names.
+fn certainty_of(denotation: &Denotation, conditional: bool) -> ResolutionCertainty {
+    match (
+        denotation.candidates.len(),
+        conditional,
+        denotation.possible_only,
+    ) {
+        (1, false, false) => ResolutionCertainty::Resolved,
         _ => ResolutionCertainty::Possible,
     }
 }

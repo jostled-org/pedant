@@ -9,11 +9,12 @@
 
 use std::sync::Arc;
 
-use pedant_syntax::go::GoDeclarationKind;
+use pedant_syntax::go::{GoDeclarationKind, GoFactSpan};
 use pedant_types::{
     Language, ResolutionReportBuilder, ResolutionUnitHandle, SourcePosition, SourceSpan, SymbolKind,
 };
 
+use crate::resolution::go::binding_fact::GoBindingRecord;
 use crate::resolution::go::declaration_fact::GoDeclarationRecord;
 use crate::resolution::go::facts::GoSourceFacts;
 use crate::resolution::go::source::GoSource;
@@ -22,7 +23,7 @@ use crate::resolution::go::unit::GoResolutionUnit;
 use super::corpus::{Corpus, conditional};
 use super::error::GoResolutionError;
 use super::imports::FileImports;
-use super::index::{EmbeddedType, Index, Slot, TypeName, UnitIndex};
+use super::index::{EmbeddedType, Embedding, Index, Slot, TypeName, UnitIndex};
 use super::lookup::{self, Outcome};
 use super::target::unit_key;
 
@@ -66,13 +67,18 @@ fn open_unit(
             &handle,
             SymbolKind::Package,
             Arc::from(unit.package_name()),
-            span,
+            span.clone(),
             None,
         )?,
         kind: SymbolKind::Package,
+        declared: None,
         unit: position,
         name: Box::from(unit.package_name()),
+        site: span,
+        holder: None,
         conditional: false,
+        pointer_receiver: false,
+        general_terms: false,
         result: None,
     });
     Ok(UnitIndex::new(handle, slot))
@@ -244,7 +250,13 @@ fn state_embedding(
     let Some(unit) = index.unit_mut(position) else {
         return;
     };
-    unit.embed(parent, embedded);
+    unit.embed(
+        parent,
+        Embedding {
+            embedded,
+            pointer: record.embedded_pointer(),
+        },
+    );
 }
 
 /// The unique in-snapshot type one embedded declaration names.
@@ -394,15 +406,20 @@ fn state_definition(
         &unit_handle(index, position)?,
         symbol_kind(record.kind()),
         Arc::from(record.name()),
-        span_of(path, record),
+        report_span(path, record.span()),
         held.as_ref(),
     )?;
     let slot = index.push(Slot {
         handle,
         kind: symbol_kind(record.kind()),
+        declared: Some(record.kind()),
         unit: position,
         name: Box::from(record.name()),
+        site: report_span(path, record.name_span()),
+        holder: parent,
         conditional: conditional(source),
+        pointer_receiver: receives_by_pointer(source.facts(), record),
+        general_terms: record.states_general_terms(),
         result: result_type(record),
     });
     if let Some(unit) = index.unit_mut(position) {
@@ -430,14 +447,25 @@ fn result_type(record: &GoDeclarationRecord) -> Option<TypeName> {
     })
 }
 
-/// The report span one declaration occupies.
-fn span_of(path: &str, record: &GoDeclarationRecord) -> SourceSpan {
-    let span = record.span();
+/// The report span one grammar span occupies in its own file.
+fn report_span(path: &str, span: GoFactSpan) -> SourceSpan {
     SourceSpan::new(
         Arc::from(path),
         SourcePosition::new(line(span.start_line()), line(span.start_column())),
         SourcePosition::new(line(span.end_line()), line(span.end_column())),
     )
+}
+
+/// Whether one method's receiver is written in pointer form.
+///
+/// A pointer receiver is what keeps a method out of its type's value method
+/// set, so an interface a value is compared against reads this rather than the
+/// declaration site.
+fn receives_by_pointer(facts: &GoSourceFacts, record: &GoDeclarationRecord) -> bool {
+    record
+        .receiver()
+        .and_then(|binding| facts.bindings().get(binding as usize))
+        .is_some_and(GoBindingRecord::pointer)
 }
 
 fn line(value: usize) -> u32 {

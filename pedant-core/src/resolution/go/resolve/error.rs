@@ -73,6 +73,17 @@ pub enum GoResolutionError {
         /// The configured candidate ceiling.
         limit: u32,
     },
+    /// The corpus states more concrete-type-to-interface comparisons than the
+    /// configured ceiling.
+    ///
+    /// Structural implementation is a whole-corpus question, so a comparison
+    /// left unmade is a relation the report would omit without saying so. The
+    /// resolution refuses instead.
+    #[error("the corpus states more than {limit} interface comparisons")]
+    InterfaceComparisonLimitExceeded {
+        /// The configured comparison ceiling.
+        limit: u32,
+    },
     /// The report contract refused the stated facts.
     #[error(transparent)]
     Report(#[from] ResolutionReportError),

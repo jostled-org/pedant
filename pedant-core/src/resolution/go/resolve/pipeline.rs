@@ -2,8 +2,10 @@
 //!
 //! Every package context is stated before any reference is classified, because
 //! a call in one package names a definition in another and a report cannot
-//! point at a definition it has not stated yet. Everything after that is a join
-//! over tables already built.
+//! point at a definition it has not stated yet. The structural relations come
+//! next, because they are a whole-corpus comparison an interface dispatch in
+//! any package reads. Everything after that is a join over tables already
+//! built.
 
 use pedant_types::{ResolutionReportBuilder, ResolutionReportLimits, ResolutionTier};
 
@@ -13,6 +15,7 @@ use crate::resolution::go::snapshot::GoResolutionSnapshot;
 use super::corpus::Corpus;
 use super::definitions;
 use super::error::GoResolutionError;
+use super::implementations::Implementations;
 use super::records;
 use super::references;
 use super::target::GoProjectResolution;
@@ -34,11 +37,12 @@ fn write(
     let mut builder =
         ResolutionReportBuilder::new(ResolutionTier::Syntactic, ResolutionReportLimits::default());
     let index = definitions::state(&mut builder, &corpus)?;
+    let implementations = Implementations::of(&index, &corpus, limits)?;
     for position in 0..corpus.units().len() {
         let Some(unit) = corpus.unit(position) else {
             continue;
         };
-        let stated = references::of_unit(&index, &corpus, (position, unit));
+        let stated = references::of_unit(&index, &corpus, &implementations, (position, unit));
         records::write(&mut builder, &index, (&stated, position), limits)?;
     }
     Ok(builder.finish()?)

@@ -12,6 +12,7 @@ use super::binding_fact::GoBindingRecord;
 use super::declaration_fact::GoDeclarationRecord;
 use super::import_fact::GoImportRecord;
 use super::reference_fact::GoReferenceRecord;
+use super::signature_fact::GoSignatureTermRecord;
 
 /// Every structured Go grammar fact one snapshotted source states.
 ///
@@ -25,6 +26,7 @@ pub struct GoSourceFacts {
     package: Option<(Box<str>, GoFactSpan)>,
     imports: Box<[GoImportRecord]>,
     declarations: Box<[GoDeclarationRecord]>,
+    signatures: Box<[GoSignatureTermRecord]>,
     references: Box<[GoReferenceRecord]>,
     scopes: Box<[GoScopeFact]>,
     bindings: Box<[GoBindingRecord]>,
@@ -43,6 +45,11 @@ impl GoSourceFacts {
                 .declarations()
                 .iter()
                 .map(GoDeclarationRecord::of)
+                .collect(),
+            signatures: facts
+                .signature_terms()
+                .iter()
+                .map(GoSignatureTermRecord::of)
                 .collect(),
             references: facts
                 .references()
@@ -72,6 +79,12 @@ impl GoSourceFacts {
     /// Every declaration, in source order.
     pub fn declarations(&self) -> &[GoDeclarationRecord] {
         &self.declarations
+    }
+
+    /// Every signature term, in the order the callables that state them are
+    /// declared.
+    pub fn signature_terms(&self) -> &[GoSignatureTermRecord] {
+        &self.signatures
     }
 
     /// Every reference site, in source order.

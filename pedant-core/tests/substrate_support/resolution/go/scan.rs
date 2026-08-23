@@ -113,6 +113,34 @@ pub fn impl_method<'file>(file: &'file syn::File, name: &str) -> Option<&'file s
         })
 }
 
+/// `route` is reached exactly `count` times across the Go surface, all of them
+/// in `owner`.
+///
+/// One owner because two ownership cases ask it: the record ceiling and the
+/// interface ceiling each claim a sole checked site, and a second copy of this
+/// walk could report one of them against a different module set.
+pub fn assert_single_go_site(route: &str, owner: &str, count: usize) {
+    let naming: Box<[(Box<str>, usize)]> = crate::resolution::go::owners::go_module_paths()
+        .iter()
+        .map(|(label, path)| {
+            (
+                label.clone(),
+                SourceScan::of_file(&crate::declaration_scan::parse_rust_file(path)).reaches(route),
+            )
+        })
+        .filter(|(_, reached)| *reached > 0)
+        .collect();
+    let reported: Box<[(&str, usize)]> = naming
+        .iter()
+        .map(|(label, reached)| (&**label, *reached))
+        .collect();
+    assert_eq!(
+        &*reported,
+        [(owner, count)],
+        "`{route}` must have exactly {count} site(s), in {owner}"
+    );
+}
+
 /// The free function one file declares under `name`.
 pub fn free_function<'file>(file: &'file syn::File, name: &str) -> Option<&'file syn::ItemFn> {
     file.items.iter().find_map(|item| match item {

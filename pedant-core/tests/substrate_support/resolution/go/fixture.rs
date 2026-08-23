@@ -96,6 +96,28 @@ pub fn resolve_default(
     (tree, snapshot, resolution)
 }
 
+/// What one corpus does under one lowered ceiling: the ceiling that refused it,
+/// or the report it published.
+///
+/// One owner because every ceiling case asks it. The refusing ceiling is
+/// restated from the error rather than assumed, so a check that refused at some
+/// other reference does not read the same as one that refused at the row's own
+/// excess.
+pub fn ceiling_outcome(files: &[FixtureFile], limits: GoResolutionLimits) -> Box<str> {
+    let (tree, snapshot, resolved) = resolve(files, limits);
+    let stated = match resolved {
+        Ok(_) => Box::from("published"),
+        Err(GoResolutionError::CandidateLimitExceeded { limit })
+        | Err(GoResolutionError::InterfaceComparisonLimitExceeded { limit }) => {
+            format!("refused at ceiling {limit}").into_boxed_str()
+        }
+        Err(other) => format!("refused by {other}").into_boxed_str(),
+    };
+    drop(snapshot);
+    drop(tree);
+    stated
+}
+
 /// Load a Go fixture and require a typed refusal.
 pub fn refusal(files: &[FixtureFile]) -> GoProjectError {
     let (tree, loaded) = load(files, GoResolutionLimits::default());

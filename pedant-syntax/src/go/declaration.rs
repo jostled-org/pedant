@@ -49,6 +49,7 @@ pub struct GoDeclarationFact<'source> {
     parent: Option<u32>,
     receiver: Option<u32>,
     scope: u32,
+    general_terms: bool,
     result: WrittenType<'source>,
     embedded: WrittenType<'source>,
 }
@@ -95,6 +96,16 @@ impl<'source> GoDeclarationFact<'source> {
     /// The scope this declaration is stated in.
     pub fn scope(&self) -> u32 {
         self.scope
+    }
+
+    /// Whether an interface states an element that is a type set rather than a
+    /// method or an embedded interface.
+    ///
+    /// A union, an approximation, and any other general term make the interface
+    /// a type constraint, whose members are types rather than the methods a
+    /// structural reader compares. False for every other declaration.
+    pub fn states_general_terms(&self) -> bool {
+        self.general_terms
     }
 
     /// The package qualifier of the single result this callable declares.
@@ -192,8 +203,20 @@ fn declaration<'source>(
         parent,
         receiver: None,
         scope: context.scope,
+        general_terms: false,
         result: WrittenType::default(),
         embedded: WrittenType::default(),
+    }
+}
+
+/// The same declaration, stating whether its interface body writes a type set.
+fn constrained<'source>(
+    declared: GoDeclarationFact<'source>,
+    general_terms: bool,
+) -> GoDeclarationFact<'source> {
+    GoDeclarationFact {
+        general_terms,
+        ..declared
     }
 }
 
@@ -248,9 +271,33 @@ fn package_spec<'source>(
         .then(|| node.child_by_field_name("name"))
         .flatten();
     named
-        .map(|name| declaration(kind, name, spec_span(node), source, context, None))
+        .map(|name| {
+            constrained(
+                declaration(kind, name, spec_span(node), source, context, None),
+                states_general_terms(node),
+            )
+        })
         .into_iter()
         .collect()
+}
+
+/// Whether one `type` specification's interface body writes a type set.
+///
+/// The elements are read one level down rather than walked: an interface states
+/// its own methods and its own embedded elements directly, and a term written
+/// inside one of them belongs to that element's type rather than to this
+/// interface's element list.
+fn states_general_terms(node: Node<'_>) -> bool {
+    let Some(body) = node
+        .child_by_field_name("type")
+        .filter(|declared| declared.kind() == "interface_type")
+    else {
+        return false;
+    };
+    let mut walk = body.walk();
+    body.named_children(&mut walk)
+        .filter(|element| element.kind() == "type_elem")
+        .any(|element| element.named_child(0).and_then(embedded_name).is_none())
 }
 
 /// Every name one package-level `const` or `var` specification states.

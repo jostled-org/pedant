@@ -2,8 +2,9 @@
 //!
 //! One inventory answers every structured question about a Go source:
 //! [`GoFileFacts`] holds the package clause, the build predicates, the imports,
-//! the declarations, the reference sites, the lexical scopes, and the bound
-//! names, in source order and bound to the exact bytes they were read from.
+//! the declarations, the signature terms those declarations state, the reference
+//! sites, the lexical scopes, and the bound names, in source order and bound to
+//! the exact bytes they were read from.
 //! Capability attribution and Go resolution both read it, so neither owns a
 //! grammar mapping the other could drift from.
 //!
@@ -25,6 +26,7 @@ mod import;
 mod limits;
 mod reference;
 mod scope;
+mod signature;
 mod span;
 mod walk;
 mod written_type;
@@ -38,6 +40,7 @@ pub use import::{GoImportFact, GoImportForm};
 pub use limits::GoFactLimits;
 pub use reference::{GoReferenceFact, GoReferenceKind};
 pub use scope::{GoScopeFact, GoScopeKind};
+pub use signature::{GoSignatureRole, GoSignatureTermFact};
 pub use span::GoFactSpan;
 
 pub(crate) use facts::offer_unit_declarations;

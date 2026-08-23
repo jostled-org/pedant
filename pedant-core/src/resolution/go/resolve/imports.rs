@@ -14,17 +14,23 @@ use crate::resolution::go::import_fact::GoImportRecord;
 use super::corpus::Corpus;
 
 /// What one import specification names.
+///
+/// The path is carried beside the unit because a package outside the snapshot
+/// still has an identity: `fmt.Stringer` written in two files names one type,
+/// and the import path is the only thing that says so.
 #[derive(Clone, Copy)]
-pub(super) struct ImportTarget {
+pub(super) struct ImportTarget<'a> {
     /// The unit compiling the imported package, absent for a package outside
     /// the snapshot.
     pub(super) unit: Option<usize>,
+    /// The import path the specification writes.
+    pub(super) path: &'a str,
 }
 
 /// Every name one file's imports bind, and every package it pulls names from.
 pub(super) struct FileImports<'a> {
-    named: BTreeMap<&'a str, ImportTarget>,
-    dotted: Box<[ImportTarget]>,
+    named: BTreeMap<&'a str, ImportTarget<'a>>,
+    dotted: Box<[ImportTarget<'a>]>,
 }
 
 impl<'a> FileImports<'a> {
@@ -46,12 +52,12 @@ impl<'a> FileImports<'a> {
     }
 
     /// The package one file-scoped name binds, when an import binds it.
-    pub(super) fn named(&self, name: &str) -> Option<ImportTarget> {
+    pub(super) fn named(&self, name: &str) -> Option<ImportTarget<'a>> {
         self.named.get(name).copied()
     }
 
     /// Every package whose names this file pulls into its own scope.
-    pub(super) fn dotted(&self) -> &[ImportTarget] {
+    pub(super) fn dotted(&self) -> &[ImportTarget<'a>] {
         &self.dotted
     }
 }
@@ -60,7 +66,7 @@ impl<'a> FileImports<'a> {
 fn named_binding<'a>(
     corpus: &Corpus<'a>,
     import: &'a GoImportRecord,
-) -> Option<(&'a str, ImportTarget)> {
+) -> Option<(&'a str, ImportTarget<'a>)> {
     let found = target(corpus, import);
     let name = match import.form() {
         GoImportForm::Named => found
@@ -75,8 +81,9 @@ fn named_binding<'a>(
 }
 
 /// What one import specification names, joined against the snapshot.
-pub(super) fn target(corpus: &Corpus<'_>, import: &GoImportRecord) -> ImportTarget {
+pub(super) fn target<'a>(corpus: &Corpus<'_>, import: &'a GoImportRecord) -> ImportTarget<'a> {
     ImportTarget {
         unit: corpus.package(import.path()),
+        path: import.path(),
     }
 }

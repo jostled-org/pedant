@@ -187,6 +187,59 @@ fn answer_text(
     .into_boxed_str()
 }
 
+/// `<kind>|<text>|<file>:<line>|<certainty>|<candidates>|<gaps>` for every
+/// reference of one kind, in report order.
+///
+/// A candidate is named `<name>@<file>:<line>` rather than `<unit>::<name>`,
+/// because an interface dispatch names one method name several times — the
+/// interface's own declaration and every implementor's — and only the site
+/// tells those apart.
+pub fn kind_answers(resolution: &GoProjectResolution, kind: &str) -> Box<[Box<str>]> {
+    let report = resolution.report();
+    report
+        .references()
+        .iter()
+        .zip(report.resolutions())
+        .filter(|(reference, _)| format!("{:?}", reference.kind()) == kind)
+        .map(|(reference, record)| kind_answer_text(report, reference, record))
+        .collect()
+}
+
+fn kind_answer_text(
+    report: &ResolutionReport,
+    reference: &SymbolReference,
+    record: &ResolutionRecord,
+) -> Box<str> {
+    let span = SymbolReference::span(reference);
+    let named: Box<[Box<str>]> = record
+        .candidates()
+        .iter()
+        .map(|candidate| named_site(report, candidate.definition().index()))
+        .collect();
+    format!(
+        "{:?}|{}|{}:{}|{}|{}|{}",
+        reference.kind(),
+        reference.text(),
+        span.file(),
+        span.start().line(),
+        certainty_token(record),
+        joined(&named),
+        gap_text(record)
+    )
+    .into_boxed_str()
+}
+
+/// One candidate definition, as the name it takes and the site it is written
+/// at.
+fn named_site(report: &ResolutionReport, definition: u32) -> Box<str> {
+    let found = report
+        .definitions()
+        .get(definition as usize)
+        .expect("a candidate names a definition of its own report");
+    let span = SymbolDefinition::span(found);
+    format!("{}@{}:{}", found.name(), span.file(), span.start().line()).into_boxed_str()
+}
+
 /// Where one candidate definition is written.
 fn candidate_site(report: &ResolutionReport, definition: u32) -> Box<str> {
     let found = report

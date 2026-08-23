@@ -43,7 +43,7 @@ pub(super) fn bare(index: &Index, scope: (usize, &FileImports<'_>), name: &str) 
 }
 
 /// What one package-qualified name denotes.
-pub(super) fn qualified(index: &Index, target: ImportTarget, name: &str) -> Outcome {
+pub(super) fn qualified(index: &Index, target: ImportTarget<'_>, name: &str) -> Outcome {
     match target.unit {
         None => Outcome::External,
         Some(unit) => Outcome::of(Box::from(declared(index, unit, name)), Outcome::Missing),
@@ -59,7 +59,7 @@ pub(super) fn declared<'a>(index: &'a Index, unit: usize, name: &str) -> &'a [us
 }
 
 /// Every definition one dot-imported package contributes under a name.
-fn pulled(index: &Index, target: ImportTarget, name: &str) -> Box<[usize]> {
+fn pulled(index: &Index, target: ImportTarget<'_>, name: &str) -> Box<[usize]> {
     match target.unit {
         None => Box::from([]),
         Some(unit) => Box::from(declared(index, unit, name)),

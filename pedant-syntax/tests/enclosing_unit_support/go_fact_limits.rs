@@ -83,6 +83,7 @@ fn go_fact_limits_refuse_before_descent_or_insertion() {
         complete.build_conditions().len()
             + complete.imports().len()
             + complete.declarations().len()
+            + complete.signature_terms().len()
             + complete.references().len()
             + complete.scopes().len()
             + complete.bindings().len()

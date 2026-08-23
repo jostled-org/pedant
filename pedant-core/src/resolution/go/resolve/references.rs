@@ -5,6 +5,10 @@
 //! is not a report entity, so it states no reference at all; every other
 //! occurrence states one, with the definitions it names or the gap that stopped
 //! it.
+//!
+//! A package context also states the structural relations its own concrete
+//! types hold. Those sites are written at the type names rather than at an
+//! occurrence, so they are gathered once per context after its sources.
 
 use std::sync::Arc;
 
@@ -16,25 +20,18 @@ use crate::resolution::go::import_fact::GoImportRecord;
 use crate::resolution::go::reference_fact::GoReferenceRecord;
 use crate::resolution::go::unit::GoResolutionUnit;
 
+use super::answer::Answer;
 use super::corpus::{Corpus, conditional};
+use super::denotation::Denotation;
+use super::dispatch;
+use super::implementations::Implementations;
 use super::imports::{FileImports, ImportTarget, target};
 use super::index::{Index, Slot};
 use super::lookup::{self, Outcome};
 use super::methods;
+use super::relations;
 use super::scopes;
 use super::types::{self, Site};
-
-/// One reference site, with what it names and why that answer is incomplete.
-pub(super) struct Denotation {
-    pub(super) kind: ReferenceKind,
-    pub(super) text: Arc<str>,
-    pub(super) span: SourceSpan,
-    pub(super) enclosing: Option<usize>,
-    pub(super) candidates: Box<[usize]>,
-    pub(super) gap: Option<ResolutionGap>,
-    /// Whether an unevaluated build predicate governs the source stating it.
-    pub(super) conditional: bool,
-}
 
 /// One file, as every classification below reads it.
 struct FileSite<'a> {
@@ -45,15 +42,17 @@ struct FileSite<'a> {
     conditional: bool,
 }
 
-/// Every reference one package context states, in source order per source.
+/// Every reference one package context states: its sources' sites in source
+/// order, then the structural relations its own types hold.
 pub(super) fn of_unit(
     index: &Index,
     corpus: &Corpus<'_>,
-    stated: (usize, &GoResolutionUnit),
+    implementations: &Implementations,
+    unit: (usize, &GoResolutionUnit),
 ) -> Box<[Denotation]> {
-    let (position, unit) = stated;
-    let mut stated = Vec::new();
-    for path in unit.sources() {
+    let (position, held) = unit;
+    let mut denoted = Vec::new();
+    for path in held.sources() {
         let Some(source) = corpus.source(path) else {
             continue;
         };
@@ -64,13 +63,19 @@ pub(super) fn of_unit(
             imports: FileImports::of(corpus, source.facts()),
             conditional: conditional(source),
         };
-        stated.extend(of_file(index, corpus, &site));
+        denoted.extend(of_file(index, corpus, implementations, &site));
     }
-    stated.into_boxed_slice()
+    denoted.extend(relations::of_unit(index, implementations, position));
+    denoted.into_boxed_slice()
 }
 
 /// Every reference one file states: its imports first, then its occurrences.
-fn of_file(index: &Index, corpus: &Corpus<'_>, site: &FileSite<'_>) -> Vec<Denotation> {
+fn of_file(
+    index: &Index,
+    corpus: &Corpus<'_>,
+    implementations: &Implementations,
+    site: &FileSite<'_>,
+) -> Vec<Denotation> {
     let imported = site
         .facts
         .imports()
@@ -80,7 +85,7 @@ fn of_file(index: &Index, corpus: &Corpus<'_>, site: &FileSite<'_>) -> Vec<Denot
         .facts
         .references()
         .iter()
-        .filter_map(|fact| denote(index, site, fact));
+        .filter_map(|fact| denote(index, implementations, site, fact));
     imported.chain(occurrences).collect()
 }
 
@@ -106,26 +111,41 @@ fn imported(
             .is_none()
             .then_some(ResolutionGap::ExternalDefinition),
         conditional: site.conditional,
+        possible_only: false,
     }
 }
 
 /// What one occurrence denotes, or nothing when a lexical binding covers it.
-fn denote(index: &Index, site: &FileSite<'_>, fact: &GoReferenceRecord) -> Option<Denotation> {
+fn denote(
+    index: &Index,
+    implementations: &Implementations,
+    site: &FileSite<'_>,
+    fact: &GoReferenceRecord,
+) -> Option<Denotation> {
     match (fact.kind(), fact.qualifier()) {
         (GoReferenceKind::Call, _) => Some(bare_call(index, site, fact)),
-        (GoReferenceKind::QualifiedCall, Some(written)) => {
-            Some(qualified(index, site, (fact, written), ReferenceKind::Call))
-        }
+        (GoReferenceKind::QualifiedCall, Some(written)) => Some(qualified(
+            index,
+            implementations,
+            site,
+            (fact, written),
+            ReferenceKind::Call,
+        )),
         (GoReferenceKind::Selector, Some(written)) => Some(qualified(
             index,
+            implementations,
             site,
             (fact, written),
             ReferenceKind::Value,
         )),
         (GoReferenceKind::QualifiedCall | GoReferenceKind::Selector, None) => None,
-        (GoReferenceKind::Type, Some(written)) => {
-            Some(qualified(index, site, (fact, written), ReferenceKind::Type))
-        }
+        (GoReferenceKind::Type, Some(written)) => Some(qualified(
+            index,
+            implementations,
+            site,
+            (fact, written),
+            ReferenceKind::Type,
+        )),
         (GoReferenceKind::Type, None) => plain(index, site, fact, ReferenceKind::Type),
         (GoReferenceKind::Value, _) => plain(index, site, fact, ReferenceKind::Value),
     }
@@ -141,7 +161,7 @@ fn bare_call(index: &Index, site: &FileSite<'_>, fact: &GoReferenceRecord) -> De
             index,
             site,
             fact,
-            refused(ReferenceKind::Call, ResolutionGap::DynamicDispatch),
+            Answer::refused(ReferenceKind::Call, ResolutionGap::DynamicDispatch),
         ),
         false => {
             let found = lookup::bare(index, (site.unit, &site.imports), fact.name());
@@ -183,6 +203,7 @@ fn plain(
 /// value the qualifier names.
 fn qualified(
     index: &Index,
+    implementations: &Implementations,
     site: &FileSite<'_>,
     written: (&GoReferenceRecord, &str),
     default: ReferenceKind,
@@ -193,17 +214,17 @@ fn qualified(
             let answer = from_outcome(lookup::qualified(index, package, fact.name()));
             stated(index, site, fact, classified(index, answer, default))
         }
-        None => member(index, site, written, default),
+        None => member(index, implementations, site, written, default),
     }
 }
 
 /// The package one qualifier binds, when an import binds it and no lexical
 /// binding covers it.
-fn package_target(
-    site: &FileSite<'_>,
+fn package_target<'a>(
+    site: &'a FileSite<'a>,
     fact: &GoReferenceRecord,
     qualifier: &str,
-) -> Option<ImportTarget> {
+) -> Option<ImportTarget<'a>> {
     match covered(site, fact, qualifier) {
         true => None,
         false => site.imports.named(qualifier),
@@ -213,6 +234,7 @@ fn package_target(
 /// A member of the value one qualifier names.
 fn member(
     index: &Index,
+    implementations: &Implementations,
     site: &FileSite<'_>,
     written: (&GoReferenceRecord, &str),
     default: ReferenceKind,
@@ -224,19 +246,15 @@ fn member(
             index,
             site,
             fact,
-            refused(default, ResolutionGap::DynamicDispatch),
+            Answer::refused(default, ResolutionGap::DynamicDispatch),
         );
     };
     let found = methods::members(index, receiver, fact.name());
-    match found.is_empty() {
-        true => stated(
-            index,
-            site,
-            fact,
-            refused(default, ResolutionGap::MissingDefinition),
-        ),
-        false => stated(index, site, fact, (default, found, None)),
-    }
+    let answer = match found.is_empty() {
+        true => Answer::refused(default, ResolutionGap::MissingDefinition),
+        false => dispatch::selected(index, implementations, (default, fact.name()), found),
+    };
+    stated(index, site, fact, answer)
 }
 
 /// Where one qualified site's receiver is read.
@@ -264,14 +282,6 @@ fn from_outcome(outcome: Outcome) -> (Box<[usize]>, Option<ResolutionGap>) {
     }
 }
 
-/// One site that names nothing, and the gap that says why.
-fn refused(
-    kind: ReferenceKind,
-    gap: ResolutionGap,
-) -> (ReferenceKind, Box<[usize]>, Option<ResolutionGap>) {
-    (kind, Box::from([]), Some(gap))
-}
-
 /// The kind a site takes: a type whenever the definitions it names are types,
 /// and the shape's own kind otherwise.
 ///
@@ -282,7 +292,7 @@ fn classified(
     index: &Index,
     answer: (Box<[usize]>, Option<ResolutionGap>),
     default: ReferenceKind,
-) -> (ReferenceKind, Box<[usize]>, Option<ResolutionGap>) {
+) -> Answer {
     let (found, gap) = answer;
     let converts = found
         .iter()
@@ -291,7 +301,7 @@ fn classified(
         true => ReferenceKind::Type,
         false => default,
     };
-    (kind, found, gap)
+    Answer::found(kind, found, gap)
 }
 
 /// One stated reference over the site its fact names.
@@ -299,19 +309,19 @@ fn stated(
     index: &Index,
     site: &FileSite<'_>,
     fact: &GoReferenceRecord,
-    answer: (ReferenceKind, Box<[usize]>, Option<ResolutionGap>),
+    answer: Answer,
 ) -> Denotation {
-    let (kind, candidates, gap) = answer;
     Denotation {
-        kind,
+        kind: answer.kind,
         text: Arc::from(fact.name()),
         span: span_of(site.path, fact.span()),
         enclosing: fact
             .declaration()
             .and_then(|declaration| enclosing(index, site, declaration)),
-        candidates,
-        gap,
+        candidates: answer.candidates,
+        gap: answer.gap,
         conditional: site.conditional,
+        possible_only: answer.possible_only,
     }
 }
 

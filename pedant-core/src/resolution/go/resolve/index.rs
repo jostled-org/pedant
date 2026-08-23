@@ -8,15 +8,16 @@
 
 use std::collections::BTreeMap;
 
-use pedant_types::{DefinitionHandle, ResolutionUnitHandle, SymbolKind};
+use pedant_syntax::go::GoDeclarationKind;
+use pedant_types::{DefinitionHandle, ResolutionUnitHandle, SourceSpan, SymbolKind};
 
 /// A named type, as the source that mentioned it wrote it.
 ///
 /// The pointer form the source wrote is not carried: a call's value selects the
 /// same method set whether the callable returns `T` or `*T`, so the two answer
 /// this tier's question identically. What turns on pointerness is an interface's
-/// method set, and the binding record the structural resolver reads states the
-/// written form there.
+/// method set, and the embedding that carries it states the written form beside
+/// this identity rather than inside it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct TypeName {
     pub(super) qualifier: Option<Box<str>>,
@@ -30,14 +31,38 @@ pub(super) struct EmbeddedType {
     pub(super) name: Box<str>,
 }
 
+/// One embedding, as the type it names and the form the source wrote.
+///
+/// The form is what decides which method set a promotion reaches: embedding
+/// `*T` gives the embedding type every method `T` has, while embedding `T`
+/// gives it only those a value receives.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) struct Embedding {
+    pub(super) embedded: EmbeddedType,
+    pub(super) pointer: bool,
+}
+
 /// One definition the report states, and what lookup must know about it.
 pub(super) struct Slot {
     pub(super) handle: DefinitionHandle,
     pub(super) kind: SymbolKind,
+    /// What the Go grammar called this declaration, absent for the package
+    /// definition, which no declaration states.
+    pub(super) declared: Option<GoDeclarationKind>,
     pub(super) unit: usize,
     pub(super) name: Box<str>,
+    /// Where the declared name itself is written, which is the site a relation
+    /// stated about this definition is reported at.
+    pub(super) site: SourceSpan,
+    /// The definition this one is a child of.
+    pub(super) holder: Option<usize>,
     /// Whether an unevaluated build predicate governs the source declaring it.
     pub(super) conditional: bool,
+    /// Whether a method receives its type by pointer, which decides whether a
+    /// value of that type carries the method at all.
+    pub(super) pointer_receiver: bool,
+    /// Whether an interface states a type set rather than methods alone.
+    pub(super) general_terms: bool,
     /// The single result a callable declares, which is what a call's value is
     /// known to be.
     pub(super) result: Option<TypeName>,
@@ -54,6 +79,35 @@ impl Slot {
                 | SymbolKind::TypeAlias
         )
     }
+
+    /// Whether this definition names an interface.
+    pub(super) fn is_interface(&self) -> bool {
+        matches!(self.kind, SymbolKind::Interface)
+    }
+
+    /// Whether this definition names a concrete type a method may receive.
+    ///
+    /// An alias is not one: it names the same type its target does, so a
+    /// relation stated about both would state one fact twice.
+    pub(super) fn is_concrete_type(&self) -> bool {
+        matches!(self.kind, SymbolKind::Struct | SymbolKind::DefinedType)
+    }
+
+    /// Whether this definition is a method an interface declares.
+    pub(super) fn is_interface_method(&self) -> bool {
+        self.declared == Some(GoDeclarationKind::InterfaceMethod)
+    }
+
+    /// Whether this definition is a method a concrete type receives.
+    pub(super) fn is_concrete_method(&self) -> bool {
+        self.declared == Some(GoDeclarationKind::Method)
+    }
+
+    /// Whether this definition is an element written as a bare type, which
+    /// embeds that type's own members.
+    pub(super) fn is_embedded_field(&self) -> bool {
+        self.declared == Some(GoDeclarationKind::EmbeddedField)
+    }
 }
 
 /// One package context's own tables.
@@ -63,7 +117,8 @@ pub(super) struct UnitIndex {
     pub(super) package: usize,
     names: BTreeMap<Box<str>, Vec<usize>>,
     members: BTreeMap<(Box<str>, Box<str>), Vec<usize>>,
-    embeds: BTreeMap<Box<str>, Vec<EmbeddedType>>,
+    holders: BTreeMap<Box<str>, Vec<usize>>,
+    embeds: BTreeMap<Box<str>, Vec<Embedding>>,
     declarations: BTreeMap<(Box<str>, u32), usize>,
 }
 
@@ -76,6 +131,7 @@ impl UnitIndex {
             package,
             names: BTreeMap::new(),
             members: BTreeMap::new(),
+            holders: BTreeMap::new(),
             embeds: BTreeMap::new(),
             declarations: BTreeMap::new(),
         }
@@ -92,14 +148,15 @@ impl UnitIndex {
             .entry((Box::from(owner), Box::from(member)))
             .or_default()
             .push(slot);
+        self.holders.entry(Box::from(owner)).or_default().push(slot);
     }
 
     /// Record one type a named type embeds.
-    pub(super) fn embed(&mut self, owner: &str, embedded: EmbeddedType) {
+    pub(super) fn embed(&mut self, owner: &str, embedding: Embedding) {
         self.embeds
             .entry(Box::from(owner))
             .or_default()
-            .push(embedded);
+            .push(embedding);
     }
 
     /// Record which slot one source's declaration became.
@@ -121,8 +178,16 @@ impl UnitIndex {
             .unwrap_or_default()
     }
 
+    /// Every member one named type declares directly, whatever it is called.
+    pub(super) fn held(&self, owner: &str) -> &[usize] {
+        self.holders
+            .get(owner)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+    }
+
     /// Every type one named type embeds, in source order.
-    pub(super) fn embedded(&self, owner: &str) -> &[EmbeddedType] {
+    pub(super) fn embedded(&self, owner: &str) -> &[Embedding] {
         self.embeds
             .get(owner)
             .map(Vec::as_slice)
@@ -170,5 +235,10 @@ impl Index {
     /// The definition at one position.
     pub(super) fn slot(&self, slot: usize) -> Option<&Slot> {
         self.slots.get(slot)
+    }
+
+    /// Every definition the report states, in the order they were stated.
+    pub(super) fn stated(&self) -> &[Slot] {
+        &self.slots
     }
 }

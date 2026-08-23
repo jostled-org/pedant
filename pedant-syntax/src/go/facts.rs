@@ -9,6 +9,7 @@ use crate::go::import::GoImportFact;
 use crate::go::limits::GoFactLimits;
 use crate::go::reference::GoReferenceFact;
 use crate::go::scope::GoScopeFact;
+use crate::go::signature::GoSignatureTermFact;
 use crate::go::span::GoFactSpan;
 use crate::go::walk::{self, Inventory};
 use crate::location::Location;
@@ -33,6 +34,7 @@ pub struct GoFileFacts<'source> {
     conditions: Box<[GoBuildConditionFact<'source>]>,
     imports: Box<[GoImportFact<'source>]>,
     declarations: Box<[GoDeclarationFact<'source>]>,
+    signatures: Box<[GoSignatureTermFact<'source>]>,
     references: Box<[GoReferenceFact<'source>]>,
     scopes: Box<[GoScopeFact]>,
     bindings: Box<[GoBindingFact<'source>]>,
@@ -62,6 +64,7 @@ impl<'source> GoFileFacts<'source> {
             conditions: inventory.conditions.into_boxed_slice(),
             imports: inventory.imports.into_boxed_slice(),
             declarations: inventory.declarations.into_boxed_slice(),
+            signatures: inventory.signatures.into_boxed_slice(),
             references: inventory.references.into_boxed_slice(),
             scopes: inventory.scopes.into_boxed_slice(),
             bindings: inventory.bindings.into_boxed_slice(),
@@ -101,6 +104,12 @@ impl<'source> GoFileFacts<'source> {
     /// Every declaration, in source order.
     pub fn declarations(&self) -> &[GoDeclarationFact<'source>] {
         &self.declarations
+    }
+
+    /// Every signature term, in the order the callables that state them are
+    /// declared.
+    pub fn signature_terms(&self) -> &[GoSignatureTermFact<'source>] {
+        &self.signatures
     }
 
     /// Every reference site, in source order.

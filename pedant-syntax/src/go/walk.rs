@@ -22,6 +22,7 @@ use crate::go::import::{GoImportFact, import_at};
 use crate::go::limits::GoFactLimits;
 use crate::go::reference::{GoReferenceFact, reference_at};
 use crate::go::scope::{GoScopeFact, GoScopeKind, scope_kind_at};
+use crate::go::signature::{GoSignatureTermFact, signature_terms_at};
 use crate::go::span::GoFactSpan;
 use crate::tree_sitter::Node;
 
@@ -36,6 +37,7 @@ pub(super) struct Inventory<'source> {
     pub(super) conditions: Vec<GoBuildConditionFact<'source>>,
     pub(super) imports: Vec<GoImportFact<'source>>,
     pub(super) declarations: Vec<GoDeclarationFact<'source>>,
+    pub(super) signatures: Vec<GoSignatureTermFact<'source>>,
     pub(super) references: Vec<GoReferenceFact<'source>>,
     pub(super) scopes: Vec<GoScopeFact>,
     pub(super) bindings: Vec<GoBindingFact<'source>>,
@@ -50,6 +52,7 @@ impl<'source> Inventory<'source> {
             conditions: Vec::new(),
             imports: Vec::new(),
             declarations: Vec::new(),
+            signatures: Vec::new(),
             references: Vec::new(),
             scopes: Vec::new(),
             bindings: Vec::new(),
@@ -72,6 +75,10 @@ impl<'source> Inventory<'source> {
 
     fn declare(&mut self, fact: GoDeclarationFact<'source>) -> Result<u32, GoFactError> {
         admit(&mut self.counted, self.limit, &mut self.declarations, fact)
+    }
+
+    fn sign(&mut self, fact: GoSignatureTermFact<'source>) -> Result<u32, GoFactError> {
+        admit(&mut self.counted, self.limit, &mut self.signatures, fact)
     }
 
     fn refer(&mut self, fact: GoReferenceFact<'source>) -> Result<u32, GoFactError> {
@@ -228,9 +235,42 @@ fn admit_declarations<'source>(
 ) -> Result<Option<(u32, GoDeclarationKind)>, GoFactError> {
     let mut opened = None;
     for fact in declarations_at(node, source, context).iter().copied() {
-        opened = Some((inventory.declare(fact)?, fact.kind()));
+        let index = inventory.declare(fact)?;
+        admit_signature(inventory, node, source, (index, fact.kind()))?;
+        opened = Some((index, fact.kind()));
     }
     Ok(opened)
+}
+
+/// Every signature term one callable declaration states.
+///
+/// A declaration that is no callable states none: a type, a constant, a
+/// variable, a field, and an embedded element all write no parameter list, and
+/// asking a node for one it does not have would state a signature of nothing.
+fn admit_signature<'source>(
+    inventory: &mut Inventory<'source>,
+    node: Node<'_>,
+    source: &'source str,
+    declared: (u32, GoDeclarationKind),
+) -> Result<(), GoFactError> {
+    let (index, kind) = declared;
+    if !is_callable(kind) {
+        return Ok(());
+    }
+    for fact in signature_terms_at(node, source, index).iter().copied() {
+        inventory.sign(fact)?;
+    }
+    Ok(())
+}
+
+/// Whether one declaration kind writes a signature.
+fn is_callable(kind: GoDeclarationKind) -> bool {
+    matches!(
+        kind,
+        GoDeclarationKind::Function
+            | GoDeclarationKind::Method
+            | GoDeclarationKind::InterfaceMethod
+    )
 }
 
 /// The scope one node opens, if it opens one.

@@ -9,6 +9,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::declaration_scan::crate_path;
+use crate::resolution::go::surface::assert_directory_holds_exactly;
 
 /// Every module of the Go resolution surface, relative to `src/resolution/go`.
 pub const GO_MODULES: &[&str] = &[
@@ -154,7 +155,7 @@ pub fn source_closure() -> Box<[PathBuf]> {
     for path in &paths {
         assert!(path.is_file(), "{} is modelled but absent", path.display());
     }
-    assert_directory_is_exactly_modelled(&source.join(REACHED_DIRECTORY), &reached_directory());
+    assert_directory_holds_exactly(&source.join(REACHED_DIRECTORY), &reached_directory());
     paths.into_boxed_slice()
 }
 
@@ -170,8 +171,8 @@ pub fn go_module_paths() -> Box<[(Box<str>, PathBuf)]> {
         .chain(RESOLVE_MODULES.iter())
         .map(|name| (Box::from(*name), go.join(name)))
         .collect();
-    assert_directory_is_exactly_modelled(&go, &top_level_entries());
-    assert_directory_is_exactly_modelled(&go.join("resolve"), &nested_entries("resolve/"));
+    assert_directory_holds_exactly(&go, &top_level_entries());
+    assert_directory_holds_exactly(&go.join("resolve"), &nested_entries("resolve/"));
     named
 }
 
@@ -205,28 +206,6 @@ fn reached_directory() -> Box<[&'static str]> {
         .iter()
         .filter_map(|name| name.strip_prefix(&prefix))
         .collect()
-}
-
-/// Nothing sits beside the modelled owners in a directory the closure claims
-/// whole.
-fn assert_directory_is_exactly_modelled(directory: &Path, modelled: &[&str]) {
-    let mut found: Vec<String> = std::fs::read_dir(directory)
-        .unwrap_or_else(|error| panic!("{}: {error}", directory.display()))
-        .map(|entry| {
-            entry
-                .expect("a readable directory yields readable entries")
-                .file_name()
-                .to_string_lossy()
-                .into_owned()
-        })
-        .collect();
-    found.sort();
-    assert_eq!(
-        found,
-        modelled,
-        "every file beneath {} must be a modelled owner",
-        directory.display()
-    );
 }
 
 /// Every closure owner that names one of the given markers, reported as

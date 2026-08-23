@@ -34,6 +34,10 @@ pub const PACKAGE_CONTEXTS: &[FixtureFile] = &[
 /// Every reserved tree the Go command keeps out of package discovery, one
 /// generated source that must stay in, one unadmitted nested module, and one
 /// non-Go file.
+///
+/// Read only by the package-walk case, which proves the sentinel outside the
+/// root was never opened and so needs the observation probe.
+#[cfg(feature = "resolution-test-support")]
 pub const RESERVED_TREES: &[FixtureFile] = &[
     ("repo/go.mod", "module example.com/reserved\n\ngo 1.22\n"),
     ("repo/main.go", "package main\n"),
@@ -52,6 +56,10 @@ pub const RESERVED_TREES: &[FixtureFile] = &[
 
 /// A main module and the local replacement it requires, so a snapshot states
 /// two modules, two package units, and one module edge.
+///
+/// Every reader of it is an observed case — the read stream, the fingerprint
+/// coverage table, and the package walk — so it carries their probe gate.
+#[cfg(feature = "resolution-test-support")]
 pub const REPLACED_MODULE: &[FixtureFile] = &[
     (
         "repo/go.mod",

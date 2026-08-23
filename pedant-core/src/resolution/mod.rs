@@ -10,7 +10,8 @@ pub(crate) mod line_index;
 pub(crate) mod path_normalization;
 pub(crate) mod paths;
 
-/// Factual Go module project model for Go repositories.
+/// Factual Go module project model for Go repositories, behind the default-off
+/// `go-resolution` feature, which selects the Go grammar and nothing else.
 #[cfg(feature = "go-resolution")]
 pub mod go;
 /// Factual Cargo project model for Rust repositories.

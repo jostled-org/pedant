@@ -6,16 +6,23 @@
 //! so a support tree must not become a root.
 
 mod conditions;
-mod discovery;
 mod fixture;
 mod host_state;
 mod limits;
 mod owners;
 mod ownership;
+mod policy;
+mod policy_errors;
+mod policy_model;
+mod policy_nesting;
+mod policy_routes;
+mod policy_scan;
 mod project;
 mod project_fixtures;
 mod recovery;
 mod refusal;
+mod registration;
+mod registration_model;
 mod resolution_calls;
 mod resolution_fixtures;
 mod resolution_imports;
@@ -39,12 +46,19 @@ mod snapshot_fixtures;
 mod snapshot_limits;
 mod snapshot_ownership;
 mod snapshot_views;
+mod support_trees;
+mod surface;
 mod views;
 
 /// The observed half of the security boundary needs the production probe, which
 /// only the proof feature compiles.
 #[cfg(feature = "resolution-test-support")]
 mod boundary;
+
+/// The package walk's escape rows prove the sentinel outside the root was never
+/// opened, which is an observation and needs the same probe.
+#[cfg(feature = "resolution-test-support")]
+mod discovery;
 
 /// The observed source, parse, and fact-walk streams need the same probe.
 #[cfg(feature = "resolution-test-support")]

@@ -47,6 +47,10 @@ jobs:
       - run: .github/scripts/check_lang_feature_forwarding.sh
       - run: .github/scripts/check_resolution_dependency_closure.sh
       - run: .github/scripts/check_graph_dependency_closure.sh
+      # Both Go features are default-off, so nothing above proves a Go-free
+      # build stays Go-free or that a Go build stops at the grammar. Cargo-only,
+      # so it runs beside its three siblings.
+      - run: .github/scripts/check_go_dependency_closure.sh
       - run: cargo fmt --check
       - run: cargo fmt --manifest-path test-support/process-guard/Cargo.toml --check
       - run: cargo clippy -- -D warnings
@@ -123,6 +127,13 @@ jobs:
       # Pedant scans graph source behind a sentinel mirror that proves all four
       # capability detectors are live before an empty profile is accepted.
       - run: .github/scripts/check_graph_capabilities.sh
+      # The three Go trees behind the same sentinel guard. Only the core
+      # resolution tree may open a path, and it may only read.
+      - run: .github/scripts/check_go_capabilities.sh
+      # Every Go feature configuration, listed before it runs. The Go features
+      # are default-off, so no job above compiles the adapters, lints them,
+      # denies a missing doc on them, or executes one of their predicates.
+      - run: .github/scripts/check_go_configurations.sh
       - run: cargo clippy -p pedant-graph --all-targets -- -D warnings
       - run: RUSTDOCFLAGS="-D missing_docs" cargo doc --no-deps -p pedant-graph
       - run: cargo clippy -p pedant-syntax -p pedant-snippet --all-targets --all-features -- -D warnings

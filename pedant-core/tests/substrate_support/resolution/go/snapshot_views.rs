@@ -4,16 +4,23 @@
 //! edge, source, or predicate that was gained, lost, or reordered fails the
 //! comparison rather than slipping past an assertion that never asked.
 
+/// Named only by the module rendering, which the package-walk case alone reads.
+#[cfg(feature = "resolution-test-support")]
+use pedant_core::resolution::go::GoSnapshotModule;
 use pedant_core::resolution::go::{
     GoBindingRecord, GoBuildCondition, GoDeclarationRecord, GoInitializerForm,
-    GoResolutionSnapshot, GoSnapshotModule, GoSource,
+    GoResolutionSnapshot, GoSource,
 };
 
 /// `<module path>|<directory>|<manifest>|<depth>` for every snapshot module.
+///
+/// Read by the package-walk case alone, which carries the observation probe.
+#[cfg(feature = "resolution-test-support")]
 pub fn modules(snapshot: &GoResolutionSnapshot) -> Box<[Box<str>]> {
     snapshot.modules().iter().map(module_text).collect()
 }
 
+#[cfg(feature = "resolution-test-support")]
 fn module_text(module: &GoSnapshotModule) -> Box<str> {
     format!(
         "{}|{}|{}|{}",
@@ -52,6 +59,9 @@ pub fn units(snapshot: &GoResolutionSnapshot) -> Box<[Box<str>]> {
 
 /// `<declaring module>|<required module>|<required path>|<version>` for every
 /// local module edge.
+///
+/// Read by the package-walk case alone, which carries the observation probe.
+#[cfg(feature = "resolution-test-support")]
 pub fn edges(snapshot: &GoResolutionSnapshot) -> Box<[Box<str>]> {
     snapshot
         .edges()

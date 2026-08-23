@@ -1,0 +1,157 @@
+//! The repository policy every Go production owner is held to, written down.
+//!
+//! The ceilings are numbers rather than judgements because a structural claim
+//! has to be decidable: "one job per function" is a review sentence, and what a
+//! parser can answer is how many statements a body states and how deep its
+//! control flow nests. Both are stated here so a body that grew past the bar
+//! fails on the number rather than on a reviewer noticing.
+
+/// The deepest control-flow nesting one Go production body may reach.
+///
+/// Two, matching `.pedant.toml`'s `max_depth`. A third layer is where a body
+/// stops being readable as one decision and starts being a decision inside a
+/// decision inside a loop.
+pub const MAX_NESTING: usize = 2;
+
+/// The most statements one Go production body may state.
+///
+/// Sixteen. The widest body the finished surface states is eleven, so the bar
+/// leaves room for one that is genuinely long and still one job, and refuses one
+/// that is half again as wide as anything here. `.pedant.toml`'s 80-line body
+/// ceiling is the same claim measured in lines, and lines are the weaker
+/// measure — a single 60-line match arm reads as one job and a 30-statement body
+/// does not. The case also refuses a ceiling that stopped measuring: the widest
+/// body it finds must reach past half the bar.
+pub const MAX_BODY_STATEMENTS: usize = 16;
+
+/// The smallest body a duplicate claim ranges over, in statements.
+///
+/// One-statement bodies are accessors and forwarders. Two structs that each
+/// return `&self.root` state the same statement about different types, and
+/// calling that a duplicate would force a rename rather than a fix. From two
+/// statements up, an identical body is copied code.
+pub const MIN_DUPLICATE_STATEMENTS: usize = 2;
+
+/// Macros a Go production source may not invoke.
+///
+/// Each aborts the process, prints outside a returned value, or asserts a claim
+/// a caller cannot handle. A resolver refuses through its typed error instead.
+pub const FORBIDDEN_MACROS: &[&str] = &[
+    "assert",
+    "assert_eq",
+    "assert_ne",
+    "dbg",
+    "debug_assert",
+    "debug_assert_eq",
+    "debug_assert_ne",
+    "eprint",
+    "eprintln",
+    "panic",
+    "print",
+    "println",
+    "todo",
+    "unimplemented",
+    "unreachable",
+];
+
+/// Methods a Go production source may not call.
+///
+/// Both turn an absent value into a panic. Every absence in this surface is a
+/// refusal a caller reads from a typed error.
+pub const FORBIDDEN_METHODS: &[&str] = &["expect", "expect_err", "unwrap", "unwrap_err"];
+
+/// One typed error owner: the source that declares it, the enum, and every
+/// variant it states.
+pub struct ErrorOwner {
+    /// The tracked source, relative to the workspace root.
+    pub source: &'static str,
+    /// The enum this seam refuses through.
+    pub name: &'static str,
+    /// Every variant, in declaration order.
+    pub variants: &'static [&'static str],
+}
+
+/// Every seam of the Go surface refuses through its own typed enum.
+///
+/// Four seams, four enums. A seam that borrowed another's error would report a
+/// manifest failure as a snapshot failure, and a caller matching on the shared
+/// type could not tell which stage refused.
+pub const ERROR_OWNERS: &[ErrorOwner] = &[
+    ErrorOwner {
+        source: "pedant-syntax/src/go/error.rs",
+        name: "GoFactError",
+        variants: &[
+            "LanguageMismatch",
+            "SyntaxDepthExceeded",
+            "FactCapacityExceeded",
+        ],
+    },
+    ErrorOwner {
+        source: "pedant-core/src/resolution/go/error.rs",
+        name: "GoProjectError",
+        variants: &[
+            "InvalidRoot",
+            "OutOfRoot",
+            "NonUtf8Path",
+            "ManifestRead",
+            "ManifestParse",
+            "MissingModuleDeclaration",
+            "DuplicateRequirement",
+            "DuplicateExclusion",
+            "DuplicateReplacement",
+            "InvalidVersion",
+            "ExcludedRequirement",
+            "MissingReplacementManifest",
+            "ReplacementModuleMismatch",
+            "ConflictingLocalModules",
+            "ManifestLimitExceeded",
+            "DependencyDepthLimitExceeded",
+        ],
+    },
+    ErrorOwner {
+        source: "pedant-core/src/resolution/go/snapshot_error.rs",
+        name: "GoSnapshotError",
+        variants: &[
+            "OutOfRoot",
+            "NonUtf8Path",
+            "DirectoryRead",
+            "SourceRead",
+            "NonUtf8Source",
+            "IncompleteSource",
+            "MissingPackageClause",
+            "ConflictingPackageClause",
+            "FactExtraction",
+            "DirectoryEntryLimitExceeded",
+            "UnitLimitExceeded",
+            "SourceFileLimitExceeded",
+            "SourceBytesLimitExceeded",
+            "TotalSourceBytesLimitExceeded",
+        ],
+    },
+    ErrorOwner {
+        source: "pedant-core/src/resolution/go/resolve/error.rs",
+        name: "GoResolutionError",
+        variants: &[
+            "UnitMapping",
+            "DefinitionMapping",
+            "UnknownFile",
+            "UnsupportedDefinitionKind",
+            "UnsupportedReferenceKind",
+            "InvalidCoordinate",
+            "CandidateLimitExceeded",
+            "InterfaceComparisonLimitExceeded",
+            "Report",
+        ],
+    },
+];
+
+/// Variants no fixture can produce, admitted deliberately.
+///
+/// `GoResolutionError::DefinitionMapping` refuses a lookup miss that the record
+/// stage's own construction rules out: Step 6 retains every candidate and
+/// enclosing slot as the value `Index::push` returned, so the index it then
+/// looks up is one it just wrote. The variant stays because the lookup is
+/// fallible in the type system and a future writer may not hold that invariant,
+/// and it is named here so the inventory admits it rather than a reader finding
+/// it unmatched by any refusal case and deleting it.
+pub const DEFENSIVE_ONLY_VARIANTS: &[(&str, &str)] = &[("GoResolutionError", "DefinitionMapping")];

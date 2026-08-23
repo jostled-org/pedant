@@ -129,7 +129,7 @@ fn collect_test_roots(root: &Path, directory: &Path, found: &mut BTreeSet<String
 /// A member pattern would leave the search set unresolved without running
 /// cargo, and this workspace declares literal paths; one that appeared would be
 /// an unproven universe, so it fails here rather than narrowing the scan.
-fn workspace_members(root: &Path) -> Vec<String> {
+pub(crate) fn workspace_members(root: &Path) -> Vec<String> {
     let manifest_path = root.join("Cargo.toml");
     let text = fs::read_to_string(&manifest_path)
         .unwrap_or_else(|error| panic!("{}: {error}", manifest_path.display()));

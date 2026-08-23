@@ -18,6 +18,13 @@
 //! `semantic` is a third, orthogonal axis. It combines with either surface, and
 //! enabling `checks` does not enable it.
 //!
+//! `go-resolution` is a fourth, and it is default-off. It adds
+//! `resolution::go` — the Go module project, its bounded package snapshots, and
+//! the resolver over them — and it selects exactly one thing besides: the Go
+//! grammar in `pedant-syntax`. It turns on neither `checks` nor `semantic`, so a
+//! build without it links no Go grammar through this crate and a build with it
+//! pays for no judgment surface it did not ask for.
+//!
 //! # Quick start
 //!
 //! ```

@@ -15,7 +15,7 @@ use serde_json::Value;
 
 use super::cache_exact;
 use super::go_corpus::GO_CORPUS;
-use super::go_fixture::{GoFixture, project_go, projected};
+use super::go_fixture::{GoFixture, close_repository, project_go, projected};
 use super::projection_exactness;
 
 /// The ceilings every query in these cases is admitted under.
@@ -63,14 +63,16 @@ pub fn assert_go_graph_is_deterministic_and_rust_stays_exact() {
     let forward = GoFixture::build(GO_CORPUS);
     let reversed = GoFixture::written(GO_CORPUS.iter().rev().copied());
     let first = compact(&projected(&forward.resolve()));
+    let again = compact(&projected(&forward.resolve()));
     let second = compact(&projected(&reversed.resolve()));
+    close_repository(forward);
+    close_repository(reversed);
     assert_eq!(
         first, second,
         "directory enumeration order is not part of what a repository states"
     );
     assert_eq!(
-        first,
-        compact(&projected(&forward.resolve())),
+        first, again,
         "the same repository projects the same bytes twice"
     );
     projection_exactness::assert_rust_projection_bytes_stay_exact();
@@ -78,7 +80,7 @@ pub fn assert_go_graph_is_deterministic_and_rust_stays_exact() {
 
 /// A Go graph serializes to the version-1 object and to no new branch of it.
 pub fn assert_go_graph_uses_schema_v1() {
-    let (_fixture, _resolved, graph) = project_go(GO_CORPUS);
+    let (_resolved, graph) = project_go(GO_CORPUS);
     assert_eq!(graph.schema_version(), CodeGraph::SCHEMA_VERSION);
     assert_eq!(CodeGraph::SCHEMA_VERSION, 1, "the wire contract stays at 1");
 
@@ -184,7 +186,7 @@ fn descend<'value>(value: &'value Value, step: &str) -> Vec<&'value Value> {
 /// Every existing query answers over a Go graph with no language dispatch, and
 /// the retained Rust cache answers are unchanged.
 pub fn assert_existing_queries_consume_a_go_graph() {
-    let (_fixture, _resolved, graph) = project_go(GO_CORPUS);
+    let (_resolved, graph) = project_go(GO_CORPUS);
     let analysis = GraphAnalysis::new(&graph, GraphEdgeSelection::code_relations(), query_limits())
         .unwrap_or_else(|error| panic!("a Go graph opens one analysis: {error}"));
 

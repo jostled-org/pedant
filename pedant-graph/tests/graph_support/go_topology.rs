@@ -52,51 +52,88 @@ pub fn parents(graph: &CodeGraph) -> BTreeMap<u32, u32> {
 
 /// One module container node per admitted module, one package node per report
 /// unit, one file node per unit-qualified source, and one node per definition.
+///
+/// Every claim family is answered, rendered as its own row, and the whole table
+/// is compared once. A chain of assertions would abort on the first family that
+/// moved, so a build that got the modules wrong could never be seen agreeing
+/// about the files, and no receipt could bound more than one family at a time.
 pub fn assert_one_package_and_definition_node_per_claim() {
-    let (_fixture, resolved, graph) = project_go(GO_CORPUS);
+    let (resolved, graph) = project_go(GO_CORPUS);
     let report = resolved.resolution.report();
-
-    let packages = containers(&graph, PACKAGE_LEVEL);
     assert_eq!(
-        packages.len(),
-        report.units().len(),
-        "every package context takes exactly one package node"
+        stated_inventory(&graph),
+        claimed_inventory(&resolved, report),
+        "the graph states one node per module, source, and definition claim, and no other"
     );
-    assert_eq!(
-        packages
+}
+
+/// Every row of the inventory, read out of the built graph alone.
+fn stated_inventory(graph: &CodeGraph) -> Vec<String> {
+    let parents = parents(graph);
+    let mut rows = vec![
+        format!("packages|{}", named(&containers(graph, PACKAGE_LEVEL))),
+        format!("modules|{}", containers(graph, MODULE_LEVEL).len()),
+        format!("files|{}", files(graph).len()),
+        format!("nodes|{}", graph.nodes().len()),
+        format!("claims|{}", rendered(&declared_nodes(graph))),
+        format!("vocabulary|{}", stated_vocabulary(graph)),
+    ];
+    rows.extend(NAMED_DECLARATIONS.iter().map(|(name, holder, _)| {
+        declared_row(
+            (name, holder),
+            declared_inside(graph, &parents, (name, holder)),
+        )
+    }));
+    rows
+}
+
+/// The same rows, derived from the report and the snapshot that produced it.
+fn claimed_inventory(resolved: &GoResolved, report: &ResolutionReport) -> Vec<String> {
+    let modules = resolved.snapshot.modules().len();
+    let sources = instantiated_sources(resolved);
+    let mut rows = vec![
+        format!("packages|{}", package_names(report).join(", ")),
+        format!("modules|{modules}"),
+        format!("files|{sources}"),
+        format!(
+            "nodes|{}",
+            modules
+                .saturating_add(sources)
+                .saturating_add(report.definitions().len())
+        ),
+        format!("claims|{}", rendered(&declared_claims(report))),
+        format!("vocabulary|{}", modelled_vocabulary()),
+    ];
+    rows.extend(
+        NAMED_DECLARATIONS
             .iter()
-            .map(|node| node.name().to_owned())
-            .collect::<Vec<String>>(),
-        package_names(report),
-        "each package node is named by the package clause its unit declares"
+            .map(|(name, holder, token)| declared_row((name, holder), (*token).to_owned())),
     );
+    rows
+}
 
-    assert_eq!(
-        containers(&graph, MODULE_LEVEL).len(),
-        resolved.snapshot.modules().len(),
-        "every admitted module takes exactly one module node"
-    );
-    assert_eq!(
-        files(&graph).len(),
-        instantiated_sources(&resolved),
-        "every unit-qualified source takes exactly one file node"
-    );
-    assert_eq!(
-        graph.nodes().len(),
-        resolved
-            .snapshot
-            .modules()
-            .len()
-            .saturating_add(instantiated_sources(&resolved))
-            .saturating_add(report.definitions().len()),
-        "the graph holds a module, a source, and a definition node and nothing else"
-    );
-    assert_eq!(
-        declared_nodes(&graph),
-        declared_claims(report),
-        "every definition claim produces exactly one node, and no node produces two"
-    );
-    assert_declarations_take_the_go_vocabulary(&graph);
+/// One named declaration's row, whichever side answered it.
+fn declared_row(declared: (&str, &str), token: String) -> String {
+    let (name, holder) = declared;
+    format!("{name} in {holder}|{token}")
+}
+
+/// Every container node's name, in dense order.
+fn named(nodes: &[&GraphNode]) -> String {
+    nodes
+        .iter()
+        .map(|node| node.name())
+        .collect::<Vec<&str>>()
+        .join(", ")
+}
+
+/// One line per stated tuple, so a whole set compares as one row.
+fn rendered(stated: &[(String, String, String)]) -> String {
+    stated
+        .iter()
+        .map(|(name, file, span)| format!("{name}@{file}{span}"))
+        .collect::<Vec<String>>()
+        .join(" ")
 }
 
 /// Every declaration token a Go graph may state, beside the node category it
@@ -132,32 +169,47 @@ const NAMED_DECLARATIONS: &[(&str, &str, &str)] = &[
     ("Area", "Shape", "interface_method"),
 ];
 
-/// Every declaration node states a token this graph's Go vocabulary owns, and
-/// the tokens two same-kind declarations are told apart by are exact.
-fn assert_declarations_take_the_go_vocabulary(graph: &CodeGraph) {
-    let modelled: BTreeSet<(&str, &str)> = GO_DECLARATIONS.iter().copied().collect();
+/// Every declaration token the built graph states, in one sorted line.
+fn stated_vocabulary(graph: &CodeGraph) -> String {
     let stated: BTreeSet<(&str, &str)> = graph.nodes().iter().filter_map(declared_token).collect();
-    assert_eq!(
-        stated, modelled,
-        "the corpus states exactly the Go declaration vocabulary"
-    );
-    let parents = parents(graph);
-    for (name, holder, token) in NAMED_DECLARATIONS {
-        let found: Vec<&str> = graph
-            .nodes()
-            .iter()
-            .filter(|node| node.name() == *name)
-            .filter(|node| holds(graph, &parents, node.id().index()) == Some(*holder))
-            .filter_map(|node| declared_token(node).map(|(_, stated)| stated))
-            .collect();
-        assert!(
-            !found.is_empty(),
-            "the corpus declares {name} inside {holder}"
-        );
-        assert!(
-            found.iter().all(|stated| stated == token),
-            "{name} inside {holder} is declared {token}, not {found:?}"
-        );
+    tokens(stated.into_iter())
+}
+
+/// The written-down vocabulary, in the same line shape.
+fn modelled_vocabulary() -> String {
+    tokens(GO_DECLARATIONS.iter().copied())
+}
+
+/// One sorted line of category-and-token pairs.
+fn tokens<'a>(stated: impl Iterator<Item = (&'a str, &'a str)>) -> String {
+    let mut rendered: Vec<String> = stated
+        .map(|(category, token)| format!("{category}:{token}"))
+        .collect();
+    rendered.sort();
+    rendered.join(" ")
+}
+
+/// The token every node of one name declared inside one holder states.
+///
+/// A name the corpus does not declare inside that holder answers `absent`
+/// rather than nothing, so a missing declaration and a mistyped one are two
+/// different rows instead of one silent pass.
+fn declared_inside(
+    graph: &CodeGraph,
+    parents: &BTreeMap<u32, u32>,
+    declared: (&str, &str),
+) -> String {
+    let (name, holder) = declared;
+    let found: BTreeSet<&str> = graph
+        .nodes()
+        .iter()
+        .filter(|node| node.name() == name)
+        .filter(|node| holds(graph, parents, node.id().index()) == Some(holder))
+        .filter_map(|node| declared_token(node).map(|(_, stated)| stated))
+        .collect();
+    match found.is_empty() {
+        true => "absent".to_owned(),
+        false => found.into_iter().collect::<Vec<&str>>().join(", "),
     }
 }
 
@@ -251,7 +303,7 @@ fn located(graph: &CodeGraph, file: GraphNodeId) -> String {
 /// Containment is total, acyclic, exactly module over package over file over
 /// definition, and stated nowhere else.
 pub fn assert_containment_is_total_acyclic_and_relation_free() {
-    let (_fixture, _resolved, graph) = project_go(GO_CORPUS);
+    let (_resolved, graph) = project_go(GO_CORPUS);
     let parents = parents(&graph);
     assert_eq!(
         parents.len(),
@@ -352,7 +404,7 @@ fn assert_containment_is_not_an_edge(graph: &CodeGraph, parents: &BTreeMap<u32, 
 /// One snapshot source read once, and one file node per package context that
 /// instantiates it.
 pub fn assert_shared_source_has_two_unit_file_nodes() {
-    let (_fixture, resolved, graph) = project_go(GO_SHARED_SOURCE_CORPUS);
+    let (resolved, graph) = project_go(GO_SHARED_SOURCE_CORPUS);
     let shared = "value.go";
     assert_eq!(
         resolved

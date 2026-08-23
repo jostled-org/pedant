@@ -2,8 +2,9 @@
 //! snapshot-bound resolution.
 //!
 //! Every fixture owns a `TempDir` and nothing else: no process, no toolchain,
-//! no module cache, and no persistent file. Ordinary cases release it by RAII
-//! on success, failure, and panic alike.
+//! no module cache, and no persistent file. A case releases it by RAII on
+//! success, failure, and panic alike, and a case whose assertions need no files
+//! closes it deliberately before it reads what the projection produced.
 
 use std::path::PathBuf;
 
@@ -76,6 +77,15 @@ impl GoFixture {
     pub fn rewrite(&self, relative: &str, contents: &str) {
         write_file(self.directory.path(), relative, contents.as_bytes());
     }
+
+    /// Release the repository, answering with the root a caller proves gone.
+    pub fn close(self) -> PathBuf {
+        let root = self.root();
+        self.directory
+            .close()
+            .expect("the fixture directory should close");
+        root
+    }
 }
 
 /// Materialize and resolve one corpus in one step.
@@ -85,11 +95,28 @@ pub fn resolve_go(files: &[FixtureFile]) -> (GoFixture, GoResolved) {
     (fixture, resolved)
 }
 
-/// Materialize one corpus, resolve it, and project it under default ceilings.
-pub fn project_go(files: &[FixtureFile]) -> (GoFixture, GoResolved, CodeGraph) {
+/// Release one fixture and prove its repository is gone.
+///
+/// Called before the assertions that need no files, so a projection, a query,
+/// or a serializer that reached the loader, the parser, or the filesystem fails
+/// here rather than passing against files that happen to still exist.
+pub fn close_repository(fixture: GoFixture) {
+    let root = fixture.close();
+    assert!(
+        !root.exists(),
+        "the fixture repository must be gone before the graph is read"
+    );
+}
+
+/// Materialize one corpus, resolve it, project it, and release the repository.
+///
+/// Every graph case reads a value the snapshot and the report already hold, so
+/// the files are released here and the whole case runs against memory alone.
+pub fn project_go(files: &[FixtureFile]) -> (GoResolved, CodeGraph) {
     let (fixture, resolved) = resolve_go(files);
     let graph = projected(&resolved);
-    (fixture, resolved, graph)
+    close_repository(fixture);
+    (resolved, graph)
 }
 
 /// The graph one resolved Go repository projects.

@@ -17,7 +17,7 @@ use pedant_types::{
 };
 
 use super::go_corpus::{GO_CORPUS, GO_MINIMAL_CORPUS};
-use super::go_fixture::{GoFixture, refused, resolve_go};
+use super::go_fixture::{GoFixture, close_repository, refused, resolve_go};
 
 /// The source-only edit that changes the bytes and no manifest.
 const REVISED_BUILD: &str = r#"package app
@@ -34,6 +34,7 @@ pub fn assert_stale_resolution_is_refused() {
     let stale = fixture.resolve();
     fixture.rewrite("repo/build.go", REVISED_BUILD);
     let current = fixture.resolve();
+    close_repository(fixture);
     assert_ne!(
         stale.snapshot.fingerprint(),
         current.snapshot.fingerprint(),
@@ -58,7 +59,8 @@ pub fn assert_stale_resolution_is_refused() {
 /// Every graph ceiling refuses the collection that reaches it first, and
 /// returns no graph at all.
 pub fn assert_limits_refuse_before_partial_records() {
-    let (_fixture, resolved) = resolve_go(GO_CORPUS);
+    let (fixture, resolved) = resolve_go(GO_CORPUS);
+    close_repository(fixture);
     let full = pedant_graph::build_go_graph(&resolved.snapshot, &resolved.resolution)
         .unwrap_or_else(|error| panic!("the unbounded build projects: {error}"));
     let counts = [
@@ -83,7 +85,8 @@ pub fn assert_limits_refuse_before_partial_records() {
         assert_refuses(&resolved, zero, collection);
         assert_refuses(&resolved, one_short(collection, held), collection);
     }
-    let (_tiny, minimal) = resolve_go(GO_MINIMAL_CORPUS);
+    let (tiny, minimal) = resolve_go(GO_MINIMAL_CORPUS);
+    close_repository(tiny);
     assert_refuses(
         &minimal,
         GraphLimits::new(1, u32::MAX, u32::MAX),
@@ -140,7 +143,8 @@ fn stated_ceiling(limits: GraphLimits, collection: GraphCollection) -> u32 {
 /// none and a report with two are therefore reachable, and each must refuse
 /// rather than root a unit at nothing or at two nodes.
 fn assert_malformed_claims_refuse() {
-    let (_fixture, resolved) = resolve_go(GO_MINIMAL_CORPUS);
+    let (fixture, resolved) = resolve_go(GO_MINIMAL_CORPUS);
+    close_repository(fixture);
     let absent = claimed(&resolved.snapshot, &[SymbolKind::Function]);
     assert!(
         matches!(

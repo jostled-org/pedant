@@ -32,7 +32,7 @@ const EXTERNAL_MODULE: &str = "github.com/external/pkg";
 /// One graph reference per report reference, one edge per candidate, and exact
 /// certainty and gaps throughout.
 pub fn assert_every_reference_candidate_certainty_and_gap_is_copied() {
-    let (_fixture, resolved, graph) = project_go(GO_CORPUS);
+    let (resolved, graph) = project_go(GO_CORPUS);
     let report = resolved.resolution.report();
     assert_eq!(
         graph.references().len(),
@@ -236,7 +236,7 @@ fn assert_implementations_are_resolved(graph: &CodeGraph) {
 /// One admitted local replacement is one resolved `DependsOn` edge between
 /// module containers, and an unreplaced requirement is nothing at all.
 pub fn assert_local_replacement_projects_one_dependency_edge() {
-    let (_fixture, resolved, graph) = project_go(GO_CORPUS);
+    let (resolved, graph) = project_go(GO_CORPUS);
     let modules: Vec<&str> = containers(&graph, MODULE_LEVEL)
         .iter()
         .map(|node| node.name())

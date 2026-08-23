@@ -1,40 +1,10 @@
-//! The composition boundary, read from tracked production source, test source,
-//! Cargo manifests, and release workflows only.
+//! The composition boundary of the gate family, read from tracked production
+//! source only.
 //!
 //! No plan, specification, log, or lifecycle manifest is consulted here.
 
-use std::fs;
-use std::path::{Path, PathBuf};
-
-/// The CLI gate family, which declares and re-exports only from its root.
-const GATE_TREE: &str = "src/gate";
-
-/// Every module the gate family is required to hold, sorted.
-const GATE_MODULES: &[&str] = &[
-    "command.rs",
-    "error.rs",
-    "evidence.rs",
-    "mod.rs",
-    "project.rs",
-];
-
-/// Every gate CLI support module, sorted.
-const GATE_SUPPORT_MODULES: &[&str] = &[
-    "capability_modes.rs",
-    "catalog.rs",
-    "ceilings.rs",
-    "failures.rs",
-    "fixture.rs",
-    "output.rs",
-    "ownership.rs",
-    "project.rs",
-    "release_ownership.rs",
-    "semantic.rs",
-    "topology.rs",
-];
-
-/// The package-shared support tree, which owns exactly one wrapper.
-const PACKAGE_SUPPORT_MODULES: &[&str] = &["process_guard.rs"];
+use crate::boundaries::GATE_MODULES;
+use crate::source::{gate_module, manifest_dir, normalized, read};
 
 /// Topology and project vocabulary only the project owner may name.
 const PROJECT_ONLY: &[&str] = &[
@@ -49,66 +19,11 @@ const PROJECT_ONLY: &[&str] = &[
 /// owner, the projection owner, and the refusals that carry their sources.
 const PROJECT_OWNERS: &[&str] = &["project.rs", "evidence.rs", "error.rs"];
 
-fn manifest_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-}
-
-fn workspace_root() -> PathBuf {
-    manifest_dir()
-        .parent()
-        .expect("the workspace root is the package parent")
-        .to_path_buf()
-}
-
-fn read(path: &Path) -> String {
-    fs::read_to_string(path)
-        .unwrap_or_else(|error| panic!("{} is tracked: {error}", path.display()))
-}
-
-/// One tracked source with every run of whitespace collapsed to one space.
-///
-/// A wiring claim is about which owner receives which value, not about where
-/// the formatter chose to break the line, so every call-shape assertion below
-/// reads this form.
-fn normalized(path: &Path) -> String {
-    read(path)
-        .split_whitespace()
-        .collect::<Vec<&str>>()
-        .join(" ")
-}
-
-/// Every `.rs` file directly beneath one tree, sorted by file name.
-fn module_names(tree: &Path) -> Vec<String> {
-    let mut found: Vec<String> = fs::read_dir(tree)
-        .unwrap_or_else(|error| panic!("{} is readable: {error}", tree.display()))
-        .map(|entry| entry.expect("a directory entry is readable").path())
-        .filter(|path| path.extension().is_some_and(|extension| extension == "rs"))
-        .map(|path| {
-            path.file_name()
-                .expect("a source file has a name")
-                .to_string_lossy()
-                .into_owned()
-        })
-        .collect();
-    found.sort();
-    found
-}
-
-fn assert_inventory(tree: &Path, declared: &[&str]) {
-    assert_eq!(
-        module_names(tree),
-        declared,
-        "the inventory of {} is exact",
-        tree.display()
-    );
-}
-
 /// File and stdin dispatch reaches the unchanged capability owner before any
 /// project, snapshot, or graph construction can happen.
 pub(crate) fn legacy_gate_dispatch_is_graph_free() {
-    let gate = manifest_dir().join(GATE_TREE);
     for module in GATE_MODULES {
-        let source = read(&gate.join(module));
+        let source = read(&gate_module(module));
         let owned = PROJECT_OWNERS.contains(module);
         for token in PROJECT_ONLY {
             assert!(
@@ -118,7 +33,7 @@ pub(crate) fn legacy_gate_dispatch_is_graph_free() {
         }
     }
 
-    let dispatcher = read(&gate.join("command.rs"));
+    let dispatcher = read(&gate_module("command.rs"));
     let dispatch = dispatcher
         .split_once("pub(crate) fn run(args: GateArgs")
         .map(|(_, tail)| tail)
@@ -146,7 +61,7 @@ pub(crate) fn legacy_gate_dispatch_is_graph_free() {
 /// Resolution uses its own defaults, every selected target is snapshotted, and
 /// unused analysis work limits are zero.
 pub(crate) fn project_pipeline_wiring_is_exact() {
-    let project = normalized(&manifest_dir().join(GATE_TREE).join("project.rs"));
+    let project = normalized(&gate_module("project.rs"));
     for (claim, call) in [
         (
             "project loading uses the resolution owner's own defaults",
@@ -176,7 +91,7 @@ pub(crate) fn project_pipeline_wiring_is_exact() {
 /// Every project failure reaches one buffered exit-2 owner, and no enablement
 /// switch is read before validated projection returns.
 pub(crate) fn project_failures_reach_one_exit_owner() {
-    let command = read(&manifest_dir().join(GATE_TREE).join("command.rs"));
+    let command = read(&gate_module("command.rs"));
     let owner = command
         .split_once("fn run_project(")
         .map(|(_, tail)| tail)
@@ -195,7 +110,7 @@ pub(crate) fn project_failures_reach_one_exit_owner() {
         "a successful run reaches the one project output owner"
     );
 
-    let project = normalized(&manifest_dir().join(GATE_TREE).join("project.rs"));
+    let project = normalized(&gate_module("project.rs"));
     let evaluation = project
         .find("evaluate_module_boundary_rules(&input, config)")
         .expect("policy is applied through the core evaluator");
@@ -223,7 +138,7 @@ const REFUSALS_COVERED_ELSEWHERE: &[&str] = &["ProjectRoot", "Config", "Semantic
 const DEFENSIVE_REFUSALS: &[&str] = &["UnknownPackage", "Evidence"];
 
 fn declared_refusals() -> Vec<String> {
-    let source = read(&manifest_dir().join(GATE_TREE).join("error.rs"));
+    let source = read(&gate_module("error.rs"));
     let (_, body) = source
         .split_once("pub(crate) enum ProjectGateError {")
         .expect("the project refusal enum is declared once");
@@ -347,7 +262,7 @@ pub(crate) fn project_output_is_one_description_owner() {
 /// target.
 #[cfg(feature = "semantic")]
 pub(crate) fn semantic_context_is_loaded_once_before_iteration() {
-    let project = normalized(&manifest_dir().join(GATE_TREE).join("project.rs"));
+    let project = normalized(&gate_module("project.rs"));
     assert_eq!(
         project.matches("SemanticContext::load(").count(),
         1,
@@ -366,177 +281,5 @@ pub(crate) fn semantic_context_is_loaded_once_before_iteration() {
     assert!(
         project.contains("context: &TierContext,"),
         "the same context is borrowed by every target"
-    );
-}
-
-/// Every gate CLI support site that binds a guarded-process ceiling, in tree
-/// order, each as its module and the value it states.
-///
-/// The plumbing sites come first because the fixture declares the option, fills
-/// it from the shared default, and hands it to the guard; the one localized
-/// widening follows.
-#[cfg(feature = "semantic")]
-const BUDGET_SITES: &[&str] = &[
-    "fixture.rs -> Duration",
-    "fixture.rs -> BUDGET",
-    "fixture.rs -> options.budget",
-    "semantic.rs -> SEMANTIC_BUDGET",
-];
-
-/// The Tier 2 module is the only gate CLI journey with a ceiling of its own.
-///
-/// The literal comparisons beside this one read the shared default and the
-/// widened constant. Both stay true when a second support module hands the same
-/// guard a wider `RunOptions` of its own: the default is still 120 seconds
-/// while an ordinary journey is no longer bound by it. This reads the support
-/// tree instead and requires the whole set of ceiling-stating sites, so a
-/// second override fails here rather than passing unseen.
-#[cfg(feature = "semantic")]
-pub(crate) fn the_semantic_journey_is_the_only_budget_override() {
-    assert_eq!(
-        budget_sites(),
-        BUDGET_SITES,
-        "one module states a guarded ceiling of its own, and it is the Tier 2 journey"
-    );
-}
-
-/// Every ceiling binding under the gate CLI support tree, in tree order.
-#[cfg(feature = "semantic")]
-fn budget_sites() -> Vec<String> {
-    let tree = manifest_dir().join("tests/gate_cli_support");
-    let mut sites = Vec::new();
-    for module in module_names(&tree) {
-        for line in read(&tree.join(&module)).lines() {
-            let code = line.split_once("//").map_or(line, |(head, _)| head);
-            for value in bound_budgets(code) {
-                sites.push(format!("{module} -> {value}"));
-            }
-        }
-    }
-    sites
-}
-
-/// Every ceiling one line binds, which is every occurrence rather than the
-/// first: a line may read one ceiling and bind another.
-#[cfg(feature = "semantic")]
-fn bound_budgets(code: &str) -> Vec<String> {
-    code.match_indices("budget")
-        .filter_map(|(at, name)| bound_value(&code[at + name.len()..]))
-        .collect()
-}
-
-/// The value one occurrence binds, when it binds one at all.
-///
-/// An occurrence that reads a ceiling — comparing it, printing it, passing it
-/// on — states no ceiling of its own, so only a field declaration, a
-/// struct-literal field, or an assignment counts.
-#[cfg(feature = "semantic")]
-fn bound_value(after_name: &str) -> Option<String> {
-    let tail = after_name.trim_start();
-    let assigned = tail.strip_prefix('=').filter(|rest| !rest.starts_with('='));
-    let value = tail.strip_prefix(':').or(assigned)?;
-    Some(value.trim().trim_end_matches([',', ';']).to_owned())
-}
-
-/// The module, support, dependency, and release boundaries this design states.
-pub(crate) fn repository_boundaries_are_exact() {
-    assert_inventory(&manifest_dir().join(GATE_TREE), GATE_MODULES);
-    assert_inventory(
-        &manifest_dir().join("tests/gate_cli_support"),
-        GATE_SUPPORT_MODULES,
-    );
-    assert_inventory(
-        &manifest_dir().join("tests/package_support"),
-        PACKAGE_SUPPORT_MODULES,
-    );
-
-    production_source_holds_no_tests();
-    crate::release_ownership::dependency_edge_is_versioned_and_ordered(
-        &read(&manifest_dir().join("Cargo.toml")),
-        &read(&workspace_root().join("pedant-graph/Cargo.toml")),
-        &read(&workspace_root().join("release-plz.toml")),
-    );
-    graph_holds_no_policy_owner();
-    release_only_manifest_check_is_release_only();
-}
-
-fn production_source_holds_no_tests() {
-    let mut sources = Vec::new();
-    collect_sources(&manifest_dir().join("src"), &mut sources);
-    assert!(sources.len() > 10, "the production tree was located");
-    for path in &sources {
-        let source = read(path);
-        assert!(
-            !source.contains("#[test]") && !source.contains("mod tests"),
-            "{} must hold no inline test",
-            path.display()
-        );
-    }
-}
-
-fn collect_sources(root: &Path, found: &mut Vec<PathBuf>) {
-    let entries = fs::read_dir(root)
-        .unwrap_or_else(|error| panic!("{} is readable: {error}", root.display()));
-    for entry in entries {
-        let path = entry.expect("a directory entry is readable").path();
-        match (
-            path.is_dir(),
-            path.extension().is_some_and(|extension| extension == "rs"),
-        ) {
-            (true, _) => collect_sources(&path, found),
-            (false, true) => found.push(path),
-            (false, false) => (),
-        }
-    }
-}
-
-/// Policy vocabulary the topology library may not own.
-const FORBIDDEN_IN_GRAPH: &[&str] = &[
-    "GateVerdict",
-    "GateSeverity",
-    "GateConfig",
-    "ModuleBoundaryConfig",
-    "ModuleBoundaryInput",
-    "evaluate_module_boundary_rules",
-];
-
-fn graph_holds_no_policy_owner() {
-    let mut sources = Vec::new();
-    collect_sources(&workspace_root().join("pedant-graph/src"), &mut sources);
-    assert!(sources.len() > 1, "the graph production tree was located");
-    for path in &sources {
-        let source = read(path);
-        let present: Vec<&str> = FORBIDDEN_IN_GRAPH
-            .iter()
-            .copied()
-            .filter(|token| source.contains(token))
-            .collect();
-        assert!(
-            present.is_empty(),
-            "{} must not own {present:?}",
-            path.display()
-        );
-    }
-}
-
-/// The tagged-manifest immutability check is a release-only gate.
-fn release_only_manifest_check_is_release_only() {
-    let script = "check_published_manifests.sh";
-    let ci = read(&workspace_root().join(".github/workflows/ci.yml"));
-    assert!(
-        !ci.contains(script),
-        "ordinary implementation CI must not run the release-only manifest check"
-    );
-
-    let release = read(&workspace_root().join(".github/workflows/release-plz.yml"));
-    let readiness = release
-        .find("check_release_readiness.sh")
-        .expect("the release workflow gates on readiness");
-    let manifests = release
-        .find(script)
-        .expect("the release workflow retains the strict manifest check");
-    assert!(
-        readiness < manifests,
-        "the strict manifest check stays behind release readiness"
     );
 }

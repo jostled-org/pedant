@@ -10,8 +10,14 @@ mod common;
 #[path = "package_support/process_guard.rs"]
 mod process_guard;
 
+#[path = "gate_cli_support/source.rs"]
+mod source;
+
 #[path = "gate_cli_support/fixture.rs"]
 mod fixture;
+
+#[path = "gate_cli_support/boundaries.rs"]
+mod boundaries;
 
 #[path = "gate_cli_support/capability_modes.rs"]
 mod capability_modes;
@@ -39,6 +45,10 @@ mod release_ownership;
 
 #[path = "gate_cli_support/topology.rs"]
 mod topology;
+
+#[cfg(feature = "semantic")]
+#[path = "gate_cli_support/budgets.rs"]
+mod budgets;
 
 #[cfg(feature = "semantic")]
 #[path = "gate_cli_support/semantic.rs"]
@@ -156,13 +166,13 @@ fn project_gate_tier1_invokes_no_toolchain() {
 fn project_gate_semantic_is_single_context_all_target_or_error() {
     semantic::semantic_is_single_context_all_target_or_error();
     ownership::semantic_context_is_loaded_once_before_iteration();
-    ownership::the_semantic_journey_is_the_only_budget_override();
+    budgets::the_semantic_journey_is_the_only_budget_override();
 }
 
 /// The module, support, dependency, and release boundaries are exact.
 #[test]
 fn module_boundary_repository_boundaries_are_exact() {
-    ownership::repository_boundaries_are_exact();
+    boundaries::repository_boundaries_are_exact();
 }
 
 /// Every structural rule is listed once and explained once.

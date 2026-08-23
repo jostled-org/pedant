@@ -10,8 +10,7 @@
 //!     and the run reports success;
 //!   * a default-off feature nothing lints, documents, or executes, which is
 //!     the state both Go features would be in if the tracked checks below were
-//!     not registered in the workflow, the ShellCheck inventory, and the
-//!     manifest.
+//!     not registered in the workflow and ShellCheck inventory.
 //!
 //! Reads tracked text and runs nothing. Compiles under `go-resolution` alone,
 //! because the configuration a consumer selects must be able to prove this.
@@ -19,8 +18,8 @@
 use std::collections::BTreeSet;
 
 use crate::resolution::go::registration_model::{
-    CI_WORKFLOW, DOCUMENTATION_CONTRACT, FeatureEdge, GO_CHECKS, GO_CONFIGURATIONS, GO_FEATURES,
-    GO_GRAMMAR_EDGE, GO_LINT_COMMANDS, MANIFEST, REGISTERED_PREDICATES, SHELLCHECK_INVENTORY,
+    CI_WORKFLOW, FeatureEdge, GO_CHECKS, GO_CONFIGURATION_CHECK, GO_CONFIGURATIONS, GO_FEATURES,
+    GO_GRAMMAR_EDGE, GO_LINT_COMMANDS, REGISTERED_PREDICATES, SHELLCHECK_INVENTORY,
 };
 use crate::resolution::go::support_trees::{GO_MODULE_PREFIX, GO_SUPPORT, SupportTree};
 use crate::resolution::go::surface::{
@@ -40,9 +39,8 @@ fn go_test_and_feature_ownership_is_exact() {
     assert_support_trees_are_exactly_modelled();
     assert_every_predicate_is_registered_once();
     assert_feature_edges_are_default_off_and_exact();
-    assert_every_check_is_tracked_and_registered();
+    assert_every_check_is_executable_linted_and_in_ci();
     assert_the_matrix_states_every_configuration();
-    assert_the_documentation_contract_holds();
     assert_exact_integration_roots();
 }
 
@@ -251,17 +249,11 @@ fn manifest_table(relative: &str) -> toml::Table {
         .unwrap_or_else(|error| panic!("{relative} should parse as TOML: {error}"))
 }
 
-/// Each Go check is a tracked executable and is registered in all three places
-/// that would otherwise let it stop running.
-fn assert_every_check_is_tracked_and_registered() {
+/// Each Go check is executable, linted, and run by the tracked CI workflow.
+fn assert_every_check_is_executable_linted_and_in_ci() {
     let workflow = tracked_text(CI_WORKFLOW);
     let shellcheck = tracked_text(SHELLCHECK_INVENTORY);
-    let manifest = manifest_table(MANIFEST);
-    let identities = manifest
-        .get("ci")
-        .and_then(toml::Value::as_table)
-        .expect("the manifest declares a [ci] table");
-    for (identity, script) in GO_CHECKS {
+    for script in GO_CHECKS {
         assert_executable(script);
         assert_eq!(
             workflow.matches(&format!("- run: {script}")).count(),
@@ -271,11 +263,6 @@ fn assert_every_check_is_tracked_and_registered() {
         assert!(
             shellcheck.contains(script),
             "{SHELLCHECK_INVENTORY} must lint {script}"
-        );
-        assert_eq!(
-            identities.get(*identity).and_then(toml::Value::as_str),
-            Some(*script),
-            "{MANIFEST} must register [ci].{identity} as {script}"
         );
     }
 }
@@ -309,10 +296,7 @@ fn assert_executable(script: &str) {
 
 /// The matrix check states every modelled configuration and every lint command.
 fn assert_the_matrix_states_every_configuration() {
-    let (_, matrix) = GO_CHECKS
-        .iter()
-        .find(|(identity, _)| *identity == "go_configurations")
-        .expect("the model names the configuration matrix check");
+    let matrix = GO_CONFIGURATION_CHECK;
     let text = tracked_text(matrix);
     for (label, arguments) in GO_CONFIGURATIONS {
         assert!(
@@ -328,16 +312,6 @@ fn assert_the_matrix_states_every_configuration() {
         assert!(
             text.contains(command),
             "{matrix} must run `{command}`, which no other job reaches"
-        );
-    }
-}
-
-/// Each tracked document carries the exact sentence the contract names.
-fn assert_the_documentation_contract_holds() {
-    for (document, sentence) in DOCUMENTATION_CONTRACT {
-        assert!(
-            tracked_text(document).lines().any(|line| line == *sentence),
-            "{document} must carry the contract sentence `{sentence}` on a line of its own"
         );
     }
 }

@@ -33,7 +33,7 @@ mod limits;
 mod project;
 mod project_fixtures;
 mod report_views;
-mod root_inventory;
+pub(crate) mod root_inventory;
 #[cfg(feature = "resolution-test-support")]
 mod selection_chain;
 #[cfg(feature = "resolution-test-support")]

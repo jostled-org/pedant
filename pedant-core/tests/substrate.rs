@@ -40,6 +40,17 @@ mod release_model;
 #[path = "substrate_support/release_workflow.rs"]
 mod release_workflow;
 
+/// Cargo tests may consume repository artifacts, but never local lifecycle
+/// authority that a clean checkout does not contain. Same `#[path]` reason as
+/// [`declaration_scan`].
+#[path = "substrate_support/repository_artifact_boundary.rs"]
+mod repository_artifact_boundary;
+
+/// String-literal extraction for [`repository_artifact_boundary`]. Same
+/// `#[path]` reason as [`declaration_scan`].
+#[path = "substrate_support/repository_artifact_literals.rs"]
+mod repository_artifact_literals;
+
 /// The tracked packaged-workspace release proof's structural contract.
 #[path = "substrate_support/packaged_workspace.rs"]
 mod packaged_workspace;

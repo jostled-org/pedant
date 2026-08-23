@@ -287,21 +287,15 @@ pub const GO_FEATURES: &[FeatureEdge] = &[
 /// asks for.
 pub const GO_GRAMMAR_EDGE: (&str, &str, &str) = ("pedant-core", "pedant-syntax", "ts-go");
 
-/// Each tracked Go check: the `[ci]` identity that names it, and the script.
-pub const GO_CHECKS: &[(&str, &str)] = &[
-    (
-        "go_dependency_closure",
-        ".github/scripts/check_go_dependency_closure.sh",
-    ),
-    (
-        "go_source_capabilities",
-        ".github/scripts/check_go_capabilities.sh",
-    ),
-    (
-        "go_configurations",
-        ".github/scripts/check_go_configurations.sh",
-    ),
+/// The tracked Go checks registered in the repository workflow and ShellCheck.
+pub const GO_CHECKS: &[&str] = &[
+    ".github/scripts/check_go_dependency_closure.sh",
+    ".github/scripts/check_go_capabilities.sh",
+    GO_CONFIGURATION_CHECK,
 ];
+
+/// The check that executes every supported Go feature configuration.
+pub const GO_CONFIGURATION_CHECK: &str = ".github/scripts/check_go_configurations.sh";
 
 /// Every cargo test configuration the matrix check must state, as the arguments
 /// one row hands cargo.
@@ -366,23 +360,6 @@ pub const GO_LINT_COMMANDS: &[&str] = &[
     "cargo doc --locked --no-deps -p pedant-graph --all-features",
 ];
 
-/// The tracked documents each Go check must be registered in.
+/// The tracked repository owners each Go check must be registered in.
 pub const CI_WORKFLOW: &str = ".github/workflows/ci.yml";
 pub const SHELLCHECK_INVENTORY: &str = ".github/scripts/run_shellcheck.sh";
-pub const MANIFEST: &str = ".manifest.toml";
-
-/// The exact sentences the documentation contract holds each document to.
-pub const DOCUMENTATION_CONTRACT: &[(&str, &str)] = &[
-    (
-        "docs/design-rationale.md",
-        "GoFileFacts is the sole Go grammar inventory for capability attribution and Go resolution.",
-    ),
-    (
-        "docs/testing.md",
-        "Go graph tests extend existing roots and add no integration executable.",
-    ),
-    (
-        "docs/internal/seamslike-integration-roadmap.md",
-        "S8 is implemented through GoProject, GoResolver, and build_go_graph.",
-    ),
-];

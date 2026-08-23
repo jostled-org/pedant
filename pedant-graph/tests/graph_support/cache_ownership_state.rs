@@ -71,11 +71,14 @@ const COUNTER_ADVANCES: &[&str] = &["fetch_add", "saturating_add", "wrapping_add
 /// Written down exactly rather than as a permitted set: a second module that
 /// advanced a plain `u64` hit count would be a site this table does not hold,
 /// and a module in the table that grew a second advance would state a count this
-/// table does not match. Three of the four are arithmetic over stated totals —
-/// candidate tallies, occurrence tallies, and an admitted node count — and none
-/// of them is a cache statistic. The fourth is the cache's one saturating owner.
+/// table does not match. Five of the six are arithmetic over stated totals —
+/// candidate tallies, occurrence tallies, an admitted node count, and the plan
+/// positions a Go build gives its modules — and none of them is a cache
+/// statistic. The sixth is the cache's one saturating owner.
 const COUNTER_ADVANCE_SITES: &[(&str, usize)] = &[
     ("src/cache/state.rs", 1),
+    ("src/go/placement.rs", 2),
+    ("src/go/projection.rs", 1),
     ("src/projection/placement.rs", 1),
     ("src/projection/state.rs", 1),
     ("src/rust/projection.rs", 1),

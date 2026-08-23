@@ -39,31 +39,36 @@ pub(crate) fn assemble(
     limits: GraphLimits,
 ) -> Result<CodeGraph, GraphBuildError> {
     let mut state = ProjectionState::new(limits, plan.capacity);
-    let units = assemble_containers(&mut state, plan)?;
+    assemble_containers(&mut state, plan)?;
     assemble_sources(&mut state, plan)?;
     assemble_definitions(&mut state, plan)?;
-    assemble_containment(&mut state, plan)?;
-    forest::check_containment_forest(&state, units)?;
+    assemble_declared_containers(&mut state, plan)?;
+    let roots = assemble_containment(&mut state, plan)?;
+    forest::check_containment_forest(&state, &roots)?;
     let references = assemble_references(&mut state, plan)?;
     assemble_dependencies(&mut state, plan)?;
     assemble_candidates(&mut state, &references)?;
     Ok(state.finish(plan.tier))
 }
 
-/// One root container per planned unit, in report order.
+/// One container node per planned unit that states one, in plan order.
 ///
-/// This is the first pass, so the containers take the first identities the
-/// graph mints and the store's own node count is what the containment check
-/// reads rootness from.
+/// This is the first pass, so a stated container takes an identity ahead of
+/// every source and every definition. A unit whose container is one of its own
+/// declarations mints nothing here: that node is minted with the definitions,
+/// and bound by the pass beside them.
 fn assemble_containers(
     state: &mut ProjectionState,
     plan: &ProjectionPlan,
-) -> Result<usize, GraphBuildError> {
-    for unit in &plan.units {
-        let container = state.insert_node(unit.container_draft())?;
-        state.bind_container(container);
+) -> Result<(), GraphBuildError> {
+    for (index, unit) in plan.units.iter().enumerate() {
+        let Some(draft) = unit.container_draft() else {
+            continue;
+        };
+        let container = state.insert_node(draft)?;
+        state.bind_container(position(index), container)?;
     }
-    Ok(state.node_count())
+    Ok(())
 }
 
 /// One file node per source the planned unit instantiates, in snapshot order.
@@ -77,11 +82,9 @@ fn assemble_sources(
 ) -> Result<(), GraphBuildError> {
     for (index, unit) in plan.units.iter().enumerate() {
         let reported = position(index);
-        let container = validation::unit_container(state, reported)?;
         for path in &unit.sources {
             let node = state.insert_node(unit.file_draft(path))?;
             state.bind_file(reported, path, node)?;
-            state.contain(container, node);
         }
     }
     Ok(())
@@ -104,9 +107,85 @@ fn assemble_definitions(
     Ok(())
 }
 
-/// Logical ownership: a stated parent when there is one, the unit root
-/// otherwise. Source location never becomes a containment parent.
+/// The container of every unit named by one of its own declarations.
+///
+/// Run after the definitions pass, because the node this unit is rooted at is
+/// one the definitions pass minted. Nothing is minted here: the binding is what
+/// lets the containment pass beside it read one container per planned unit,
+/// however that container was named.
+fn assemble_declared_containers(
+    state: &mut ProjectionState,
+    plan: &ProjectionPlan,
+) -> Result<(), GraphBuildError> {
+    for declared in &plan.declarations {
+        let definition = declared.definition;
+        let at = validation::stated_definition(plan, definition)?;
+        let projection = validation::planned_definition(plan, at, definition)?;
+        let node = validation::definition_node(state, &projection.identity, definition)?;
+        state.bind_container(declared.unit, node)?;
+    }
+    Ok(())
+}
+
+/// The whole containment relation, and the roots it must be a forest over.
+///
+/// Three statements in one relation: a nested unit sits under the unit that
+/// owns it, every instantiated source sits under the unit that reads it, and
+/// every definition sits under the definition that owns it or under its unit.
+/// Source location never becomes a containment parent.
 fn assemble_containment(
+    state: &mut ProjectionState,
+    plan: &ProjectionPlan,
+) -> Result<Box<[GraphNodeId]>, GraphBuildError> {
+    let roots = contain_units(state, plan)?;
+    contain_sources(state, plan)?;
+    contain_definitions(state, plan)?;
+    Ok(roots)
+}
+
+/// Every nested unit under the unit that owns it, answering with the containers
+/// no unit owns.
+fn contain_units(
+    state: &mut ProjectionState,
+    plan: &ProjectionPlan,
+) -> Result<Box<[GraphNodeId]>, GraphBuildError> {
+    let mut roots = Vec::new();
+    for (index, unit) in plan.units.iter().enumerate() {
+        let child = validation::unit_container(state, position(index))?;
+        match unit.parent {
+            None => roots.push(child),
+            Some(owner) => {
+                let parent = validation::unit_container(state, owner)?;
+                state.contain(parent, child);
+            }
+        }
+    }
+    Ok(roots.into_boxed_slice())
+}
+
+/// Every instantiated source under the unit-qualified container that reads it.
+fn contain_sources(
+    state: &mut ProjectionState,
+    plan: &ProjectionPlan,
+) -> Result<(), GraphBuildError> {
+    for (index, unit) in plan.units.iter().enumerate() {
+        let reported = position(index);
+        let container = validation::unit_container(state, reported)?;
+        for path in &unit.sources {
+            let node = validation::source_node(state, reported, path)?;
+            state.contain(container, node);
+        }
+    }
+    Ok(())
+}
+
+/// Logical ownership: a stated parent when there is one, the unit container
+/// otherwise.
+///
+/// The one definition that names its unit's container is skipped: its place in
+/// the relation was stated by [`contain_units`], and a node cannot contain
+/// itself.
+fn contain_definitions(
     state: &mut ProjectionState,
     plan: &ProjectionPlan,
 ) -> Result<(), GraphBuildError> {
@@ -115,9 +194,11 @@ fn assemble_containment(
         let projection = validation::planned_definition(plan, *at, stated)?;
         let unit = validation::fragment_unit(plan, at.fragment)?;
         let child = validation::definition_node(state, &projection.identity, stated)?;
-        let parent = match &projection.parent {
-            Some(owner) => validation::definition_node(state, owner, stated)?,
-            None => validation::unit_container(state, unit)?,
+        let container = validation::unit_container(state, unit)?;
+        let parent = match (child == container, &projection.parent) {
+            (true, _) => continue,
+            (false, Some(owner)) => validation::definition_node(state, owner, stated)?,
+            (false, None) => container,
         };
         state.contain(parent, child);
     }

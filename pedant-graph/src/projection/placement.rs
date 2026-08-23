@@ -16,12 +16,14 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use pedant_types::{ResolutionReport, SourceSpan, SymbolDefinition, SymbolKind};
+use pedant_types::{
+    ResolutionRecord, ResolutionReport, SourceSpan, SymbolDefinition, SymbolKind, SymbolReference,
+};
 
 use crate::error::GraphBuildError;
 use crate::id::{index_of, position};
 
-use super::draft::UnitPlan;
+use super::draft::{FragmentSlot, UnitPlan};
 use super::validation;
 
 /// One source, identified by the unit reading it and its normalized path.
@@ -231,6 +233,117 @@ impl SourceSet {
     pub(crate) fn finish(self) -> Box<[UnitPlan]> {
         self.units
     }
+}
+
+/// Every record one source states, in report order.
+///
+/// The records are borrowed from the report rather than copied out of it: this
+/// is what one source's projection is derived from, and — for an adapter that
+/// retains projections — what a retained one is compared against. Both readings
+/// must be over the one placement.
+#[derive(Default)]
+pub(crate) struct SourceRecords<'a> {
+    /// Every definition declared in the source, beside its report position.
+    pub(crate) definitions: Vec<(u32, &'a SymbolDefinition)>,
+    /// Every reference stated in the source, beside the record that answered it.
+    pub(crate) references: Vec<(&'a SymbolReference, &'a ResolutionRecord)>,
+}
+
+/// Where every report record sits, and what each source therefore states.
+///
+/// Placing a record costs its position and nothing else, so this runs for every
+/// source of every adapter, reused or not, and the slots the assembler reads are
+/// the report's own order either way.
+pub(crate) struct RecordPlacement<'a> {
+    /// Where each report definition sits, in report order.
+    pub(crate) definitions: Box<[FragmentSlot]>,
+    /// Where each report reference sits, in report order.
+    pub(crate) references: Box<[FragmentSlot]>,
+    /// The records each placed source states, in placement order.
+    pub(crate) stated: Box<[SourceRecords<'a>]>,
+}
+
+impl<'a> RecordPlacement<'a> {
+    /// Place every definition the report states and every reference its answer
+    /// paired, in the source each of them names.
+    pub(crate) fn stated(
+        report: &'a ResolutionReport,
+        resolved: &[(&'a SymbolReference, &'a ResolutionRecord)],
+        placed: (&SourceSet, &DefinitionTable),
+    ) -> Result<Self, GraphBuildError> {
+        let (sources, table) = placed;
+        let mut stated: Box<[SourceRecords<'a>]> = sources
+            .placed()
+            .iter()
+            .map(|_| SourceRecords::default())
+            .collect();
+        let definitions = place_definitions(report, table, &mut stated)?;
+        let references = place_references(resolved, sources, &mut stated)?;
+        Ok(Self {
+            definitions,
+            references,
+            stated,
+        })
+    }
+}
+
+/// One slot per report definition, in the source the identity table placed it
+/// in.
+fn place_definitions<'a>(
+    report: &'a ResolutionReport,
+    table: &DefinitionTable,
+    stated: &mut [SourceRecords<'a>],
+) -> Result<Box<[FragmentSlot]>, GraphBuildError> {
+    let mut placed = Vec::with_capacity(report.definitions().len());
+    for (index, definition) in report.definitions().iter().enumerate() {
+        let at = position(index);
+        let fragment = validation::definition_fragment(table, at)?;
+        let identity = validation::definition_identity(table, at)?;
+        let held = stated
+            .get_mut(index_of(fragment))
+            .map(|records| &mut records.definitions);
+        placed.push(validation::placed_slot(
+            placed_record(held, fragment, (at, definition)),
+            definition.unit().index(),
+            identity.source().path(),
+        )?);
+    }
+    Ok(placed.into_boxed_slice())
+}
+
+/// One slot per report reference, in the source its site sits in.
+fn place_references<'a>(
+    resolved: &[(&'a SymbolReference, &'a ResolutionRecord)],
+    sources: &SourceSet,
+    stated: &mut [SourceRecords<'a>],
+) -> Result<Box<[FragmentSlot]>, GraphBuildError> {
+    let mut placed = Vec::with_capacity(resolved.len());
+    for (reference, record) in resolved.iter().copied() {
+        let reported = reference.unit().index();
+        let file = SymbolReference::span(reference).file();
+        let (fragment, source) = validation::instantiated_source(sources, reported, file)?;
+        let held = stated
+            .get_mut(index_of(fragment))
+            .map(|records| &mut records.references);
+        placed.push(validation::placed_slot(
+            placed_record(held, fragment, (reference, record)),
+            reported,
+            source.path(),
+        )?);
+    }
+    Ok(placed.into_boxed_slice())
+}
+
+/// Place one record in the source that states it, answering with its slot.
+///
+/// The slot is the record's position among that source's own records, which is
+/// the order the report states them in, so a retained projection and a freshly
+/// derived one are read through the same positions.
+fn placed_record<T>(stated: Option<&mut Vec<T>>, fragment: u32, record: T) -> Option<FragmentSlot> {
+    let held = stated?;
+    let slot = position(held.len());
+    held.push(record);
+    Some(FragmentSlot { fragment, slot })
 }
 
 /// One unit's sources, and where each of them is placed.

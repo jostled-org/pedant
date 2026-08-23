@@ -23,20 +23,20 @@ use pedant_types::{ResolutionRecord, ResolutionReport, SymbolReference};
 use crate::edge::DependencyEvidence;
 use crate::error::GraphBuildError;
 use crate::graph::CodeGraph;
-use crate::id::{index_of, position};
+use crate::id::position;
 use crate::limits::GraphLimits;
 use crate::projection::assembly;
 use crate::projection::draft::{
-    DependencyProjection, FragmentSlot, PlacedFragment, ProjectionPlan, SourceFragment, UnitPlan,
+    DependencyProjection, PlacedFragment, ProjectionPlan, SourceFragment, StatedContainer, UnitPlan,
 };
-use crate::projection::placement::{DefinitionTable, SourceSet};
+use crate::projection::placement::{DefinitionTable, RecordPlacement, SourceSet};
 use crate::projection::state::ProjectionCapacity;
 use crate::projection::validation as neutral;
 
 use super::claim::SourceKey;
 use super::mapping::{self, Vocabulary};
 use super::reuse::ProjectionStore;
-use super::source::{self, SourceRecords, StatedSource};
+use super::source::{self, StatedSource};
 use super::validation;
 
 /// The values every planning pass reads, gathered once.
@@ -53,13 +53,6 @@ struct Inputs<'a> {
 struct PlannedUnits {
     units: Vec<UnitPlan>,
     bound: BTreeMap<RustSnapshotUnitId, u32>,
-}
-
-/// Where every report record sits, and what each source therefore states.
-struct Placement<'a> {
-    definitions: Box<[FragmentSlot]>,
-    references: Box<[FragmentSlot]>,
-    stated: Box<[SourceRecords<'a>]>,
 }
 
 /// Project one snapshot-bound resolution into a code graph.
@@ -98,13 +91,16 @@ pub(crate) fn plan(
     let planned = plan_units(&inputs, resolution)?;
     let sources = SourceSet::new(planned.units.into_boxed_slice())?;
     let table = DefinitionTable::new(report, &sources)?;
-    let placement = Placement::stated(&inputs, (&sources, &table))?;
+    let placement = RecordPlacement::stated(report, &inputs.resolved, (&sources, &table))?;
     let fragments = plan_fragments(&inputs, (&sources, &table, &placement), reuse)?;
     let dependencies = plan_dependencies(&inputs, &planned.bound)?;
     let capacity = capacity(&inputs);
     Ok(ProjectionPlan {
         tier: report.tier(),
         units: sources.finish(),
+        // Every Cargo target is declared by a manifest, so no Rust unit is
+        // rooted at a definition of its own.
+        declarations: Box::default(),
         fragments,
         definitions: placement.definitions,
         references: placement.references,
@@ -154,104 +150,25 @@ fn plan_units(
         planned.units.push(UnitPlan {
             key: Arc::from(unit.key()),
             language: unit.language(),
-            name: Arc::from(unit.name()),
-            kind: inputs.vocabulary.unit_root(instance.kind()),
+            // A Cargo target is declared by a manifest, so nothing inside the
+            // sources it compiles names it and no report definition can be its
+            // container. Rust units nest under no other unit either: the
+            // package a target belongs to compiles none of its own sources.
+            container: Some(StatedContainer {
+                name: Arc::from(unit.name()),
+                kind: inputs.vocabulary.unit_root(instance.kind()),
+            }),
+            parent: None,
             sources: instance.sources().into(),
         });
     }
     Ok(planned)
 }
 
-impl<'a> Placement<'a> {
-    /// Where every record the report states sits, and which records each source
-    /// therefore states.
-    ///
-    /// Placing a record costs its position and nothing else, so this pass runs
-    /// for every source, reused or not, and the slots the assembler reads are
-    /// the report's own order either way.
-    fn stated(
-        inputs: &Inputs<'a>,
-        placed: (&SourceSet, &DefinitionTable),
-    ) -> Result<Self, GraphBuildError> {
-        let (sources, table) = placed;
-        let mut stated: Box<[SourceRecords<'a>]> = sources
-            .placed()
-            .iter()
-            .map(|_| SourceRecords::default())
-            .collect();
-        let definitions = place_definitions(inputs, table, &mut stated)?;
-        let references = place_references(inputs, sources, &mut stated)?;
-        Ok(Self {
-            definitions,
-            references,
-            stated,
-        })
-    }
-}
-
-/// One slot per report definition, in the source the identity table placed it
-/// in.
-fn place_definitions<'a>(
-    inputs: &Inputs<'a>,
-    table: &DefinitionTable,
-    stated: &mut [SourceRecords<'a>],
-) -> Result<Box<[FragmentSlot]>, GraphBuildError> {
-    let mut placed = Vec::with_capacity(inputs.report.definitions().len());
-    for (index, definition) in inputs.report.definitions().iter().enumerate() {
-        let at = position(index);
-        let fragment = neutral::definition_fragment(table, at)?;
-        let identity = neutral::definition_identity(table, at)?;
-        let held = stated
-            .get_mut(index_of(fragment))
-            .map(|records| &mut records.definitions);
-        placed.push(neutral::placed_slot(
-            placed_record(held, fragment, (at, definition)),
-            definition.unit().index(),
-            identity.source().path(),
-        )?);
-    }
-    Ok(placed.into_boxed_slice())
-}
-
-/// One slot per report reference, in the source its site sits in.
-fn place_references<'a>(
-    inputs: &Inputs<'a>,
-    sources: &SourceSet,
-    stated: &mut [SourceRecords<'a>],
-) -> Result<Box<[FragmentSlot]>, GraphBuildError> {
-    let mut placed = Vec::with_capacity(inputs.resolved.len());
-    for (reference, record) in inputs.resolved.iter().copied() {
-        let reported = reference.unit().index();
-        let file = SymbolReference::span(reference).file();
-        let (fragment, source) = neutral::instantiated_source(sources, reported, file)?;
-        let held = stated
-            .get_mut(index_of(fragment))
-            .map(|records| &mut records.references);
-        placed.push(neutral::placed_slot(
-            placed_record(held, fragment, (reference, record)),
-            reported,
-            source.path(),
-        )?);
-    }
-    Ok(placed.into_boxed_slice())
-}
-
-/// Place one record in the source that states it, answering with its slot.
-///
-/// The slot is the record's position among that source's own records, which is
-/// the order the report states them in, so a retained projection and a freshly
-/// derived one are read through the same positions.
-fn placed_record<T>(stated: Option<&mut Vec<T>>, fragment: u32, record: T) -> Option<FragmentSlot> {
-    let held = stated?;
-    let slot = position(held.len());
-    held.push(record);
-    Some(FragmentSlot { fragment, slot })
-}
-
 /// One projection per source, each decided before it is derived.
 fn plan_fragments<'a>(
     inputs: &Inputs<'a>,
-    placed: (&SourceSet, &DefinitionTable, &Placement<'a>),
+    placed: (&SourceSet, &DefinitionTable, &RecordPlacement<'a>),
     reuse: &mut ProjectionStore,
 ) -> Result<Box<[PlacedFragment]>, GraphBuildError> {
     let (sources, table, placement) = placed;

@@ -18,9 +18,8 @@ use pedant_core::resolution::rust::RustResolutionSnapshot;
 use pedant_types::{Language, ResolutionTier};
 
 use crate::error::GraphBuildError;
-use crate::node::GraphNodeKind;
 
-use crate::projection::draft::UnitPlan;
+use crate::projection::draft::{StatedContainer, UnitPlan};
 use crate::projection::placement::SourceIdentity;
 use crate::projection::validation as neutral;
 
@@ -31,7 +30,7 @@ pub(crate) struct SourceKey {
     digest: [u8; 32],
     tier: ResolutionTier,
     language: Language,
-    vocabulary: GraphNodeKind,
+    vocabulary: Option<StatedContainer>,
     source: SourceIdentity,
 }
 
@@ -49,7 +48,7 @@ impl SourceKey {
             digest: validation::source_digest(snapshot, unit, source.path())?,
             tier,
             language: plan.language,
-            vocabulary: plan.kind.clone(),
+            vocabulary: plan.container.clone(),
             source: source.shared(),
         })
     }

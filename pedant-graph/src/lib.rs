@@ -22,6 +22,17 @@
 //! # }
 //! ```
 //!
+//! # A second language behind a feature
+//!
+//! The default build projects Rust. Selecting the `go` feature adds the Go
+//! adapter beside it: `build_go_graph` and `build_go_graph_with_limits` — named
+//! here rather than linked, because the default build has no such item —
+//! take a Go snapshot and the resolution validated against it and answer the
+//! same [`CodeGraph`] the Rust builders answer, through the same checked
+//! assembler. The feature forwards to `pedant-core/go-resolution` and nothing
+//! else, so a build without it links no Go grammar through this crate, and the
+//! optional graph cache below stays Rust-only either way.
+//!
 //! # The version-1 shape
 //!
 //! One object with six keys, in this order:
@@ -144,6 +155,9 @@ mod containment;
 mod edge;
 /// Why a graph build refused.
 mod error;
+/// The Go projection adapter.
+#[cfg(feature = "go")]
+mod go;
 /// The immutable graph value and its checked record store.
 mod graph;
 /// Dense typed identities into one graph's collections.
@@ -174,6 +188,8 @@ pub use edge::{
     GraphEdgeOrigin,
 };
 pub use error::GraphBuildError;
+#[cfg(feature = "go")]
+pub use go::{build_go_graph, build_go_graph_with_limits};
 pub use graph::CodeGraph;
 pub use id::{
     EdgeIdKind, GraphEdgeId, GraphId, GraphNodeId, GraphReferenceId, NodeIdKind, ReferenceIdKind,

@@ -206,7 +206,11 @@ pub fn project_build_script() -> (Fixture, Resolved, CodeGraph) {
     project_target(BUILD_SCRIPT_CORPUS, BUILD_SCRIPT_ROOT)
 }
 
-fn write_file(base: &Path, relative: &str, contents: &[u8]) {
+/// Write one fixture file, creating every directory above it.
+///
+/// Shared with the Go fixtures beside these: materializing a repository is the
+/// same job whatever language's loader is going to read it.
+pub fn write_file(base: &Path, relative: &str, contents: &[u8]) {
     let path = base.join(relative);
     let parent = path.parent().expect("a fixture path has a parent");
     fs::create_dir_all(parent).unwrap_or_else(|error| panic!("{}: {error}", parent.display()));

@@ -21,8 +21,11 @@ use graph_support::{
     cache_analysis_lifetime, cache_analysis_retention, cache_analysis_sharing, cache_exact,
     cache_ownership, cache_ownership_path, cache_ownership_state, cache_projection,
     cache_remapping, cache_revision, cache_source_boundary, contract, defensive, evidence,
-    isolation, ownership, projection_exactness, projection_ownership, topology, wire,
+    go_ownership, isolation, ownership, projection_exactness, projection_ownership, topology, wire,
 };
+
+#[cfg(feature = "go")]
+use graph_support::{go_defensive, go_evidence, go_topology, go_wire};
 
 #[test]
 fn cached_graph_analysis_matches_every_direct_operation() {
@@ -371,4 +374,74 @@ fn rust_graph_json_v1_covers_every_graph_owned_variant() {
 #[test]
 fn rust_graph_builds_and_serializes_after_fixture_teardown() {
     isolation::assert_projection_survives_teardown();
+}
+
+#[cfg(feature = "go")]
+#[test]
+fn go_graph_projects_one_package_and_definition_node_per_report_claim() {
+    go_topology::assert_one_package_and_definition_node_per_claim();
+}
+
+#[cfg(feature = "go")]
+#[test]
+fn go_graph_containment_is_total_acyclic_and_relation_free() {
+    go_topology::assert_containment_is_total_acyclic_and_relation_free();
+}
+
+#[cfg(feature = "go")]
+#[test]
+fn go_shared_source_has_one_store_entry_and_two_unit_file_nodes() {
+    go_topology::assert_shared_source_has_two_unit_file_nodes();
+}
+
+#[cfg(feature = "go")]
+#[test]
+fn go_graph_copies_every_reference_candidate_certainty_and_gap() {
+    go_evidence::assert_every_reference_candidate_certainty_and_gap_is_copied();
+}
+
+#[cfg(feature = "go")]
+#[test]
+fn go_local_replacement_projects_one_resolved_dependency_edge() {
+    go_evidence::assert_local_replacement_projects_one_dependency_edge();
+}
+
+#[cfg(feature = "go")]
+#[test]
+fn go_graph_refuses_stale_resolution_before_allocation() {
+    go_defensive::assert_stale_resolution_is_refused();
+}
+
+#[cfg(feature = "go")]
+#[test]
+fn go_graph_limits_refuse_before_partial_records() {
+    go_defensive::assert_limits_refuse_before_partial_records();
+}
+
+#[test]
+fn go_graph_validation_and_limits_dominate_draft_allocation() {
+    go_ownership::assert_validation_and_limits_dominate_draft_allocation();
+}
+
+#[cfg(feature = "go")]
+#[test]
+fn go_graph_is_deterministic_and_rust_graph_bytes_stay_exact() {
+    go_wire::assert_go_graph_is_deterministic_and_rust_stays_exact();
+}
+
+#[cfg(feature = "go")]
+#[test]
+fn go_graph_uses_schema_v1_without_new_wire_branches() {
+    go_wire::assert_go_graph_uses_schema_v1();
+}
+
+#[cfg(feature = "go")]
+#[test]
+fn go_graph_uses_existing_queries_and_rust_cache_answers_stay_exact() {
+    go_wire::assert_existing_queries_consume_a_go_graph();
+}
+
+#[test]
+fn go_and_rust_public_graph_api_shapes_are_parallel_and_language_specific() {
+    go_ownership::assert_public_api_shapes_are_parallel_and_language_specific();
 }

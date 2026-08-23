@@ -16,31 +16,20 @@ use std::sync::Arc;
 
 use pedant_types::{ResolutionRecord, SymbolDefinition, SymbolReference};
 
-use crate::edge::GraphEdgeKind;
+use crate::edge::{GraphCertainty, GraphEdgeKind};
 use crate::error::GraphBuildError;
 use crate::reference::GraphReferenceKind;
 
 use crate::projection::draft::{
     CandidateProjection, DefinitionProjection, ReferenceProjection, SourceFragment,
 };
-use crate::projection::placement::{DefinitionIdentity, DefinitionTable, PlacedSource};
+use crate::projection::placement::{
+    DefinitionIdentity, DefinitionTable, PlacedSource, SourceRecords,
+};
 use crate::projection::validation as neutral;
 
 use super::mapping::{self, Vocabulary};
 use super::validation;
-
-/// Every record one source states, in report order.
-///
-/// The records are borrowed from the report rather than copied out of it: this
-/// is what one source's projection is compared against and what it is derived
-/// from, and both readings must be over the one placement.
-#[derive(Default)]
-pub(crate) struct SourceRecords<'a> {
-    /// Every definition declared in the source, beside its report position.
-    pub(crate) definitions: Vec<(u32, &'a SymbolDefinition)>,
-    /// Every reference stated in the source, beside the record that answered it.
-    pub(crate) references: Vec<(&'a SymbolReference, &'a ResolutionRecord)>,
-}
 
 /// Everything one source's projection is decided from.
 pub(crate) struct StatedSource<'a> {
@@ -89,65 +78,26 @@ fn projected_definition(
         identity: Arc::clone(neutral::definition_identity(stated.table, at)?),
         language: definition.language(),
         kind: validation::definition_kind(stated.vocabulary, definition)?,
-        parent: projected_join(
+        parent: neutral::optional_identity(
             stated.table,
             definition.parent().map(|parent| parent.index()),
         )?,
     })
 }
 
-/// The identity of the definition one stated join names, when it names one.
-fn projected_join(
-    table: &DefinitionTable,
-    stated: Option<u32>,
-) -> Result<Option<Arc<DefinitionIdentity>>, GraphBuildError> {
-    match stated {
-        None => Ok(None),
-        Some(at) => Ok(Some(Arc::clone(neutral::definition_identity(table, at)?))),
-    }
-}
-
-/// One reference and every candidate its answer offered.
+/// One reference and every candidate its answer offered, under the Rust
+/// vocabulary this site's kind is named by.
 fn projected_reference(
     table: &DefinitionTable,
     reported: (&SymbolReference, &ResolutionRecord),
 ) -> Result<ReferenceProjection, GraphBuildError> {
-    let (reference, record) = reported;
-    let kind = validation::reference_kind(reference)?;
-    Ok(ReferenceProjection {
-        language: reference.language(),
-        kind,
-        text: Arc::from(reference.text()),
-        span: SymbolReference::span(reference).clone(),
-        gaps: record.gaps().into(),
-        enclosing: projected_join(
-            table,
-            reference
-                .enclosing_definition()
-                .map(|enclosing| enclosing.index()),
-        )?,
-        candidates: projected_candidates(table, (record, mapping::candidate_edge_kind(kind)))?,
-    })
-}
-
-/// Every candidate one answer offered, in stated order.
-fn projected_candidates(
-    table: &DefinitionTable,
-    answered: (&ResolutionRecord, GraphEdgeKind),
-) -> Result<Box<[CandidateProjection]>, GraphBuildError> {
-    let (record, kind) = answered;
-    record
-        .candidates()
-        .iter()
-        .map(|candidate| {
-            let target = neutral::definition_identity(table, candidate.definition().index())?;
-            Ok(CandidateProjection {
-                target: Arc::clone(target),
-                kind,
-                certainty: mapping::certainty(candidate.certainty()),
-            })
-        })
-        .collect()
+    let (reference, _) = reported;
+    let named = mapping::reference_kind(reference.kind());
+    ReferenceProjection::stated(
+        table,
+        reported,
+        neutral::stated_reference_kind(named, reference)?,
+    )
 }
 
 /// Whether one retained projection states exactly what this report states for
@@ -261,14 +211,14 @@ fn states_candidates(
     answered: (&ResolutionRecord, GraphReferenceKind),
 ) -> bool {
     let (record, kind) = answered;
-    let edge = mapping::candidate_edge_kind(kind);
+    let edge = GraphEdgeKind::of_reference(kind);
     held.len() == record.candidates().len()
         && held
             .iter()
             .zip(record.candidates())
             .all(|(candidate, stated)| {
                 candidate.kind == edge
-                    && candidate.certainty == mapping::certainty(stated.certainty())
+                    && candidate.certainty == GraphCertainty::of(stated.certainty())
                     && table.identity(stated.definition().index()) == Some(&candidate.target)
             })
 }

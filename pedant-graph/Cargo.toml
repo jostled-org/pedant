@@ -9,6 +9,13 @@ repository = "https://github.com/jostled-org/pedant"
 readme = "../README.md"
 keywords = ["graph", "static-analysis", "code-structure", "rust", "topology"]
 
+[features]
+# The Go projection adapter. Default-off, and it forwards to exactly one
+# feature: the Go resolution surface of `pedant-core`. It selects no judgment
+# surface, no semantic tier, and no rust-analyzer package, and it adds nothing
+# to the Rust-only graph cache.
+go = ["pedant-core/go-resolution"]
+
 [dependencies]
 # The graph consumes already validated resolution facts. `default-features =
 # false` keeps the judgment surface, the semantic tier, and every rust-analyzer

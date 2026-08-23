@@ -2,9 +2,11 @@
 
 use std::sync::Arc;
 
+use pedant_types::ResolutionCertainty;
 use serde::Serialize;
 
 use crate::id::{GraphEdgeId, GraphNodeId, GraphReferenceId};
+use crate::reference::GraphReferenceKind;
 
 /// What relation an edge states.
 #[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -22,6 +24,22 @@ pub enum GraphEdgeKind {
     DependsOn,
 }
 
+impl GraphEdgeKind {
+    /// The edge one candidate of a reference produces.
+    ///
+    /// Graph vocabulary answered from graph vocabulary, so every adapter that
+    /// turns a reference's candidates into edges reads the one mapping rather
+    /// than restating it in its own language's terms.
+    pub(crate) fn of_reference(kind: GraphReferenceKind) -> Self {
+        match kind {
+            GraphReferenceKind::Call => Self::Call,
+            GraphReferenceKind::Import => Self::Import,
+            GraphReferenceKind::Implementation => Self::Implementation,
+            GraphReferenceKind::Reference => Self::Reference,
+        }
+    }
+}
+
 /// How much an edge is known.
 ///
 /// A projection maps a producer's certainty one for one and never upgrades a
@@ -33,6 +51,19 @@ pub enum GraphCertainty {
     Resolved,
     /// Source evidence identifies the target, but proof is not available.
     Possible,
+}
+
+impl GraphCertainty {
+    /// How much one answered candidate is known.
+    ///
+    /// The shared resolution vocabulary maps one for one, so no adapter can
+    /// promote a possible answer on the way into a graph.
+    pub(crate) fn of(certainty: ResolutionCertainty) -> Self {
+        match certainty {
+            ResolutionCertainty::Resolved => Self::Resolved,
+            ResolutionCertainty::Possible => Self::Possible,
+        }
+    }
 }
 
 /// Which dependency table declared a build-unit edge.

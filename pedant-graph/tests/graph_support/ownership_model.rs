@@ -68,23 +68,39 @@ pub const ERROR_OWNERS: &[(&str, &[&str])] = &[
     ),
     (
         "GraphBuildError::SnapshotFingerprintMismatch",
-        &["src/rust/validation.rs"],
+        &["src/go/validation.rs", "src/rust/validation.rs"],
     ),
     (
         "GraphBuildError::MissingUnitBinding",
-        &["src/projection/validation.rs", "src/rust/validation.rs"],
+        &[
+            "src/go/validation.rs",
+            "src/projection/validation.rs",
+            "src/rust/validation.rs",
+        ],
     ),
     (
         "GraphBuildError::DanglingUnitBinding",
-        &["src/rust/validation.rs"],
+        &["src/go/validation.rs", "src/rust/validation.rs"],
     ),
     (
         "GraphBuildError::SharedUnitBinding",
         &["src/rust/validation.rs"],
     ),
     (
+        "GraphBuildError::RepeatedUnitContainer",
+        &["src/projection/validation.rs"],
+    ),
+    (
+        "GraphBuildError::MissingUnitDeclaration",
+        &["src/go/validation.rs"],
+    ),
+    (
+        "GraphBuildError::RepeatedUnitDeclaration",
+        &["src/go/validation.rs"],
+    ),
+    (
         "GraphBuildError::MissingDependencyUnit",
-        &["src/rust/validation.rs"],
+        &["src/go/validation.rs", "src/rust/validation.rs"],
     ),
     (
         "GraphBuildError::MissingSourceNode",
@@ -100,15 +116,15 @@ pub const ERROR_OWNERS: &[(&str, &[&str])] = &[
     ),
     (
         "GraphBuildError::MissingDefinitionNode",
-        &["src/projection/validation.rs"],
+        &["src/go/validation.rs", "src/projection/validation.rs"],
     ),
     (
         "GraphBuildError::UnnamedDefinitionKind",
-        &["src/rust/validation.rs"],
+        &["src/projection/validation.rs"],
     ),
     (
         "GraphBuildError::UnnamedReferenceKind",
-        &["src/rust/validation.rs"],
+        &["src/projection/validation.rs"],
     ),
     (
         "GraphBuildError::MissingReferenceRecord",
@@ -135,21 +151,22 @@ pub const ERROR_OWNERS: &[(&str, &[&str])] = &[
         &["src/projection/forest.rs"],
     ),
     (
+        "GraphBuildError::SharedUnitRoot",
+        &["src/projection/forest.rs"],
+    ),
+    (
         "GraphBuildError::ContainmentCycle",
         &["src/projection/forest.rs"],
     ),
     ("GraphBuildError::CapacityExceeded", &["src/graph.rs"]),
 ];
 
-/// The neutral validators the Rust planner must reach, in the order it reaches
-/// them.
-pub const PLANNED_VALIDATORS: &[&str] = &[
-    "resolved_references",
-    "definition_identity",
-    "definition_fragment",
-    "placed_slot",
-    "instantiated_source",
-];
+/// The neutral validator the Rust planner must reach before it plans anything.
+///
+/// Placing the report's own records is the neutral placement owner's job, so
+/// the validators that placement reaches are modelled there. What is left to a
+/// planner is the pairing of every reference with the record that answered it.
+pub const PLANNED_VALIDATORS: &[&str] = &["resolved_references"];
 
 /// The Rust-specific validators the Rust planner must reach, in the order it
 /// reaches them.
@@ -169,11 +186,47 @@ pub const RUST_PLANNED_VALIDATORS: &[&str] = &[
 /// source the placement then holds no records for, so the repeat is refused
 /// where the unit's own sources are read. A definition whose span names a source
 /// only another unit instantiates is refused where its identity is stated.
-pub const PLACED_VALIDATORS: &[&str] = &["distinct_source", "instantiated_source"];
+pub const PLACED_VALIDATORS: &[&str] = &[
+    "distinct_source",
+    "instantiated_source",
+    "definition_identity",
+    "definition_fragment",
+    "placed_slot",
+];
 
-/// The neutral validator the source projection must reach before it states a
+/// The neutral validators the source projection must reach before it states a
 /// record.
-pub const PROJECTED_VALIDATORS: &[&str] = &["definition_identity"];
+pub const PROJECTED_VALIDATORS: &[&str] = &[
+    "definition_identity",
+    "optional_identity",
+    "stated_reference_kind",
+];
+
+/// The neutral validators the shared drafts must reach before they copy a
+/// site's answer.
+///
+/// A reference site and its candidates are the shared report's, so the drafts
+/// copy them once for every adapter, and every join they carry is proved
+/// against the current report's own identity table where that copy is made.
+pub const DRAFTED_VALIDATORS: &[&str] = &["definition_identity", "optional_identity"];
+
+/// The Go validators the Go planner must reach, in the order it reaches them.
+pub const GO_PLANNED_VALIDATORS: &[&str] = &["check_snapshot_identity", "definition_kind"];
+
+/// The Go validators the Go placement owner must reach before it states a unit.
+pub const GO_PLACED_VALIDATORS: &[&str] = &[
+    "stated_binding",
+    "snapshot_instance",
+    "package_declaration",
+    "module_unit",
+    "distinct_declaration",
+    "dependency_unit",
+    "holder_kind",
+];
+
+/// The Go vocabulary validators the Go projection must reach before it states a
+/// record.
+pub const GO_PROJECTED_VALIDATORS: &[&str] = &["definition_kind"];
 
 /// The Rust vocabulary validators the source projection must reach before it
 /// states a record.
@@ -182,11 +235,11 @@ pub const PROJECTED_VALIDATORS: &[&str] = &["definition_identity"];
 /// a record for. Reading one is a join like any other, so the refusal it earns
 /// is built by the adapter's validation owner rather than by the pass that met
 /// it.
-pub const RUST_PROJECTED_VALIDATORS: &[&str] = &["definition_kind", "reference_kind"];
+pub const RUST_PROJECTED_VALIDATORS: &[&str] = &["definition_kind"];
 
-/// The neutral validator the assembly tables must reach before a binding is
-/// dropped.
-pub const BOUND_VALIDATORS: &[&str] = &["unit_scope"];
+/// The neutral validators the assembly tables must reach before a binding is
+/// dropped or overwritten.
+pub const BOUND_VALIDATORS: &[&str] = &["unit_scope", "unit_slot", "unbound_container"];
 
 /// The neutral validator the claim owner must reach before it states a key.
 ///
@@ -204,6 +257,7 @@ pub const RUST_CLAIMED_VALIDATORS: &[&str] = &["source_digest"];
 
 /// The neutral validators the assembler must reach before it seals a graph.
 pub const ASSEMBLED_VALIDATORS: &[&str] = &[
+    "stated_definition",
     "planned_definition",
     "planned_reference",
     "fragment_source",
@@ -221,6 +275,9 @@ pub const VALIDATION_OWNER: &str = "src/projection/validation.rs";
 
 /// The source that declares every Rust-specific one-join validator.
 pub const RUST_VALIDATION_OWNER: &str = "src/rust/validation.rs";
+
+/// The source that declares every Go-specific one-join validator.
+pub const GO_VALIDATION_OWNER: &str = "src/go/validation.rs";
 
 /// The source that declares the whole-relation containment rule.
 pub const CONTAINMENT_OWNER: &str = "src/projection/forest.rs";

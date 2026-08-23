@@ -13,10 +13,12 @@
 
 use std::sync::Arc;
 
-use pedant_types::{ResolutionRecord, ResolutionReport, SymbolReference};
+use pedant_types::{ResolutionRecord, ResolutionReport, SymbolDefinition, SymbolReference};
 
 use crate::error::GraphBuildError;
 use crate::id::{GraphNodeId, index_of, position};
+use crate::node::GraphNodeKind;
+use crate::reference::GraphReferenceKind;
 
 use super::draft::{
     DefinitionProjection, FragmentSlot, ProjectionPlan, ReferenceProjection, UnitPlan,
@@ -82,6 +84,47 @@ pub(crate) fn definition_identity(
     table
         .identity(definition)
         .ok_or(GraphBuildError::MissingDefinitionNode { definition })
+}
+
+/// The identity of the definition one stated join names, when it names one.
+///
+/// A join an adapter did not state is not a join it may invent, and a join it
+/// did state names a definition the current report's own table must answer for.
+pub(crate) fn optional_identity(
+    table: &DefinitionTable,
+    stated: Option<u32>,
+) -> Result<Option<Arc<DefinitionIdentity>>, GraphBuildError> {
+    match stated {
+        None => Ok(None),
+        Some(at) => Ok(Some(Arc::clone(definition_identity(table, at)?))),
+    }
+}
+
+/// The node kind one report definition takes, under the vocabulary its own
+/// adapter named for it.
+///
+/// The shared report vocabulary carries every language's kinds, and each
+/// adapter names the subset it has a node for. What is neutral is the refusal: a
+/// kind no adapter named must stop the build rather than reach the graph under
+/// a fallback category, and one owner states that for all of them.
+pub(crate) fn stated_definition_kind(
+    named: Option<GraphNodeKind>,
+    definition: &SymbolDefinition,
+) -> Result<GraphNodeKind, GraphBuildError> {
+    named.ok_or(GraphBuildError::UnnamedDefinitionKind {
+        definition: definition.id().index(),
+    })
+}
+
+/// What one report reference denotes, under the vocabulary its own adapter
+/// named for it.
+pub(crate) fn stated_reference_kind(
+    named: Option<GraphReferenceKind>,
+    reference: &SymbolReference,
+) -> Result<GraphReferenceKind, GraphBuildError> {
+    named.ok_or(GraphBuildError::UnnamedReferenceKind {
+        reference: reference.id().index(),
+    })
 }
 
 /// The fragment one report definition was placed in.
@@ -168,6 +211,46 @@ pub(crate) fn fragment_unit(plan: &ProjectionPlan, fragment: u32) -> Result<u32,
     plan.placed(fragment)
         .map(|placed| placed.unit)
         .ok_or(GraphBuildError::MissingUnitBinding { unit: fragment })
+}
+
+/// The report-order slot one stated definition position names.
+///
+/// A unit named by one of its own declarations states that declaration by its
+/// report position. A position the plan holds no slot for names no definition
+/// at all, so the unit would be rooted at nothing.
+pub(crate) fn stated_definition(
+    plan: &ProjectionPlan,
+    definition: u32,
+) -> Result<FragmentSlot, GraphBuildError> {
+    plan.definitions
+        .get(index_of(definition))
+        .copied()
+        .ok_or(GraphBuildError::MissingDefinitionNode { definition })
+}
+
+/// The container slot one planned unit's position owns.
+///
+/// The table is sized from the plan's own unit count, so a position outside it
+/// is a container bound for a unit this plan never stated.
+pub(crate) fn unit_slot(
+    held: Option<&mut Option<GraphNodeId>>,
+    unit: u32,
+) -> Result<&mut Option<GraphNodeId>, GraphBuildError> {
+    held.ok_or(GraphBuildError::MissingUnitBinding { unit })
+}
+
+/// One planned unit takes one container node.
+pub(crate) fn unbound_container(
+    held: Option<GraphNodeId>,
+    unit: u32,
+) -> Result<(), GraphBuildError> {
+    match held {
+        None => Ok(()),
+        Some(held) => Err(GraphBuildError::RepeatedUnitContainer {
+            unit,
+            container: held.index(),
+        }),
+    }
 }
 
 /// The file-node scope one planned unit's sources are bound in.

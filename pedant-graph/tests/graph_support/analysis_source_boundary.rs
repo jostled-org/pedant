@@ -12,6 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::analysis_ownership::ANALYSIS_SOURCES;
 use super::cache_source_boundary::CACHE_PREDICATES;
+use super::go_model::GO_PREDICATES;
 use super::inventory::{MANIFEST, SOURCES, TEST_ROOT, TEST_SUPPORT_SOURCES};
 use super::projection_ownership::PROJECTION_PREDICATES;
 use super::scan::{self, discovered_sources, discovered_test_sources, parsed};
@@ -78,6 +79,10 @@ pub const VERSION_ONE_PREDICATES: &[&str] = &[
 /// The exact dependency edges this crate's manifest states.
 const MANIFEST_DEPENDENCIES: &[&str] = &["pedant-core", "pedant-types", "serde", "thiserror"];
 
+/// The exact feature table this crate states, and no `default` entry beside
+/// them: a Go graph is opted into, never inherited.
+const MANIFEST_FEATURES: &[&str] = &["go"];
+
 /// The exact dependency edges its harness adds.
 const MANIFEST_DEV_DEPENDENCIES: &[&str] =
     &["pedant-core", "serde_json", "quote", "syn", "tempfile"];
@@ -110,9 +115,10 @@ pub fn assert_manifest_states_no_delta() {
         MANIFEST_DEV_DEPENDENCIES,
         "the harness closure states exactly its modelled dependencies"
     );
-    assert!(
-        !MANIFEST.contains("[features]"),
-        "this crate states no feature of its own"
+    assert_eq!(
+        manifest_table("features"),
+        MANIFEST_FEATURES,
+        "this crate states exactly its modelled features, and none by default"
     );
     assert_eq!(
         MANIFEST.matches("pedant-core = {").count(),
@@ -189,6 +195,7 @@ pub fn assert_every_registered_wrapper_is_modelled() {
     let listed: Vec<&str> = [
         CACHE_PREDICATES,
         ANALYSIS_PREDICATES,
+        GO_PREDICATES,
         PROJECTION_PREDICATES,
         VERSION_ONE_PREDICATES,
     ]

@@ -36,6 +36,12 @@ pub const PRODUCTION_SOURCES: &[&str] = &[
     "src/containment.rs",
     "src/edge.rs",
     "src/error.rs",
+    "src/go/entry.rs",
+    "src/go/mapping.rs",
+    "src/go/mod.rs",
+    "src/go/placement.rs",
+    "src/go/projection.rs",
+    "src/go/validation.rs",
     "src/graph.rs",
     "src/id.rs",
     "src/lib.rs",
@@ -85,6 +91,20 @@ pub const PROJECTION_SOURCES: &[&str] = &[
     "src/projection/placement.rs",
     "src/projection/state.rs",
     "src/projection/validation.rs",
+];
+
+/// Every module the Go adapter states.
+///
+/// Compiled only under this crate's `go` feature, and modelled unconditionally:
+/// the inventory is what proves a module appeared, and a model that vanished
+/// with the feature would prove nothing about the build that has it.
+pub const GO_SOURCES: &[&str] = &[
+    "src/go/entry.rs",
+    "src/go/mapping.rs",
+    "src/go/mod.rs",
+    "src/go/placement.rs",
+    "src/go/projection.rs",
+    "src/go/validation.rs",
 ];
 
 /// Every module the Rust adapter states, after the planner and assembler split.
@@ -205,6 +225,30 @@ pub const SOURCES: &[Source] = &[
     Source {
         path: "src/error.rs",
         text: include_str!("../../src/error.rs"),
+    },
+    Source {
+        path: "src/go/entry.rs",
+        text: include_str!("../../src/go/entry.rs"),
+    },
+    Source {
+        path: "src/go/mapping.rs",
+        text: include_str!("../../src/go/mapping.rs"),
+    },
+    Source {
+        path: "src/go/mod.rs",
+        text: include_str!("../../src/go/mod.rs"),
+    },
+    Source {
+        path: "src/go/placement.rs",
+        text: include_str!("../../src/go/placement.rs"),
+    },
+    Source {
+        path: "src/go/projection.rs",
+        text: include_str!("../../src/go/projection.rs"),
+    },
+    Source {
+        path: "src/go/validation.rs",
+        text: include_str!("../../src/go/validation.rs"),
     },
     Source {
         path: "src/graph.rs",
@@ -372,6 +416,14 @@ pub const TEST_SUPPORT_SOURCES: &[Source] = support_sources![
     "defensive",
     "evidence",
     "fixture",
+    "go_corpus",
+    "go_defensive",
+    "go_evidence",
+    "go_fixture",
+    "go_model",
+    "go_ownership",
+    "go_topology",
+    "go_wire",
     "inventory",
     "isolation",
     "mod",

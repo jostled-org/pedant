@@ -88,6 +88,28 @@ pub mod defensive;
 pub mod evidence;
 /// Real fixtures and the production path to a snapshot-bound resolution.
 pub mod fixture;
+/// The temporary Go repositories every Go graph case projects, written out.
+#[cfg(feature = "go")]
+pub mod go_corpus;
+/// Refusals a Go build takes before a graph exists.
+#[cfg(feature = "go")]
+pub mod go_defensive;
+/// Go reference records, candidate edges, and dependency evidence.
+#[cfg(feature = "go")]
+pub mod go_evidence;
+/// Real Go fixtures and the production path to a snapshot-bound resolution.
+#[cfg(feature = "go")]
+pub mod go_fixture;
+/// The written-down model the Go projection cases are read against.
+pub mod go_model;
+/// Structural ownership of the Go adapter's own production sources.
+pub mod go_ownership;
+/// Go node inventory, source association, and the containment forest.
+#[cfg(feature = "go")]
+pub mod go_topology;
+/// The Go graph's version-1 bytes, determinism, and query consumption.
+#[cfg(feature = "go")]
+pub mod go_wire;
 /// Every source these cases read, beside its compile-time text.
 pub mod inventory;
 /// Projection after the fixture repository is gone.

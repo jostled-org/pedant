@@ -6,9 +6,9 @@
 use std::sync::Arc;
 
 use pedant_core::resolution::rust::{CargoDependencyKind, CargoTargetKind, DependencyActivation};
-use pedant_types::{ReferenceKind, ResolutionCertainty, SymbolKind};
+use pedant_types::{ReferenceKind, SymbolKind};
 
-use crate::edge::{GraphCertainty, GraphDependencyKind, GraphEdgeKind};
+use crate::edge::{GraphCertainty, GraphDependencyKind};
 use crate::node::GraphNodeKind;
 use crate::reference::GraphReferenceKind;
 
@@ -189,24 +189,6 @@ pub(crate) fn reference_kind(kind: ReferenceKind) -> Option<GraphReferenceKind> 
         ReferenceKind::Implementation => Some(GraphReferenceKind::Implementation),
         ReferenceKind::Module | ReferenceKind::Type => Some(GraphReferenceKind::Reference),
         ReferenceKind::Value => None,
-    }
-}
-
-/// The edge one candidate of a reference produces.
-pub(crate) fn candidate_edge_kind(kind: GraphReferenceKind) -> GraphEdgeKind {
-    match kind {
-        GraphReferenceKind::Call => GraphEdgeKind::Call,
-        GraphReferenceKind::Import => GraphEdgeKind::Import,
-        GraphReferenceKind::Implementation => GraphEdgeKind::Implementation,
-        GraphReferenceKind::Reference => GraphEdgeKind::Reference,
-    }
-}
-
-/// How much one candidate is known.
-pub(crate) fn certainty(certainty: ResolutionCertainty) -> GraphCertainty {
-    match certainty {
-        ResolutionCertainty::Resolved => GraphCertainty::Resolved,
-        ResolutionCertainty::Possible => GraphCertainty::Possible,
     }
 }
 

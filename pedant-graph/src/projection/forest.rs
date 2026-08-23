@@ -25,21 +25,42 @@ enum Visit {
     Done,
 }
 
-/// Containment must be one forest whose roots are exactly the unit containers.
+/// Containment must be one forest whose roots are exactly the stated ones.
 ///
 /// Four rules over the stated edges: every edge names nodes this graph holds,
-/// no node is contained twice, every node below the unit containers is
-/// contained once, and no chain returns to itself. The unit containers are the
-/// first `units` nodes the assembly minted, so a node is a root exactly when
-/// its position is below that count.
+/// no node is contained twice, every node that is not a stated root is
+/// contained once, and no chain returns to itself. The roots are the containers
+/// of the units no other unit owns, so rootness is read from what the plan
+/// stated rather than from where a node happened to be minted.
 pub(crate) fn check_containment_forest(
     state: &ProjectionState,
-    units: usize,
+    roots: &[GraphNodeId],
 ) -> Result<(), GraphBuildError> {
     let parents = stated_parents(state)?;
-    check_every_node_is_parented(&parents, units)?;
-    check_no_unit_root_is_contained(&parents, units)?;
+    let rooted = stated_roots(roots, parents.len())?;
+    check_every_node_is_parented(&parents, &rooted)?;
+    check_no_unit_root_is_contained(&parents, &rooted)?;
     check_acyclic(&parents)
+}
+
+/// One flag per node, raised for each stated root.
+///
+/// A root this graph holds no node for names nothing, and a node stated as the
+/// root of two units would root both of their trees at one container while each
+/// unit believed it owned it.
+fn stated_roots(roots: &[GraphNodeId], nodes: usize) -> Result<Box<[bool]>, GraphBuildError> {
+    let mut rooted = vec![false; nodes];
+    for root in roots {
+        let index = index_of(root.index());
+        let slot = rooted
+            .get_mut(index)
+            .ok_or(GraphBuildError::UnknownContainmentNode { node: root.index() })?;
+        match slot {
+            true => return Err(GraphBuildError::SharedUnitRoot { root: root.index() }),
+            false => *slot = true,
+        }
+    }
+    Ok(rooted.into_boxed_slice())
 }
 
 /// One parent slot per node, refusing the second edge that claims a child.
@@ -73,16 +94,16 @@ fn parent_slot<'a>(
         })
 }
 
-/// Every node below the unit containers states a parent.
+/// Every node that is not a stated root states a parent.
 fn check_every_node_is_parented(
     parents: &[Option<GraphNodeId>],
-    units: usize,
+    rooted: &[bool],
 ) -> Result<(), GraphBuildError> {
     parents
         .iter()
+        .zip(rooted)
         .enumerate()
-        .skip(units)
-        .find(|(_, parent)| parent.is_none())
+        .find(|(_, (parent, root))| parent.is_none() && !**root)
         .map_or(Ok(()), |(index, _)| {
             Err(GraphBuildError::UnparentedNode {
                 node: position(index),
@@ -90,16 +111,19 @@ fn check_every_node_is_parented(
         })
 }
 
-/// No unit container is contained by anything.
+/// No stated root is contained by anything.
 fn check_no_unit_root_is_contained(
     parents: &[Option<GraphNodeId>],
-    units: usize,
+    rooted: &[bool],
 ) -> Result<(), GraphBuildError> {
     parents
         .iter()
+        .zip(rooted)
         .enumerate()
-        .take(units)
-        .find_map(|(index, parent)| parent.map(|held| (index, held)))
+        .find_map(|(index, (parent, root))| match root {
+            true => parent.map(|held| (index, held)),
+            false => None,
+        })
         .map_or(Ok(()), |(index, parent)| {
             Err(GraphBuildError::RootHasParent {
                 root: position(index),

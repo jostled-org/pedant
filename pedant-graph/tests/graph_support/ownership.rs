@@ -18,10 +18,11 @@ use super::surface::{
 
 use super::ownership_model::{
     ASSEMBLED_VALIDATORS, BOUND_VALIDATORS, CLAIMED_VALIDATORS, CONTAINMENT_OWNER,
-    CONTAINMENT_VALIDATORS, ERROR_OWNERS, FORBIDDEN_ENTRY_POINTS, INSERTION_OWNER, PANIC_SPELLINGS,
-    PLACED_VALIDATORS, PLANNED_VALIDATORS, PROJECTED_VALIDATORS, RUST_CLAIMED_VALIDATORS,
-    RUST_PLANNED_VALIDATORS, RUST_PROJECTED_VALIDATORS, RUST_VALIDATION_OWNER, STATE_CONSTRUCTOR,
-    STATE_CONSTRUCTOR_SIGNATURE, VALIDATION_OWNER,
+    CONTAINMENT_VALIDATORS, DRAFTED_VALIDATORS, ERROR_OWNERS, FORBIDDEN_ENTRY_POINTS,
+    GO_PLACED_VALIDATORS, GO_PLANNED_VALIDATORS, GO_PROJECTED_VALIDATORS, GO_VALIDATION_OWNER,
+    INSERTION_OWNER, PANIC_SPELLINGS, PLACED_VALIDATORS, PLANNED_VALIDATORS, PROJECTED_VALIDATORS,
+    RUST_CLAIMED_VALIDATORS, RUST_PLANNED_VALIDATORS, RUST_PROJECTED_VALIDATORS,
+    RUST_VALIDATION_OWNER, STATE_CONSTRUCTOR, STATE_CONSTRUCTOR_SIGNATURE, VALIDATION_OWNER,
 };
 
 /// The discovered source set equals the model, is non-empty, and names no
@@ -191,6 +192,25 @@ pub fn assert_one_checked_insertion_owner() {
 /// every error variant is built only by the source that owns it, and no
 /// production source can abort instead of refusing.
 pub fn assert_defensive_paths_are_wired() {
+    assert_every_validator_is_reached();
+    let entry = function_body("src/projection/assembly.rs", "assemble");
+    let finish = position_of(&entry, "state . finish", "the assembler");
+    let forest = position_of(&entry, "check_containment_forest", "the assembler");
+    assert!(
+        forest < finish,
+        "containment must be validated before the graph is constructed"
+    );
+    assert_every_refusal_has_its_owners();
+    let aborting = sources_naming(PANIC_SPELLINGS);
+    assert!(
+        aborting.is_empty(),
+        "a production source may refuse but never abort: {aborting:?}"
+    );
+}
+
+/// Every modelled validator is declared by the owner the model names and
+/// reached by the pass the model says reaches it.
+fn assert_every_validator_is_reached() {
     for (owner, reader, validators) in [
         (
             VALIDATION_OWNER,
@@ -234,17 +254,34 @@ pub fn assert_defensive_paths_are_wired() {
             "src/projection/assembly.rs",
             CONTAINMENT_VALIDATORS,
         ),
+        (
+            VALIDATION_OWNER,
+            "src/projection/draft.rs",
+            DRAFTED_VALIDATORS,
+        ),
+        (
+            GO_VALIDATION_OWNER,
+            "src/go/projection.rs",
+            GO_PLANNED_VALIDATORS,
+        ),
+        (
+            GO_VALIDATION_OWNER,
+            "src/go/placement.rs",
+            GO_PLACED_VALIDATORS,
+        ),
+        (
+            GO_VALIDATION_OWNER,
+            "src/go/projection.rs",
+            GO_PROJECTED_VALIDATORS,
+        ),
     ] {
         assert_validators_are_reached(owner, reader, validators);
     }
-    let entry = function_body("src/projection/assembly.rs", "assemble");
-    let finish = position_of(&entry, "state . finish", "the assembler");
-    let forest = position_of(&entry, "check_containment_forest", "the assembler");
-    assert!(
-        forest < finish,
-        "containment must be validated before the graph is constructed"
-    );
+}
 
+/// Every declared refusal names the sources allowed to build it, and no other
+/// source builds one.
+fn assert_every_refusal_has_its_owners() {
     assert_eq!(
         declared_error_variants(),
         ERROR_OWNERS
@@ -263,11 +300,6 @@ pub fn assert_defensive_paths_are_wired() {
             "{variant} must be constructed by exactly its owning sources"
         );
     }
-    let aborting = sources_naming(PANIC_SPELLINGS);
-    assert!(
-        aborting.is_empty(),
-        "a production source may refuse but never abort: {aborting:?}"
-    );
 }
 
 /// Every named validator is declared by the validation owner and reached by the

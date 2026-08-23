@@ -73,7 +73,7 @@ impl ProjectionCapacity {
 /// Every table one assembly fills, beside the record store it fills them from.
 pub(crate) struct ProjectionState {
     records: GraphRecords,
-    containers: Vec<GraphNodeId>,
+    containers: Vec<Option<GraphNodeId>>,
     files: Vec<SourceScope>,
     definitions: DefinitionScope,
 }
@@ -83,14 +83,21 @@ impl ProjectionState {
     ///
     /// The sole constructor, reached only after the plan proved every join, so
     /// no record is allocated for a pairing this crate is going to refuse.
+    ///
+    /// The unit tables open at their full plan size rather than growing as
+    /// containers are bound: a unit named by one of its own declarations is
+    /// bound only once the definitions pass has minted that node, so its sources
+    /// must already have a scope to be read into. They are the two tables no
+    /// ceiling clamps, because both are indexed by plan position — clamping them
+    /// would answer a build the node ceiling refuses with a missing binding
+    /// instead of the capacity refusal that build has actually earned.
     pub(crate) fn new(limits: GraphLimits, capacity: ProjectionCapacity) -> Self {
-        let ceiling = limits.ceiling(GraphCollection::Node);
-        let units = reserved(capacity.units, ceiling);
-        let definitions = reserved(capacity.definitions, ceiling);
+        let units = capacity.units;
+        let definitions = reserved(capacity.definitions, limits.ceiling(GraphCollection::Node));
         Self {
             records: GraphRecords::new(limits, capacity.records()),
-            containers: Vec::with_capacity(units),
-            files: Vec::with_capacity(units),
+            containers: vec![None; units],
+            files: (0..units).map(|_| SourceScope::new()).collect(),
             definitions: DefinitionScope::with_capacity_and_hasher(
                 definitions,
                 BuildHasherDefault::default(),
@@ -123,16 +130,24 @@ impl ProjectionState {
 
     /// Record the container node one planned unit took.
     ///
-    /// Units are bound in plan order, so a container's position in this table
-    /// is the unit's own position and no separate key is needed.
-    pub(crate) fn bind_container(&mut self, container: GraphNodeId) {
-        self.containers.push(container);
-        self.files.push(SourceScope::new());
+    /// The slot is the unit's own position, and it is proved empty before it is
+    /// filled: two bindings for one unit would leave every source and every
+    /// definition of that unit rooted at whichever node was written last, with
+    /// the other left in the graph holding nothing.
+    pub(crate) fn bind_container(
+        &mut self,
+        unit: u32,
+        container: GraphNodeId,
+    ) -> Result<(), GraphBuildError> {
+        let slot = validation::unit_slot(self.containers.get_mut(index_of(unit)), unit)?;
+        validation::unbound_container(*slot, unit)?;
+        *slot = Some(container);
+        Ok(())
     }
 
     /// The container node one planned unit owns.
     pub(crate) fn container(&self, unit: u32) -> Option<GraphNodeId> {
-        self.containers.get(index_of(unit)).copied()
+        self.containers.get(index_of(unit)).copied().flatten()
     }
 
     /// Record the file node one unit reads one normalized path through.

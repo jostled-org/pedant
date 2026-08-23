@@ -38,6 +38,37 @@ pub enum GraphBuildError {
         /// The report-local unit identifier that bound it again.
         unit: u32,
     },
+    /// One planned unit was given two container nodes, so everything it holds
+    /// would be rooted at whichever was bound last.
+    #[error("unit {unit} is already rooted at node {container}")]
+    RepeatedUnitContainer {
+        /// The plan-local unit position bound a second time.
+        unit: u32,
+        /// The container node that unit already took.
+        container: u32,
+    },
+    /// A report unit states no declaration this projection can root it at.
+    ///
+    /// A unit whose container is named by its own sources — a Go package
+    /// clause, and not a manifest — has no node at all when the report states
+    /// no such declaration for it.
+    #[error("unit {unit} states no declaration this projection roots it at")]
+    MissingUnitDeclaration {
+        /// The report-local unit identifier that declares no container.
+        unit: u32,
+    },
+    /// A report unit states more than one declaration of its own container.
+    #[error("unit {unit} states more than one container declaration")]
+    RepeatedUnitDeclaration {
+        /// The report-local unit identifier that declares two containers.
+        unit: u32,
+    },
+    /// Two planned units name one node as the root of their own trees.
+    #[error("node {root} roots more than one unit")]
+    SharedUnitRoot {
+        /// The node claimed as a root twice.
+        root: u32,
+    },
     /// A snapshot dependency edge names a build unit with no graph container.
     #[error(
         "dependency edge {edge} ({alias}) names a build unit this graph holds no container for"
@@ -80,19 +111,22 @@ pub enum GraphBuildError {
         /// The report-local definition identifier that named nothing.
         definition: u32,
     },
-    /// A report definition states a kind no Rust projection has a node for.
+    /// A report definition states a kind the adapter reading it has no node
+    /// for.
     ///
-    /// The shared report vocabulary carries every language's kinds. A Rust
-    /// resolution is validated against the Rust subset before it is published,
-    /// so this refusal answers a report that reached the projection without
-    /// that validation rather than a repository that declares something new.
-    #[error("definition {definition} states a kind no Rust projection names")]
+    /// The shared report vocabulary carries every language's kinds. Each
+    /// language's resolution is validated against its own subset before it is
+    /// published, so this refusal answers a report that reached the projection
+    /// without that validation rather than a repository that declares something
+    /// new.
+    #[error("definition {definition} states a kind this projection does not name")]
     UnnamedDefinitionKind {
         /// The report-local definition identifier whose kind has no node.
         definition: u32,
     },
-    /// A report reference states a kind no Rust projection has a record for.
-    #[error("reference {reference} states a kind no Rust projection names")]
+    /// A report reference states a kind the adapter reading it has no record
+    /// for.
+    #[error("reference {reference} states a kind this projection does not name")]
     UnnamedReferenceKind {
         /// The report-local reference identifier whose kind has no record.
         reference: u32,

@@ -17,13 +17,13 @@ use pedant_core::resolution::rust::{
     RustResolutionSnapshot, RustResolutionUnit, RustSnapshotEdge, RustSnapshotUnitId,
     RustTargetResolution, RustUnitBinding,
 };
-use pedant_types::{ResolutionUnit, SymbolDefinition, SymbolReference};
+use pedant_types::{ResolutionUnit, SymbolDefinition};
 
 use crate::error::GraphBuildError;
 use crate::node::GraphNodeKind;
-use crate::reference::GraphReferenceKind;
+use crate::projection::validation as neutral;
 
-use super::mapping::{self, Vocabulary};
+use super::mapping::Vocabulary;
 
 /// Both values must have been requested for the same Cargo target.
 pub(crate) fn check_root_target(
@@ -139,18 +139,5 @@ pub(crate) fn definition_kind(
     vocabulary: &Vocabulary,
     definition: &SymbolDefinition,
 ) -> Result<GraphNodeKind, GraphBuildError> {
-    vocabulary
-        .definition(definition.kind())
-        .ok_or(GraphBuildError::UnnamedDefinitionKind {
-            definition: definition.id().index(),
-        })
-}
-
-/// What one report reference denotes in a Rust projection.
-pub(crate) fn reference_kind(
-    reference: &SymbolReference,
-) -> Result<GraphReferenceKind, GraphBuildError> {
-    mapping::reference_kind(reference.kind()).ok_or(GraphBuildError::UnnamedReferenceKind {
-        reference: reference.id().index(),
-    })
+    neutral::stated_definition_kind(vocabulary.definition(definition.kind()), definition)
 }

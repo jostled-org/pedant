@@ -12,15 +12,47 @@
 
 use std::sync::Arc;
 
-use pedant_types::{Language, ResolutionGap, ResolutionTier, SourceSpan};
+use pedant_types::{
+    Language, ResolutionGap, ResolutionRecord, ResolutionTier, SourceSpan, SymbolReference,
+};
 
 use crate::edge::{DependencyEvidence, EdgeDraft, GraphCertainty, GraphEdgeKind, GraphEdgeOrigin};
+use crate::error::GraphBuildError;
 use crate::id::{GraphNodeId, GraphReferenceId};
 use crate::node::{GraphNodeKind, GraphNodeLocation, NodeDraft};
 use crate::reference::{GraphReferenceKind, ReferenceDraft};
 
-use super::placement::{DefinitionIdentity, SourceIdentity};
+use super::placement::{DefinitionIdentity, DefinitionTable, SourceIdentity};
 use super::state::ProjectionCapacity;
+use super::validation;
+
+/// The container one plan mints for a unit nothing else names.
+///
+/// A Cargo target is declared by a manifest: nothing among the sources it
+/// compiles states it, so the plan supplies the name and the container level
+/// itself. A unit whose own sources declare it states no container here — see
+/// [`UnitDeclaration`].
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct StatedContainer {
+    /// The unit's declared name.
+    pub(crate) name: Arc<str>,
+    /// The container level the bound build unit takes.
+    pub(crate) kind: GraphNodeKind,
+}
+
+/// One unit rooted at a definition its own sources declare.
+///
+/// A Go package clause is written inside the package it opens, and the report
+/// states it as a definition, which already earns a node. Minting a container
+/// beside it would state one entity twice and leave the graph with two nodes
+/// nothing tells apart, so the declaration's node is the unit's container and
+/// the plan mints none.
+pub(crate) struct UnitDeclaration {
+    /// The plan-order position of the unit this declaration roots.
+    pub(crate) unit: u32,
+    /// The report-order position of the definition that declares it.
+    pub(crate) definition: u32,
+}
 
 /// One report unit's container and the sources it instantiates.
 pub(crate) struct UnitPlan {
@@ -28,23 +60,24 @@ pub(crate) struct UnitPlan {
     pub(crate) key: Arc<str>,
     /// The language of every node this unit contributes.
     pub(crate) language: Language,
-    /// The unit's declared name.
-    pub(crate) name: Arc<str>,
-    /// The container level the bound build unit takes.
-    pub(crate) kind: GraphNodeKind,
+    /// The container this plan mints for it, unless a declaration roots it.
+    pub(crate) container: Option<StatedContainer>,
+    /// The unit that logically owns this one, when the plan nests it.
+    pub(crate) parent: Option<u32>,
     /// Every source this unit instantiates, in snapshot order.
     pub(crate) sources: Box<[Arc<str>]>,
 }
 
 impl UnitPlan {
-    /// The node this unit's root container is minted from.
-    pub(crate) fn container_draft(&self) -> NodeDraft {
-        NodeDraft {
+    /// The node this unit's root container is minted from, when the plan mints
+    /// one at all.
+    pub(crate) fn container_draft(&self) -> Option<NodeDraft> {
+        self.container.as_ref().map(|stated| NodeDraft {
             language: self.language,
-            name: Arc::clone(&self.name),
-            kind: self.kind.clone(),
+            name: Arc::clone(&stated.name),
+            kind: stated.kind.clone(),
             location: None,
-        }
+        })
     }
 
     /// The node one instantiated source is minted from.
@@ -98,6 +131,31 @@ pub(crate) struct CandidateProjection {
 }
 
 impl CandidateProjection {
+    /// Every candidate one answer offered, in stated order.
+    ///
+    /// The target travels as the stable identity the current report's own table
+    /// minted, so an adapter states no join of its own and two adapters cannot
+    /// disagree about what a candidate names.
+    pub(crate) fn stated(
+        table: &DefinitionTable,
+        answered: (&ResolutionRecord, GraphEdgeKind),
+    ) -> Result<Box<[Self]>, GraphBuildError> {
+        let (record, kind) = answered;
+        record
+            .candidates()
+            .iter()
+            .map(|candidate| {
+                let target =
+                    validation::definition_identity(table, candidate.definition().index())?;
+                Ok(Self {
+                    target: Arc::clone(target),
+                    kind,
+                    certainty: GraphCertainty::of(candidate.certainty()),
+                })
+            })
+            .collect()
+    }
+
     /// The edge this candidate is minted from.
     pub(crate) fn draft(
         &self,
@@ -134,6 +192,38 @@ pub(crate) struct ReferenceProjection {
 }
 
 impl ReferenceProjection {
+    /// One reference site and every candidate its answer offered, at the graph
+    /// kind the adapter's own vocabulary named for it.
+    ///
+    /// Only the kind is the adapter's. The site, the answer's gaps, the
+    /// enclosing definition, and the candidates are the shared report's, so
+    /// every adapter copies them the one way rather than each stating its own
+    /// reading of the same record.
+    pub(crate) fn stated(
+        table: &DefinitionTable,
+        reported: (&SymbolReference, &ResolutionRecord),
+        kind: GraphReferenceKind,
+    ) -> Result<Self, GraphBuildError> {
+        let (reference, record) = reported;
+        Ok(Self {
+            language: reference.language(),
+            kind,
+            text: Arc::from(reference.text()),
+            span: SymbolReference::span(reference).clone(),
+            gaps: record.gaps().into(),
+            enclosing: validation::optional_identity(
+                table,
+                reference
+                    .enclosing_definition()
+                    .map(|enclosing| enclosing.index()),
+            )?,
+            candidates: CandidateProjection::stated(
+                table,
+                (record, GraphEdgeKind::of_reference(kind)),
+            )?,
+        })
+    }
+
     /// The record this reference is minted from, at one source node.
     pub(crate) fn draft(&self, source: GraphNodeId) -> ReferenceDraft {
         ReferenceDraft {
@@ -221,6 +311,8 @@ pub(crate) struct ProjectionPlan {
     pub(crate) tier: ResolutionTier,
     /// Every report unit, in report order.
     pub(crate) units: Box<[UnitPlan]>,
+    /// Every unit rooted at a definition its own sources declare.
+    pub(crate) declarations: Box<[UnitDeclaration]>,
     /// Every source-unit fragment, grouped by unit in report order.
     pub(crate) fragments: Box<[PlacedFragment]>,
     /// Where each report definition sits, in report order.

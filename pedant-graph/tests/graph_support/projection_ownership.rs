@@ -15,7 +15,7 @@
 
 use std::collections::BTreeSet;
 
-use super::inventory::{CACHE_SOURCES, PROJECTION_SOURCES, RUST_SOURCES, SOURCES};
+use super::inventory::{CACHE_SOURCES, GO_SOURCES, PROJECTION_SOURCES, RUST_SOURCES, SOURCES};
 use super::scan::{
     code_only, compact, declaring_sources, discovered_sources, function_body, method_body, parsed,
     source,
@@ -70,6 +70,8 @@ const DRAFT_RECORDS: &[&str] = &[
     "ProjectionPlan",
     "ReferenceProjection",
     "SourceFragment",
+    "StatedContainer",
+    "UnitDeclaration",
     "UnitPlan",
 ];
 
@@ -251,13 +253,14 @@ fn assert_the_assembler_has_one_owner() {
         vec![ASSEMBLY_OWNER],
         "{ASSEMBLER_DECLARATION} is declared by exactly the neutral assembly owner"
     );
-    let adapter: Vec<&str> = RUST_SOURCES
-        .iter()
-        .copied()
-        .filter(|path| {
-            NEUTRALIZED_MODULES
-                .iter()
-                .any(|name| *path == format!("src/rust/{name}.rs"))
+    let adapter: Vec<&str> = [("rust", RUST_SOURCES), ("go", GO_SOURCES)]
+        .into_iter()
+        .flat_map(|(family, sources)| {
+            sources.iter().copied().filter(move |path| {
+                NEUTRALIZED_MODULES
+                    .iter()
+                    .any(|name| *path == format!("src/{family}/{name}.rs"))
+            })
         })
         .collect();
     assert!(

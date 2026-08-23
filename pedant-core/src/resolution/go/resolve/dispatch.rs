@@ -7,7 +7,7 @@
 
 use pedant_types::ReferenceKind;
 
-use super::denotation::Answer;
+use super::answer::Answer;
 use super::implementations::Implementations;
 use super::index::{Index, Slot};
 use super::methods;

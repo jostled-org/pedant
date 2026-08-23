@@ -51,8 +51,11 @@ pub const GO_MODULES: &[&str] = &[
 /// repository holds while these answer what its names denote, and only the
 /// second set may read a report vocabulary.
 pub const RESOLVE_MODULES: &[&str] = &[
+    "resolve/answer.rs",
     "resolve/corpus.rs",
     "resolve/definitions.rs",
+    "resolve/denotation.rs",
+    "resolve/dispatch.rs",
     "resolve/error.rs",
     "resolve/implementations.rs",
     "resolve/imports.rs",
@@ -64,6 +67,7 @@ pub const RESOLVE_MODULES: &[&str] = &[
     "resolve/pipeline.rs",
     "resolve/records.rs",
     "resolve/references.rs",
+    "resolve/relations.rs",
     "resolve/resolver.rs",
     "resolve/scopes.rs",
     "resolve/signatures.rs",

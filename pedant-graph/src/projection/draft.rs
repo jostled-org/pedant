@@ -1,25 +1,26 @@
-//! The graph-neutral projection one plan is made of.
+//! The graph-neutral drafts one projection plan is made of.
 //!
 //! A fragment is everything one unit's instantiation of one source contributes
 //! to a graph, stated without a single dense identity. Cross-fragment joins —
 //! logical parents, enclosing definitions, candidate targets — travel as the
-//! stable identities of [`super::identity`], so a fragment stays true while the
+//! stable identities of [`super::placement`], so a fragment stays true while the
 //! graph around it is renumbered.
+//!
+//! Nothing here reads a language. An adapter fills these records in from its own
+//! report; what they mean to a graph is decided by the one assembler beside
+//! them.
 
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use pedant_types::{Language, ResolutionGap, ResolutionTier, SourceSpan};
 
 use crate::edge::{DependencyEvidence, EdgeDraft, GraphCertainty, GraphEdgeKind, GraphEdgeOrigin};
-use crate::error::GraphBuildError;
-use crate::id::{GraphNodeId, GraphReferenceId, position};
+use crate::id::{GraphNodeId, GraphReferenceId};
 use crate::node::{GraphNodeKind, GraphNodeLocation, NodeDraft};
 use crate::reference::{GraphReferenceKind, ReferenceDraft};
 
-use super::identity::{DefinitionIdentity, SourceIdentity};
-use super::index::ProjectionCapacity;
-use super::validation;
+use super::placement::{DefinitionIdentity, SourceIdentity};
+use super::state::ProjectionCapacity;
 
 /// One report unit's container and the sources it instantiates.
 pub(crate) struct UnitPlan {
@@ -29,7 +30,7 @@ pub(crate) struct UnitPlan {
     pub(crate) language: Language,
     /// The unit's declared name.
     pub(crate) name: Arc<str>,
-    /// The container level the bound Cargo target takes.
+    /// The container level the bound build unit takes.
     pub(crate) kind: GraphNodeKind,
     /// Every source this unit instantiates, in snapshot order.
     pub(crate) sources: Box<[Arc<str>]>,
@@ -182,9 +183,9 @@ impl DependencyProjection {
 /// is a change to this fragment.
 ///
 /// Nothing here states an equality of its own. Whether a retained fragment still
-/// holds is asked of the current report by [`super::source`], column for column,
-/// and a derived equality beside it would be a second definition of the same
-/// question that no compiler holds to the first.
+/// holds is asked of the current report by the adapter that derived it, column
+/// for column, and a derived equality beside it would be a second definition of
+/// the same question that no compiler holds to the first.
 pub(crate) struct SourceFragment {
     /// The unit and path this fragment answers for.
     pub(crate) source: SourceIdentity,
@@ -205,19 +206,6 @@ pub(crate) struct PlacedFragment {
     pub(crate) fragment: Arc<SourceFragment>,
 }
 
-/// One source one unit instantiates, before anything is projected for it.
-///
-/// This is what a plan knows about a source before it derives anything: which
-/// unit reads it, and the unit-qualified identity it is read under. Both are
-/// stated by the snapshot and the report, so the key that selects a retained
-/// projection is known here, before a single record of that source is projected.
-pub(crate) struct PlacedSource {
-    /// The unit's position in the current plan.
-    pub(crate) unit: u32,
-    /// The unit-qualified identity of the source itself.
-    pub(crate) source: SourceIdentity,
-}
-
 /// Where one record sits: which fragment holds it, and where in that fragment.
 #[derive(Clone, Copy)]
 pub(crate) struct FragmentSlot {
@@ -225,80 +213,6 @@ pub(crate) struct FragmentSlot {
     pub(crate) fragment: u32,
     /// The record's position inside that fragment.
     pub(crate) slot: u32,
-}
-
-/// Every source one plan states, and the units that instantiate them.
-///
-/// One entry exists per unit-and-source pair before any record is placed, so a
-/// source that contributes no definition and no reference is still a source this
-/// plan knows the unit reads. The set holds no projection: what a source
-/// contributes is decided per source, after its key has been stated.
-pub(crate) struct SourceSet {
-    units: Box<[UnitPlan]>,
-    located: Box<[BTreeMap<Arc<str>, u32>]>,
-    placed: Box<[PlacedSource]>,
-}
-
-impl SourceSet {
-    /// One placement per source each planned unit instantiates.
-    pub(crate) fn new(units: Box<[UnitPlan]>) -> Result<Self, GraphBuildError> {
-        let mut placed: Vec<PlacedSource> = Vec::new();
-        let located: Vec<BTreeMap<Arc<str>, u32>> = units
-            .iter()
-            .enumerate()
-            .map(|(index, unit)| unit_sources(&mut placed, position(index), unit))
-            .collect::<Result<_, GraphBuildError>>()?;
-        Ok(Self {
-            units,
-            located: located.into_boxed_slice(),
-            placed: placed.into_boxed_slice(),
-        })
-    }
-
-    /// Every planned unit, in report order.
-    pub(crate) fn units(&self) -> &[UnitPlan] {
-        &self.units
-    }
-
-    /// Every source this plan states, grouped by unit in report order.
-    pub(crate) fn placed(&self) -> &[PlacedSource] {
-        &self.placed
-    }
-
-    /// The source one unit reads `path` through, beside the identity that
-    /// placement was stated under.
-    pub(crate) fn locate(&self, unit: u32, path: &str) -> Option<(u32, &SourceIdentity)> {
-        let scope = self.located.get(crate::id::index_of(unit))?;
-        let source = *scope.get(path)?;
-        let placed = self.placed.get(crate::id::index_of(source))?;
-        Some((source, &placed.source))
-    }
-
-    /// The planned units, once every source has been projected.
-    pub(crate) fn finish(self) -> Box<[UnitPlan]> {
-        self.units
-    }
-}
-
-/// One unit's sources, and where each of them is placed.
-///
-/// One placement per path, so a unit that stated a path twice is refused here
-/// rather than mint a second file node the placement then holds no records for.
-fn unit_sources(
-    placed: &mut Vec<PlacedSource>,
-    unit: u32,
-    plan: &UnitPlan,
-) -> Result<BTreeMap<Arc<str>, u32>, GraphBuildError> {
-    let mut located = BTreeMap::new();
-    for path in &plan.sources {
-        let at = position(placed.len());
-        validation::distinct_source(located.insert(Arc::clone(path), at), unit, path)?;
-        placed.push(PlacedSource {
-            unit,
-            source: SourceIdentity::new(Arc::clone(&plan.key), Arc::clone(path)),
-        });
-    }
-    Ok(located)
 }
 
 /// One complete projection, ready for the assembler to mint identities for.

@@ -20,10 +20,12 @@ use crate::edge::GraphEdgeKind;
 use crate::error::GraphBuildError;
 use crate::reference::GraphReferenceKind;
 
-use super::fragment::{
-    CandidateProjection, DefinitionProjection, PlacedSource, ReferenceProjection, SourceFragment,
+use crate::projection::draft::{
+    CandidateProjection, DefinitionProjection, ReferenceProjection, SourceFragment,
 };
-use super::identity::{DefinitionIdentity, DefinitionTable};
+use crate::projection::placement::{DefinitionIdentity, DefinitionTable, PlacedSource};
+use crate::projection::validation as neutral;
+
 use super::mapping::{self, Vocabulary};
 use super::validation;
 
@@ -84,7 +86,7 @@ fn projected_definition(
 ) -> Result<DefinitionProjection, GraphBuildError> {
     let (at, definition) = reported;
     Ok(DefinitionProjection {
-        identity: Arc::clone(validation::definition_identity(stated.table, at)?),
+        identity: Arc::clone(neutral::definition_identity(stated.table, at)?),
         language: definition.language(),
         kind: validation::definition_kind(stated.vocabulary, definition)?,
         parent: projected_join(
@@ -101,9 +103,7 @@ fn projected_join(
 ) -> Result<Option<Arc<DefinitionIdentity>>, GraphBuildError> {
     match stated {
         None => Ok(None),
-        Some(at) => Ok(Some(Arc::clone(validation::definition_identity(
-            table, at,
-        )?))),
+        Some(at) => Ok(Some(Arc::clone(neutral::definition_identity(table, at)?))),
     }
 }
 
@@ -140,7 +140,7 @@ fn projected_candidates(
         .candidates()
         .iter()
         .map(|candidate| {
-            let target = validation::definition_identity(table, candidate.definition().index())?;
+            let target = neutral::definition_identity(table, candidate.definition().index())?;
             Ok(CandidateProjection {
                 target: Arc::clone(target),
                 kind,

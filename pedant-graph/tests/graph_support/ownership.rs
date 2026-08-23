@@ -9,7 +9,8 @@ use std::collections::BTreeSet;
 
 use super::inventory::{PRODUCTION_SOURCES, SOURCES};
 use super::scan::{
-    code_only, discovered_sources, function_body, method_body, parsed, position_of, source,
+    code_only, declaring_sources, discovered_sources, function_body, method_body, parsed,
+    position_of, source,
 };
 use super::surface::{
     declared_error_variants, declared_items, derived_paths, public_constructors, public_fields,
@@ -17,9 +18,10 @@ use super::surface::{
 
 use super::ownership_model::{
     ASSEMBLED_VALIDATORS, BOUND_VALIDATORS, CLAIMED_VALIDATORS, CONTAINMENT_OWNER,
-    CONTAINMENT_VALIDATORS, ERROR_OWNERS, FORBIDDEN_ENTRY_POINTS, IDENTIFIED_VALIDATORS,
-    INSERTION_OWNER, PANIC_SPELLINGS, PLACED_VALIDATORS, PLANNED_VALIDATORS, PROJECTED_VALIDATORS,
-    STATE_CONSTRUCTOR, STATE_CONSTRUCTOR_SIGNATURE, VALIDATION_OWNER,
+    CONTAINMENT_VALIDATORS, ERROR_OWNERS, FORBIDDEN_ENTRY_POINTS, INSERTION_OWNER, PANIC_SPELLINGS,
+    PLACED_VALIDATORS, PLANNED_VALIDATORS, PROJECTED_VALIDATORS, RUST_CLAIMED_VALIDATORS,
+    RUST_PLANNED_VALIDATORS, RUST_PROJECTED_VALIDATORS, RUST_VALIDATION_OWNER, STATE_CONSTRUCTOR,
+    STATE_CONSTRUCTOR_SIGNATURE, VALIDATION_OWNER,
 };
 
 /// The discovered source set equals the model, is non-empty, and names no
@@ -112,7 +114,7 @@ pub fn assert_identity_checks_dominate() {
         "the root target is proved before the snapshot identity"
     );
 
-    let assembly = function_body("src/rust/assembly.rs", "assemble");
+    let assembly = function_body("src/projection/assembly.rs", "assemble");
     let construction = position_of(&assembly, &token_form(STATE_CONSTRUCTOR), "the assembler");
     for pass in [
         "assemble_containers",
@@ -129,18 +131,13 @@ pub fn assert_identity_checks_dominate() {
             "{pass} must run after the assembly state exists"
         );
     }
-    let sites: Vec<&str> = SOURCES
-        .iter()
-        .filter(|entry| code_only(entry.text).contains(STATE_CONSTRUCTOR))
-        .map(|entry| entry.path)
-        .collect();
     assert_eq!(
-        sites,
-        vec!["src/rust/assembly.rs"],
+        declaring_sources(STATE_CONSTRUCTOR),
+        vec!["src/projection/assembly.rs"],
         "the assembly state has exactly one construction site"
     );
     assert_eq!(
-        code_only(source("src/rust/index.rs"))
+        code_only(source("src/projection/state.rs"))
             .matches(STATE_CONSTRUCTOR_SIGNATURE)
             .count(),
         1,
@@ -201,28 +198,46 @@ pub fn assert_defensive_paths_are_wired() {
             PLANNED_VALIDATORS,
         ),
         (
-            VALIDATION_OWNER,
-            "src/rust/identity.rs",
-            IDENTIFIED_VALIDATORS,
+            RUST_VALIDATION_OWNER,
+            "src/rust/projection.rs",
+            RUST_PLANNED_VALIDATORS,
         ),
-        (VALIDATION_OWNER, "src/rust/source.rs", PROJECTED_VALIDATORS),
-        (VALIDATION_OWNER, "src/rust/fragment.rs", PLACED_VALIDATORS),
-        (VALIDATION_OWNER, "src/rust/index.rs", BOUND_VALIDATORS),
-        (VALIDATION_OWNER, "src/rust/claim.rs", CLAIMED_VALIDATORS),
         (
             VALIDATION_OWNER,
-            "src/rust/assembly.rs",
+            "src/projection/placement.rs",
+            PLACED_VALIDATORS,
+        ),
+        (VALIDATION_OWNER, "src/rust/source.rs", PROJECTED_VALIDATORS),
+        (
+            RUST_VALIDATION_OWNER,
+            "src/rust/source.rs",
+            RUST_PROJECTED_VALIDATORS,
+        ),
+        (
+            VALIDATION_OWNER,
+            "src/projection/state.rs",
+            BOUND_VALIDATORS,
+        ),
+        (VALIDATION_OWNER, "src/rust/claim.rs", CLAIMED_VALIDATORS),
+        (
+            RUST_VALIDATION_OWNER,
+            "src/rust/claim.rs",
+            RUST_CLAIMED_VALIDATORS,
+        ),
+        (
+            VALIDATION_OWNER,
+            "src/projection/assembly.rs",
             ASSEMBLED_VALIDATORS,
         ),
         (
             CONTAINMENT_OWNER,
-            "src/rust/assembly.rs",
+            "src/projection/assembly.rs",
             CONTAINMENT_VALIDATORS,
         ),
     ] {
         assert_validators_are_reached(owner, reader, validators);
     }
-    let entry = function_body("src/rust/assembly.rs", "assemble");
+    let entry = function_body("src/projection/assembly.rs", "assemble");
     let finish = position_of(&entry, "state . finish", "the assembler");
     let forest = position_of(&entry, "check_containment_forest", "the assembler");
     assert!(
@@ -242,13 +257,9 @@ pub fn assert_defensive_paths_are_wired() {
         "every declared refusal must state which sources may build it"
     );
     for (variant, owners) in ERROR_OWNERS {
-        let sites: Vec<&str> = SOURCES
-            .iter()
-            .filter(|entry| code_only(entry.text).contains(variant))
-            .map(|entry| entry.path)
-            .collect();
         assert_eq!(
-            sites, *owners,
+            declaring_sources(variant),
+            *owners,
             "{variant} must be constructed by exactly its owning sources"
         );
     }

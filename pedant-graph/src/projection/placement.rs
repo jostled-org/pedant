@@ -1,11 +1,17 @@
-//! The stable identities a source-unit projection states its joins through.
+//! Where each stated record sits, and the stable identity it takes.
 //!
 //! Graph identities are dense positions in one complete graph, so inserting a
 //! record can renumber every later one. A projection that is going to be reused
 //! across repository states therefore cannot join through them. These
-//! identities are derived from the report and the snapshot alone, survive
-//! renumbering, and never reach a `CodeGraph`: the assembler resolves each of
-//! them to an identity minted for the graph it is building.
+//! identities are derived from one report and the sources it was placed over,
+//! survive renumbering, and never reach a `CodeGraph`: the assembler resolves
+//! each of them to an identity minted for the graph it is building.
+//!
+//! Placement is the other half of the same subject. One entry exists per
+//! unit-and-source pair before any record is projected, so a source that
+//! contributes no definition and no reference is still a source this plan knows
+//! the unit reads, and every record the report states is placed in exactly one
+//! of them.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -13,9 +19,9 @@ use std::sync::Arc;
 use pedant_types::{ResolutionReport, SourceSpan, SymbolDefinition, SymbolKind};
 
 use crate::error::GraphBuildError;
-use crate::id::index_of;
+use crate::id::{index_of, position};
 
-use super::fragment::SourceSet;
+use super::draft::UnitPlan;
 use super::validation;
 
 /// One source, identified by the unit reading it and its normalized path.
@@ -160,4 +166,90 @@ impl DefinitionTable {
             .get(index_of(definition))
             .map(|placed| placed.fragment)
     }
+}
+
+/// One source one unit instantiates, before anything is projected for it.
+///
+/// This is what a plan knows about a source before it derives anything: which
+/// unit reads it, and the unit-qualified identity it is read under. Both are
+/// stated by the adapter's own snapshot and report, so the key that selects a
+/// retained projection is known here, before a single record of that source is
+/// projected.
+pub(crate) struct PlacedSource {
+    /// The unit's position in the current plan.
+    pub(crate) unit: u32,
+    /// The unit-qualified identity of the source itself.
+    pub(crate) source: SourceIdentity,
+}
+
+/// Every source one plan states, and the units that instantiate them.
+///
+/// The set holds no projection: what a source contributes is decided per
+/// source, after its key has been stated.
+pub(crate) struct SourceSet {
+    units: Box<[UnitPlan]>,
+    located: Box<[BTreeMap<Arc<str>, u32>]>,
+    placed: Box<[PlacedSource]>,
+}
+
+impl SourceSet {
+    /// One placement per source each planned unit instantiates.
+    pub(crate) fn new(units: Box<[UnitPlan]>) -> Result<Self, GraphBuildError> {
+        let mut placed: Vec<PlacedSource> = Vec::new();
+        let located: Vec<BTreeMap<Arc<str>, u32>> = units
+            .iter()
+            .enumerate()
+            .map(|(index, unit)| unit_sources(&mut placed, position(index), unit))
+            .collect::<Result<_, GraphBuildError>>()?;
+        Ok(Self {
+            units,
+            located: located.into_boxed_slice(),
+            placed: placed.into_boxed_slice(),
+        })
+    }
+
+    /// Every planned unit, in report order.
+    pub(crate) fn units(&self) -> &[UnitPlan] {
+        &self.units
+    }
+
+    /// Every source this plan states, grouped by unit in report order.
+    pub(crate) fn placed(&self) -> &[PlacedSource] {
+        &self.placed
+    }
+
+    /// The source one unit reads `path` through, beside the identity that
+    /// placement was stated under.
+    pub(crate) fn locate(&self, unit: u32, path: &str) -> Option<(u32, &SourceIdentity)> {
+        let scope = self.located.get(index_of(unit))?;
+        let source = *scope.get(path)?;
+        let placed = self.placed.get(index_of(source))?;
+        Some((source, &placed.source))
+    }
+
+    /// The planned units, once every source has been projected.
+    pub(crate) fn finish(self) -> Box<[UnitPlan]> {
+        self.units
+    }
+}
+
+/// One unit's sources, and where each of them is placed.
+///
+/// One placement per path, so a unit that stated a path twice is refused here
+/// rather than mint a second file node the placement then holds no records for.
+fn unit_sources(
+    placed: &mut Vec<PlacedSource>,
+    unit: u32,
+    plan: &UnitPlan,
+) -> Result<BTreeMap<Arc<str>, u32>, GraphBuildError> {
+    let mut located = BTreeMap::new();
+    for path in &plan.sources {
+        let at = position(placed.len());
+        validation::distinct_source(located.insert(Arc::clone(path), at), unit, path)?;
+        placed.push(PlacedSource {
+            unit,
+            source: SourceIdentity::new(Arc::clone(&plan.key), Arc::clone(path)),
+        });
+    }
+    Ok(located)
 }

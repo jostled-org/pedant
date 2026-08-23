@@ -22,7 +22,7 @@ use crate::limits::{GraphCollection, GraphLimits};
 use crate::node::NodeDraft;
 use crate::reference::ReferenceDraft;
 
-use super::identity::DefinitionIdentity;
+use super::placement::DefinitionIdentity;
 use super::validation;
 
 /// Every file node one planned unit reads, by normalized path.

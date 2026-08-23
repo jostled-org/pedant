@@ -96,6 +96,10 @@ pub mod isolation;
 pub mod ownership;
 /// The written-down model those ownership cases are read against.
 pub mod ownership_model;
+/// The Rust answers and the cache surface, once the assembler became neutral.
+pub mod projection_exactness;
+/// The one language-neutral projection family, and who may enter it.
+pub mod projection_ownership;
 /// One syntactic report restated at the semantic tier.
 pub mod promotion;
 /// Comparable text taken from the public reading surface.

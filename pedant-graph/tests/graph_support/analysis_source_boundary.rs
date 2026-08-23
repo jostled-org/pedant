@@ -13,6 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::analysis_ownership::ANALYSIS_SOURCES;
 use super::cache_source_boundary::CACHE_PREDICATES;
 use super::inventory::{MANIFEST, SOURCES, TEST_ROOT, TEST_SUPPORT_SOURCES};
+use super::projection_ownership::PROJECTION_PREDICATES;
 use super::scan::{self, discovered_sources, discovered_test_sources, parsed};
 use super::surface::declared_items;
 
@@ -188,6 +189,7 @@ pub fn assert_every_registered_wrapper_is_modelled() {
     let listed: Vec<&str> = [
         CACHE_PREDICATES,
         ANALYSIS_PREDICATES,
+        PROJECTION_PREDICATES,
         VERSION_ONE_PREDICATES,
     ]
     .into_iter()

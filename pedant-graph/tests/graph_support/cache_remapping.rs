@@ -28,7 +28,7 @@ use super::surface::declared_items;
 /// list that names only the outermost records.
 const RETAINED_PROJECTION_ROOTS: &[(&str, &str)] = &[
     ("src/rust/claim.rs", "SourceKey"),
-    ("src/rust/fragment.rs", "SourceFragment"),
+    ("src/projection/draft.rs", "SourceFragment"),
 ];
 
 /// Every type the walk from those roots must reach.

@@ -7,15 +7,19 @@
 //! assembly minted, and every record is sealed through the one checked
 //! insertion owner, so a reused projection reaches the graph by exactly the path
 //! a freshly planned one does.
+//!
+//! One assembler answers for every language. What an adapter states is a plan;
+//! which identity each record takes, whether containment is a forest, and which
+//! ceiling refuses are decided here and nowhere else.
 
 use crate::error::GraphBuildError;
 use crate::graph::CodeGraph;
 use crate::id::{GraphNodeId, GraphReferenceId, position};
 use crate::limits::GraphLimits;
 
-use super::containment_check;
-use super::fragment::{FragmentSlot, ProjectionPlan, ReferenceProjection};
-use super::index::ProjectionState;
+use super::draft::{FragmentSlot, ProjectionPlan, ReferenceProjection};
+use super::forest;
+use super::state::ProjectionState;
 use super::validation;
 
 /// One assembled reference record, beside what its candidates pass needs.
@@ -39,7 +43,7 @@ pub(crate) fn assemble(
     assemble_sources(&mut state, plan)?;
     assemble_definitions(&mut state, plan)?;
     assemble_containment(&mut state, plan)?;
-    containment_check::check_containment_forest(&state, units)?;
+    forest::check_containment_forest(&state, units)?;
     let references = assemble_references(&mut state, plan)?;
     assemble_dependencies(&mut state, plan)?;
     assemble_candidates(&mut state, &references)?;

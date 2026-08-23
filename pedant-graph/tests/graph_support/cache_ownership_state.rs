@@ -17,7 +17,8 @@
 
 use super::inventory::{PRODUCTION_SOURCES, SOURCES};
 use super::scan::{
-    code_only, compact, method_body, method_body_of, position_of, source, subject_methods,
+    code_only, compact, declaring_sources, method_body, method_body_of, position_of, source,
+    subject_methods,
 };
 
 /// The one module holding a cached graph's derived state behind a lock.
@@ -75,8 +76,8 @@ const COUNTER_ADVANCES: &[&str] = &["fetch_add", "saturating_add", "wrapping_add
 /// of them is a cache statistic. The fourth is the cache's one saturating owner.
 const COUNTER_ADVANCE_SITES: &[(&str, usize)] = &[
     ("src/cache/state.rs", 1),
-    ("src/rust/identity.rs", 1),
-    ("src/rust/index.rs", 1),
+    ("src/projection/placement.rs", 1),
+    ("src/projection/state.rs", 1),
     ("src/rust/projection.rs", 1),
 ];
 
@@ -129,13 +130,8 @@ pub fn assert_poison_recovery_is_explicit_and_total() {
         1,
         "{DERIVED_OWNER} acquires the derived store in exactly one place"
     );
-    let sites: Vec<&str> = SOURCES
-        .iter()
-        .filter(|entry| code_only(entry.text).contains("Mutex"))
-        .map(|entry| entry.path)
-        .collect();
     assert_eq!(
-        sites,
+        declaring_sources("Mutex"),
         vec![DERIVED_OWNER],
         "exactly one production source holds the derived state behind a lock"
     );

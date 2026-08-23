@@ -25,15 +25,15 @@ use crate::error::GraphBuildError;
 use crate::graph::CodeGraph;
 use crate::id::{index_of, position};
 use crate::limits::GraphLimits;
-
-use super::assembly;
-use super::claim::SourceKey;
-use super::fragment::{
-    DependencyProjection, FragmentSlot, PlacedFragment, ProjectionPlan, SourceFragment, SourceSet,
-    UnitPlan,
+use crate::projection::assembly;
+use crate::projection::draft::{
+    DependencyProjection, FragmentSlot, PlacedFragment, ProjectionPlan, SourceFragment, UnitPlan,
 };
-use super::identity::DefinitionTable;
-use super::index::ProjectionCapacity;
+use crate::projection::placement::{DefinitionTable, SourceSet};
+use crate::projection::state::ProjectionCapacity;
+use crate::projection::validation as neutral;
+
+use super::claim::SourceKey;
 use super::mapping::{self, Vocabulary};
 use super::reuse::ProjectionStore;
 use super::source::{self, SourceRecords, StatedSource};
@@ -93,7 +93,7 @@ pub(crate) fn plan(
         snapshot,
         report,
         vocabulary: Vocabulary::new(),
-        resolved: validation::resolved_references(report)?,
+        resolved: neutral::resolved_references(report)?,
     };
     let planned = plan_units(&inputs, resolution)?;
     let sources = SourceSet::new(planned.units.into_boxed_slice())?;
@@ -199,12 +199,12 @@ fn place_definitions<'a>(
     let mut placed = Vec::with_capacity(inputs.report.definitions().len());
     for (index, definition) in inputs.report.definitions().iter().enumerate() {
         let at = position(index);
-        let fragment = validation::definition_fragment(table, at)?;
-        let identity = validation::definition_identity(table, at)?;
+        let fragment = neutral::definition_fragment(table, at)?;
+        let identity = neutral::definition_identity(table, at)?;
         let held = stated
             .get_mut(index_of(fragment))
             .map(|records| &mut records.definitions);
-        placed.push(validation::placed_slot(
+        placed.push(neutral::placed_slot(
             placed_record(held, fragment, (at, definition)),
             definition.unit().index(),
             identity.source().path(),
@@ -223,11 +223,11 @@ fn place_references<'a>(
     for (reference, record) in inputs.resolved.iter().copied() {
         let reported = reference.unit().index();
         let file = SymbolReference::span(reference).file();
-        let (fragment, source) = validation::instantiated_source(sources, reported, file)?;
+        let (fragment, source) = neutral::instantiated_source(sources, reported, file)?;
         let held = stated
             .get_mut(index_of(fragment))
             .map(|records| &mut records.references);
-        placed.push(validation::placed_slot(
+        placed.push(neutral::placed_slot(
             placed_record(held, fragment, (reference, record)),
             reported,
             source.path(),

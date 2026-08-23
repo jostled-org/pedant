@@ -102,6 +102,20 @@ pub fn source(path: &str) -> &'static str {
         .unwrap_or_else(|| panic!("{path} is not a modelled production source"))
 }
 
+/// Every modelled production source whose code names one spelling, in
+/// [`SOURCES`] order.
+///
+/// The one reader behind every "declared by exactly its owner" claim. Comments
+/// are dropped first, so prose describing a declaration does not read as the
+/// declaration it describes.
+pub fn declaring_sources(spelling: &str) -> Vec<&'static str> {
+    SOURCES
+        .iter()
+        .filter(|entry| code_only(entry.text).contains(spelling))
+        .map(|entry| entry.path)
+        .collect()
+}
+
 /// One parsed production source.
 pub fn parsed(path: &str) -> syn::File {
     syn::parse_file(source(path)).unwrap_or_else(|error| panic!("{path}: {error}"))

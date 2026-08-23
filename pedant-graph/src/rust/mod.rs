@@ -1,21 +1,17 @@
 //! The Rust adapter: one snapshot-bound resolution becomes one code graph.
+//!
+//! What is Rust about a Rust graph lives here — the snapshot and report claims,
+//! the Cargo-target vocabulary, the key a retained projection is selected by,
+//! and the planner that reads one report into drafts. Every identity, every
+//! containment rule, and every ceiling belongs to [`crate::projection`], which
+//! this adapter ends at and owns no copy of.
 
-/// The one checked assembler every returned graph is minted by.
-mod assembly;
 /// The caller-created cache of already built graphs.
 mod cache;
 /// The claim one retained source-unit projection answers for.
 mod claim;
-/// Containment as one acyclic forest of unit-rooted trees.
-mod containment_check;
 /// The two public entry points.
 mod entry;
-/// The graph-neutral projection one plan is made of.
-mod fragment;
-/// The stable identities a projection states its joins through.
-mod identity;
-/// The tables one assembly resolves its symbolic joins through.
-mod index;
 /// The exact Rust-to-graph vocabulary.
 mod mapping;
 /// The one planner both the direct and the cached path delegate to.
@@ -24,7 +20,7 @@ mod projection;
 mod reuse;
 /// The complete local claim one source states.
 mod source;
-/// Every join, checked before a graph exists.
+/// Every Rust-specific join, checked before a graph exists.
 mod validation;
 
 pub use cache::GraphCache;

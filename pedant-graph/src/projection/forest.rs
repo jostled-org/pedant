@@ -12,7 +12,7 @@ use crate::containment::ContainmentEdge;
 use crate::error::GraphBuildError;
 use crate::id::{GraphNodeId, index_of, position};
 
-use super::index::ProjectionState;
+use super::state::ProjectionState;
 
 /// Where one node stands in the containment ancestor walk.
 #[derive(Clone, Copy, PartialEq, Eq)]

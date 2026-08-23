@@ -17,8 +17,9 @@ use std::sync::Arc;
 
 use crate::cache::{BoundedStore, CacheCategory, CacheCounters, CacheEvent};
 
+use crate::projection::draft::SourceFragment;
+
 use super::claim::SourceKey;
-use super::fragment::SourceFragment;
 
 /// The bounded source-unit projections one cache retains.
 pub(crate) struct ProjectionStore {

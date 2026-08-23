@@ -21,7 +21,7 @@ use graph_support::{
     cache_analysis_lifetime, cache_analysis_retention, cache_analysis_sharing, cache_exact,
     cache_ownership, cache_ownership_path, cache_ownership_state, cache_projection,
     cache_remapping, cache_revision, cache_source_boundary, contract, defensive, evidence,
-    isolation, ownership, topology, wire,
+    isolation, ownership, projection_exactness, projection_ownership, topology, wire,
 };
 
 #[test]
@@ -78,6 +78,21 @@ fn graph_cache_public_boundary_is_exact() {
 #[test]
 fn graph_cache_projection_has_one_planner_and_assembler() {
     cache_ownership_path::assert_projection_has_one_planner_and_assembler();
+}
+
+#[test]
+fn graph_projection_has_one_language_neutral_assembler() {
+    projection_ownership::assert_projection_has_one_language_neutral_assembler();
+}
+
+#[test]
+fn rust_direct_and_cached_projection_bytes_stay_exact_after_neutral_assembly() {
+    projection_exactness::assert_rust_projection_bytes_stay_exact();
+}
+
+#[test]
+fn graph_cache_remains_rust_only_after_neutral_assembly() {
+    projection_exactness::assert_cache_remains_rust_only();
 }
 
 #[test]

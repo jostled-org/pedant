@@ -23,7 +23,9 @@ use super::corpus_revision::{
 use super::fixture::{self, CORPUS_LIBRARY, Fixture};
 use super::inventory::SOURCES;
 use super::promotion::Restatement;
-use super::scan::{code_only, compact, function_body, parsed, position_of, source, token_text};
+use super::scan::{
+    code_only, compact, declaring_sources, function_body, parsed, position_of, source, token_text,
+};
 
 /// The module that decides what a source's projection is.
 const PLANNER: &str = "src/rust/projection.rs";
@@ -164,13 +166,8 @@ fn assert_the_key_reads_no_derived_record() {
 /// Derivation is declared once, called once, and reached only when the store
 /// answered nothing.
 fn assert_derivation_is_the_answer_to_a_miss() {
-    let sites: Vec<&str> = SOURCES
-        .iter()
-        .filter(|entry| code_only(entry.text).contains(DERIVATION))
-        .map(|entry| entry.path)
-        .collect();
     assert_eq!(
-        sites,
+        declaring_sources(DERIVATION),
         vec![PLANNER, CLAIM_OWNER],
         "{DERIVATION} is declared by its owner and reached by the planner alone"
     );

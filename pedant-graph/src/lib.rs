@@ -152,6 +152,8 @@ mod id;
 mod limits;
 /// Graph nodes, their categories, and their source locations.
 mod node;
+/// The one language-neutral projection every graph is minted through.
+mod projection;
 /// Reference records and what they denote.
 mod reference;
 /// The Rust projection adapter.

@@ -7,8 +7,8 @@
 //!
 //! Every input is a compile-time source read through [`super::scan`].
 
-use super::inventory::{CACHE_SOURCES, RUST_SOURCES, SOURCES};
-use super::scan::{code_only, function_body, method_body, position_of, source};
+use super::projection_ownership::assert_identities_are_minted_by_one_owner;
+use super::scan::{code_only, declaring_sources, function_body, method_body, position_of, source};
 use super::surface::{declared_call_graph, recursive_functions};
 
 /// Direct and cached construction reach one planner and one checked assembler,
@@ -27,15 +27,10 @@ pub fn assert_projection_has_one_planner_and_assembler() {
 fn assert_one_planner_and_one_assembler() {
     for (owner, declaration) in [
         ("src/rust/projection.rs", "pub(crate) fn plan("),
-        ("src/rust/assembly.rs", "pub(crate) fn assemble("),
+        ("src/projection/assembly.rs", "pub(crate) fn assemble("),
     ] {
-        let sites: Vec<&str> = SOURCES
-            .iter()
-            .filter(|entry| code_only(entry.text).contains(declaration))
-            .map(|entry| entry.path)
-            .collect();
         assert_eq!(
-            sites,
+            declaring_sources(declaration),
             vec![owner],
             "{declaration} is declared by exactly its owning source"
         );
@@ -88,46 +83,13 @@ fn assert_hits_return_before_planning() {
     );
 }
 
-/// No module on the graph-building path mints a graph identity.
-///
-/// The derived answers read identities back out of a graph they were handed,
-/// which is not minting. The planner, the assembler, and the cache must take
-/// every identity from the one checked insertion owner instead.
-fn assert_identities_are_minted_by_one_owner() {
-    let minted = [
-        "GraphNodeId::new",
-        "GraphReferenceId::new",
-        "GraphEdgeId::new",
-    ];
-    let offenders: Vec<&str> = SOURCES
-        .iter()
-        .filter(|entry| CACHE_SOURCES.contains(&entry.path) || RUST_SOURCES.contains(&entry.path))
-        .filter(|entry| {
-            let code = code_only(entry.text);
-            minted.iter().any(|spelling| code.contains(spelling))
-        })
-        .map(|entry| entry.path)
-        .collect();
-    assert!(
-        offenders.is_empty(),
-        "only the record store mints graph identities: {offenders:?}"
-    );
-    assert_eq!(
-        code_only(source("src/graph.rs"))
-            .matches("fn admit")
-            .count(),
-        1,
-        "capacity insertion still has exactly one owner"
-    );
-}
-
 /// Neither graph-building owner can reach a call that returns to it.
 ///
 /// The planner and the assembler are the two owners a reused projection passes
 /// through, and both walk their inputs once. A cycle between their passes would
 /// be a second traversal no ceiling bounds.
 fn assert_no_graph_building_call_cycle() {
-    for path in ["src/rust/assembly.rs", "src/rust/projection.rs"] {
+    for path in ["src/projection/assembly.rs", "src/rust/projection.rs"] {
         let recursive = recursive_functions(&declared_call_graph(path));
         assert!(
             recursive.is_empty(),

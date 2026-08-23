@@ -41,15 +41,17 @@ pub const PRODUCTION_SOURCES: &[&str] = &[
     "src/lib.rs",
     "src/limits.rs",
     "src/node.rs",
+    "src/projection/assembly.rs",
+    "src/projection/draft.rs",
+    "src/projection/forest.rs",
+    "src/projection/mod.rs",
+    "src/projection/placement.rs",
+    "src/projection/state.rs",
+    "src/projection/validation.rs",
     "src/reference.rs",
-    "src/rust/assembly.rs",
     "src/rust/cache.rs",
     "src/rust/claim.rs",
-    "src/rust/containment_check.rs",
     "src/rust/entry.rs",
-    "src/rust/fragment.rs",
-    "src/rust/identity.rs",
-    "src/rust/index.rs",
     "src/rust/mapping.rs",
     "src/rust/mod.rs",
     "src/rust/projection.rs",
@@ -70,16 +72,26 @@ pub const CACHE_SOURCES: &[&str] = &[
     "src/cache/storage.rs",
 ];
 
+/// Every module the language-neutral projection family states.
+///
+/// The drafts a language adapter fills in, where each stated record sits, the
+/// tables one assembly resolves its joins through, the whole-relation
+/// containment rule, every neutral refusal, and the one checked assembler.
+pub const PROJECTION_SOURCES: &[&str] = &[
+    "src/projection/assembly.rs",
+    "src/projection/draft.rs",
+    "src/projection/forest.rs",
+    "src/projection/mod.rs",
+    "src/projection/placement.rs",
+    "src/projection/state.rs",
+    "src/projection/validation.rs",
+];
+
 /// Every module the Rust adapter states, after the planner and assembler split.
 pub const RUST_SOURCES: &[&str] = &[
-    "src/rust/assembly.rs",
     "src/rust/cache.rs",
     "src/rust/claim.rs",
-    "src/rust/containment_check.rs",
     "src/rust/entry.rs",
-    "src/rust/fragment.rs",
-    "src/rust/identity.rs",
-    "src/rust/index.rs",
     "src/rust/mapping.rs",
     "src/rust/mod.rs",
     "src/rust/projection.rs",
@@ -215,12 +227,36 @@ pub const SOURCES: &[Source] = &[
         text: include_str!("../../src/node.rs"),
     },
     Source {
-        path: "src/reference.rs",
-        text: include_str!("../../src/reference.rs"),
+        path: "src/projection/assembly.rs",
+        text: include_str!("../../src/projection/assembly.rs"),
     },
     Source {
-        path: "src/rust/assembly.rs",
-        text: include_str!("../../src/rust/assembly.rs"),
+        path: "src/projection/draft.rs",
+        text: include_str!("../../src/projection/draft.rs"),
+    },
+    Source {
+        path: "src/projection/forest.rs",
+        text: include_str!("../../src/projection/forest.rs"),
+    },
+    Source {
+        path: "src/projection/mod.rs",
+        text: include_str!("../../src/projection/mod.rs"),
+    },
+    Source {
+        path: "src/projection/placement.rs",
+        text: include_str!("../../src/projection/placement.rs"),
+    },
+    Source {
+        path: "src/projection/state.rs",
+        text: include_str!("../../src/projection/state.rs"),
+    },
+    Source {
+        path: "src/projection/validation.rs",
+        text: include_str!("../../src/projection/validation.rs"),
+    },
+    Source {
+        path: "src/reference.rs",
+        text: include_str!("../../src/reference.rs"),
     },
     Source {
         path: "src/rust/cache.rs",
@@ -231,24 +267,8 @@ pub const SOURCES: &[Source] = &[
         text: include_str!("../../src/rust/claim.rs"),
     },
     Source {
-        path: "src/rust/containment_check.rs",
-        text: include_str!("../../src/rust/containment_check.rs"),
-    },
-    Source {
         path: "src/rust/entry.rs",
         text: include_str!("../../src/rust/entry.rs"),
-    },
-    Source {
-        path: "src/rust/fragment.rs",
-        text: include_str!("../../src/rust/fragment.rs"),
-    },
-    Source {
-        path: "src/rust/identity.rs",
-        text: include_str!("../../src/rust/identity.rs"),
-    },
-    Source {
-        path: "src/rust/index.rs",
-        text: include_str!("../../src/rust/index.rs"),
     },
     Source {
         path: "src/rust/mapping.rs",
@@ -357,6 +377,8 @@ pub const TEST_SUPPORT_SOURCES: &[Source] = support_sources![
     "mod",
     "ownership",
     "ownership_model",
+    "projection_exactness",
+    "projection_ownership",
     "promotion",
     "render",
     "scan",

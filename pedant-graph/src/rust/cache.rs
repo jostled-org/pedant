@@ -26,8 +26,10 @@ use crate::cache::{
 use crate::error::GraphBuildError;
 use crate::limits::GraphLimits;
 
+use crate::projection::assembly;
+
+use super::projection;
 use super::reuse::ProjectionStore;
-use super::{assembly, projection};
 
 /// The complete claim one retained graph was built from.
 ///

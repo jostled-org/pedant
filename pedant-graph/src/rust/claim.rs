@@ -20,8 +20,10 @@ use pedant_types::{Language, ResolutionTier};
 use crate::error::GraphBuildError;
 use crate::node::GraphNodeKind;
 
-use super::fragment::UnitPlan;
-use super::identity::SourceIdentity;
+use crate::projection::draft::UnitPlan;
+use crate::projection::placement::SourceIdentity;
+use crate::projection::validation as neutral;
+
 use super::validation;
 
 /// Everything one retained source-unit projection was derived under.
@@ -42,7 +44,7 @@ impl SourceKey {
     ) -> Result<Self, GraphBuildError> {
         let (units, unit) = planned;
         let (source, tier) = stated;
-        let plan = validation::planned_unit(units, unit)?;
+        let plan = neutral::planned_unit(units, unit)?;
         Ok(Self {
             digest: validation::source_digest(snapshot, unit, source.path())?,
             tier,

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.1](https://github.com/jostled-org/pedant/compare/pedant-mcp-v0.14.0...pedant-mcp-v0.14.1) - 2026-08-23
+
+### Other
+
+- *(process-guard)* prove each row ran under the ceiling it stated
+
 ## [0.14.0](https://github.com/jostled-org/pedant/compare/pedant-mcp-v0.13.5...pedant-mcp-v0.14.0) - 2026-08-18
 
 ### Added

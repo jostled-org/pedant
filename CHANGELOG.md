@@ -10,6 +10,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.0](https://github.com/jostled-org/pedant/compare/pedant-v0.28.1...pedant-v0.29.0) - 2026-08-23
+
+### Added
+
+- *(resolution)* [**breaking**] load the Go module project from go.mod alone
+
+### Fixed
+
+- *(release)* keep root changelog current
+
+### Other
+
+- *(release)* prove the go gated edge is released before its consumer
+- *(gate-cli)* prove only the fixture can reach the guard
+- *(process-guard)* prove each row ran under the ceiling it stated
+- *(process-guard)* prove no tree member outlives its guard
+- *(resolution)* prove universe and semantic budget boundaries
+- *(resolution)* prove file-scoped go lookup gaps
+
 ## [0.28.1](https://github.com/jostled-org/pedant/compare/pedant-v0.28.0...pedant-v0.28.1) - 2026-08-18
 
 ### Fixed

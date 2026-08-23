@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.1](https://github.com/jostled-org/pedant/compare/pedant-lang-v0.7.0...pedant-lang-v0.7.1) - 2026-08-23
+
+### Added
+
+- *(syntax)* extract Go grammar facts once for every consumer
+
+### Other
+
+- hoist every duplicated language check into one owner
+
 ## [0.7.0](https://github.com/jostled-org/pedant/compare/pedant-lang-v0.6.0...pedant-lang-v0.7.0) - 2026-08-18
 
 ### Added

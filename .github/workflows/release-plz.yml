@@ -42,10 +42,10 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
 
-      - name: Install release metadata reader
+      - name: Install release check readers
         run: |
           sudo apt-get update
-          sudo apt-get install --yes jq
+          sudo apt-get install --yes jq ripgrep
 
       - name: Check release readiness
         id: release_readiness

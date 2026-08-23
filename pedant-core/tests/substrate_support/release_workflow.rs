@@ -354,14 +354,17 @@ pub(crate) fn assert_readiness_gates_publication() {
     let readiness = workflow
         .find("id: release_readiness")
         .expect("the release job computes registry readiness");
-    let jq_install = workflow
-        .find("sudo apt-get install --yes jq")
-        .expect("the release job installs its metadata reader");
+    let tool_install = workflow
+        .find("sudo apt-get install --yes jq ripgrep")
+        .expect("the release job installs every release-check reader");
     let publish = workflow
         .rfind("command: release")
         .expect("the release job invokes release-plz");
 
-    assert!(jq_install < readiness, "jq is installed before readiness");
+    assert!(
+        tool_install < readiness,
+        "release-check readers are installed before readiness"
+    );
     assert!(
         readiness < publish,
         "readiness is decided before publication"

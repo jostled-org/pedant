@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/jostled-org/pedant/compare/pedant-graph-v0.3.0...pedant-graph-v0.4.0) - 2026-08-23
+
+### Added
+
+- *(graph)* [**breaking**] project a go resolution into the same code graph
+- *(resolution)* [**breaking**] widen the shared report vocabulary for Go
+
+### Other
+
+- hoist every duplicated body into the one owner that states it
+- hoist every duplicated language check into one owner
+- *(graph)* read every go graph after its repository is gone
+- *(graph)* prove retention stays rust-only after the neutral split
+- *(graph)* mint every graph through one language-neutral assembler
+
 ## [0.3.0](https://github.com/jostled-org/pedant/compare/pedant-graph-v0.2.0...pedant-graph-v0.3.0) - 2026-08-18
 
 ### Added

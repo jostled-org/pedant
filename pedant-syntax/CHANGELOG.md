@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/jostled-org/pedant/compare/pedant-syntax-v0.4.0...pedant-syntax-v0.5.0) - 2026-08-23
+
+### Added
+
+- *(resolution)* [**breaking**] state which go types implement which interfaces
+- *(resolution)* [**breaking**] answer Go method calls from the written receiver
+- *(resolution)* resolve every Go name from snapshot facts alone
+- *(syntax)* extract Go grammar facts once for every consumer
+
+### Fixed
+
+- *(syntax)* [**breaking**] state the pointer form of an embedded type
+- *(resolution)* preserve go embedded type identities
+
+### Other
+
+- hoist every duplicated body into the one owner that states it
+- *(resolution)* close go resolver proof gaps
+- *(syntax)* guard the go depth ceiling by scope nesting
+
 ## [0.4.0](https://github.com/jostled-org/pedant/compare/pedant-syntax-v0.3.0...pedant-syntax-v0.4.0) - 2026-08-18
 
 ### Added

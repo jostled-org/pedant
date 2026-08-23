@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0](https://github.com/jostled-org/pedant/compare/pedant-core-v0.22.0...pedant-core-v0.23.0) - 2026-08-23
+
+### Added
+
+- *(resolution)* [**breaking**] state which go types implement which interfaces
+- *(resolution)* [**breaking**] answer Go method calls from the written receiver
+- *(resolution)* resolve every Go name from snapshot facts alone
+- *(resolution)* snapshot every Go package the project admits
+- *(resolution)* [**breaking**] load the Go module project from go.mod alone
+- *(resolution)* [**breaking**] widen the shared report vocabulary for Go
+
+### Fixed
+
+- *(ci)* keep cargo tests off local lifecycle files
+- *(resolution)* name every module the go resolve split added
+- *(syntax)* [**breaking**] state the pointer form of an embedded type
+- *(resolution)* preserve go embedded type identities
+- *(resolution)* bind go imports to declared package names
+- *(release)* keep root changelog current
+
+### Other
+
+- hoist every duplicated body into the one owner that states it
+- *(release)* prove the go gated edge is released before its consumer
+- hoist every duplicated language check into one owner
+- *(go)* prove every go owner is registered and one job deep
+- *(resolution)* scan every go module for report record writers
+- *(resolution)* answer every go resolution row before asserting
+- *(resolution)* prove go function literal bodies resolve names
+- *(resolution)* reject fabricated definitions for universe go names
+- *(resolution)* prove go import forms and shadowing block real claims
+- *(resolution)* prove universe and semantic budget boundaries
+- *(resolution)* prove file-scoped go lookup gaps
+- *(resolution)* close go resolver proof gaps
+- *(resolution)* close the go proofs over their production owners
+- *(resolution)* close the go load proofs over the modules it reaches
+
 ## [0.22.0](https://github.com/jostled-org/pedant/compare/pedant-core-v0.21.2...pedant-core-v0.22.0) - 2026-08-18
 
 ### Added

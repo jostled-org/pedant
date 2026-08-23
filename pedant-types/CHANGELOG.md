@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0](https://github.com/jostled-org/pedant/compare/pedant-types-v0.15.1...pedant-types-v0.16.0) - 2026-08-23
+
+### Added
+
+- *(resolution)* [**breaking**] widen the shared report vocabulary for Go
+
 ## [0.15.1](https://github.com/jostled-org/pedant/compare/pedant-types-v0.15.0...pedant-types-v0.15.1) - 2026-08-18
 
 ### Added

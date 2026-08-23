@@ -1,6 +1,6 @@
 [package]
 name = "pedant-syntax"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 rust-version = "1.96"
 description = "Language classification, parser selection, and enclosing-declaration extraction for pedant"
@@ -40,7 +40,7 @@ _ts = ["dep:tree-sitter"]
 _ts_generic = ["_ts"]
 
 [dependencies]
-pedant-types = { version = "0.15.1", path = "../pedant-types" }
+pedant-types = { version = "0.16.0", path = "../pedant-types" }
 serde = { version = "1", features = ["derive"] }
 # Both parser crates take their minimum feature set, because a consumer that
 # links only this crate must not pay for `syn`'s derive, clone, and proc-macro

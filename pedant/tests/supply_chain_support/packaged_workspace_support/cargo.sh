@@ -52,13 +52,21 @@ require() {
 }
 
 # One manifest as `cargo metadata` describes it, with its first-party edges.
+#
+# An edge is read in both spellings a manifest may carry it in: the bare
+# requirement an unconditional edge uses, and the table an optional one needs to
+# hold `optional = true`. Cargo reports both the same way, and a reader that saw
+# only the first would drop the gated edge from the metadata every patch, member
+# and requirement check downstream is judged against — leaving the proof
+# reporting a green graph for an edge it never looked at.
 package_json() {
     package_manifest="$1"
     package_directory=$(dirname "${package_manifest}")
     package_name=$(rg -N -o -r '${1}' '^name = "([^"]+)"$' "${package_manifest}")
     package_version=$(rg -N -o -r '${1}' '^version = "([^"]+)"$' "${package_manifest}")
-    if ! rg -N -o -r '${1}|${2}' '^(fixture-[a-h]) = "([^"]+)"$' "${package_manifest}" \
-        > "${state}/edges.txt"; then
+    if ! rg -N -o -r '${1}|${2}${3}' \
+        '^(fixture-[a-h]) = (?:"([^"]+)"|\{ version = "([^"]+)"[^}]*\})$' \
+        "${package_manifest}" > "${state}/edges.txt"; then
         : > "${state}/edges.txt"
     fi
     jq -n \
@@ -173,7 +181,13 @@ case "${operation}" in
             # The one reading the graph refusals judge. A row that wants a
             # refusal supplies the jq filter that breaks the graph, or the
             # warning Cargo prints when a patch redirects nothing.
+            #
+            # The manifest is kept beside the record because the proof writes it
+            # into a staging root it then removes, and its member list and patch
+            # table are what a row reads to say the archives — rather than the
+            # registry — answered for every first-party requirement.
             log "metadata archive"
+            cp -- "${manifest}" "${state}/archive-manifest.toml"
             if [ -n "${FAKE_METADATA_WARNING:-}" ]; then
                 printf '%s\n' "${FAKE_METADATA_WARNING}" >&2
             fi

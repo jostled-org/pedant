@@ -63,6 +63,7 @@ mod graph_cases;
 mod budget_cases;
 
 use crate::cargo_classifier_cases::INFRASTRUCTURE_MATCHES;
+use fixture::{FIRST_PARTY_EDGES, RELEASE_ORDER, STAGED_VERSION, staged_manifest};
 use row::{Fault, ORDINARY_STATUS, PINNED_BINARIES, RowRoot};
 use verdict::{
     INFRASTRUCTURE_STATUS, SIGNALLED_STATUS, assert_refusal, assert_refused_before_anything_ran,
@@ -139,6 +140,134 @@ fn packaged_workspace_cleanup_is_bounded_on_success_failure_infrastructure_and_i
 #[test]
 fn packaged_graph_refuses_every_unreleaseable_shape() {
     graph_cases::verify_packaged_graph_refusals();
+}
+
+/// 14.T3 (Invariant 25): a release whose dependency graph holds an optional,
+/// feature-gated edge is staged, packaged, and resolved from the archives, in
+/// the order that edge forces.
+///
+/// The released workspace grew one such edge, and it is why `pedant-syntax`
+/// releases before `pedant-core`. What that costs is invisible in this
+/// repository until publication: Cargo replaces the path edge with a registry
+/// edge while packaging an optional dependency exactly as it does an
+/// unconditional one, so a consumer released before its dependency asks
+/// crates.io for a version that does not exist yet.
+///
+/// This row drives the whole protocol against tools that compile nothing, and
+/// claims nothing about compilation — the indexed packaged-workspace proof owns
+/// that. What it owns is the four documents between the release and the
+/// archives: the order, the manifests the archives carry, the workspace those
+/// archives are resolved in, and the caller's own repository.
+#[test]
+fn packaged_workspace_go_dependency_order_models_release_protocol() {
+    let root = RowRoot::new();
+    let label = "the dependency-ordered release protocol";
+    let completed = root.run(&Fault::None);
+
+    assert_row_is_clean(&root, label, &completed, 0, PINNED_BINARIES);
+    assert_release_order_precedes_every_consumer(label);
+    assert_archives_carry_the_staged_release(&root, label);
+    assert_archive_workspace_answers_for_every_inbound_edge(&root, label);
+}
+
+/// Every dependency is released before the package that requires it, whether or
+/// not a feature selects the edge, and the model still holds the gated one.
+///
+/// The second reading is what stops the first from going quiet. An order check
+/// over a fixture whose edges had all become unconditional would keep passing
+/// while the shape this predicate exists for was gone.
+fn assert_release_order_precedes_every_consumer(label: &str) {
+    let position = |name: &str| {
+        RELEASE_ORDER
+            .iter()
+            .position(|released| *released == name)
+            .unwrap_or_else(|| panic!("{label}: the release order does not name {name}"))
+    };
+    for (consumer, dependency, _) in FIRST_PARTY_EDGES {
+        assert!(
+            position(dependency) < position(consumer),
+            "{label}: {dependency} must be released before {consumer}"
+        );
+    }
+    assert_eq!(
+        FIRST_PARTY_EDGES
+            .iter()
+            .filter(|(_, _, gated)| *gated)
+            .count(),
+        1,
+        "{label}: the fixture models exactly one optional, feature-gated edge"
+    );
+}
+
+/// The eight archives are the staged release, and each carries the exact
+/// manifest release-plz staged for it.
+///
+/// The manifest is compared whole rather than by version, because the
+/// requirement is the other half of the same claim: an archive that carried the
+/// staged version while still requiring a dependency's previous one is the
+/// failure a registry publication reports and this repository cannot.
+fn assert_archives_carry_the_staged_release(root: &RowRoot, label: &str) {
+    let expected: Box<[Box<str>]> = RELEASE_ORDER
+        .iter()
+        .map(|name| format!("{name}-{STAGED_VERSION}.crate").into())
+        .collect();
+    assert_eq!(
+        root.archives(),
+        expected,
+        "{label}: the packaging left archives other than this release's"
+    );
+    for name in RELEASE_ORDER {
+        assert_eq!(
+            root.packaged_manifest(name, STAGED_VERSION),
+            staged_manifest(name),
+            "{label}: the {name} archive carries a manifest release-plz never staged"
+        );
+    }
+}
+
+/// The generated workspace compiles the extracted archives and patches every
+/// package something in it requires, so no first-party requirement is left for
+/// crates.io to answer.
+///
+/// The patch table is read as the whole table rather than searched for entries.
+/// A missing entry lets a first-party requirement resolve from the registry,
+/// which is the failure this proof exists for; an extra one redirects a
+/// requirement nothing states, which Cargo reports as an unused patch and the
+/// proof refuses.
+fn assert_archive_workspace_answers_for_every_inbound_edge(root: &RowRoot, label: &str) {
+    let manifest = root.archive_manifest();
+    for name in RELEASE_ORDER {
+        assert!(
+            manifest.contains(&format!("\"{name}-{STAGED_VERSION}\",")),
+            "{label}: the archive workspace omits the {name} member"
+        );
+    }
+    let patched: Box<[&str]> = manifest
+        .lines()
+        .filter_map(|line| line.split_once(" = { path = "))
+        .map(|(name, _)| name)
+        .collect();
+    let inbound: Box<[&str]> = RELEASE_ORDER
+        .iter()
+        .copied()
+        .filter(|name| {
+            FIRST_PARTY_EDGES
+                .iter()
+                .any(|(_, dependency, _)| dependency == name)
+        })
+        .collect();
+    assert_eq!(
+        patched, inbound,
+        "{label}: the archive workspace patches the wrong set of first-party packages"
+    );
+    for name in inbound {
+        assert!(
+            manifest.contains(&format!(
+                "{name} = {{ path = \"{name}-{STAGED_VERSION}\" }}"
+            )),
+            "{label}: {name} is patched to something other than its extracted archive"
+        );
+    }
 }
 
 /// The packaged proof selects its warm budget and refuses every overrun.

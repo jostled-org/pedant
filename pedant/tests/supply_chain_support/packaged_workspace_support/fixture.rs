@@ -10,7 +10,6 @@
 //! Nothing here asserts. [`super`] owns what a row requires; this owns what a
 //! row is given.
 
-use std::fmt::Write as _;
 use std::path::Path;
 
 use crate::fake_cargo::write_executable;
@@ -44,19 +43,28 @@ pub(super) const RELEASE_ORDER: &[&str] = &[
     "fixture-h",
 ];
 
-/// The first-party edges the fixture declares, as consumer and dependency.
+/// The first-party edges the fixture declares, as consumer, dependency, and
+/// whether a feature has to select the edge.
 ///
 /// Two packages carry an inbound edge and six carry none, so a patch set that
 /// covered every member — or only the first one — would be visibly wrong.
-const FIRST_PARTY_EDGES: &[(&str, &str)] = &[
-    ("fixture-b", "fixture-a"),
-    ("fixture-c", "fixture-a"),
-    ("fixture-c", "fixture-b"),
-    ("fixture-d", "fixture-a"),
-    ("fixture-e", "fixture-a"),
-    ("fixture-f", "fixture-a"),
-    ("fixture-g", "fixture-a"),
-    ("fixture-h", "fixture-a"),
+///
+/// One edge is optional and feature-gated, because the released workspace holds
+/// one: `pedant-core` takes `pedant-syntax` that way, which is why
+/// `pedant-syntax` releases first. Cargo replaces a path edge with a registry
+/// edge while packaging whether or not a feature selects it, so an optional
+/// edge owes the same release order, the same staged requirement, and the same
+/// patch entry as an unconditional one — and the fixture has to hold one for a
+/// row to say so.
+pub(super) const FIRST_PARTY_EDGES: &[(&str, &str, bool)] = &[
+    ("fixture-b", "fixture-a", false),
+    ("fixture-c", "fixture-a", false),
+    ("fixture-c", "fixture-b", true),
+    ("fixture-d", "fixture-a", false),
+    ("fixture-e", "fixture-a", false),
+    ("fixture-f", "fixture-a", false),
+    ("fixture-g", "fixture-a", false),
+    ("fixture-h", "fixture-a", false),
 ];
 
 /// The version the fixture's base commit carries.
@@ -64,7 +72,7 @@ const BASE_VERSION: &str = "0.1.0";
 
 /// The version fake release-plz stages, standing in for the bump the real tool
 /// computes from the breaking commit the script writes.
-const STAGED_VERSION: &str = "0.2.0";
+pub(super) const STAGED_VERSION: &str = "0.2.0";
 
 /// The branch the fixture's base commit sits on, and the only ref it holds.
 const FIXTURE_BRANCH: &str = "main";
@@ -130,20 +138,53 @@ fn release_plz_manifest() -> Box<str> {
 /// One member's manifest at the stated version, carrying its first-party edges
 /// at that same version.
 fn package_manifest(name: &str, version: &str) -> Box<str> {
-    let mut manifest =
-        format!("[package]\nname = \"{name}\"\nversion = \"{version}\"\nedition = \"2024\"\n");
-    let mut edges = FIRST_PARTY_EDGES
+    let edges: Box<[(&str, bool)]> = FIRST_PARTY_EDGES
         .iter()
-        .filter(|(consumer, _)| *consumer == name)
-        .peekable();
-    if edges.peek().is_some() {
-        manifest.push_str("\n[dependencies]\n");
-        for (_, dependency) in edges {
-            writeln!(manifest, "{dependency} = \"{version}\"")
-                .expect("a manifest in memory always accepts one more line");
-        }
+        .filter(|(consumer, _, _)| *consumer == name)
+        .map(|(_, dependency, gated)| (*dependency, *gated))
+        .collect();
+    format!(
+        "[package]\nname = \"{name}\"\nversion = \"{version}\"\nedition = \"2024\"\n{}{}",
+        feature_section(&edges),
+        dependency_section(&edges, version)
+    )
+    .into()
+}
+
+/// The manifest a member carries once release-plz has staged its release.
+pub(super) fn staged_manifest(name: &str) -> Box<str> {
+    package_manifest(name, STAGED_VERSION)
+}
+
+/// The `[features]` table, which exists only where an edge is gated.
+fn feature_section(edges: &[(&str, bool)]) -> Box<str> {
+    let selections: Box<[Box<str>]> = edges
+        .iter()
+        .filter(|(_, gated)| *gated)
+        .map(|(dependency, _)| format!("optional-{dependency} = [\"dep:{dependency}\"]\n").into())
+        .collect();
+    match selections.is_empty() {
+        true => "".into(),
+        false => format!("\n[features]\n{}", selections.join("")).into(),
     }
-    manifest.into()
+}
+
+/// The `[dependencies]` table, with a gated edge in the table form Cargo needs
+/// to carry `optional`.
+fn dependency_section(edges: &[(&str, bool)], version: &str) -> Box<str> {
+    let requirements: Box<[Box<str>]> = edges
+        .iter()
+        .map(|(dependency, gated)| match gated {
+            true => {
+                format!("{dependency} = {{ version = \"{version}\", optional = true }}\n").into()
+            }
+            false => format!("{dependency} = \"{version}\"\n").into(),
+        })
+        .collect();
+    match requirements.is_empty() {
+        true => "".into(),
+        false => format!("\n[dependencies]\n{}", requirements.join("")).into(),
+    }
 }
 
 /// The manifests and changelogs fake release-plz stages, standing in for the

@@ -25,7 +25,7 @@ use std::time::Duration;
 use tempfile::TempDir;
 
 use super::fixture::{self, ISOLATED_GIT};
-use crate::cargo_classifier_cases::{expanded, repository_root};
+use crate::cargo_classifier_cases::{entries, expanded, repository_root};
 use crate::process_guard::{Completed, Run, execute};
 
 /// The tracked proof every row runs.
@@ -303,6 +303,33 @@ impl RowRoot {
             .collect()
     }
 
+    /// The archives this row's packaging left in the target root, sorted.
+    ///
+    /// The target root outlives the staging root the proof removes, which is
+    /// what makes the archives a row can still read after the proof has
+    /// finished releasing everything it owns.
+    pub(super) fn archives(&self) -> Box<[Box<str>]> {
+        entries(&self.target.join("package"))
+    }
+
+    /// The manifest one packaged archive carries, read from the tree the
+    /// packaging built that archive out of.
+    pub(super) fn packaged_manifest(&self, name: &str, version: &str) -> Box<str> {
+        read_recorded(
+            &self
+                .state
+                .join("pack")
+                .join(format!("{name}-{version}"))
+                .join("Cargo.toml"),
+        )
+    }
+
+    /// The generated workspace manifest the proof handed Cargo to resolve the
+    /// archive graph from.
+    pub(super) fn archive_manifest(&self) -> Box<str> {
+        read_recorded(&self.state.join("archive-manifest.toml"))
+    }
+
     /// Where one pinned tool is installed: the revision-named root inside the
     /// target, which outlives the staging root the proof throws away.
     pub(super) fn tool_build(&self, binary: &str) -> PathBuf {
@@ -331,4 +358,15 @@ fn recorded_lines(path: &Path) -> Box<[Box<str>]> {
         Err(error) if error.kind() == ErrorKind::NotFound => Box::default(),
         Err(error) => panic!("{} could not be read: {error}", path.display()),
     }
+}
+
+/// One document the row's fake tools left, which must be there.
+///
+/// Absence is a failure rather than an empty reading: every caller asks what a
+/// finished stage produced, and a stage that produced nothing is the regression
+/// those callers exist to catch.
+fn read_recorded(path: &Path) -> Box<str> {
+    fs::read_to_string(path)
+        .unwrap_or_else(|error| panic!("{} could not be read: {error}", path.display()))
+        .into()
 }

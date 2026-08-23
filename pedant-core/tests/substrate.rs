@@ -28,6 +28,13 @@ mod capability_analysis;
 #[path = "substrate_support/release_contract.rs"]
 mod release_contract;
 
+/// The release graph those contracts are compared against, and the manifest
+/// readers they take it with. Split from [`release_contract`] for the
+/// source-file budget alone, the way `packaged_workspace_claims` sits beside
+/// `packaged_workspace`.
+#[path = "substrate_support/release_model.rs"]
+mod release_model;
+
 /// Publication workflow behavior at the registry boundary. Same `#[path]`
 /// reason as [`declaration_scan`].
 #[path = "substrate_support/release_workflow.rs"]

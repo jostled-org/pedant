@@ -42,7 +42,7 @@ pub(super) const REFUSED_STATUS: i32 = 1;
 /// way and the difference only shows up on the registry.
 const PACKAGED_HISTORY: &[&str] = &[
     "package onto chore: stage the release-plz update",
-    "package onto feat!: implement symbol capability profiles",
+    "package onto feat!: implement go graph extraction",
     "package onto base",
 ];
 

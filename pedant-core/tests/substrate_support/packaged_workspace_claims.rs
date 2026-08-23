@@ -15,6 +15,27 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// The tracked proof that compiles the release archives as a registry consumer
+/// receives them.
+pub(crate) const PACKAGED_WORKSPACE_SCRIPT: &str = ".github/scripts/check_packaged_workspace.sh";
+
+/// The conventional-commit subject the release finalization squashes this
+/// plan's history to, and the subject the proof has to show release-plz.
+///
+/// release-plz reads the subject to choose the next version, so a proof that
+/// showed it the checkpoint history this branch actually holds would stage a
+/// version the release never publishes. The value lives here because two
+/// predicates need it: [`crate::packaged_workspace`] requires the tracked proof
+/// to state it once and carry it into one commit, and
+/// [`crate::release_contract`] requires it to be this plan's release. A copy
+/// beside either of them could name a different release from the other.
+pub(crate) const PROOF_COMMIT_SUBJECT: &str = "feat!: implement go graph extraction";
+
+/// That subject as the tracked proof declares it.
+pub(crate) fn subject_declaration() -> Box<str> {
+    format!("PROOF_COMMIT_SUBJECT=\"{PROOF_COMMIT_SUBJECT}\"").into()
+}
+
 /// The responsibilities that script gives one function each, sorted.
 ///
 /// Twelve stages, because a stage that shares a function with its neighbour

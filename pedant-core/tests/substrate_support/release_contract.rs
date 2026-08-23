@@ -8,87 +8,39 @@
 //!
 //! The cases are structural: they read tracked files and assert a written-down
 //! model. None builds, spawns, or reads outside the repository.
+//! [`crate::release_model`] owns that model and the manifest readers.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
 
+use crate::packaged_workspace_claims::{
+    PACKAGED_WORKSPACE_SCRIPT, repository_root, subject_declaration,
+};
+use crate::release_model::{
+    FIRST_PARTY_EDGES, GATED_EDGE, PUBLISHED, changelog_path, declared_version, default_selection,
+    edge_line, features, parse_toml, release_entries, release_entry, stated_requirements,
+};
+use crate::release_workflow::assert_readiness_gates_publication;
 use crate::resolution::authority_scan::read_text;
 
-/// Every published package, in the order `release-plz.toml` must publish them.
+/// `release-plz.toml` states the workspace release policy explicitly.
 ///
-/// The names and their order are written down rather than derived: a topological
-/// sort of the manifests would agree with any order the manifests happen to have,
-/// which is the fact under test.
-///
-/// The versions are not written down. release-plz owns every version in this
-/// workspace and bumps them in a `chore: release` commit that never consults
-/// this module, so a pinned version here asserts only that a copy of a manifest
-/// matches the manifest, and goes stale on the release after every edit. The
-/// load-bearing facts — a requirement equals the version its dependency
-/// declares, and a dependency is released first — hold against the versions this
-/// module reads.
-const PUBLISHED: [&str; 8] = [
-    "pedant-types",
-    "pedant-syntax",
-    "pedant-core",
-    "pedant-graph",
-    "pedant-snippet",
-    "pedant-lang",
-    "pedant-mcp",
-    "pedant",
-];
-
-fn parse_toml(relative: &str) -> toml::Table {
-    toml::from_str(&read_text(relative)).unwrap_or_else(|error| panic!("{relative}: {error}"))
-}
-
-/// Every package `release-plz.toml` names, in the order it releases them.
-fn release_entries(release: &toml::Table) -> Vec<&str> {
-    release
-        .get("package")
-        .and_then(toml::Value::as_array)
-        .expect("release-plz.toml declares a package array")
-        .iter()
-        .map(|entry| {
-            entry
-                .get("name")
-                .and_then(toml::Value::as_str)
-                .expect("every release-plz entry names a package")
-        })
-        .collect()
-}
-
-/// The version a manifest's `[package]` declares.
-fn declared_version(manifest: &toml::Table, name: &str) -> String {
-    manifest
-        .get("package")
-        .and_then(|package| package.get("version"))
-        .and_then(toml::Value::as_str)
-        .unwrap_or_else(|| panic!("{name} declares no package version"))
-        .to_owned()
-}
-
-/// Every first-party requirement a manifest states, across dependency kinds.
-fn first_party_requirements(manifest: &toml::Table, name: &str) -> Vec<(String, String)> {
-    ["dependencies", "dev-dependencies", "build-dependencies"]
-        .iter()
-        .filter_map(|table| manifest.get(*table))
-        .filter_map(toml::Value::as_table)
-        .flat_map(|table| table.iter())
-        .filter(|(dependency, _)| PUBLISHED.contains(&dependency.as_str()))
-        .map(|(dependency, spec)| {
-            let version = spec
-                .get("version")
-                .and_then(toml::Value::as_str)
-                .unwrap_or_else(|| panic!("{name} requires {dependency} without a version"));
-            (dependency.clone(), version.to_owned())
-        })
-        .collect()
+/// One owner, two callers: the release-graph predicate reads it beside the
+/// order it governs, and the release-owner predicate reads it beside the
+/// archives it decides get published at all.
+fn assert_release_always(release: &toml::Table) {
+    assert_eq!(
+        release
+            .get("workspace")
+            .and_then(|workspace| workspace.get("release_always"))
+            .and_then(toml::Value::as_bool),
+        Some(true),
+        "release-plz.toml states workspace release_always explicitly"
+    );
 }
 
 #[test]
 fn published_versions_and_requirements_form_releaseable_graph() {
-    let declared: BTreeMap<&str, String> = PUBLISHED
+    let declared: BTreeMap<&str, Box<str>> = PUBLISHED
         .iter()
         .map(|package| {
             let manifest = parse_toml(&format!("{package}/Cargo.toml"));
@@ -98,26 +50,20 @@ fn published_versions_and_requirements_form_releaseable_graph() {
 
     for package in PUBLISHED {
         let manifest = parse_toml(&format!("{package}/Cargo.toml"));
-        for (dependency, requirement) in first_party_requirements(&manifest, package) {
+        for requirement in stated_requirements(&manifest, package) {
             let published = declared
-                .get(dependency.as_str())
+                .get(&*requirement.dependency)
                 .expect("a first-party dependency is a published package");
             assert_eq!(
-                &requirement, published,
-                "{package} requires {dependency} at the version {dependency} publishes"
+                requirement.version, *published,
+                "{package} requires {} at the version {} publishes",
+                requirement.dependency, requirement.dependency
             );
         }
     }
 
     let release = parse_toml("release-plz.toml");
-    assert_eq!(
-        release
-            .get("workspace")
-            .and_then(|workspace| workspace.get("release_always"))
-            .and_then(toml::Value::as_bool),
-        Some(true),
-        "release-plz.toml states workspace release_always explicitly"
-    );
+    assert_release_always(&release);
     let entries = release_entries(&release);
     let unique: BTreeSet<&str> = entries.iter().copied().collect();
     assert_eq!(
@@ -133,29 +79,173 @@ fn published_versions_and_requirements_form_releaseable_graph() {
 
     for (position, name) in entries.iter().enumerate() {
         let manifest = parse_toml(&format!("{name}/Cargo.toml"));
-        for (dependency, _) in first_party_requirements(&manifest, name) {
+        for requirement in stated_requirements(&manifest, name) {
             let dependency_position = entries
                 .iter()
-                .position(|entry| *entry == dependency)
+                .position(|entry| **entry == *requirement.dependency)
                 .expect("a first-party dependency is released too");
             assert!(
                 dependency_position < position,
-                "{name} is released before its dependency {dependency}"
+                "{name} is released before its dependency {}",
+                requirement.dependency
             );
         }
     }
 }
 
+/// 14.T2 (Invariant 25): the release order, the gated edge, the changelogs, the
+/// readiness gate, and the archive proof subject are the ones this release
+/// needs.
+///
+/// The optionality and version of the gated edge are also read by the Go
+/// registration proof, which states the feature-closure half — that the edge
+/// asks for the Go grammar alone. That proof compiles only under
+/// `go-resolution`, and this one is what a default build has: the release facts
+/// hold in every configuration, because packaging does.
+#[test]
+fn go_release_and_archive_owners_are_exact() {
+    let release = parse_toml("release-plz.toml");
+    assert_eq!(
+        &*release_entries(&release),
+        PUBLISHED.as_slice(),
+        "release-plz.toml releases the published packages in dependency-safe order"
+    );
+    assert_release_always(&release);
+    assert_first_party_edges_are_exact();
+    assert_the_gated_edge_is_optional_versioned_and_feature_selected();
+    assert_every_package_has_one_existing_changelog(&release);
+    assert_the_archive_proof_states_this_release();
+    assert_readiness_gates_publication();
+}
+
+/// The manifests state exactly the modelled first-party edges.
+fn assert_first_party_edges_are_exact() {
+    let mut stated: Box<[Box<str>]> = PUBLISHED
+        .iter()
+        .flat_map(|package| {
+            let manifest = parse_toml(&format!("{package}/Cargo.toml"));
+            stated_requirements(&manifest, package)
+                .into_vec()
+                .into_iter()
+                .map(|requirement| {
+                    edge_line(
+                        package,
+                        &requirement.kind,
+                        &requirement.dependency,
+                        requirement.selection,
+                    )
+                })
+        })
+        .collect();
+    stated.sort_unstable();
+    let mut modelled: Box<[Box<str>]> = FIRST_PARTY_EDGES
+        .iter()
+        .map(|(consumer, kind, dependency, selection)| {
+            edge_line(consumer, kind, dependency, *selection)
+        })
+        .collect();
+    modelled.sort_unstable();
+    assert_eq!(
+        stated, modelled,
+        "the published workspace's first-party requirement set changed"
+    );
+}
+
+/// The gated edge is optional, carries a published version, and is selected by
+/// exactly one feature, which is not on by default.
+///
+/// Every clause is a way the same edge could stop being releasable. Without
+/// `optional` the dependency is unconditional and the feature is a lie; without
+/// a version, packaging leaves a path dependency a registry consumer cannot
+/// resolve; without the feature selecting it, nothing turns it on; and a second
+/// feature selecting it would put the Go grammar in a build that asked for
+/// something else.
+fn assert_the_gated_edge_is_optional_versioned_and_feature_selected() {
+    let (consumer, dependency, feature) = GATED_EDGE;
+    let manifest = parse_toml(&format!("{consumer}/Cargo.toml"));
+    let edge = manifest
+        .get("dependencies")
+        .and_then(|table| table.get(dependency))
+        .unwrap_or_else(|| panic!("{consumer} requires {dependency}"));
+    assert_eq!(
+        edge.get("optional").and_then(toml::Value::as_bool),
+        Some(true),
+        "{consumer}'s {dependency} edge is optional"
+    );
+    assert!(
+        edge.get("version").and_then(toml::Value::as_str).is_some(),
+        "{consumer}'s {dependency} edge carries the version packaging turns into a requirement"
+    );
+    let selection: Box<str> = format!("dep:{dependency}").into();
+    let selectors: Box<[&str]> = features(&manifest)
+        .filter(|(_, selects)| selects.contains(&selection))
+        .map(|(name, _)| name)
+        .collect();
+    assert_eq!(
+        &*selectors,
+        &[feature],
+        "exactly one feature of {consumer} selects {dependency}"
+    );
+    assert!(
+        !default_selection(&manifest).contains(&feature.into()),
+        "{consumer}'s {feature} feature stays default-off"
+    );
+}
+
+/// Every published package has one changelog release-plz can write, and no two
+/// packages share it.
+///
+/// A package whose changelog path does not exist is one release-plz stops at,
+/// and two packages pointed at one file would overwrite each other's history.
+/// The main package states its path because the repository changelog is the
+/// root authority; the other seven take the per-package default.
+fn assert_every_package_has_one_existing_changelog(release: &toml::Table) {
+    let paths: BTreeSet<Box<str>> = PUBLISHED
+        .iter()
+        .map(|package| {
+            let path = changelog_path(release, package);
+            assert!(
+                repository_root().join(&*path).is_file(),
+                "{package} declares the changelog {path}, which release-plz cannot write"
+            );
+            path
+        })
+        .collect();
+    assert_eq!(
+        paths.len(),
+        PUBLISHED.len(),
+        "each published package owns its own changelog: {paths:?}"
+    );
+}
+
+/// The tracked archive proof stages this release: this plan's breaking subject,
+/// and every published package.
+///
+/// Both readings are one number and one sentence, and both decide what the
+/// indexed proof actually verifies. A stale subject shows release-plz a release
+/// that is not this one, so it stages versions the publication will not; a
+/// package count below the release order packages a subset and reports a green
+/// archive graph for a workspace no consumer receives.
+fn assert_the_archive_proof_states_this_release() {
+    let proof = read_text(PACKAGED_WORKSPACE_SCRIPT);
+    let subject = subject_declaration();
+    assert!(
+        proof.contains(&*subject),
+        "{PACKAGED_WORKSPACE_SCRIPT} stages this release with [{subject}]"
+    );
+    let count: Box<str> = format!("RELEASE_PACKAGE_COUNT={}", PUBLISHED.len()).into();
+    assert!(
+        proof.contains(&*count),
+        "{PACKAGED_WORKSPACE_SCRIPT} packages all {} published archives [{count}]",
+        PUBLISHED.len()
+    );
+}
+
 #[test]
 fn main_package_changelog_has_one_root_authority() {
     let release = parse_toml("release-plz.toml");
-    let pedant = release
-        .get("package")
-        .and_then(toml::Value::as_array)
-        .expect("release-plz.toml declares packages")
-        .iter()
-        .find(|entry| entry.get("name").and_then(toml::Value::as_str) == Some("pedant"))
-        .expect("release-plz.toml declares the main package");
+    let pedant =
+        release_entry(&release, "pedant").expect("release-plz.toml declares the main package");
     assert_eq!(
         pedant.get("changelog_path").and_then(toml::Value::as_str),
         Some("./CHANGELOG.md"),
@@ -173,18 +263,14 @@ fn main_package_changelog_has_one_root_authority() {
         "the repository changelog includes the current main-package release"
     );
     assert!(
-        !Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("pedant-core is inside the workspace root")
-            .join("pedant/CHANGELOG.md")
-            .exists(),
+        !repository_root().join("pedant/CHANGELOG.md").exists(),
         "a second main-package changelog would drift from the root authority"
     );
 }
 
 #[test]
 fn unpublished_dev_dependencies_never_become_registry_requirements() {
-    let consumers: Vec<&str> = PUBLISHED
+    let consumers: Box<[&str]> = PUBLISHED
         .into_iter()
         .filter_map(|package| {
             let manifest = parse_toml(&format!("{package}/Cargo.toml"));
@@ -207,8 +293,8 @@ fn unpublished_dev_dependencies_never_become_registry_requirements() {
         .collect();
 
     assert_eq!(
-        consumers,
-        ["pedant-mcp", "pedant"],
+        &*consumers,
+        &["pedant-mcp", "pedant"],
         "the two process-spawning packages share the guard"
     );
 }

@@ -232,6 +232,19 @@ pub const REGISTERED_PREDICATES: &[(&str, &str)] = &[
         "go_production_structure_and_error_ownership_are_exact",
         "pedant-core/tests/substrate_support/resolution/go/policy.rs",
     ),
+    // Step 14 — the release the Go work has to be published through. Both live
+    // beside the release and package owners they read rather than in a Go tree:
+    // what they state is a fact about all eight published packages, and a copy
+    // under `go/` would be a second release model to keep in step with the one
+    // every other release predicate already uses.
+    (
+        "go_release_and_archive_owners_are_exact",
+        "pedant-core/tests/substrate_support/release_contract.rs",
+    ),
+    (
+        "packaged_workspace_go_dependency_order_models_release_protocol",
+        "pedant/tests/supply_chain_support/packaged_workspace_cases.rs",
+    ),
 ];
 
 /// One default-off feature and the exact set it selects.

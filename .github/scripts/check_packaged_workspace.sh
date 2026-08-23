@@ -50,7 +50,7 @@ readonly SEMVER_CHECKS_VERSION SEMVER_CHECKS_REVISION
 # writes it. release-plz reads conventional-commit subjects to choose the next
 # version, so the proof must show it the subject finalization will squash to
 # rather than the checkpoint history this branch actually holds.
-PROOF_COMMIT_SUBJECT="feat!: implement symbol capability profiles"
+PROOF_COMMIT_SUBJECT="feat!: implement go graph extraction"
 RELEASE_STAGING_SUBJECT="chore: stage the release-plz update"
 PROOF_IDENTITY_NAME="pedant packaged workspace proof"
 PROOF_IDENTITY_EMAIL="packaged-workspace-proof@pedant.invalid"

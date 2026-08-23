@@ -19,7 +19,9 @@
 # point of the matrix:
 #
 #   * default-off — `pedant-core` and `pedant-graph` with no Go feature. The
-#     count is what compiles in every profile and nothing more.
+#     count is what compiles in every profile and nothing more. That floor is
+#     not zero: the release predicates read tracked manifests and scripts, so
+#     they hold — and must run — in the profile a publication is cut from.
 #   * Go-only — one Go feature and nothing else. This is the configuration a
 #     consumer selects, and the one that has to run the Go predicates.
 #   * all-feature — `--all-features`, which must not select less than the Go
@@ -126,12 +128,15 @@ check_command() {
 # ---------------------------------------------------------------------------
 # Default-off: the Go features are not selected, so no Go behaviour is linked.
 #
-# The graph root's two rows are structural: they read this crate's own source
-# text and hold under every profile, so their count is the floor a default build
-# selects rather than an exception to it.
+# The graph root's two rows and the core root's one are structural: they read
+# tracked source, manifests, and scripts rather than any Go type, and hold under
+# every profile, so their count is the floor a default build selects rather than
+# an exception to it. The core row is the release-owner predicate, which states
+# what publishing the Go surface costs the eight published packages — a claim a
+# release build has to be able to check without the feature it is about.
 # ---------------------------------------------------------------------------
 
-check_root core-default-off 0 \
+check_root core-default-off 1 \
     -p pedant-core --no-default-features --test substrate
 check_root graph-default-off 2 \
     -p pedant-graph --test graph
@@ -147,9 +152,9 @@ check_root syntax-default-off 0 \
 # probe, which is what the observed predicates need.
 # ---------------------------------------------------------------------------
 
-check_root core-go-only 25 \
+check_root core-go-only 26 \
     -p pedant-core --no-default-features --features go-resolution --test substrate
-check_root core-go-and-probe 29 \
+check_root core-go-and-probe 30 \
     -p pedant-core --no-default-features --features go-resolution,resolution-test-support --test substrate
 check_root graph-go-only 12 \
     -p pedant-graph --no-default-features --features go --test graph
@@ -174,7 +179,7 @@ check_root graph-all-features 12 \
 # Unified: features resolved together, including one deliberate mismatch.
 # ---------------------------------------------------------------------------
 
-check_root core-unified 29 \
+check_root core-unified 30 \
     -p pedant-core --features go-resolution,resolution-test-support --test substrate
 check_root graph-core-go-without-adapter 2 \
     -p pedant-graph --no-default-features --features pedant-core/go-resolution --test graph

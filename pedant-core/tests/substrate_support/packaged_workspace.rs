@@ -13,10 +13,11 @@ use crate::packaged_workspace_claims::{
     ARCHIVE_GRAPH_COMMANDS, ARCHIVE_IDENTITY_REFUSALS, ARCHIVE_MEMBER_ENTRY,
     ARCHIVE_MEMBER_EXTRACTION, ARCHIVE_PACKAGING_STEPS, GRAPH_REFUSAL_CHECKS, GRAPH_REFUSALS,
     ISOLATED_BASE_STEPS, ISOLATED_COMMIT_IDENTITY, ISOLATED_STAGING_SEQUENCE, MEMBER_LIST_CLOSE,
-    MEMBER_LIST_OPEN, PACKAGE_SCRIPT_FUNCTIONS, PINNED_IDENTITIES, PINNED_TOOLS,
-    PROOF_STAGE_SEQUENCE, RELEASE_STAGING_STEPS, TARGET_ROOT_REQUIREMENTS, UNTRACKED_COPY_STEPS,
-    WORKING_TREE_OVERLAY_STEPS, assert_contains_all, assert_exactly_once, assert_in_order,
-    function_body, offset_of, read_repository_file, tracked_shell_scripts,
+    MEMBER_LIST_OPEN, PACKAGE_SCRIPT_FUNCTIONS, PACKAGED_WORKSPACE_SCRIPT, PINNED_IDENTITIES,
+    PINNED_TOOLS, PROOF_STAGE_SEQUENCE, RELEASE_STAGING_STEPS, TARGET_ROOT_REQUIREMENTS,
+    UNTRACKED_COPY_STEPS, WORKING_TREE_OVERLAY_STEPS, assert_contains_all, assert_exactly_once,
+    assert_in_order, function_body, offset_of, read_repository_file, subject_declaration,
+    tracked_shell_scripts,
 };
 
 /// Read the tracked proof once and require every part of it.
@@ -38,10 +39,6 @@ pub(crate) fn assert_release_graph_is_exact() {
     assert_budget_contract(&joined);
     assert_package_script_ownership(&source, &joined);
 }
-
-/// The tracked proof that compiles the release archives as a registry consumer
-/// receives them.
-const PACKAGED_WORKSPACE_SCRIPT: &str = ".github/scripts/check_packaged_workspace.sh";
 
 /// The twelve stages the proof owns and the two sequences that run them.
 const PACKAGE_SCRIPT_FUNCTION_COUNT: usize = 14;
@@ -168,7 +165,7 @@ fn assert_isolated_staging(joined: &str) {
     );
     assert_exactly_once(
         joined,
-        "PROOF_COMMIT_SUBJECT=\"feat!: implement symbol capability profiles\"",
+        &subject_declaration(),
         "the breaking release commit subject",
     );
     assert_exactly_once(

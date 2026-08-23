@@ -337,13 +337,20 @@ fn ci_pins_cargo_deny_to_a_locked_source_revision() {
 
 #[test]
 fn release_job_publishes_only_registry_compatible_trees() {
+    assert_readiness_gates_publication();
+}
+
+/// The release job installs its metadata reader, decides registry readiness,
+/// and gates both the immutable-manifest check and publication on that
+/// decision — in that order.
+///
+/// One owner, two callers. The predicate above reads it as workflow behavior;
+/// [`crate::release_contract`]'s release-owner predicate requires it as part of
+/// the surface every published archive depends on, because an archive that
+/// compiles proves nothing about a job that would publish it from a tree whose
+/// tagged dependencies still hold older source.
+pub(crate) fn assert_readiness_gates_publication() {
     let workflow = read_repository_file(".github/workflows/release-plz.yml");
-    assert!(
-        repository_root()
-            .join("pedant-graph/CHANGELOG.md")
-            .is_file(),
-        "every release-plz package supplies its changelog"
-    );
     let readiness = workflow
         .find("id: release_readiness")
         .expect("the release job computes registry readiness");

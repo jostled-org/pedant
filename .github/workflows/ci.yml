@@ -38,6 +38,7 @@ jobs:
       # check's shared-library directive, and the wrapper rejects any
       # ShellCheck version other than the pinned release installed above.
       - run: .github/scripts/run_shellcheck.sh
+      - run: .github/scripts/repository_check_lib_test.sh
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           components: rustfmt, clippy

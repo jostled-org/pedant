@@ -439,7 +439,7 @@ check_tree_closure() {
 
     printf '[closure] %s: cargo tree %s\n' "${label}" "${args[*]}"
     local capture direct_capture=""
-    cargo_capture "closure_${label}" cargo tree --locked "${args[@]}" \
+    cargo_capture "closure_${label}" cargo tree --locked --color never "${args[@]}" \
         --prefix none --format "${CLOSURE_CAPTURE_FORMAT}" || {
         printf '%s\n' "${CARGO_CAPTURE_OUTPUT}" >&2
         violation "${label} could not capture its dependency tree"
@@ -447,7 +447,7 @@ check_tree_closure() {
     }
     capture="$(closure_resolved_packages "${CARGO_CAPTURE_OUTPUT}")"
     if [ "${wants_direct}" -eq 1 ]; then
-        cargo_capture "closure_${label}_direct" cargo tree --locked "${args[@]}" \
+        cargo_capture "closure_${label}_direct" cargo tree --locked --color never "${args[@]}" \
             --depth 1 --prefix none --format "${CLOSURE_CAPTURE_FORMAT}" || {
             printf '%s\n' "${CARGO_CAPTURE_OUTPUT}" >&2
             violation "${label} could not capture its direct dependencies"

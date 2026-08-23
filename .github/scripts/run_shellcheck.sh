@@ -16,6 +16,7 @@ esac
 
 exec shellcheck -x \
     .github/scripts/repository_check_lib.sh \
+    .github/scripts/repository_check_lib_test.sh \
     .github/scripts/cargo_infrastructure.sh \
     .github/scripts/check_go_capabilities.sh \
     .github/scripts/check_go_configurations.sh \

@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use super::error::RustProjectError;
+use crate::resolution::path_normalization::RelativePathError;
 use crate::resolution::paths::RootError;
 
 pub(super) use crate::resolution::paths::path_text;
@@ -17,24 +18,38 @@ pub(super) fn canonical_root(root: &Path) -> Result<PathBuf, RustProjectError> {
 }
 
 /// Normalize a path inside the root to repository-relative `/`-separated text.
-pub(super) fn relative_text(root: &Path, path: &Path) -> Result<Arc<str>, RustProjectError> {
-    let relative =
-        crate::resolution::path_normalization::relative_text(root, path).map_err(|error| {
-            match error {
-                crate::resolution::path_normalization::RelativePathError::OutsideRoot => {
-                    RustProjectError::OutOfRoot {
-                        path: path_text(path),
-                        root: path_text(root),
-                    }
-                }
-                crate::resolution::path_normalization::RelativePathError::NonUtf8 => {
-                    RustProjectError::NonUtf8Path {
-                        path: path_text(path),
-                    }
-                }
-            }
-        })?;
-    Ok(Arc::from(relative))
+///
+/// Owned rather than shared, for the seams that render one path, read it once,
+/// and drop it: a failure payload naming the source that escaped. A caller that
+/// hands the same path to several holders asks [`relative_shared`] instead,
+/// rather than copying the text again on the way into an `Arc`.
+pub(super) fn relative_text(root: &Path, path: &Path) -> Result<Box<str>, RustProjectError> {
+    crate::resolution::path_normalization::relative_text(root, path)
+        .map_err(|error| unrelative(error, root, path))
+}
+
+/// The same normalized text, shared rather than copied, for the paths a
+/// manifest identity and a target entry are both named by.
+pub(super) fn relative_shared(root: &Path, path: &Path) -> Result<Arc<str>, RustProjectError> {
+    crate::resolution::path_normalization::relative_shared(root, path)
+        .map_err(|error| unrelative(error, root, path))
+}
+
+/// Why one path has no repository-relative spelling, in this loader's words.
+///
+/// Published beside the two renderings above, because the shared snapshot store
+/// renders its own keys into a buffer it owns and needs only this loader's name
+/// for a render that refused.
+pub(super) fn unrelative(error: RelativePathError, root: &Path, path: &Path) -> RustProjectError {
+    match error {
+        RelativePathError::OutsideRoot => RustProjectError::OutOfRoot {
+            path: path_text(path),
+            root: path_text(root),
+        },
+        RelativePathError::NonUtf8 => RustProjectError::NonUtf8Path {
+            path: path_text(path),
+        },
+    }
 }
 
 /// Whether `path` is the root itself or lies beneath it.

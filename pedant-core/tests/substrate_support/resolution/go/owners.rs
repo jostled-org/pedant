@@ -9,7 +9,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::declaration_scan::crate_path;
-use crate::resolution::go::surface::assert_directory_holds_exactly;
+use crate::resolution::production_tree::assert_directory_holds_exactly;
 
 /// Every module of the Go resolution surface, relative to `src/resolution/go`.
 pub const GO_MODULES: &[&str] = &[
@@ -21,9 +21,11 @@ pub const GO_MODULES: &[&str] = &[
     "error.rs",
     "exclusion.rs",
     "facts.rs",
+    "fault.rs",
     "fingerprint.rs",
     "identity.rs",
     "import_fact.rs",
+    "inventory.rs",
     "limits.rs",
     "load.rs",
     "manifest.rs",
@@ -32,6 +34,7 @@ pub const GO_MODULES: &[&str] = &[
     "packages.rs",
     "paths.rs",
     "project.rs",
+    "provider.rs",
     "reference_fact.rs",
     "replacement.rs",
     "requirement.rs",
@@ -93,9 +96,12 @@ pub const SNAPSHOT_MODULES: &[&str] = &[
     "declaration_fact.rs",
     "discovery.rs",
     "facts.rs",
+    "fault.rs",
     "fingerprint.rs",
     "import_fact.rs",
+    "inventory.rs",
     "packages.rs",
+    "provider.rs",
     "reference_fact.rs",
     "signature_fact.rs",
     "snapshot.rs",
@@ -114,7 +120,11 @@ pub const SNAPSHOT_MODULES: &[&str] = &[
 ///
 /// They are language-neutral and compile in every configuration, so a claim
 /// about what the Go loader may read has to include them: an escape or an
-/// environment read hidden here would answer for Go too.
+/// environment read hidden here would answer for Go too. The record cache is
+/// the sharpest case — it is the body that opens a Go source, so a boundary
+/// claim that stopped at the Go tree would no longer cover the read at all. The
+/// snapshot store is the second: it now owns the interning table, the byte
+/// charge, and the retention every Go source is admitted through.
 pub const SHARED_MODULES: &[&str] = &[
     "binding.rs",
     "capacity.rs",
@@ -124,7 +134,12 @@ pub const SHARED_MODULES: &[&str] = &[
     "path_normalization.rs",
     "paths.rs",
     "read.rs",
+    "record_cache.rs",
     "sites.rs",
+    "snapshot_rules.rs",
+    "snapshot_store.rs",
+    "source_language.rs",
+    "supply.rs",
 ];
 
 /// The crate-level modules a Go load reaches outside the resolution tree,
@@ -150,6 +165,15 @@ const REACHED_DIRECTORY: &str = "observe";
 /// The complete source closure a Go project load runs through: the Go owners,
 /// the shared resolution owners beneath them, and the crate modules they reach.
 pub fn source_closure() -> Box<[PathBuf]> {
+    // The Go tree and the observation directory are held to their listings by
+    // the exactness walks below, so an owner deleted from either fails there.
+    // Nothing anchors the other two lists: an entry dropped from them would
+    // leave every boundary claim reading a narrower closure and still passing.
+    assert!(
+        !SHARED_MODULES.is_empty() && !REACHED_MODULES.is_empty(),
+        "the shared and reached owners are part of what a Go load runs through, so a claim \
+         over the closure that stopped at the Go tree would cover neither"
+    );
     let shared = crate_path("src/resolution");
     let source = crate_path("src");
     let mut paths: Vec<PathBuf> = go_module_paths()
@@ -222,15 +246,20 @@ fn reached_directory() -> Box<[&'static str]> {
 /// or a resolver may read. Each states its own table; neither restates the
 /// walk.
 pub fn text_offenders(markers: &[(&str, &[&str])]) -> Box<[Box<str>]> {
+    assert!(
+        !markers.is_empty(),
+        "a marker scan over no marker reports nothing whatever the closure holds"
+    );
     let mut offenders: Vec<Box<str>> = Vec::new();
     for path in source_closure().iter() {
         let text = crate::declaration_scan::read_source(path);
         let name = file_label(path);
-        for (marker, allowed) in markers {
-            if text.contains(marker) && !allowed.contains(&&*name) {
-                offenders.push(format!("{name} names {marker}").into_boxed_str());
-            }
-        }
+        offenders.extend(
+            markers
+                .iter()
+                .filter(|(marker, allowed)| text.contains(marker) && !allowed.contains(&&*name))
+                .map(|(marker, _)| format!("{name} names {marker}").into_boxed_str()),
+        );
     }
     offenders.into_boxed_slice()
 }

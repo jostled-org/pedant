@@ -235,7 +235,7 @@ fn warm_target_selects_the_warm_budget(root: &RowRoot) {
     assert_row_is_clean(root, label, &completed, 0, fault.surviving_tool_builds());
     assert_stated_cost_shape(label, &completed, WARM_VERIFY.0, WARM_VERIFY.1);
     assert_eq!(
-        root.operations(),
+        root.record().operations(),
         warm_expected_operations(),
         "{label}: a warm proof must prove the builds it found before reusing them"
     );

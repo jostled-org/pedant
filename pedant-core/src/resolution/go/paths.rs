@@ -12,10 +12,32 @@ use std::sync::Arc;
 
 use super::error::GoProjectError;
 use super::snapshot_error::GoSnapshotError;
+use crate::resolution::confinement::{ConfinementFault, canonical_inside};
 use crate::resolution::path_normalization::{RelativePathError, relative_text as lexical_text};
 use crate::resolution::paths::RootError;
 
 pub(super) use crate::resolution::paths::path_text;
+
+/// The file name of a Go module manifest.
+const MANIFEST: &str = "go.mod";
+
+/// One confined manifest entry and whether it is a regular file.
+pub(super) struct ConfinedManifest {
+    canonical: PathBuf,
+    regular: bool,
+}
+
+impl ConfinedManifest {
+    /// The canonical manifest path.
+    pub(super) fn path(&self) -> &Path {
+        &self.canonical
+    }
+
+    /// Whether the entry can identify a nested module during discovery.
+    pub(super) fn is_regular(&self) -> bool {
+        self.regular
+    }
+}
 
 /// Why one path answer could not be given.
 ///
@@ -24,10 +46,18 @@ pub(super) use crate::resolution::paths::path_text;
 pub(super) enum PathFault {
     /// The path resolves outside the supplied repository root.
     OutOfRoot {
-        /// The path that escaped.
+        /// Where the request landed, after every link was followed.
         path: Box<str>,
         /// The root that does not contain it.
         root: Box<str>,
+        /// The path that was asked for, which is the one a caller can act on.
+        ///
+        /// A request that escaped through a link is spelled inside the root, so
+        /// the landing alone reads as a contradiction and the request alone
+        /// says nothing about where it went. Where the escape was measured
+        /// lexically the two are one path, because that is the whole of what
+        /// the measurement saw.
+        request: Box<str>,
     },
     /// The path is not valid UTF-8, so it has no normalized text.
     NonUtf8 {
@@ -44,10 +74,12 @@ pub(super) enum PathFault {
     },
 }
 
+/// A loader names the landing and the root it measured against. It states no
+/// request, because a manifest walk asks for the directory it is standing in.
 impl From<PathFault> for GoProjectError {
     fn from(fault: PathFault) -> Self {
         match fault {
-            PathFault::OutOfRoot { path, root } => Self::OutOfRoot { path, root },
+            PathFault::OutOfRoot { path, root, .. } => Self::OutOfRoot { path, root },
             PathFault::NonUtf8 { path } => Self::NonUtf8Path { path },
             PathFault::Unreadable { path, source } => Self::PathRead { path, source },
         }
@@ -57,7 +89,15 @@ impl From<PathFault> for GoProjectError {
 impl From<PathFault> for GoSnapshotError {
     fn from(fault: PathFault) -> Self {
         match fault {
-            PathFault::OutOfRoot { path, root } => Self::OutOfRoot { path, root },
+            PathFault::OutOfRoot {
+                path,
+                root,
+                request,
+            } => Self::OutOfRoot {
+                path,
+                root,
+                request,
+            },
             PathFault::NonUtf8 { path } => Self::NonUtf8Path { path },
             PathFault::Unreadable { path, source } => Self::PathRead { path, source },
         }
@@ -83,24 +123,45 @@ pub(super) fn canonical_root(root: &Path) -> Result<PathBuf, GoProjectError> {
 ///
 /// A path that resolves outside the root is refused here rather than reported
 /// as absent, so a symlink cannot widen what either stage goes on to read.
+///
+/// The rule itself belongs to [`canonical_inside`]; this states it in the Go
+/// stages' own vocabulary, exactly as the Rust rules state it in theirs. A
+/// second copy of the canonicalize-then-contain sequence would be a second
+/// confinement rule, and the weaker one would be the one a symlink arrived
+/// through.
 pub(super) fn canonical_in_root(root: &Path, path: &Path) -> Result<Option<PathBuf>, PathFault> {
-    let canonical = match std::fs::canonicalize(path) {
-        Ok(canonical) => canonical,
-        Err(source) if source.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(source) => {
-            return Err(PathFault::Unreadable {
-                path: path_text(path),
-                source,
-            });
-        }
-    };
-    match canonical.starts_with(root) {
-        true => Ok(Some(canonical)),
-        false => Err(PathFault::OutOfRoot {
+    canonical_inside(root, path).map_err(|fault| match fault {
+        ConfinementFault::Unreadable(source) => PathFault::Unreadable {
+            path: path_text(path),
+            source,
+        },
+        ConfinementFault::OutOfRoot { canonical } => PathFault::OutOfRoot {
             path: path_text(&canonical),
             root: path_text(root),
-        }),
-    }
+            request: path_text(path),
+        },
+    })
+}
+
+/// Resolve one directory's module manifest beneath the repository root.
+pub(super) fn confined_manifest(
+    root: &Path,
+    directory: &Path,
+) -> Result<Option<ConfinedManifest>, PathFault> {
+    let request = directory.join(MANIFEST);
+    let Some(manifest) = canonical_in_root(root, &request)? else {
+        return Ok(None);
+    };
+    let metadata = manifest
+        .metadata()
+        .map_err(|source| PathFault::Unreadable {
+            path: path_text(&request),
+            source,
+        })?;
+    Ok(Some(ConfinedManifest {
+        canonical: manifest,
+        regular: metadata.is_file(),
+    }))
 }
 
 /// The last segment of a normalized repository-relative path.
@@ -115,19 +176,30 @@ pub(super) fn file_name(relative: &str) -> &str {
 
 /// Normalize a path inside the root to repository-relative `/`-separated text.
 pub(super) fn relative_text(root: &Path, path: &Path) -> Result<Box<str>, PathFault> {
-    lexical_text(root, path).map_err(|error| match error {
-        RelativePathError::OutsideRoot => PathFault::OutOfRoot {
-            path: path_text(path),
-            root: path_text(root),
-        },
-        RelativePathError::NonUtf8 => PathFault::NonUtf8 {
-            path: path_text(path),
-        },
-    })
+    lexical_text(root, path).map_err(|error| unrelative(error, root, path))
 }
 
 /// The same normalized text, shared rather than copied, for the paths a
 /// snapshot names from several units at once.
 pub(super) fn relative_shared(root: &Path, path: &Path) -> Result<Arc<str>, PathFault> {
-    relative_text(root, path).map(Arc::from)
+    crate::resolution::path_normalization::relative_shared(root, path)
+        .map_err(|error| unrelative(error, root, path))
+}
+
+/// Why one path has no repository-relative spelling, in the Go stages' words.
+///
+/// Published beside the two renderings above, because the shared snapshot store
+/// renders its own keys into a buffer it owns and needs only this stage's name
+/// for a render that refused.
+pub(super) fn unrelative(error: RelativePathError, root: &Path, path: &Path) -> PathFault {
+    match error {
+        RelativePathError::OutsideRoot => PathFault::OutOfRoot {
+            path: path_text(path),
+            root: path_text(root),
+            request: path_text(path),
+        },
+        RelativePathError::NonUtf8 => PathFault::NonUtf8 {
+            path: path_text(path),
+        },
+    }
 }

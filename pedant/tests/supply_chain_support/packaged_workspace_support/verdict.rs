@@ -42,8 +42,29 @@ pub(super) const REFUSED_STATUS: i32 = 1;
 /// way and the difference only shows up on the registry.
 const PACKAGED_HISTORY: &[&str] = &[
     "package onto chore: stage the release-plz update",
-    "package onto feat!: implement go graph extraction",
+    "package onto feat!: implement code-intelligence-index-and-surfaces",
     "package onto base",
+];
+
+/// The journey the proof drives once the archives compile, in order.
+///
+/// Written down rather than derived. The order is the claim — a binary asked a
+/// question before it was installed answers nothing, and a transport dropped
+/// from the sequence leaves the other one answering for a product that ships
+/// two — and a table taken from the run would agree with whatever the run did.
+const JOURNEY_OPERATIONS: &[&str] = &[
+    "install pedant-snippet",
+    "version pedant-snippet",
+    "snippet list-projects",
+    "snippet search",
+    "snippet search",
+    "snippet outline",
+    "snippet read",
+    "snippet at",
+    "snippet relations",
+    "snippet path",
+    "snippet graph",
+    "snippet mcp",
 ];
 
 /// Every reading the proof's stated cost line has to carry.
@@ -66,6 +87,7 @@ pub(super) fn assert_refusal(label: &str, completed: &Completed, fragment: &str)
 pub(super) fn assert_nothing_compiled(root: &RowRoot, label: &str) {
     assert!(
         !root
+            .record()
             .operations()
             .iter()
             .any(|entry| entry.as_ref() == "check"),
@@ -116,7 +138,7 @@ pub(super) fn assert_row_is_clean(
         redacted(&completed.transcript())
     );
     assert_no_process_survives_the_row(root, label);
-    let targets = root.recorded_targets();
+    let targets = root.record().recorded_targets();
     assert!(
         !targets.is_empty(),
         "{label}: no Cargo operation ran, so the row proved nothing"
@@ -163,7 +185,7 @@ pub(super) fn assert_refused_before_anything_ran(
     );
     assert_no_process_survives_the_row(root, label);
     assert_eq!(
-        root.operations(),
+        root.record().operations(),
         Box::default(),
         "{label}: the proof moved state for a request it was always going to refuse"
     );
@@ -250,7 +272,7 @@ pub(super) fn warm_the_tool_root(root: &RowRoot) {
         let completed = root.run_stage(&Fault::None, &["--install-tools", binary]);
         assert_row_is_clean(root, &label, &completed, 0, &PINNED_BINARIES[..=index]);
     }
-    root.clear_record();
+    root.record().clear();
 }
 
 /// No process this row started is still running once the row is read.
@@ -268,7 +290,7 @@ pub(super) fn warm_the_tool_root(root: &RowRoot) {
 /// The script's own release-what-it-owns claim is [`assert_no_staging_root`],
 /// which the script performs and this suite falsifies.
 pub(super) fn assert_no_process_survives_the_row(root: &RowRoot, label: &str) {
-    for pid in root.recorded_pids().iter().copied() {
+    for pid in root.record().recorded_pids().iter().copied() {
         assert!(
             wait_until_gone(pid, REAP_BUDGET),
             "{label}: the tool process {pid} survived the guard's teardown"
@@ -362,14 +384,24 @@ fn release_operations() -> Vec<Box<str>> {
         "metadata staged".into(),
     ];
     expected.extend(PACKAGED_HISTORY.iter().copied().map(Box::from));
-    for name in RELEASE_ORDER {
-        expected.push(format!("package {name}").into());
-    }
+    // Sorted, because one workspace-wide invocation packages every member and
+    // the order inside it is the packaging tool's rather than the proof's.
+    // Requiring the release order here would be requiring Cargo to walk a
+    // workspace in dependency order, which it does not promise and which the
+    // proof does not need: what the release order decides is the extraction and
+    // member listing below, and those are the proof's own loops.
+    let mut packaged: Box<[Box<str>]> = RELEASE_ORDER
+        .iter()
+        .map(|name| format!("package {name}").into())
+        .collect();
+    packaged.sort_unstable();
+    expected.extend(packaged);
     for name in RELEASE_ORDER {
         expected.push(format!("metadata extracted {name}").into());
     }
     expected.push("generate-lockfile".into());
     expected.push("metadata archive".into());
     expected.push("check".into());
+    expected.extend(JOURNEY_OPERATIONS.iter().copied().map(Box::from));
     expected
 }

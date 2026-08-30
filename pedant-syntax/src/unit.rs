@@ -1,5 +1,6 @@
 //! The extracted declaration returned at the syntax boundary.
 
+use pedant_types::StructureKind;
 use serde::{Deserialize, Serialize};
 
 use crate::span::LineSpan;
@@ -34,6 +35,45 @@ pub enum SourceUnitKind {
     Impl,
     /// A class definition.
     Class,
+}
+
+impl SourceUnitKind {
+    /// The unit one structure kind declares, when this model declares one.
+    ///
+    /// Every unit is a structure, and the reverse is partial: a module, an
+    /// interface, a defined type, a constant, a static, a variable, a field, and
+    /// a package are structures an outline shows and declarations this model
+    /// states no kind for. A caller inside one of them reads the declaration
+    /// that holds it instead.
+    ///
+    /// An `Option`, not a `Result`. The refused kind is the one the caller
+    /// already handed in, so handing it back said nothing a caller did not know,
+    /// and every caller dropped it: this is absence, and a `Result` no reader
+    /// reads is an `Option` spelled the long way.
+    ///
+    /// Total, so a structure kind the vocabulary gains fails to compile here
+    /// rather than silently joining the unit model or silently leaving it.
+    pub fn of(kind: StructureKind) -> Option<Self> {
+        match kind {
+            StructureKind::Function => Some(Self::Function),
+            StructureKind::Method => Some(Self::Method),
+            StructureKind::Struct => Some(Self::Struct),
+            StructureKind::Enum => Some(Self::Enum),
+            StructureKind::Union => Some(Self::Union),
+            StructureKind::Trait => Some(Self::Trait),
+            StructureKind::TypeAlias => Some(Self::TypeAlias),
+            StructureKind::Impl => Some(Self::Impl),
+            StructureKind::Class => Some(Self::Class),
+            StructureKind::Module
+            | StructureKind::Interface
+            | StructureKind::DefinedType
+            | StructureKind::Constant
+            | StructureKind::Static
+            | StructureKind::Variable
+            | StructureKind::Field
+            | StructureKind::Package => None,
+        }
+    }
 }
 
 /// One recognized declaration and its byte-exact source text.

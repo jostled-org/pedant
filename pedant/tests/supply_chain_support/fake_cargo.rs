@@ -7,11 +7,10 @@
 //! `generate-lockfile`.
 
 use std::path::Path;
-use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crate::fixtures::write;
-use crate::process_guard::{BUDGET, Completed, Failure, PEDANT, POLL, Run, execute};
+use crate::process_guard::{BUDGET, Completed, Failure, PEDANT, Run, execute};
 
 /// Run `pedant` with a caller-written `cargo vendor` body, under a guard.
 pub(crate) fn run_with_fake_cargo(
@@ -110,19 +109,4 @@ pub(crate) fn generate_lockfile(root: &Path) {
         "failed to generate lockfile: {}",
         completed.transcript()
     );
-}
-
-/// The pid a fake-Cargo descendant recorded, once the file holds one.
-pub(crate) fn descendant_pid(path: &Path, budget: Duration) -> Option<u32> {
-    let deadline = Instant::now() + budget;
-    loop {
-        let recorded = std::fs::read_to_string(path)
-            .ok()
-            .and_then(|text| text.trim().parse::<u32>().ok());
-        match (recorded, Instant::now() >= deadline) {
-            (Some(pid), _) => return Some(pid),
-            (None, true) => return None,
-            (None, false) => thread::sleep(POLL),
-        }
-    }
 }

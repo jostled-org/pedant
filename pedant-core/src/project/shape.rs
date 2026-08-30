@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::check_config::CheckConfig;
@@ -85,7 +84,7 @@ pub(super) fn canonical_predicates<'a>(
         .collect()
 }
 
-fn predicate_key(predicates: &[Rc<str>]) -> Box<[Box<str>]> {
+fn predicate_key(predicates: &[Arc<str>]) -> Box<[Box<str>]> {
     canonical_predicates(predicates.iter().map(|predicate| &**predicate))
 }
 

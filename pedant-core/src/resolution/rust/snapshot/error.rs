@@ -5,6 +5,7 @@
 //! remained inside the repository root, and one owning message.
 
 use std::fmt;
+use std::sync::Arc;
 
 /// Which configured ceiling a closure crossed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -107,11 +108,15 @@ pub enum ClosureSite {
 
 impl ClosureSite {
     /// The read-failure kind this site owns: a target owns its entry point,
-    /// and every other site reads a declared module.
+    /// and the two sites that follow a declaration read a declared module.
+    ///
+    /// Every variant is named. A catch-all would give a fourth site the
+    /// module-read answer without anything asking whether that is the answer it
+    /// owns, which is the one failure this projection can make silently.
     pub(super) fn read_kind(&self) -> SourceClosureFailureKind {
         match self {
             Self::Target { .. } => SourceClosureFailureKind::EntryRead,
-            _ => SourceClosureFailureKind::ModuleRead,
+            Self::Module { .. } | Self::Dependency { .. } => SourceClosureFailureKind::ModuleRead,
         }
     }
 }
@@ -189,19 +194,21 @@ impl SourceClosureFailure {
 #[derive(Debug, thiserror::Error)]
 #[error("source closure failed after reaching {} path(s): {}", .reached.len(), render(.failures))]
 pub struct SourceClosureError {
-    reached: Box<[Box<str>]>,
+    reached: Box<[Arc<str>]>,
     failures: Box<[SourceClosureFailure]>,
 }
 
 impl SourceClosureError {
     /// Bind sorted reached paths to the failures that stopped the closure.
-    pub(super) fn new(reached: Box<[Box<str>]>, failures: Box<[SourceClosureFailure]>) -> Self {
+    pub(super) fn new(reached: Box<[Arc<str>]>, failures: Box<[SourceClosureFailure]>) -> Self {
         Self { reached, failures }
     }
 
     /// The sorted paths this attempt reached, as evidence only. They are not a
     /// partial snapshot and must never be hashed as a complete closure.
-    pub fn reached(&self) -> &[Box<str>] {
+    ///
+    /// Shared with the store that reached them.
+    pub fn reached(&self) -> &[Arc<str>] {
         &self.reached
     }
 

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use super::error::RustProjectError;
-use super::paths::{path_text, relative_text};
+use super::paths::{path_text, relative_shared};
 use super::toml_view;
 use crate::observe::{self, Observation};
 
@@ -36,7 +36,7 @@ impl ManifestDocument {
     /// re-check and the source readers record. The observation follows the
     /// read, so one event means one manifest that was read to its end.
     pub(super) fn read(root: &Path, path: &Path) -> Result<Self, RustProjectError> {
-        let relative = relative_text(root, path)?;
+        let relative = relative_shared(root, path)?;
         let text =
             std::fs::read_to_string(path).map_err(|source| RustProjectError::ManifestRead {
                 path: path_text(path),

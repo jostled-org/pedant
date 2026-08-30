@@ -47,9 +47,7 @@ type BlockState = Option<(Box<str>, u32)>;
 /// Apply one tokenized line to the directive list, returning the block state
 /// that survives it.
 ///
-/// The tokens arrive owned and are moved through: `tokenize` allocates each one
-/// exactly once, and every reader above takes the same allocation rather than a
-/// copy of it.
+/// The owned tokens are moved into their parsed directives.
 fn fold_line(
     directives: &mut Vec<GoDirective>,
     block: BlockState,

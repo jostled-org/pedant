@@ -8,16 +8,21 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::resolution::line_index;
+use crate::resolution::supply::SourceSupply;
+
 use super::discovery::{EntryBudget, package_directories};
+use super::fault::GoSourceFault;
 use super::fingerprint::{self, GoSnapshotFingerprint};
 use super::identity::{index_of, position};
+use super::inventory::GoFileInventory;
 use super::limits::GoResolutionLimits;
 use super::packages::{PackageSite, UnitDraft};
 use super::project::GoProject;
 use super::requirement::GoRequirementResolution;
 use super::snapshot_error::GoSnapshotError;
 use super::snapshot_module::{GoSnapshotEdge, GoSnapshotModule, GoSnapshotModuleId};
-use super::source::{self, GoSource};
+use super::source::GoSource;
 use super::store::GoSourceStore;
 use super::unit::{GoResolutionUnit, GoSnapshotUnitId};
 use super::unit_table::UnitTable;
@@ -85,7 +90,7 @@ impl GoResolutionSnapshot {
 
     /// The source at one repository-relative path.
     pub fn source(&self, path: &str) -> Option<&GoSource> {
-        source::find(&self.sources, path)
+        line_index::find(&self.sources, path)
     }
 
     /// The opaque identity computed when this snapshot was completed.
@@ -101,7 +106,10 @@ impl GoResolutionSnapshot {
 ///
 /// The sole snapshot constructor: every ceiling this stage owns is checked
 /// here or in the store it drives, and no other body grows the unit table.
-pub(super) fn build(project: &GoProject) -> Result<GoResolutionSnapshot, GoSnapshotError> {
+pub(super) fn build<P: SourceSupply<GoFileInventory, GoSourceFault>>(
+    project: &GoProject,
+    provider: &mut P,
+) -> Result<GoResolutionSnapshot, GoSnapshotError> {
     let limits = project.limits();
     let root = project.root();
     let mut store = GoSourceStore::new(root, limits);
@@ -114,11 +122,11 @@ pub(super) fn build(project: &GoProject) -> Result<GoResolutionSnapshot, GoSnaps
             module_path: &module.path,
         };
         let directories = package_directories(root, &root.join(module.directory()), &mut budget)?;
-        table.retain_module(&mut store, &site, &directories)?;
+        table.retain_module(&mut store, provider, &site, &directories)?;
     }
     Ok(complete(
         project,
-        sealed_units(table.drafts),
+        sealed_units(table.finish()),
         store.finish(),
     ))
 }

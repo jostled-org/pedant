@@ -25,11 +25,14 @@ mod range;
 mod reference;
 /// One lexical module scope inside a single source.
 mod scope;
+/// One physical declaration site and the definition it states.
+mod structure;
 
 pub use declaration::ModuleDeclarationSite;
 pub use definition::DefinitionSite;
 pub use range::IrRange;
 pub use reference::ReferenceSite;
 pub use scope::ModuleScope;
+pub use structure::{DefinitionSiteId, StructureSite, StructureSiteId};
 
 pub(crate) use reference::ReferenceOrigin;

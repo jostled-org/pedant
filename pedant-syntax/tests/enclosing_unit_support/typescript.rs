@@ -24,7 +24,9 @@ pub(crate) const ROWS: [Row; 6] = [
         text: "function* stream(limit: number) {\n  yield limit;\n}",
     },
     // `abstract_class_declaration`, the one node kind TypeScript adds to the
-    // JavaScript set.
+    // JavaScript set. The needle sits on the abstract member, which is a
+    // structure the shared table names and a unit this model does not — see
+    // `an_abstract_member_reads_as_the_class_that_declares_it`.
     Row {
         needle: "abstract name(): string;",
         kind: SourceUnitKind::Class,
@@ -97,6 +99,36 @@ pub(crate) const TSX_ROWS: [Row; 6] = [
 fn recognized_declaration_table() {
     assert_table(&TYPESCRIPT, &ROWS);
     assert_table(&TSX, &TSX_ROWS);
+}
+
+/// An abstract member is a structure, and it is not a source unit.
+///
+/// One grammar table serves both readers, and the unit model is the narrower
+/// of the two: `abstract run(): number;` is recognized as a method, the
+/// structure inventory states it as one, and a unit carries the declaration's
+/// own text. A signature with no body would return a single line in place of
+/// the type that declares it, so the reader gets the abstract class instead —
+/// the answer a Go interface method already gives.
+///
+/// Written down rather than left to the table above, because the table's row
+/// resolves the abstract class for its own reason and would keep passing if
+/// the narrowing were dropped and the class simply won on extent.
+#[test]
+fn an_abstract_member_reads_as_the_class_that_declares_it() {
+    let source = "abstract class Service {\n  abstract name(): string;\n}\n";
+    for language in [SyntaxLanguage::TypeScript, SyntaxLanguage::Tsx] {
+        assert_rows(
+            source,
+            language,
+            &[Row {
+                needle: "abstract name(): string;",
+                kind: SourceUnitKind::Class,
+                name: Some("Service"),
+                span: LineSpan { start: 1, end: 3 },
+                text: "abstract class Service {\n  abstract name(): string;\n}",
+            }],
+        );
+    }
 }
 
 /// A decorator opens the declaration it decorates, in both dialects.

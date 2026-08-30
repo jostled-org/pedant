@@ -19,17 +19,15 @@ pub(crate) struct SourceIndex<'s> {
 impl<'s> SourceIndex<'s> {
     /// Index `source` by line start.
     ///
-    /// A trailing newline closes the last line; it opens no further one, so it
-    /// is dropped before the scan rather than after. Counting the rest sizes
-    /// the table exactly: `match_indices` reports no length, so an unreserved
-    /// `extend` grows by doubling and the spare capacity then costs a
-    /// reallocation and a copy of the whole table at `into_boxed_slice`.
+    /// Counting first sizes the line-start table exactly.
     pub(crate) fn new(source: &'s str) -> Self {
-        let opened = source.strip_suffix('\n').unwrap_or(source);
-        let mut line_starts =
-            Vec::with_capacity(opened.bytes().filter(|&b| b == b'\n').count() + 1);
+        let mut line_starts = Vec::with_capacity(line_count(source));
         line_starts.push(0);
-        line_starts.extend(opened.match_indices('\n').map(|(offset, _)| offset + 1));
+        line_starts.extend(
+            opened(source)
+                .match_indices('\n')
+                .map(|(offset, _)| offset + 1),
+        );
         Self {
             source,
             line_starts: line_starts.into_boxed_slice(),
@@ -126,4 +124,44 @@ impl<'s> SourceIndex<'s> {
     fn line_of(&self, offset: usize) -> usize {
         self.line_starts.partition_point(|&start| start <= offset)
     }
+}
+
+/// How many lines `source` holds, counting a source of no bytes as one.
+///
+/// The crate's one line-count derivation. The line index sizes its table with
+/// it and the file-module structure states its own closing line with it, so a
+/// source that gained a terminator cannot be one line longer to one reader and
+/// the same length to the other.
+pub(crate) fn line_count(source: &str) -> usize {
+    opened(source).bytes().filter(|&byte| byte == b'\n').count() + 1
+}
+
+/// `source` with a trailing newline dropped.
+///
+/// A terminator closes the last line rather than opening a further one, and
+/// both the count and the offset scan read that same rule from here.
+fn opened(source: &str) -> &str {
+    source.strip_suffix('\n').unwrap_or(source)
+}
+
+/// The source byte range one `syn` span covers, read through `index`.
+///
+/// A free function rather than a method on either Rust walk: both the structure
+/// inventory and the enclosing-unit selector map a span the same way, and the
+/// only thing that differed between their copies was which of them owned the
+/// index. Absent when either end names a position the source cannot address, and
+/// for an empty extent, which states no declaration.
+#[cfg(feature = "rust")]
+pub(crate) fn span_range(index: &SourceIndex<'_>, span: proc_macro2::Span) -> Option<Range<usize>> {
+    let start = span.start();
+    let end = span.end();
+    let from = index.offset_at_char_column(start.line, start.column)?;
+    let to = index.offset_at_char_column(end.line, end.column)?;
+    (from < to).then_some(from..to)
+}
+
+/// The source text one `syn` span covers, read through `index`.
+#[cfg(feature = "rust")]
+pub(crate) fn span_text<'s>(index: &SourceIndex<'s>, span: proc_macro2::Span) -> Option<&'s str> {
+    index.source().get(span_range(index, span)?)
 }

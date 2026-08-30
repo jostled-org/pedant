@@ -66,29 +66,56 @@ fn declared_candidate(
 }
 
 /// Every conditional alternative this package can reach within its root.
+///
+/// The failure names the first declared alternative, and it is read out of the
+/// same slice rather than indexed into it: a caller's match arm currently
+/// guarantees two or more, and nothing in this body says so. An empty list
+/// states no alternative to name, so the refusal names the directory they would
+/// all have been looked up in.
 fn declared_alternatives(
     store: &SourceStore,
     context: &ChildContext<'_>,
     request: (&ClosureSite, &[Arc<str>]),
 ) -> Result<Box<[PathBuf]>, SourceClosureFailure> {
     let (site, alternatives) = request;
-    let reachable: Box<[PathBuf]> = alternatives
-        .iter()
-        .map(|declared| context.frame.declared_directory.join(&**declared))
-        .filter(|candidate| reachable_alternative(store, candidate, site))
-        .collect();
-    match reachable.first() {
-        Some(_) => Ok(reachable),
-        None => Err(missing(
+    let mut reachable: Vec<PathBuf> = Vec::new();
+    for declared in alternatives {
+        let candidate = context.frame.declared_directory.join(&**declared);
+        if reachable_alternative(store, &candidate, site)? {
+            reachable.push(candidate);
+        }
+    }
+    match (reachable.is_empty(), alternatives.first()) {
+        (false, _) => Ok(reachable.into_boxed_slice()),
+        (true, Some(first)) => Err(missing(
             store,
             site,
-            &context.frame.declared_directory.join(&*alternatives[0]),
+            &context.frame.declared_directory.join(&**first),
         )),
+        (true, None) => Err(missing(store, site, &context.frame.declared_directory)),
     }
 }
 
-fn reachable_alternative(store: &SourceStore, candidate: &Path, site: &ClosureSite) -> bool {
-    candidate.is_file() && store.canonical_inside(candidate, site).is_ok()
+/// Whether one declared alternative is a source this package ships inside its
+/// own root.
+///
+/// Absence and refusal are different answers, and only one of them belongs to
+/// this set. An alternative the package does not ship is absence: `#[path]`
+/// alternatives are conditional, and the one a build selects is the one that
+/// exists. An alternative it does ship that resolves outside the repository
+/// root is a refusal, reported here exactly as the single-alternative form
+/// reports it — dropping it instead would leave the caller reading a set it
+/// takes for complete, with a link that escaped the root silently missing
+/// from it.
+fn reachable_alternative(
+    store: &SourceStore,
+    candidate: &Path,
+    site: &ClosureSite,
+) -> Result<bool, SourceClosureFailure> {
+    match candidate.is_file() {
+        false => Ok(false),
+        true => store.canonical_inside(candidate, site).map(|_| true),
+    }
 }
 
 fn standard_candidate(
@@ -129,20 +156,34 @@ pub(super) fn file_directory(file: &Path) -> PathBuf {
 }
 
 /// The directory a module's external children are looked up in.
-pub(super) fn child_directory(file: &Path, crate_root: bool) -> PathBuf {
-    let parent = file_directory(file);
+///
+/// `declared` is the caller's [`file_directory`] result for the same file. Crate
+/// roots and `mod.rs` files resolve children from that directory.
+pub(super) fn child_directory(file: &Path, declared: &Arc<Path>, crate_root: bool) -> Arc<Path> {
+    match crate_root {
+        true => Arc::clone(declared),
+        false => nested_directory(file, declared),
+    }
+}
+
+/// The directory a non-root module's own external children resolve from.
+fn nested_directory(file: &Path, declared: &Arc<Path>) -> Arc<Path> {
     let stem = file.file_stem().and_then(OsStr::to_str).unwrap_or_default();
-    match crate_root || stem == "mod" {
-        true => parent,
-        false => parent.join(stem),
+    match stem == "mod" {
+        true => Arc::clone(declared),
+        false => Arc::from(declared.join(stem)),
     }
 }
 
 /// The directory an external module's own external children resolve from.
-pub(super) fn external_child_directory(file: &Path, context: &ChildContext<'_>) -> PathBuf {
+pub(super) fn external_child_directory(
+    file: &Path,
+    context: &ChildContext<'_>,
+    declared: &Arc<Path>,
+) -> Arc<Path> {
     match context.declaration.declared_paths.is_empty() {
-        true => child_directory(file, false),
-        false => file_directory(file),
+        true => child_directory(file, declared, false),
+        false => Arc::clone(declared),
     }
 }
 

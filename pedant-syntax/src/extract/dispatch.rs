@@ -1,5 +1,6 @@
 //! The public extraction entry point and its backend dispatch.
 
+use crate::backend::{Backend, backend};
 #[cfg(any(feature = "rust", feature = "_ts"))]
 use crate::extract::select::UnitSelector;
 use crate::language::SyntaxLanguage;
@@ -24,8 +25,8 @@ use crate::unit::SourceUnit;
 /// model. It keeps no state of its own between calls, but the Rust backend's
 /// parser does: `proc-macro2` retains every parsed source on a thread-local map
 /// that nothing frees. A long-lived process extracting from Rust must call
-/// [`invalidate_parser_cache`](crate::invalidate_parser_cache), which documents
-/// what that costs.
+/// `invalidate_parser_cache`, published behind the `rust` feature, which
+/// documents what that costs.
 ///
 /// # Examples
 ///
@@ -44,94 +45,40 @@ use crate::unit::SourceUnit;
 /// # }
 /// ```
 pub fn enclosing_unit(source: &str, language: SyntaxLanguage, at: Location) -> Option<SourceUnit> {
-    backend(language)?.extract(source, at)
+    extract(backend(language)?, source, at)
 }
 
-/// The parser backend this build links for a syntax language.
+/// Select the narrowest declaration `selected` recognizes at `at`.
 ///
-/// A disabled feature removes its variant, so a configuration that links no
-/// parser leaves this type uninhabited and every extraction absent.
-#[derive(Clone, Copy)]
-enum Backend {
-    /// `syn`, behind the `rust` feature.
-    #[cfg(feature = "rust")]
-    Rust,
-    /// A tree-sitter grammar, behind the matching `ts-*` feature.
-    #[cfg(feature = "_ts")]
-    TreeSitter(SyntaxLanguage),
-}
-
-/// The backend `language` selects in this build.
+/// A free function rather than a method on [`Backend`], because that type's own
+/// API is its selection and the text its parser sees; what a caller does with
+/// the backend it selected belongs to the caller.
 ///
-/// A tree-sitter language selects the shared tree-sitter backend whenever the
-/// build links any grammar; whether that backend links *this* grammar is
-/// [`crate::tree_sitter::parse`]'s question, and a missing one is absence there.
-/// Rust is the one language whose backend is its own feature.
-fn backend(language: SyntaxLanguage) -> Option<Backend> {
-    match language {
+/// A backend that refuses states no declaration set, which this boundary
+/// reports as absence — the same answer it gives for a parser that fails. The
+/// refusal is mapped here rather than inside the backend, because a backend
+/// that answered "this file declares nothing" would be making a claim about the
+/// source it just declined to read.
+#[cfg(any(feature = "rust", feature = "_ts"))]
+fn extract(selected: Backend, source: &str, at: Location) -> Option<SourceUnit> {
+    // The text the parser lexes, which every span it reports is measured
+    // against. Extraction returns that slice rather than an offset into the
+    // caller's source, so it needs no reading of what the parser discarded.
+    let source = selected.parsed_source(source).text();
+    let mut selector = UnitSelector::new(source, at)?;
+    match selected {
         #[cfg(feature = "rust")]
-        SyntaxLanguage::Rust => Some(Backend::Rust),
+        Backend::Rust => crate::extract::rust::collect(source, &mut selector),
         #[cfg(feature = "_ts")]
-        SyntaxLanguage::Python
-        | SyntaxLanguage::JavaScript
-        | SyntaxLanguage::TypeScript
-        | SyntaxLanguage::Tsx
-        | SyntaxLanguage::Go
-        | SyntaxLanguage::Bash => Some(Backend::TreeSitter(language)),
-        // Present only while a backend is absent: a language whose feature
-        // this build disables selects nothing.
-        #[cfg(not(all(feature = "rust", feature = "_ts")))]
-        _ => None,
+        Backend::TreeSitter(language) => {
+            crate::extract::ts::collect(source, language, &mut selector).ok()?
+        }
     }
+    selector.finish()
 }
 
-impl Backend {
-    /// Select the narrowest declaration this backend recognizes at `at`.
-    ///
-    /// A backend that refuses states no declaration set, which this boundary
-    /// reports as absence — the same answer it gives for a parser that fails.
-    /// The refusal is mapped here rather than inside the backend, because a
-    /// backend that answered "this file declares nothing" would be making a
-    /// claim about the source it just declined to read.
-    #[cfg(any(feature = "rust", feature = "_ts"))]
-    fn extract(self, source: &str, at: Location) -> Option<SourceUnit> {
-        let source = self.parsed_source(source);
-        let mut selector = UnitSelector::new(source, at)?;
-        match self {
-            #[cfg(feature = "rust")]
-            Self::Rust => crate::extract::rust::collect(source, &mut selector),
-            #[cfg(feature = "_ts")]
-            Self::TreeSitter(language) => {
-                crate::extract::ts::collect(source, language, &mut selector).ok()?
-            }
-        }
-        selector.finish()
-    }
-
-    /// The exact text this backend's parser sees.
-    ///
-    /// A parser that discards a prefix reports every position against what is
-    /// left, so the index must cover that same string. `syn` strips a leading
-    /// byte-order mark before lexing; indexing the unstripped source instead
-    /// leaves every position on line 1 short by the mark's three bytes, which
-    /// returns a shifted name and a truncated body rather than an error. A
-    /// tree-sitter grammar strips nothing and indexes the source as given.
-    ///
-    /// `syn` also drops a leading shebang, but it keeps that line's newline, so
-    /// line numbers and every later column already agree.
-    #[cfg(any(feature = "rust", feature = "_ts"))]
-    fn parsed_source(self, source: &str) -> &str {
-        match self {
-            #[cfg(feature = "rust")]
-            Self::Rust => source.strip_prefix('\u{feff}').unwrap_or(source),
-            #[cfg(feature = "_ts")]
-            Self::TreeSitter(_) => source,
-        }
-    }
-
-    /// This build links no parser, so no value of this type exists.
-    #[cfg(not(any(feature = "rust", feature = "_ts")))]
-    fn extract(self, _: &str, _: Location) -> Option<SourceUnit> {
-        match self {}
-    }
+/// This build links no parser, so no value of this type exists.
+#[cfg(not(any(feature = "rust", feature = "_ts")))]
+fn extract(selected: Backend, _: &str, _: Location) -> Option<SourceUnit> {
+    match selected {}
 }

@@ -4,9 +4,25 @@ use std::fs;
 use std::path::Path;
 use std::process::{Command, Output};
 
-use crate::packaged_workspace_claims::{
-    function_body, offset_of, read_repository_file, repository_root,
-};
+use crate::resolution::authority_scan::read_text;
+use crate::resolution::root_inventory::workspace_root;
+use crate::resolution::tracked_script::{CI_WORKFLOW, SHELLCHECK_INVENTORY};
+use crate::shell_script_reading::{defined_functions, function_body, offset_of};
+
+/// The workflow that owns publication.
+///
+/// Named here rather than beside the contract that reads it: this module is
+/// what proves the job's behaviour, and [`crate::release_contract`] takes the
+/// same path to state that no other workflow carries a publication route. Two
+/// spellings would let the contract clear a workflow this module never read.
+pub(crate) const RELEASE_WORKFLOW: &str = ".github/workflows/release-plz.yml";
+
+/// The guard that decides whether the release job may publish at all.
+///
+/// One spelling for the same reason: this module runs it against a fixture and
+/// [`crate::release_contract`] requires it to be invoked from the release job
+/// alone.
+pub(crate) const READINESS_GATE: &str = ".github/scripts/check_release_readiness.sh";
 
 const SHELLCHECK_VERSION: &str = "0.11.0";
 const SHELLCHECK_DIGEST: &str = "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198";
@@ -21,14 +37,39 @@ const CARGO_INFRASTRUCTURE_SCRIPT: &str = ".github/scripts/cargo_infrastructure.
 /// the ignored lifecycle runners already call; `cargo_classify_output` is the
 /// same decision for a transcript a caller holds rather than a file it wrote,
 /// and `cargo_receipt` is the one way a capture reaches a caller's output
-/// directory. A seventh name would be a second place for a runner to look.
+/// directory.
+///
+/// `require_tools` and the three `rg_*` names are the other two decisions every
+/// proof runner had been making for itself. This file is where they belong
+/// because the packaged-workspace proof and both lifecycle runners source it
+/// and nothing else: a tool probe that answers 75 for an absent tool, and a
+/// ripgrep call that tells "no match" apart from "the matcher broke", are the
+/// same class of judgment as classifying a Cargo status, and each had drifted
+/// into five and nine hand-written copies resolving the failure differently.
+///
+/// `cargo_capture` is `cargo_run` for a caller that reads the transcript rather
+/// than replaying it, and `cargo_report_reclassification` is the one printer of
+/// the sentence both of them owe when a status is read as an unavailable
+/// machine. The three `cargo_*profile*` and `cargo_feature_flags` names are the
+/// one feature-profile vocabulary: a caller that builds an argv, a caller that
+/// reads a profile back off a command line, and a caller that labels a receipt
+/// with it all resolved that spelling for themselves until they disagreed.
 const CLASSIFIER_API: &[&str] = &[
+    "cargo_capture",
     "cargo_classify",
     "cargo_classify_output",
+    "cargo_feature_flags",
+    "cargo_profile_of",
+    "cargo_profile_suffix",
     "cargo_receipt",
     "cargo_record",
+    "cargo_report_reclassification",
     "cargo_run",
     "cargo_worst",
+    "require_tools",
+    "rg_classify",
+    "rg_status",
+    "rg_status_over",
 ];
 
 /// The signature table, in order, as the one regex owner spells it — with an
@@ -86,7 +127,7 @@ fn commit_all(root: &Path, message: &str) {
 }
 
 fn release_readiness(root: &Path) -> Output {
-    Command::new(repository_root().join(".github/scripts/check_release_readiness.sh"))
+    Command::new(workspace_root().join(READINESS_GATE))
         .current_dir(root)
         .output()
         .expect("release-readiness script is executable")
@@ -118,7 +159,7 @@ fn initialize_release_fixture(root: &Path) {
 /// with a real transcript, including every near miss it must refuse.
 #[test]
 fn cargo_infrastructure_classifier_is_complete_and_fail_closed() {
-    let source = read_repository_file(CARGO_INFRASTRUCTURE_SCRIPT);
+    let source = read_text(CARGO_INFRASTRUCTURE_SCRIPT);
     assert_classifier_api(&source);
     assert_signature_table(&source);
     assert_fail_closed_lifecycle(&source);
@@ -130,15 +171,11 @@ fn cargo_infrastructure_classifier_is_complete_and_fail_closed() {
 /// [`crate::packaged_workspace`]'s claim, which requires the wrapper's whole
 /// subject list to equal the duplicate-free tracked inventory.
 fn assert_classifier_api(source: &str) {
-    let mut defined: Box<[Box<str>]> = source
-        .lines()
-        .filter_map(|line| line.strip_suffix("() {"))
-        .map(Box::from)
-        .collect();
+    let mut defined = defined_functions(source);
     defined.sort();
-    let expected: Box<[Box<str>]> = CLASSIFIER_API.iter().map(|name| (*name).into()).collect();
+    let named: Box<[&str]> = defined.iter().map(|name| &**name).collect();
     assert_eq!(
-        defined, expected,
+        &*named, CLASSIFIER_API,
         "the tracked classifier's function inventory changed"
     );
     assert!(
@@ -300,8 +337,8 @@ fn release_readiness_requires_new_versions_for_changed_published_sources() {
 
 #[test]
 fn ci_uses_one_pinned_shellcheck_release() {
-    let workflow = read_repository_file(".github/workflows/ci.yml");
-    let wrapper = read_repository_file(".github/scripts/run_shellcheck.sh");
+    let workflow = read_text(CI_WORKFLOW);
+    let wrapper = read_text(SHELLCHECK_INVENTORY);
 
     assert!(wrapper.contains(&format!("SHELLCHECK_VERSION=\"{SHELLCHECK_VERSION}\"")));
     assert!(workflow.contains(&format!("SHELLCHECK_VERSION: {SHELLCHECK_VERSION}")));
@@ -311,14 +348,14 @@ fn ci_uses_one_pinned_shellcheck_release() {
         .find("Install pinned ShellCheck")
         .expect("CI installs the pinned release");
     let lint = workflow
-        .find(".github/scripts/run_shellcheck.sh")
+        .find(SHELLCHECK_INVENTORY)
         .expect("CI runs the version-checking wrapper");
     assert!(install < lint, "CI installs ShellCheck before linting");
 }
 
 #[test]
 fn ci_pins_cargo_deny_to_a_locked_source_revision() {
-    let workflow = read_repository_file(".github/workflows/ci.yml");
+    let workflow = read_text(CI_WORKFLOW);
     let install = workflow
         .find("Install pinned cargo-deny")
         .expect("CI names the pinned cargo-deny installation");
@@ -350,7 +387,7 @@ fn release_job_publishes_only_registry_compatible_trees() {
 /// compiles proves nothing about a job that would publish it from a tree whose
 /// tagged dependencies still hold older source.
 pub(crate) fn assert_readiness_gates_publication() {
-    let workflow = read_repository_file(".github/workflows/release-plz.yml");
+    let workflow = read_text(RELEASE_WORKFLOW);
     let readiness = workflow
         .find("id: release_readiness")
         .expect("the release job computes registry readiness");

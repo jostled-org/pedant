@@ -1,10 +1,11 @@
 //! The one checked walk that turns a bound Go tree into facts.
 //!
-//! Two ceilings are spent here, and each is checked before the state it would
-//! pay for is retained: [`descend`] checks syntax depth before moving the
-//! cursor a level deeper, and [`admit`] checks fact capacity before pushing a
-//! record. Neither has a second site, so a refusal cannot be routed around, and
-//! a refusal returns no inventory at all rather than a truncated one.
+//! One ceiling is spent here, and it is checked before the state it would pay
+//! for is retained: [`descend`] proves syntax depth before it moves the cursor
+//! a level deeper, and it is the sole descent site, so a refusal cannot be
+//! routed around. The other ceiling belongs to the inventory this walk fills,
+//! which refuses its own excess the same way; either refusal returns no
+//! inventory at all rather than a truncated one.
 //!
 //! The walk is a cursor rather than recursion, so a deeply nested source costs
 //! heap rather than stack and the depth ceiling is the only thing that stops
@@ -14,117 +15,27 @@
 
 use ::tree_sitter::TreeCursor;
 
-use crate::go::binding::{GoBindingFact, GoBindingKind, bindings_at};
-use crate::go::condition::{GoBuildConditionFact, condition_at};
+use crate::go::binding::{GoBindingKind, bindings_at};
+use crate::go::condition::condition_at;
 use crate::go::context::{FactContext, text};
-use crate::go::declaration::{GoDeclarationFact, GoDeclarationKind, declarations_at};
+use crate::go::declaration::{GoDeclarationKind, declarations_at};
 use crate::go::error::GoFactError;
 use crate::go::frame::Frames;
-use crate::go::import::{GoImportFact, import_at};
+use crate::go::import::import_at;
+use crate::go::inventory::Inventory;
 use crate::go::limits::GoFactLimits;
-use crate::go::reference::{GoReferenceFact, reference_at};
+use crate::go::reference::reference_at;
 use crate::go::retention::GoFactScope;
 use crate::go::scope::{GoScopeFact, GoScopeKind, scope_kind_at};
-use crate::go::signature::{GoSignatureTermFact, signature_terms_at};
+use crate::go::signature::signature_terms_at;
 use crate::go::span::GoFactSpan;
-use crate::tree_sitter::Node;
-
-/// Every fact one walk retained, before it is sealed into an inventory.
-pub(super) struct Inventory<'source> {
-    /// Every package clause the source states. A well-formed file states one;
-    /// a recovery tree can state more, and the first is the file's own.
-    ///
-    /// A list rather than an option so the capacity check has one site: a
-    /// scalar exempt from the ceiling would be a second retention rule.
-    pub(super) packages: Vec<(&'source str, GoFactSpan)>,
-    pub(super) conditions: Vec<GoBuildConditionFact<'source>>,
-    pub(super) imports: Vec<GoImportFact<'source>>,
-    pub(super) declarations: Vec<GoDeclarationFact<'source>>,
-    pub(super) signatures: Vec<GoSignatureTermFact<'source>>,
-    pub(super) references: Vec<GoReferenceFact<'source>>,
-    pub(super) scopes: Vec<GoScopeFact>,
-    pub(super) bindings: Vec<GoBindingFact<'source>>,
-    counted: u32,
-    limit: u32,
-    retained: GoFactScope,
-}
-
-impl<'source> Inventory<'source> {
-    fn new(limit: u32, retained: GoFactScope) -> Self {
-        Self {
-            packages: Vec::new(),
-            conditions: Vec::new(),
-            imports: Vec::new(),
-            declarations: Vec::new(),
-            signatures: Vec::new(),
-            references: Vec::new(),
-            scopes: Vec::new(),
-            bindings: Vec::new(),
-            counted: 0,
-            limit,
-            retained,
-        }
-    }
-
-    /// What this walk was opened to retain.
-    fn retained(&self) -> GoFactScope {
-        self.retained
-    }
-
-    fn name_package(&mut self, named: (&'source str, GoFactSpan)) -> Result<u32, GoFactError> {
-        admit(&mut self.counted, self.limit, &mut self.packages, named)
-    }
-
-    fn condition(&mut self, fact: GoBuildConditionFact<'source>) -> Result<u32, GoFactError> {
-        admit(&mut self.counted, self.limit, &mut self.conditions, fact)
-    }
-
-    fn import(&mut self, fact: GoImportFact<'source>) -> Result<u32, GoFactError> {
-        admit(&mut self.counted, self.limit, &mut self.imports, fact)
-    }
-
-    fn declare(&mut self, fact: GoDeclarationFact<'source>) -> Result<u32, GoFactError> {
-        admit(&mut self.counted, self.limit, &mut self.declarations, fact)
-    }
-
-    fn sign(&mut self, fact: GoSignatureTermFact<'source>) -> Result<u32, GoFactError> {
-        admit(&mut self.counted, self.limit, &mut self.signatures, fact)
-    }
-
-    fn refer(&mut self, fact: GoReferenceFact<'source>) -> Result<u32, GoFactError> {
-        admit(&mut self.counted, self.limit, &mut self.references, fact)
-    }
-
-    fn open(&mut self, fact: GoScopeFact) -> Result<u32, GoFactError> {
-        admit(&mut self.counted, self.limit, &mut self.scopes, fact)
-    }
-
-    fn bind(&mut self, fact: GoBindingFact<'source>) -> Result<u32, GoFactError> {
-        admit(&mut self.counted, self.limit, &mut self.bindings, fact)
-    }
-}
-
-/// Retain one fact, refusing before the inventory would exceed its ceiling.
-///
-/// The sole insertion site. Every category routes through it, so the capacity
-/// check cannot be skipped by adding a seventh kind of fact.
-///
-/// The configured ceiling and the representable one are proved together, before
-/// anything is pushed. A saturating conversion would mint `u32::MAX` as a real
-/// fact identity, and every later record would name it too.
-fn admit<T>(counted: &mut u32, limit: u32, into: &mut Vec<T>, fact: T) -> Result<u32, GoFactError> {
-    check_capacity(*counted, limit)?;
-    let index =
-        u32::try_from(into.len()).map_err(|_| GoFactError::FactCapacityExceeded { limit })?;
-    *counted += 1;
-    into.push(fact);
-    Ok(index)
-}
+use crate::structure::limits::admits_depth;
+use crate::tree_sitter::{Node, advance};
 
 /// Move one level deeper, refusing before the walk would pass its ceiling.
 ///
-/// The sole descent site, for the same reason [`admit`] is the sole insertion
-/// site.
+/// The sole descent site, for the same reason the inventory's own admission is
+/// the sole insertion site.
 fn descend(
     cursor: &mut TreeCursor<'_>,
     depth: usize,
@@ -134,21 +45,14 @@ fn descend(
     Ok(cursor.goto_first_child())
 }
 
-/// Whether one more fact fits.
-fn check_capacity(counted: u32, limit: u32) -> Result<(), GoFactError> {
-    match counted < limit {
-        true => Ok(()),
-        false => Err(GoFactError::FactCapacityExceeded { limit }),
-    }
-}
-
 /// Whether one more level fits.
 ///
-/// A depth the ceiling's own type cannot hold is past every ceiling, including
-/// the unbounded one. Saturating it into `u32::MAX` instead would make the
-/// deepest admissible source the one that spends the most stack.
+/// The comparison is [`admits_depth`], the crate's one depth predicate, which
+/// the structure builder asks as well; what is stated here is the Go refusal,
+/// because a refusal names the walk that made it. Two copies of the comparison
+/// meant one could be widened and leave the other walk bounded differently.
 fn check_depth(deeper: usize, limit: u32) -> Result<(), GoFactError> {
-    match u32::try_from(deeper).is_ok_and(|deeper| deeper <= limit) {
+    match admits_depth(deeper, limit) {
         true => Ok(()),
         false => Err(GoFactError::SyntaxDepthExceeded { limit }),
     }
@@ -181,25 +85,14 @@ pub(super) fn extract<'source>(
         )?;
         if node.child_count() > 0 && descend(&mut cursor, depth, limits)? {
             depth += 1;
+            inventory.entered(depth);
             continue;
         }
-        if !ascend(&mut frames, &mut cursor, &mut depth) {
+        // The ascent is the crate's shared one; what this walk adds is closing
+        // each context the nodes it leaves had opened.
+        if !advance(&mut cursor, &mut depth, |node| frames.close(node)) {
             return Ok(inventory);
         }
-    }
-}
-
-/// Move to the next node after a leaf, closing every context the walk leaves.
-fn ascend(frames: &mut Frames, cursor: &mut TreeCursor<'_>, depth: &mut usize) -> bool {
-    loop {
-        frames.close(cursor.node());
-        if cursor.goto_next_sibling() {
-            return true;
-        }
-        if !cursor.goto_parent() {
-            return false;
-        }
-        *depth -= 1;
     }
 }
 
@@ -230,8 +123,10 @@ fn enter<'source>(
 /// prelude a file opens with, the names a node binds, and the reference it
 /// states.
 ///
-/// A declarations-only walk retains none of them, and calls none of their
-/// recognizers.
+/// Each scope calls only the recognizers it retains from. A declarations-only
+/// walk calls none of them; a structure walk calls the package recognizer
+/// alone, because the package clause is the one part of the prelude a structure
+/// inventory states.
 fn admit_surroundings<'source>(
     inventory: &mut Inventory<'source>,
     node: Node<'_>,
@@ -242,6 +137,7 @@ fn admit_surroundings<'source>(
     let (kind, field) = written;
     match inventory.retained() {
         GoFactScope::DeclarationsOnly => Ok(()),
+        GoFactScope::DeclaredStructures => admit_package(inventory, node, kind, source),
         GoFactScope::Everything => {
             admit_prelude(inventory, node, kind, source)?;
             admit_bindings(inventory, node, kind, source, context)?;
@@ -260,11 +156,25 @@ fn admit_prelude<'source>(
     if let Some(condition) = condition_at(node, kind, source, !inventory.packages.is_empty()) {
         inventory.condition(condition)?;
     }
-    if let Some(named) = package_at(node, kind, source) {
-        inventory.name_package(named)?;
-    }
+    admit_package(inventory, node, kind, source)?;
     if let Some(import) = import_at(node, kind, source) {
         inventory.import(import)?;
+    }
+    Ok(())
+}
+
+/// The package clause one node states, retained on its own.
+///
+/// A site of its own rather than a line inside [`admit_prelude`], because two
+/// scopes retain the clause and only one of them retains the prelude around it.
+fn admit_package<'source>(
+    inventory: &mut Inventory<'source>,
+    node: Node<'_>,
+    kind: &str,
+    source: &'source str,
+) -> Result<(), GoFactError> {
+    if let Some(named) = package_at(node, kind, source) {
+        inventory.name_package(named)?;
     }
     Ok(())
 }
@@ -306,8 +216,8 @@ fn admit_declarations<'source>(
 /// A declaration that is no callable states none: a type, a constant, a
 /// variable, a field, and an embedded element all write no parameter list, and
 /// asking a node for one it does not have would state a signature of nothing.
-/// A declarations-only walk states none either, because a signature term is
-/// evidence for a method set rather than for a source unit.
+/// Only a whole-inventory walk states them at all, because a signature term is
+/// evidence for a method set rather than for a source unit or a structure.
 fn admit_signature<'source>(
     inventory: &mut Inventory<'source>,
     node: Node<'_>,

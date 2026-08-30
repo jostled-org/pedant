@@ -1,220 +1,258 @@
 //! The shared Go source store: which sources a snapshot holds, keyed by their
 //! normalized repository-relative paths.
 //!
-//! One normalized path is read, hashed, parsed, and walked for facts exactly
-//! once even when several package contexts instantiate it. Every ceiling this
-//! store owns is checked before the state it would pay for is retained, and the
-//! byte ceilings bound the read itself: at most one byte past the per-file
-//! ceiling ever enters memory, and the length both ceilings are compared
-//! against — and the length the running total is charged — is the length that
-//! actually arrived. A separate stat could not state that, because a file may
-//! grow between the stat and the read.
+//! The store no longer opens a file. It asks a provider for one normalized
+//! path, and the provider answers with the exact bytes, the digest, and the one
+//! inventory that path states — reading, parsing, and walking it only if this
+//! is the first request in that provider's life. Several package contexts
+//! inside one snapshot, and several snapshots that share one provider, all
+//! instantiate the same walk.
+//!
+//! The interning table, the key buffer, the file-count ceiling, the byte
+//! charge, and the sorted finish belong to the shared
+//! [`SnapshotStoreOf`](crate::resolution::snapshot_store::SnapshotStoreOf).
+//! What this module states is only the Go half: the two extra ceilings a
+//! retained record owes — the facts its walk kept and the depth it reached —
+//! and the snapshot vocabulary each refusal is published in.
 
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use pedant_syntax::SyntaxLanguage;
-use pedant_syntax::go::{GoFactLimits, GoFileFacts};
-use pedant_syntax::tree_sitter::parse_bound;
+use pedant_types::SourceRecord;
 
-use crate::hash::digest_bytes;
-use crate::observe::{self, Observation};
-use crate::resolution::capacity::admits_one_more;
-use crate::resolution::read::{self, ReadBounds, ReadFault};
+use crate::resolution::path_normalization::RelativePathError;
+use crate::resolution::read::{ByteCeilings, ReadFault};
+use crate::resolution::snapshot_rules::SnapshotRules;
+use crate::resolution::snapshot_store::{Interned, SnapshotStoreOf};
+use crate::resolution::supply::SourceSupply;
 
-use super::condition::conditions_of;
-use super::facts::GoSourceFacts;
+use super::fault::GoSourceFault;
+use super::inventory::GoFileInventory;
 use super::limits::GoResolutionLimits;
 use super::paths;
-use super::snapshot_error::{GoSnapshotError, GoSourceDefect};
+use super::snapshot_error::GoSnapshotError;
 use super::source::GoSource;
 
 /// Every distinct source one snapshot reached, keyed by normalized path.
 pub(super) struct GoSourceStore {
-    root: PathBuf,
-    limits: GoResolutionLimits,
-    indexes: BTreeMap<Arc<str>, usize>,
-    stored: Vec<GoSource>,
-    consumed: u64,
-}
-
-/// One source read under the byte ceilings, and the length it was charged.
-struct ReadSource {
-    source: GoSource,
-    bytes: u64,
+    store: SnapshotStoreOf<GoSnapshotRules>,
 }
 
 impl GoSourceStore {
     /// An empty store rooted at one canonical repository root.
     pub(super) fn new(root: &Path, limits: GoResolutionLimits) -> Self {
         Self {
-            root: root.to_path_buf(),
-            limits,
-            indexes: BTreeMap::new(),
-            stored: Vec::new(),
-            consumed: 0,
+            store: SnapshotStoreOf::new(GoSnapshotRules {
+                root: root.to_path_buf(),
+                limits,
+            }),
         }
     }
 
-    /// Read, hash, parse, and walk `canonical` unless it is already stored, and
-    /// return its normalized repository-relative path.
+    /// Retain `canonical` in this snapshot unless it is already held, and
+    /// return its normalized repository-relative path beside the position it
+    /// occupies.
     ///
-    /// Every ceiling is stated before the store grows, so a refusal leaves the
-    /// snapshot with nothing it would have to unwind.
-    pub(super) fn intern(&mut self, canonical: &Path) -> Result<Arc<str>, GoSnapshotError> {
-        let relative = paths::relative_shared(&self.root, canonical)?;
-        if let Some(stored) = self.indexes.get_key_value(&relative) {
-            return Ok(Arc::clone(stored.0));
+    /// The position travels with the path because the caller has a second
+    /// question about the same source — which package its clause declares — and
+    /// answering it from the key meant searching the interning table a second
+    /// time for a source that was just looked up.
+    pub(super) fn intern<P: SourceSupply<GoFileInventory, GoSourceFault>>(
+        &mut self,
+        provider: &mut P,
+        canonical: &Path,
+    ) -> Result<(Arc<str>, usize), GoSnapshotError> {
+        let limits = self.store.rules().limits;
+        let interned = self
+            .store
+            .intern(provider, canonical, &(), |path, record| {
+                check_retention(record, path, limits)?;
+                Ok(GoSource::of_record(path, record))
+            })?;
+        match interned {
+            Interned::Held(placement) | Interned::Admitted(placement) => {
+                Ok((placement.path, placement.index))
+            }
         }
-        check_source_capacity(self.stored.len(), self.limits)?;
-        let read = self.read_and_walk(canonical, &relative)?;
-        self.consumed = self.consumed.saturating_add(read.bytes);
-        self.indexes
-            .insert(Arc::clone(&relative), self.stored.len());
-        self.stored.push(read.source);
-        Ok(relative)
     }
 
-    /// The declared package name of one already-stored source.
+    /// The declared package name of the source at one stored position.
     ///
     /// Absence here is a store inconsistency rather than a source that declares
     /// nothing: no source without a package clause is ever retained, so the
     /// caller reports the disagreement instead of reading it as a fact about
     /// the repository.
-    pub(super) fn package_name(&self, path: &str) -> Option<&str> {
-        self.indexes
-            .get(path)
-            .and_then(|index| self.stored.get(*index))
+    pub(super) fn package_name_at(&self, index: usize) -> Option<&str> {
+        self.store
+            .stored(index)
             .and_then(|source| source.facts().package_name())
     }
 
     /// Every stored source, sorted by normalized path.
     pub(super) fn finish(self) -> Box<[GoSource]> {
-        let mut sources = self.stored;
-        sources.sort_by(|left, right| left.path.cmp(&right.path));
-        sources.into_boxed_slice()
+        self.store.finish()
+    }
+}
+
+/// The Go half of one snapshot retention: the root it names paths against, the
+/// ceilings it holds them to, and the vocabulary it refuses in.
+struct GoSnapshotRules {
+    root: PathBuf,
+    limits: GoResolutionLimits,
+}
+
+/// The byte ceilings, taken from the limits this snapshot was taken under.
+impl ByteCeilings for GoSnapshotRules {
+    fn source_bytes(&self) -> u64 {
+        self.limits.source_bytes()
     }
 
-    /// Read one confined source under both byte ceilings, parse it once, and
-    /// walk it for facts once.
-    ///
-    /// The read is announced before it is attempted, so a source this store
-    /// opened and failed part-way through still counts as opened. Under-
-    /// reporting is the unsafe direction: a claim that a path was never opened
-    /// is proved from this stream.
-    fn read_and_walk(
+    fn total_bytes(&self) -> u64 {
+        self.limits.total_bytes()
+    }
+}
+
+impl SnapshotRules for GoSnapshotRules {
+    type Inventory = GoFileInventory;
+    type Fault = GoSourceFault;
+    type Refusal = GoSnapshotError;
+    /// A Go refusal names the path and nothing else: a package walk has no
+    /// declaration site to name, because a directory's sources are what put it
+    /// in the snapshot.
+    type Site = ();
+    type Stored = GoSource;
+
+    fn root(&self) -> &Path {
+        &self.root
+    }
+
+    fn max_source_files(&self) -> u32 {
+        self.limits.max_source_files
+    }
+
+    fn stored_path(stored: &GoSource) -> &str {
+        stored.path()
+    }
+
+    fn unrelative(
         &self,
-        canonical: &Path,
-        relative: &Arc<str>,
-    ) -> Result<ReadSource, GoSnapshotError> {
-        observe::record(Observation::SourceRead(relative));
-        let bytes = read::bounded(canonical, self.bounds())
-            .map_err(|fault| byte_refusal(fault, relative, self.limits))?;
-        let charged = read::byte_count(&bytes);
-        let text = String::from_utf8(bytes).map_err(|_| GoSnapshotError::NonUtf8Source {
-            path: Box::from(&**relative),
-        })?;
-        let facts = extract(&text, relative, fact_limits(self.limits))?;
-        Ok(ReadSource {
-            source: GoSource {
-                digest: digest_bytes(text.as_bytes()),
-                conditions: facts.0,
-                facts: facts.1,
-                path: Arc::clone(relative),
-                text: Arc::from(text),
-            },
-            bytes: charged,
-        })
+        error: RelativePathError,
+        (_, canonical): (&(), &Path),
+    ) -> GoSnapshotError {
+        paths::unrelative(error, &self.root, canonical).into()
     }
 
-    /// The two byte ceilings this store reads under, and the total it has spent.
-    fn bounds(&self) -> ReadBounds {
-        ReadBounds {
-            source_bytes: self.limits.max_source_file_bytes,
-            total_bytes: self.limits.max_total_source_bytes,
-            consumed: self.consumed,
+    /// The ceiling alone. A Go snapshot's file-count refusal names no path,
+    /// because the source that crossed the ceiling is not the source that is
+    /// wrong.
+    fn source_files(&self, (_, _): (&(), &str)) -> GoSnapshotError {
+        GoSnapshotError::SourceFileLimitExceeded {
+            limit: self.limits.max_source_files,
         }
     }
+
+    fn unnormalized(&self, (_, relative): (&(), &str)) -> GoSnapshotError {
+        GoSnapshotError::UnnormalizedPath {
+            path: Box::from(relative),
+        }
+    }
+
+    fn refused(&self, fault: GoSourceFault, (_, relative): (&(), &str)) -> GoSnapshotError {
+        refusal(fault, (&self.root, relative))
+    }
+
+    fn oversized(&self, fault: ReadFault, at: (&(), &str)) -> GoSnapshotError {
+        self.refused(GoSourceFault::of_read(fault, self.limits), at)
+    }
 }
 
-/// Parse one complete source and retain the inventory it states.
+/// Hold one supplied record to this snapshot's own fact and depth ceilings.
 ///
-/// The tree must be complete: a snapshot that admitted a recovered tree would
-/// publish a report whose missing definitions look exactly like definitions the
-/// repository never had.
-fn extract(
-    text: &str,
+/// The byte charge belongs to the shared store; these two are Go's own, and
+/// they are checked before the record is retained so a refusal leaves the
+/// snapshot with nothing it would have to unwind. A provider may walk beneath
+/// looser ceilings than the snapshot that asked — that is the point of sharing
+/// one — so a record another snapshot already walked is checked exactly as a
+/// first walk is.
+fn check_retention(
+    record: &SourceRecord<GoFileInventory>,
     relative: &str,
-    limits: GoFactLimits,
-) -> Result<(Box<[super::condition::GoBuildCondition]>, GoSourceFacts), GoSnapshotError> {
-    let Some(parsed) = parse_bound(text, SyntaxLanguage::Go) else {
-        return Err(incomplete(relative, GoSourceDefect::Unparsed));
-    };
-    observe::record(Observation::SourceParse(relative));
-    if parsed.has_errors() {
-        return Err(incomplete(relative, GoSourceDefect::Recovered));
-    }
-    let facts = parsed
-        .go_file_facts(limits)
-        .map_err(|source| GoSnapshotError::FactExtraction {
+    limits: GoResolutionLimits,
+) -> Result<(), GoSnapshotError> {
+    let facts = record.facts();
+    match (
+        facts.fact_count() > limits.max_facts_per_source,
+        facts.syntax_depth() > limits.max_syntax_depth,
+    ) {
+        (true, _) => Err(GoSnapshotError::RetainedFactsExceeded {
             path: Box::from(relative),
-            source,
-        })?;
-    observe::record(Observation::SiteVisit(relative));
-    require_package_clause(&facts, relative)?;
-    Ok((
-        conditions_of(paths::file_name(relative), &facts),
-        GoSourceFacts::of(&facts),
-    ))
-}
-
-/// A source with no package clause belongs to no package, so it cannot join
-/// one.
-fn require_package_clause(facts: &GoFileFacts<'_>, relative: &str) -> Result<(), GoSnapshotError> {
-    match facts.package_name() {
-        Some(_) => Ok(()),
-        None => Err(GoSnapshotError::MissingPackageClause {
+            limit: limits.max_facts_per_source,
+        }),
+        (false, true) => Err(GoSnapshotError::RetainedDepthExceeded {
             path: Box::from(relative),
+            limit: limits.max_syntax_depth,
         }),
+        (false, false) => Ok(()),
     }
 }
 
-fn incomplete(relative: &str, defect: GoSourceDefect) -> GoSnapshotError {
-    GoSnapshotError::IncompleteSource {
-        path: Box::from(relative),
-        defect,
-    }
-}
-
-/// The two fact ceilings a snapshot converts its own limits into.
-fn fact_limits(limits: GoResolutionLimits) -> GoFactLimits {
-    GoFactLimits::new(limits.max_syntax_depth, limits.max_facts_per_source)
-}
-
-/// One more source must still fit under the configured ceiling.
-fn check_source_capacity(held: usize, limits: GoResolutionLimits) -> Result<(), GoSnapshotError> {
-    match admits_one_more(held, limits.max_source_files) {
-        true => Ok(()),
-        false => Err(GoSnapshotError::SourceFileLimitExceeded {
-            limit: limits.max_source_files,
-        }),
-    }
-}
-
-/// The store's own error for one refused read.
-fn byte_refusal(fault: ReadFault, relative: &str, limits: GoResolutionLimits) -> GoSnapshotError {
+/// The store's own error for one refused provider request.
+///
+/// A free function taking exactly what it reads: the root the refusal is
+/// measured against, and the path it is reported for. A provider states which
+/// path escaped its own confinement; naming the root is this seam's job, because
+/// this seam is the one that has one.
+fn refusal(fault: GoSourceFault, at: (&Path, &str)) -> GoSnapshotError {
+    let (root, relative) = at;
     match fault {
-        ReadFault::Unreadable(source) => GoSnapshotError::SourceRead {
+        GoSourceFault::Unreadable(source) => GoSnapshotError::SourceRead {
             path: Box::from(relative),
             source,
         },
-        ReadFault::SourceBytes => GoSnapshotError::SourceBytesLimitExceeded {
-            path: Box::from(relative),
-            limit: limits.max_source_file_bytes,
+        // The provider states where the request landed; this seam holds the
+        // root it is measured against and the repository-relative path that was
+        // asked for, and a refusal naming only the landing leaves a caller with
+        // no path it can act on.
+        GoSourceFault::OutOfRoot { path } => GoSnapshotError::OutOfRoot {
+            path,
+            root: paths::path_text(root),
+            request: Box::from(relative),
         },
-        ReadFault::TotalBytes => GoSnapshotError::TotalSourceBytesLimitExceeded {
-            limit: limits.max_total_source_bytes,
+        GoSourceFault::NonUtf8Path { path } => GoSnapshotError::NonUtf8Path { path },
+        GoSourceFault::PathRead { path, source } => GoSnapshotError::PathRead { path, source },
+        GoSourceFault::SourceFiles { ceiling } => {
+            GoSnapshotError::SourceFileLimitExceeded { limit: ceiling }
+        }
+        GoSourceFault::SourceBytes { ceiling } => GoSnapshotError::SourceBytesLimitExceeded {
+            path: Box::from(relative),
+            limit: ceiling,
+        },
+        GoSourceFault::TotalBytes { ceiling } => {
+            GoSnapshotError::TotalSourceBytesLimitExceeded { limit: ceiling }
+        }
+        GoSourceFault::NonUtf8 { reason } => GoSnapshotError::NonUtf8Source {
+            path: Box::from(relative),
+            reason,
+        },
+        GoSourceFault::Unparsed { reason } => GoSnapshotError::UnparsedSource {
+            path: Box::from(relative),
+            reason,
+        },
+        GoSourceFault::Incomplete(defect) => GoSnapshotError::IncompleteSource {
+            path: Box::from(relative),
+            defect,
+        },
+        GoSourceFault::FactExtraction(source) => GoSnapshotError::FactExtraction {
+            path: Box::from(relative),
+            source,
+        },
+        GoSourceFault::MissingPackageClause => GoSnapshotError::MissingPackageClause {
+            path: Box::from(relative),
+        },
+        GoSourceFault::Refused { path } => GoSnapshotError::AlreadyRefused { path },
+        GoSourceFault::StructureProjection { reason } => GoSnapshotError::StructureProjection {
+            path: Box::from(relative),
+            reason,
         },
     }
 }

@@ -71,6 +71,9 @@ fn go_package_discovery_excludes_reserved_trees_and_retains_generated_go_sources
     assert_escape_is_refused_unread("a symlinked directory", |root| {
         symlink(&root.join("../outside"), &root.join("linked"));
     });
+    assert_nested_manifest_escape_is_refused();
+    assert_unreadable_nested_manifest_is_refused();
+    assert_non_file_nested_manifest_is_refused();
 }
 
 /// A nested `go.mod` the root manifest replaces into is walked as its own
@@ -137,4 +140,69 @@ fn assert_escape_is_refused_unread(_subject: &str, _link: impl FnOnce(&Path)) {}
 #[cfg(unix)]
 fn symlink(target: &Path, link: &Path) {
     std::os::unix::fs::symlink(target, link).expect("the fixture can link a sibling path");
+}
+
+/// Nested-module detection uses the same confined manifest lookup as loading.
+#[cfg(unix)]
+fn assert_nested_manifest_escape_is_refused() {
+    let tree = build_repository(
+        &[
+            ("repo/go.mod", "module example.com/root\n"),
+            ("repo/main.go", "package main\n"),
+            ("repo/nested/hidden.go", "package hidden\n"),
+            ("outside/go.mod", "module example.com/outside\n"),
+        ],
+        false,
+    );
+    let root = repository_root(&tree);
+    symlink(&root.join("../outside/go.mod"), &root.join("nested/go.mod"));
+
+    let project =
+        GoProject::load(&root, GoResolutionLimits::default()).expect("the root manifest loads");
+    let refusal = project
+        .snapshot_resolution()
+        .expect_err("an escaping nested manifest must refuse discovery");
+    assert!(matches!(refusal, GoSnapshotError::OutOfRoot { .. }));
+}
+
+/// A manifest whose target cannot be resolved is an error, not absence.
+#[cfg(unix)]
+fn assert_unreadable_nested_manifest_is_refused() {
+    let tree = build_repository(
+        &[
+            ("repo/go.mod", "module example.com/root\n"),
+            ("repo/main.go", "package main\n"),
+            ("repo/nested/hidden.go", "package hidden\n"),
+        ],
+        false,
+    );
+    let root = repository_root(&tree);
+    symlink(Path::new("go.mod"), &root.join("nested/go.mod"));
+
+    let project =
+        GoProject::load(&root, GoResolutionLimits::default()).expect("the root manifest loads");
+    let refusal = project
+        .snapshot_resolution()
+        .expect_err("an unreadable nested manifest must refuse discovery");
+    assert!(matches!(refusal, GoSnapshotError::PathRead { .. }));
+}
+
+/// An existing `go.mod` that is not a regular file is unreadable, not absent.
+fn assert_non_file_nested_manifest_is_refused() {
+    let tree = build_repository(
+        &[
+            ("repo/go.mod", "module example.com/root\n"),
+            ("repo/main.go", "package main\n"),
+            ("repo/nested/hidden.go", "package hidden\n"),
+            ("repo/nested/go.mod/inner", "not a manifest\n"),
+        ],
+        false,
+    );
+    let root = repository_root(&tree);
+    let project =
+        GoProject::load(&root, GoResolutionLimits::default()).expect("the root manifest loads");
+    let refusal = project
+        .snapshot_resolution()
+        .expect_err("a non-file nested manifest must refuse discovery");
+    assert!(matches!(refusal, GoSnapshotError::PathRead { .. }));
 }

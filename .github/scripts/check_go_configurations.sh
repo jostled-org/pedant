@@ -53,10 +53,20 @@ set -euo pipefail
 # path for a script invoked by a relative path, `cd` then consults `CDPATH`, and
 # a match there both enters the wrong directory and prints it — leaving
 # `script_dir` a two-line value naming a tree this repository does not own.
-script_dir="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+#
+# Emptiness alone cannot catch a `dirname` that failed: `cd -- ""` succeeds and
+# stays put, so `script_dir` comes back non-empty and names whatever directory
+# the caller stood in. The library this script is about to source is what says
+# the resolution landed beside the script, and an unreadable library is an
+# unavailable machine rather than the drift this check is named for.
+script_dir="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || script_dir=""
+if [ -z "${script_dir}" ] || [ ! -r "${script_dir}/repository_check_lib.sh" ]; then
+    echo "error: cannot resolve the directory holding ${BASH_SOURCE[0]}" >&2
+    exit 75
+fi
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=repository_check_lib.sh
-. "${script_dir}/repository_check_lib.sh"
+. "${script_dir}/repository_check_lib.sh" || exit 75
 
 cd_repo_root
 require_tools cargo rg
@@ -79,19 +89,26 @@ readonly ANY_PREDICATE='^\S+: test$'
 # Deny a missing doc on every Go-enabled documentation build.
 readonly DOC_FLAGS="-D missing_docs"
 
+# The tag this matrix prefixes its command lines with.
+#
+# `check_command` is `repository_check_lib.sh`'s: it was byte-identical here and
+# in the code-intelligence matrix apart from this prefix, so the prefix is what
+# each caller states and the rest has one owner.
+readonly COMMAND_TAG="[go-config]"
+
 # Count the lines of a listing that match a pattern.
 #
-# `rg -c` exits 1 on no match, which is a count of zero rather than a failure,
-# and it exits 2 when the matcher itself broke. Only the first is folded into a
-# number; a broken matcher stops the check rather than reading as zero.
+# `rg_status_over` answers 1 for no match, which is a count of zero rather than
+# a failure, and 2 when the matcher itself broke. Only the first is folded into
+# a number; a broken matcher stops the check rather than reading as zero.
 count_matching() {
-    local listing="$1" pattern="$2" found rg_status=0
-    found="$(rg -c "${pattern}" <<<"${listing}")" || rg_status=$?
-    case "${rg_status}" in
-        0) printf '%s' "${found}" ;;
+    local listing="$1" pattern="$2" status=0
+    rg_status_over "${listing}" -c "${pattern}" || status=$?
+    case "${status}" in
+        0) printf '%s' "${RG_OUTPUT}" ;;
         1) printf '0' ;;
         *)
-            echo "error: rg exited ${rg_status} without answering; the count did not run." >&2
+            echo "error: rg exited ${RG_EXIT} without answering; the count did not run." >&2
             exit 1
             ;;
     esac
@@ -109,9 +126,9 @@ count_matching() {
 check_root() {
     local label="$1" expected="$2"
     shift 2
-    local listing selected found run_failed=""
+    local listing selected found
 
-    printf '[go-config] %s: cargo test %s\n' "${label}" "$*"
+    printf '%s %s: listing cargo test %s\n' "${COMMAND_TAG}" "${label}" "$*"
     cargo_capture "${label}_list" cargo test --locked "$@" -- --list || {
         printf '%s\n' "${CARGO_CAPTURE_OUTPUT}" >&2
         violation "${label} could not list its tests"
@@ -128,40 +145,48 @@ check_root() {
     found="$(count_matching "${listing}" "${GO_PREDICATE}")"
     if [ "${found}" -ne "${expected}" ]; then
         violation "${label} selects ${found} Go predicates, and the matrix states ${expected}"
-        rg "${GO_PREDICATE}" <<<"${listing}" >&2 || true
+        show_matching "${listing}" "${GO_PREDICATE}"
         return
     fi
-    printf '[go-config] %s: %s of %s selected rows are Go predicates\n' \
-        "${label}" "${found}" "${selected}"
+    printf '%s %s: %s of %s selected rows are Go predicates\n' \
+        "${COMMAND_TAG}" "${label}" "${found}" "${selected}"
 
-    cargo_capture "${label}_run" cargo test --locked "$@" || run_failed=1
-    printf '%s\n' "${CARGO_CAPTURE_OUTPUT}"
-    [ -z "${run_failed}" ] || violation "${label} failed"
+    # The run is `check_command`'s: announcing the command, capturing it,
+    # replaying the capture, and folding a failure into the aggregate was three
+    # lines byte-identical to that helper's own tail.
+    check_command "${COMMAND_TAG}" "${label}" cargo test --locked "$@"
 }
 
-# Run one lint or documentation command that no other job reaches.
-check_command() {
-    local label="$1"
-    shift
-    local failed=""
-    printf '[go-config] %s: %s\n' "${label}" "$*"
-    cargo_capture "${label}" "$@" || failed=1
-    printf '%s\n' "${CARGO_CAPTURE_OUTPUT}"
-    [ -z "${failed}" ] || violation "${label} failed"
+# Show a listing's matching rows on the diagnostic stream, or say why not.
+#
+# Routed through `rg_status_over` for the reason `count_matching` is: a raw `rg`
+# answers "no match" and "the matcher itself failed" through statuses a reader
+# folds together, and this is the diagnostic an operator reads to find out which
+# predicates a row selected.
+show_matching() {
+    local listing="$1" pattern="$2" status=0
+    rg_status_over "${listing}" -e "${pattern}" || status=$?
+    case "${status}" in
+        0) printf '%s\n' "${RG_OUTPUT}" >&2 ;;
+        1) echo "  (the listing states no matching row)" >&2 ;;
+        *) echo "  (rg exited ${RG_EXIT}; the listing could not be shown)" >&2 ;;
+    esac
 }
 
 # ---------------------------------------------------------------------------
 # Default-off: the Go features are not selected, so no Go behaviour is linked.
 #
-# The graph root's two rows and the core root's one are structural: they read
-# tracked source, manifests, and scripts rather than any Go type, and hold under
-# every profile, so their count is the floor a default build selects rather than
-# an exception to it. The core row is the release-owner predicate, which states
-# what publishing the Go surface costs the eight published packages — a claim a
-# release build has to be able to check without the feature it is about.
+# The graph root's two rows are structural: they read tracked source, manifests,
+# and scripts rather than any Go type, and hold under every profile, so their
+# count is the floor a default build selects rather than an exception to it.
+#
+# The core root states none. It once held the release-owner predicate, and that
+# predicate is still proved — one release publishes the whole workspace, so the
+# claim was never about Go, and it now runs under the owner that reads every
+# tracked workflow rather than under a Go name.
 # ---------------------------------------------------------------------------
 
-check_root core-default-off 1 \
+check_root core-default-off 0 \
     -p pedant-core --no-default-features --test substrate
 check_root graph-default-off 2 \
     -p pedant-graph --test graph
@@ -177,9 +202,9 @@ check_root syntax-default-off 0 \
 # probe, which is what the observed predicates need.
 # ---------------------------------------------------------------------------
 
-check_root core-go-only 26 \
+check_root core-go-only 25 \
     -p pedant-core --no-default-features --features go-resolution --test substrate
-check_root core-go-and-probe 30 \
+check_root core-go-and-probe 29 \
     -p pedant-core --no-default-features --features go-resolution,resolution-test-support --test substrate
 check_root graph-go-only 13 \
     -p pedant-graph --no-default-features --features go --test graph
@@ -204,7 +229,7 @@ check_root graph-all-features 13 \
 # Unified: features resolved together, including one deliberate mismatch.
 # ---------------------------------------------------------------------------
 
-check_root core-unified 30 \
+check_root core-unified 29 \
     -p pedant-core --features go-resolution,resolution-test-support --test substrate
 check_root graph-core-go-without-adapter 2 \
     -p pedant-graph --no-default-features --features pedant-core/go-resolution --test graph
@@ -213,19 +238,19 @@ check_root graph-core-go-without-adapter 2 \
 # Lint and document the configurations nothing else reaches.
 # ---------------------------------------------------------------------------
 
-check_command clippy-core-go \
+check_command "${COMMAND_TAG}" clippy-core-go \
     cargo clippy --locked -p pedant-core --no-default-features --features go-resolution -- -D warnings
-check_command clippy-core-go-all-targets \
+check_command "${COMMAND_TAG}" clippy-core-go-all-targets \
     cargo clippy --locked -p pedant-core --no-default-features --features go-resolution,resolution-test-support --all-targets -- -D warnings
-check_command clippy-graph-all-features \
+check_command "${COMMAND_TAG}" clippy-graph-all-features \
     cargo clippy --locked -p pedant-graph --all-features --all-targets -- -D warnings
 
 # `env` rather than an assignment prefix: a prefix on a shell function leaves the
 # variable set in this shell afterwards, so every later cargo command would
 # inherit the doc flags too.
-check_command doc-core-go env RUSTDOCFLAGS="${DOC_FLAGS}" \
+check_command "${COMMAND_TAG}" doc-core-go env RUSTDOCFLAGS="${DOC_FLAGS}" \
     cargo doc --locked --no-deps -p pedant-core --no-default-features --features go-resolution
-check_command doc-graph-all-features env RUSTDOCFLAGS="${DOC_FLAGS}" \
+check_command "${COMMAND_TAG}" doc-graph-all-features env RUSTDOCFLAGS="${DOC_FLAGS}" \
     cargo doc --locked --no-deps -p pedant-graph --all-features
 
 assert_no_violations "the Go configuration matrix drifted."

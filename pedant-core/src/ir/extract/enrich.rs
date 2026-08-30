@@ -63,8 +63,7 @@ pub(super) fn enrich_ir(ir: &mut FileIr, ctx: &SemanticContext) {
 /// Resolve method call receiver types using enriched binding data.
 ///
 /// Looks up the receiver identifier's resolved type from the binding facts
-/// (already enriched by `enrich_ir`). Multiple calls on the same binding
-/// share a single `Arc<str>` allocation for the resolved type.
+/// already enriched by `enrich_ir`.
 fn enrich_method_calls(method_calls: &mut [MethodCallFact], bindings: &[BindingFact]) {
     use std::collections::BTreeMap;
     use std::sync::Arc;

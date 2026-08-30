@@ -56,6 +56,14 @@ pub struct Fixture {
     pub target: Row,
 }
 
+/// The Rust source, closing with an inherent `impl` that states a receiverless
+/// associated `fn`.
+///
+/// The receiver decides the kind, so `Config::new` is a function an `impl` block
+/// happens to hold while `Config::fmt` beside it is a method. Without a
+/// receiverless `fn` here the whole rule was stated only by the structure walk,
+/// and the two walks read one table. It sits last so no earlier declaration's
+/// written-down line span moves.
 #[cfg(feature = "rust")]
 pub const RUST_SOURCE: &str = r#"use std::fmt;
 
@@ -94,6 +102,12 @@ impl Runner for Mode {}
 
 pub fn build(retries: usize) -> Config {
     Config { retries }
+}
+
+impl Config {
+    pub fn new() -> Config {
+        Config { retries: 0 }
+    }
 }
 "#;
 
@@ -385,6 +399,10 @@ pub const ENABLED: &[Fixture] = &[
 /// silently stays one short. Generating both from one list closes that. The
 /// match fails to compile until the new variant is listed, listing it grows the
 /// array, and a duplicated or transposed entry fails as an unreachable arm.
+///
+/// Re-exported below, because the failure it closes is not this module's alone:
+/// every closed vocabulary this root asserts over needs it, and a second copy
+/// of the macro would be a second thing to keep in step.
 macro_rules! declare_variants {
     ($enum:ident, $array:ident, $spelling:ident, $($variant:ident => $name:literal),+ $(,)?) => {
         /// Every variant this list names, in declaration order.
@@ -404,6 +422,20 @@ macro_rules! declare_variants {
         }
     };
 }
+
+// Gated with the one root that reads it. The structure-inventory model is the
+// only other closed vocabulary in this root, and it compiles only where every
+// grammar is linked; an ungated re-export would be an unused import in every
+// narrower profile.
+#[cfg(all(
+    feature = "rust",
+    feature = "ts-python",
+    feature = "ts-javascript",
+    feature = "ts-typescript",
+    feature = "ts-go",
+    feature = "ts-bash"
+))]
+pub(crate) use declare_variants;
 
 declare_variants!(
     SyntaxLanguage,

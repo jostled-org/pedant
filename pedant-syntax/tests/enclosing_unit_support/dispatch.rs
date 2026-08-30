@@ -6,7 +6,10 @@
 //! module must not become a root. This is where `rust`'s disabled contract
 //! lives, because the `rust` support module only exists when the feature is on.
 
-use pedant_syntax::{Location, SyntaxLanguage, enclosing_unit};
+use pedant_syntax::{
+    Location, StructureError, StructureInventoryLimits, SyntaxLanguage, enclosing_unit,
+    structure_inventory,
+};
 
 use crate::fixture_support::{
     Minimal, assert_matches_row, extraction_enabled, minimal_declaration,
@@ -26,6 +29,57 @@ use crate::positions::point_of;
 fn a_backend_answers_exactly_where_this_build_links_it() {
     for language in ALL_LANGUAGES {
         assert_minimal_declaration(language);
+    }
+}
+
+/// A structure inventory refuses exactly where this build links no backend.
+///
+/// The same selector answers both surfaces, and the difference between their
+/// answers is why the structure error exists. Extraction reports an absent
+/// backend as `None`, which reads as "no declaration contains this point". An
+/// inventory cannot borrow that spelling: its own empty value already means
+/// "this source declares nothing", so an absent backend has to refuse by name.
+///
+/// Runs in every configuration, so neither half is a branch only some build
+/// reaches.
+#[test]
+fn a_structure_inventory_refuses_by_name_where_no_backend_is_linked() {
+    for language in ALL_LANGUAGES {
+        let minimal = minimal_declaration(language);
+        let answer = structure_inventory(
+            minimal.source,
+            language,
+            StructureInventoryLimits::default(),
+        );
+        match extraction_enabled(language) {
+            // Inspected rather than accepted as any `Ok`: the linked half of
+            // this claim is that *this* language's backend answered. A selector
+            // that dispatched to a neighbour's grammar, or one that answered a
+            // source holding a declaration with an empty inventory, states
+            // nothing about a backend being linked and passes an `is_ok`.
+            true => {
+                let inventory = answer.unwrap_or_else(|refusal| {
+                    panic!(
+                        "{language:?} has a backend in this configuration, so it \
+                         states an inventory: {refusal}"
+                    )
+                });
+                assert_eq!(
+                    inventory.language(),
+                    language,
+                    "the inventory names the grammar it was read through"
+                );
+                assert!(
+                    !inventory.structures().is_empty(),
+                    "{language:?} states the declaration its minimal source writes"
+                );
+            }
+            false => assert_eq!(
+                answer.err(),
+                Some(StructureError::BackendUnavailable { language }),
+                "{language:?} has no backend in this configuration, so it refuses by name"
+            ),
+        }
     }
 }
 

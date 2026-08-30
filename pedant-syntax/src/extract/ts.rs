@@ -1,14 +1,24 @@
 //! Declaration recognition over tree-sitter parse trees.
 //!
-//! Traversal, containment, naming, and selection are shared; only the node
-//! kinds and the ownership questions behind them are per-language, so a
-//! backend is one `match` arm rather than a trait implementation.
+//! Traversal, containment, naming, and selection are shared, and so is the
+//! grammar table: which node states a declaration, which child names it, and
+//! how far its text reaches all come from `structure::recognize`, the crate's
+//! one per-language table. A unit is that recognition narrowed to the kinds the
+//! unit model declares.
+//!
+//! What stays here is the shape of a node the table cannot state for itself:
+//! whether a Python definition is the one a decorator wraps, whether a class
+//! body owns it, and how far an exported or decorated ECMAScript declaration
+//! reaches. Those answer the same way for both readers, so the table calls
+//! them.
 
 #[cfg(feature = "_ts_generic")]
 use std::ops::Range;
 
 use crate::extract::select::UnitSelector;
 use crate::language::SyntaxLanguage;
+#[cfg(feature = "_ts_generic")]
+use crate::structure::recognize::Recognized;
 use crate::tree_sitter::Node;
 #[cfg(feature = "_ts_generic")]
 use crate::tree_sitter::{node_text, walk_descendants};
@@ -128,61 +138,45 @@ fn offer_recognized<'s>(
 
 /// The declaration `node` represents in `language`, if any.
 ///
-/// Every variant names both arms — the matcher its feature enables and the
-/// absence its feature leaves — so the match is exhaustive in every
-/// configuration and a new [`SyntaxLanguage`] fails to compile here rather than
-/// recognizing nothing.
+/// One table answers for every language, and it is the structure recognizer's:
+/// the node kinds, the child that names each one, and the byte range each
+/// returns are stated there once. A second table here is what let the two
+/// readers disagree about which `def` is a method and how far an exported
+/// class's text reaches.
+///
+/// The per-language exhaustiveness that table states — every
+/// [`SyntaxLanguage`] naming both the matcher its feature enables and the
+/// absence its feature leaves — covers this route too, because this route is
+/// that route.
 #[cfg(feature = "_ts_generic")]
 fn recognize<'t>(node: Node<'t>, language: SyntaxLanguage) -> Option<Declaration<'t>> {
-    match language {
-        // Rust has no grammar here; its backend is `extract::rust`.
-        SyntaxLanguage::Rust => None,
-        #[cfg(feature = "ts-python")]
-        SyntaxLanguage::Python => python(node),
-        #[cfg(not(feature = "ts-python"))]
-        SyntaxLanguage::Python => None,
-        #[cfg(feature = "ts-javascript")]
-        SyntaxLanguage::JavaScript => javascript(node),
-        #[cfg(not(feature = "ts-javascript"))]
-        SyntaxLanguage::JavaScript => None,
-        #[cfg(feature = "ts-typescript")]
-        SyntaxLanguage::TypeScript | SyntaxLanguage::Tsx => typescript(node),
-        #[cfg(not(feature = "ts-typescript"))]
-        SyntaxLanguage::TypeScript | SyntaxLanguage::Tsx => None,
-        // Go has no matcher here in any configuration: its declarations belong
-        // to `crate::go`, which `offer_declarations` routes to before this walk
-        // begins.
-        SyntaxLanguage::Go => None,
-        #[cfg(feature = "ts-bash")]
-        SyntaxLanguage::Bash => bash(node),
-        #[cfg(not(feature = "ts-bash"))]
-        SyntaxLanguage::Bash => None,
-    }
+    let found = crate::structure::recognize::recognize(node, language)?;
+    Some(Declaration {
+        kind: unit_kind(&found)?,
+        range: found.bytes,
+        name: found.name,
+    })
 }
 
-/// A declaration returning `range`'s text, named by `namer`'s `name` field.
-#[cfg(feature = "_ts_generic")]
-fn declaration(range: Range<usize>, kind: SourceUnitKind, namer: Node<'_>) -> Declaration<'_> {
-    Declaration {
-        kind,
-        range,
-        name: namer.child_by_field_name("name"),
-    }
-}
-
-/// Python: functions, classes, and the decorated form of either.
+/// The unit one recognized structure declares, if this model declares one.
 ///
-/// A decorated declaration returns the outer decorator text with the inner
-/// declaration's kind and name.
-#[cfg(feature = "ts-python")]
-fn python(node: Node<'_>) -> Option<Declaration<'_>> {
-    let inner = python_inner(node)?;
-    let kind = match inner.kind() {
-        "class_definition" => SourceUnitKind::Class,
-        "function_definition" => python_function_kind(node),
-        _ => return None,
-    };
-    Some(declaration(node.byte_range(), kind, inner))
+/// The kind alone answers for every recognized node but one. A TypeScript
+/// `abstract run(): number;` is recognized as a `StructureKind::Method` and the
+/// structure inventory states it as one, but a source unit carries the
+/// declaration's own text, and a signature with no body would return a single
+/// line in place of the type that declares it. A reader inside one reads the
+/// abstract class instead — the answer a Go interface method already gives.
+///
+/// Which recognized form that is comes from the table as a value. Re-asking the
+/// node for its kind here would write a grammar node kind down a second time,
+/// outside the one table that states them, and a grammar rename would then stop
+/// narrowing with nothing red.
+#[cfg(feature = "_ts_generic")]
+fn unit_kind(found: &Recognized<'_>) -> Option<SourceUnitKind> {
+    match found.body {
+        true => SourceUnitKind::of(found.kind),
+        false => None,
+    }
 }
 
 /// The declaration a candidate node describes: itself, or the definition its
@@ -191,20 +185,11 @@ fn python(node: Node<'_>) -> Option<Declaration<'_>> {
 /// A definition a decorator already owns is not a candidate, because its
 /// decorated form is the one that carries the full text.
 #[cfg(feature = "ts-python")]
-fn python_inner(node: Node<'_>) -> Option<Node<'_>> {
+pub(crate) fn python_inner(node: Node<'_>) -> Option<Node<'_>> {
     match node.kind() {
         "decorated_definition" => node.child_by_field_name("definition"),
         "function_definition" | "class_definition" => (!owned_by_decorator(node)).then_some(node),
         _ => None,
-    }
-}
-
-/// A Python function a class body declares directly is a method.
-#[cfg(feature = "ts-python")]
-fn python_function_kind(outer: Node<'_>) -> SourceUnitKind {
-    match owner_is_class(outer) {
-        true => SourceUnitKind::Method,
-        false => SourceUnitKind::Function,
     }
 }
 
@@ -221,55 +206,15 @@ fn owned_by_decorator(node: Node<'_>) -> bool {
 /// `decorated_definition`, or a definition no decorator wraps — so the
 /// relationship that function established is read, not re-derived.
 #[cfg(feature = "ts-python")]
-fn owner_is_class(outer: Node<'_>) -> bool {
+pub(crate) fn owner_is_class(outer: Node<'_>) -> bool {
     outer
         .parent()
         .and_then(|body| body.parent())
         .is_some_and(|owner| owner.kind() == "class_definition")
 }
 
-/// JavaScript declarations.
-#[cfg(feature = "ts-javascript")]
-fn javascript(node: Node<'_>) -> Option<Declaration<'_>> {
-    Some(js_declaration(node, javascript_kind(node.kind())?))
-}
-
-/// One JavaScript-family declaration: the widened range, the kind its grammar
-/// node names, and the node that names it.
-///
-/// The one tail both the JavaScript and the TypeScript backend read, so the two
-/// cannot disagree about how far a declaration's text reaches.
-#[cfg(any(feature = "ts-javascript", feature = "ts-typescript"))]
-fn js_declaration(node: Node<'_>, kind: SourceUnitKind) -> Declaration<'_> {
-    declaration(js_declared_range(node), kind, node)
-}
-
-/// The JavaScript declaration set, shared with TypeScript and TSX.
-#[cfg(any(feature = "ts-javascript", feature = "ts-typescript"))]
-fn javascript_kind(kind: &str) -> Option<SourceUnitKind> {
-    match kind {
-        "function_declaration" | "generator_function_declaration" => Some(SourceUnitKind::Function),
-        "method_definition" => Some(SourceUnitKind::Method),
-        "class_declaration" => Some(SourceUnitKind::Class),
-        _ => None,
-    }
-}
-
-/// TypeScript and TSX add the abstract class, the type alias, and the enum to
-/// the JavaScript set.
-#[cfg(feature = "ts-typescript")]
-fn typescript(node: Node<'_>) -> Option<Declaration<'_>> {
-    let kind = match node.kind() {
-        "abstract_class_declaration" => SourceUnitKind::Class,
-        // An interface is not here: the model declares no variant for one.
-        "type_alias_declaration" => SourceUnitKind::TypeAlias,
-        "enum_declaration" => SourceUnitKind::Enum,
-        other => javascript_kind(other)?,
-    };
-    Some(js_declaration(node, kind))
-}
-
-/// The byte range one JavaScript or TypeScript declaration returns.
+/// The nodes one JavaScript or TypeScript declaration's returned text opens at
+/// and closes at.
 ///
 /// The grammar states a declaration's modifiers outside the declaration node
 /// itself, so the bare node loses text every other backend keeps — Python
@@ -279,19 +224,23 @@ fn typescript(node: Node<'_>) -> Option<Declaration<'_>> {
 /// - An `export_statement` introduces the declaration, so `export`,
 ///   `export default`, and any decorator the statement holds open the text.
 /// - A decorator on a class member is a preceding sibling inside the
-///   `class_body` rather than a child, so the range opens at the first of the
+///   `class_body` rather than a child, so the text opens at the first of the
 ///   run. A bare class states its decorators as children and needs neither.
 ///
-/// The result can be wider than the node, and selection compares byte length,
+/// The pair rather than a byte range, because both readers of this answer want
+/// the lines the text covers as well as the bytes, and the grammar already
+/// reports each node's position: returning the range alone would leave the
+/// caller to rediscover which nodes the widened extent runs between.
+///
+/// The extent can be wider than the node, and selection compares byte length,
 /// so an inner `method_definition` still beats the class that exports it.
 #[cfg(any(feature = "ts-javascript", feature = "ts-typescript"))]
-fn js_declared_range(node: Node<'_>) -> Range<usize> {
+pub(crate) fn js_declared_bounds<'t>(node: Node<'t>) -> (Node<'t>, Node<'t>) {
     let outer = node
         .parent()
         .filter(|parent| parent.kind() == "export_statement")
         .unwrap_or(node);
-    let start = leading_decorator(outer).unwrap_or(outer).start_byte();
-    start..outer.end_byte()
+    (leading_decorator(outer).unwrap_or(outer), outer)
 }
 
 /// The first decorator of the run immediately preceding `node`, if any.
@@ -305,17 +254,4 @@ fn leading_decorator(node: Node<'_>) -> Option<Node<'_>> {
 fn decorator_before(node: Node<'_>) -> Option<Node<'_>> {
     node.prev_sibling()
         .filter(|sibling| sibling.kind() == "decorator")
-}
-
-/// Bash function definitions, with or without the `function` keyword.
-#[cfg(feature = "ts-bash")]
-fn bash(node: Node<'_>) -> Option<Declaration<'_>> {
-    match node.kind() {
-        "function_definition" => Some(declaration(
-            node.byte_range(),
-            SourceUnitKind::Function,
-            node,
-        )),
-        _ => None,
-    }
 }

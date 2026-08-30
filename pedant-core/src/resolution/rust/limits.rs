@@ -1,5 +1,19 @@
 //! Resource ceilings shared by project loading and snapshot construction.
 
+use crate::resolution::read::ByteCeilings;
+
+/// Whether a source nesting `depth` delimiters deep may be retained beneath
+/// `ceiling`.
+///
+/// One owner, in the same way the count-against-ceiling rule for distinct
+/// sources has one. Two seams ask it — the provider parsing a source for the
+/// first time, and the snapshot store holding a record some other snapshot
+/// already parsed — and their ceilings are allowed to differ while the
+/// comparison between a depth and a ceiling is not.
+pub(super) fn admits_depth(depth: u32, ceiling: u32) -> bool {
+    depth <= ceiling
+}
+
 /// Explicit bounds on everything a project or snapshot may traverse.
 ///
 /// Every field has a documented default. A caller may lower a value to prove a
@@ -39,6 +53,18 @@ pub struct ResolutionLimits {
     pub max_syntax_depth: u32,
     /// Candidates one reference may carry. Default 1,024.
     pub max_candidates_per_reference: u32,
+}
+
+/// The two fields the shared byte rule reads, named once for every seam that
+/// charges Rust source bytes against these ceilings.
+impl ByteCeilings for ResolutionLimits {
+    fn source_bytes(&self) -> u64 {
+        self.max_source_file_bytes
+    }
+
+    fn total_bytes(&self) -> u64 {
+        self.max_total_source_bytes
+    }
 }
 
 impl Default for ResolutionLimits {

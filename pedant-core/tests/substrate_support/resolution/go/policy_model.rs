@@ -1,17 +1,17 @@
 //! The repository policy every Go production owner is held to, written down.
 //!
+//! Only the Go-specific half lives here. The nesting ceiling, the duplicate
+//! floor, and the two forbidden-route lists are the repository's rules rather
+//! than this language's, so they belong beside the scans that read them —
+//! [`crate::resolution::body_nesting`], [`crate::resolution::body_scan`], and
+//! [`crate::resolution::source_routes`]. Two copies of "no production source
+//! panics" would be two lists one plan could widen without the other.
+//!
 //! The ceilings are numbers rather than judgements because a structural claim
 //! has to be decidable: "one job per function" is a review sentence, and what a
 //! parser can answer is how many statements a body states and how deep its
 //! control flow nests. Both are stated here so a body that grew past the bar
 //! fails on the number rather than on a reviewer noticing.
-
-/// The deepest control-flow nesting one Go production body may reach.
-///
-/// Two, matching `.pedant.toml`'s `max_depth`. A third layer is where a body
-/// stops being readable as one decision and starts being a decision inside a
-/// decision inside a loop.
-pub const MAX_NESTING: usize = 2;
 
 /// The most statements one Go production body may state.
 ///
@@ -23,42 +23,6 @@ pub const MAX_NESTING: usize = 2;
 /// does not. The case also refuses a ceiling that stopped measuring: the widest
 /// body it finds must reach past half the bar.
 pub const MAX_BODY_STATEMENTS: usize = 16;
-
-/// The smallest body a duplicate claim ranges over, in statements.
-///
-/// One-statement bodies are accessors and forwarders. Two structs that each
-/// return `&self.root` state the same statement about different types, and
-/// calling that a duplicate would force a rename rather than a fix. From two
-/// statements up, an identical body is copied code.
-pub const MIN_DUPLICATE_STATEMENTS: usize = 2;
-
-/// Macros a Go production source may not invoke.
-///
-/// Each aborts the process, prints outside a returned value, or asserts a claim
-/// a caller cannot handle. A resolver refuses through its typed error instead.
-pub const FORBIDDEN_MACROS: &[&str] = &[
-    "assert",
-    "assert_eq",
-    "assert_ne",
-    "dbg",
-    "debug_assert",
-    "debug_assert_eq",
-    "debug_assert_ne",
-    "eprint",
-    "eprintln",
-    "panic",
-    "print",
-    "println",
-    "todo",
-    "unimplemented",
-    "unreachable",
-];
-
-/// Methods a Go production source may not call.
-///
-/// Both turn an absent value into a panic. Every absence in this surface is a
-/// refusal a caller reads from a typed error.
-pub const FORBIDDEN_METHODS: &[&str] = &["expect", "expect_err", "unwrap", "unwrap_err"];
 
 /// How far one typed error travels.
 #[derive(PartialEq, Eq)]
@@ -202,9 +166,13 @@ pub const ERROR_OWNERS: &[ErrorOwner] = &[
             "PathRead",
             "DirectoryRead",
             "SourceRead",
+            "UnnormalizedPath",
             "NonUtf8Source",
+            "UnparsedSource",
             "IncompleteSource",
             "MissingPackageClause",
+            "AlreadyRefused",
+            "StructureProjection",
             "MissingStoredSource",
             "ConflictingPackageClause",
             "FactExtraction",
@@ -213,6 +181,8 @@ pub const ERROR_OWNERS: &[ErrorOwner] = &[
             "SourceFileLimitExceeded",
             "SourceBytesLimitExceeded",
             "TotalSourceBytesLimitExceeded",
+            "RetainedFactsExceeded",
+            "RetainedDepthExceeded",
         ],
     },
     ErrorOwner {

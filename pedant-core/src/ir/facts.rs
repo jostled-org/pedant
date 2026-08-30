@@ -1,8 +1,9 @@
 use std::fmt;
-use std::rc::Rc;
 use std::sync::Arc;
 
-use super::sites::{DefinitionSite, ModuleDeclarationSite, ModuleScope, ReferenceSite};
+use super::sites::{
+    DefinitionSite, ModuleDeclarationSite, ModuleScope, ReferenceSite, StructureSite,
+};
 
 pub use super::dataflow::{DataFlowFact, DataFlowKind};
 
@@ -99,6 +100,13 @@ pub struct FileIr {
     pub definition_sites: Box<[DefinitionSite]>,
     /// The authoritative reference sites, one per source occurrence.
     pub reference_sites: Box<[ReferenceSite]>,
+    /// Every physical declaration this source states, in source order, each
+    /// covering its whole declaration and naming the definition it states.
+    ///
+    /// The outline half of the same traversal that fills `definition_sites`: a
+    /// definition names where a name sits, and a structure covers what a reader
+    /// asks to read.
+    pub structure_sites: Box<[StructureSite]>,
 }
 
 /// Extracted metadata for a function or method definition.
@@ -115,13 +123,13 @@ pub struct FnFact {
     /// Explicit return type, if present (excludes implicit `()`).
     pub return_type: Option<TypeInfo>,
     /// Unique type names from parameters and return type, for mixed-concerns edges.
-    pub signature_type_names: Box<[Rc<str>]>,
+    pub signature_type_names: Box<[Arc<str>]>,
     /// Nesting depth of the item in the module tree.
     pub item_depth: usize,
     /// Whether the body contains arithmetic operators.
     pub has_arithmetic: bool,
     /// Pairwise edges from body-referenced types (for mixed-concerns analysis).
-    pub body_type_edges: Box<[(Rc<str>, Rc<str>)]>,
+    pub body_type_edges: Box<[(Arc<str>, Arc<str>)]>,
     /// Physical source lines spanned by the body block `{ … }`, inclusive of
     /// both braces. `0` when the function has no body (e.g. a trait method
     /// declaration without a default).
@@ -132,7 +140,7 @@ pub struct FnFact {
     /// `Some(self_type)` when this function is defined in an inherent `impl`
     /// block (`impl Type`); `None` for free functions, trait methods, and
     /// trait-impl methods (`impl Trait for Type`).
-    pub inherent_method_of: Option<Rc<str>>,
+    pub inherent_method_of: Option<Arc<str>>,
     /// `true` when the body is exactly a single delegating call of the form
     /// `self.<field>.<method>(<args>)`, allowing a trailing `?` and/or `.await`.
     /// Such pure forwarders carry no responsibility of their own.
@@ -141,11 +149,11 @@ pub struct FnFact {
     pub visibility: Visibility,
     /// Feature names of the `#[cfg(feature = "…")]` gates enclosing this item
     /// (its own and every ancestor module/impl), for `ungated-test-api`.
-    pub cfg_feature_gates: Box<[Rc<str>]>,
+    pub cfg_feature_gates: Box<[Arc<str>]>,
     /// Rendered `#[cfg(…)]` predicates — of any kind, not just `feature` —
     /// on this item and every ancestor module/impl within the file. Empty
     /// means the method is in every build of the file.
-    pub cfg_predicates: Box<[Rc<str>]>,
+    pub cfg_predicates: Box<[Arc<str>]>,
 }
 
 /// Extracted metadata for a function parameter.
@@ -281,7 +289,7 @@ pub enum TypeRefContext {
 #[derive(Debug)]
 pub struct TypeDefFact {
     /// Identifier of the defined type.
-    pub name: Rc<str>,
+    pub name: Arc<str>,
     /// Location of the definition keyword.
     pub span: IrSpan,
     /// Struct, enum, or trait.
@@ -289,18 +297,18 @@ pub struct TypeDefFact {
     /// Declared visibility of the type.
     pub visibility: Visibility,
     /// Feature names of the `#[cfg(feature = "…")]` gates enclosing this type.
-    pub cfg_feature_gates: Box<[Rc<str>]>,
+    pub cfg_feature_gates: Box<[Arc<str>]>,
     /// Pairwise type-relationship edges for mixed-concerns graph analysis.
-    pub edges: Box<[(Rc<str>, Rc<str>)]>,
+    pub edges: Box<[(Arc<str>, Arc<str>)]>,
 }
 
 /// A free type alias and the relationships its target states.
 #[derive(Debug)]
 pub struct TypeAliasFact {
     /// Identifier of the declared alias.
-    pub name: Rc<str>,
+    pub name: Arc<str>,
     /// Edges from the alias to its target and generic argument types.
-    pub edges: Box<[(Rc<str>, Rc<str>)]>,
+    pub edges: Box<[(Arc<str>, Arc<str>)]>,
 }
 
 /// Discriminant for type definitions.
@@ -320,16 +328,16 @@ pub enum TypeDefKind {
 #[derive(Debug)]
 pub struct ImplFact {
     /// The type being implemented on.
-    pub self_type: Rc<str>,
+    pub self_type: Arc<str>,
     /// `Some` for `impl Trait for Type`, `None` for inherent impls.
     pub trait_name: Option<Box<str>>,
     /// Location of the `impl` keyword.
     pub span: IrSpan,
     /// Rendered `#[cfg(…)]` predicates on this block and every ancestor module
     /// within the file. Empty means the block is in every build of the file.
-    pub cfg_predicates: Box<[Rc<str>]>,
+    pub cfg_predicates: Box<[Arc<str>]>,
     /// Pairwise type-relationship edges for mixed-concerns graph analysis.
-    pub edges: Box<[(Rc<str>, Rc<str>)]>,
+    pub edges: Box<[(Arc<str>, Arc<str>)]>,
 }
 
 /// A flattened `use` import path for capability detection.
@@ -362,8 +370,8 @@ pub struct MethodCallFact {
     pub loop_depth: usize,
     /// Index into `FileIr::functions`; links to enclosing function.
     pub containing_fn: Option<usize>,
-    /// Filled by semantic enrichment; canonical receiver type.
-    /// `Arc<str>` so multiple calls on the same binding share one allocation.
+    /// Filled by semantic enrichment; canonical receiver type shared across
+    /// calls on the same binding.
     pub receiver_type: Option<Arc<str>>,
     /// Filled by semantic enrichment; suppresses clone-in-loop for `Copy` types.
     pub is_copy_receiver: bool,
@@ -472,5 +480,5 @@ pub struct ModuleFact {
     /// Rendered `#[cfg(…)]` predicates guarding this declaration. For a file
     /// module (`mod x;`) they guard the whole of `x.rs` / `x/`, which is the
     /// only way that gate is visible from inside those files.
-    pub cfg_predicates: Box<[Rc<str>]>,
+    pub cfg_predicates: Box<[Arc<str>]>,
 }

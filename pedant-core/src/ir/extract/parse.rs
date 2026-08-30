@@ -12,6 +12,7 @@ use proc_macro2::{Group, Ident, TokenStream, TokenTree};
 use crate::observe::{Observation, record};
 
 /// Which Rust editions can consume a successfully parsed tree.
+#[derive(Debug)]
 pub(crate) enum ParseCompatibility {
     /// The source parsed without compatibility repair.
     AllEditions,
@@ -55,10 +56,10 @@ fn repair_legacy_callable_traits(
     source: &str,
     strict_error: syn::Error,
 ) -> Result<ParsedSource, syn::Error> {
-    if strict_error.to_string() != "expected `;`" {
+    let strict_message = strict_error.to_string();
+    if strict_message != "expected `;`" {
         return Err(strict_error);
     }
-    let strict_message = strict_error.to_string().into_boxed_str();
     let tokens = match source.parse::<TokenStream>() {
         Ok(tokens) => tokens,
         Err(_) => return Err(strict_error),
@@ -70,7 +71,7 @@ fn repair_legacy_callable_traits(
     syn::parse2(repaired).map(|file| ParsedSource {
         file,
         compatibility: ParseCompatibility::LegacyCallableTraits {
-            strict_error: strict_message,
+            strict_error: strict_message.into_boxed_str(),
         },
     })
 }

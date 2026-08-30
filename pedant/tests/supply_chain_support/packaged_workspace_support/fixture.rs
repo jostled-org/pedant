@@ -30,14 +30,28 @@ pub(super) const ISOLATED_GIT: &[(&str, &str)] = &[
     ("GIT_CONFIG_SYSTEM", "/dev/null"),
 ];
 
+/// The navigation product the proof installs out of its own archive.
+///
+/// The one member this otherwise generic fixture names for a real package.
+/// The journey stage installs a product by name — there is exactly one
+/// navigation product, and a script that discovered which member to install
+/// would be guessing — so a fixture without that member could not drive the
+/// stage at all. Its edges and its position stay the released ones, and every
+/// other member remains a name that means nothing.
+pub(super) const NAVIGATION_PACKAGE: &str = "pedant-snippet";
+
 /// The fixture's release order, which its `release-plz.toml` states and the
 /// script must read rather than assume.
+///
+/// Eight members in the released order, with the navigation product where
+/// `pedant-snippet` sits: after the two packages it takes gated edges on and
+/// before the three that follow it.
 pub(super) const RELEASE_ORDER: &[&str] = &[
     "fixture-a",
     "fixture-b",
     "fixture-c",
     "fixture-d",
-    "fixture-e",
+    NAVIGATION_PACKAGE,
     "fixture-f",
     "fixture-g",
     "fixture-h",
@@ -46,22 +60,31 @@ pub(super) const RELEASE_ORDER: &[&str] = &[
 /// The first-party edges the fixture declares, as consumer, dependency, and
 /// whether a feature has to select the edge.
 ///
-/// Two packages carry an inbound edge and six carry none, so a patch set that
+/// Four packages carry an inbound edge and four carry none, so a patch set that
 /// covered every member — or only the first one — would be visibly wrong.
 ///
-/// One edge is optional and feature-gated, because the released workspace holds
-/// one: `pedant-core` takes `pedant-syntax` that way, which is why
-/// `pedant-syntax` releases first. Cargo replaces a path edge with a registry
-/// edge while packaging whether or not a feature selects it, so an optional
-/// edge owes the same release order, the same staged requirement, and the same
-/// patch entry as an unconditional one — and the fixture has to hold one for a
-/// row to say so.
+/// Three edges are optional and feature-gated, because the released workspace
+/// holds three. `pedant-core` takes `pedant-syntax` that way, which is why
+/// `pedant-syntax` releases first; the navigation product then takes both the
+/// resolution substrate and the graph projector that way, which is why those
+/// two release before it. Cargo replaces a path edge with a registry edge while
+/// packaging whether or not a feature selects it, so an optional edge owes the
+/// same release order, the same staged requirement, and the same patch entry as
+/// an unconditional one — and the fixture has to hold them for a row to say so.
+///
+/// One consumer carries two gated edges to two different dependencies, which is
+/// the shape the navigation product added. A model holding one gated edge per
+/// consumer would agree with a release that dropped the second.
 pub(super) const FIRST_PARTY_EDGES: &[(&str, &str, bool)] = &[
     ("fixture-b", "fixture-a", false),
     ("fixture-c", "fixture-a", false),
     ("fixture-c", "fixture-b", true),
     ("fixture-d", "fixture-a", false),
-    ("fixture-e", "fixture-a", false),
+    ("fixture-d", "fixture-c", false),
+    (NAVIGATION_PACKAGE, "fixture-a", false),
+    (NAVIGATION_PACKAGE, "fixture-b", false),
+    (NAVIGATION_PACKAGE, "fixture-c", true),
+    (NAVIGATION_PACKAGE, "fixture-d", true),
     ("fixture-f", "fixture-a", false),
     ("fixture-g", "fixture-a", false),
     ("fixture-h", "fixture-a", false),
@@ -315,11 +338,12 @@ fn git(cwd: &Path, arguments: &[&str]) -> Completed {
 }
 
 /// Install the fake Cargo, clock, and sizer the proof finds on `PATH`, and the
-/// two tool bodies Cargo copies out when the proof asks it to install them.
+/// three tool bodies Cargo copies out when the proof asks it to install them.
 ///
 /// The bodies sit beside the fake Cargo rather than on `PATH`: a tool the proof
 /// never installed must not be reachable, because `release-plz update` proving
-/// it can see the pinned semver checker is one of the things a row requires.
+/// it can see the pinned semver checker is one of the things a row requires,
+/// and the journey proving it ran the binary it just installed is another.
 ///
 /// The clock and the sizer are installed for every row and stand aside unless a
 /// row asks them for a number. They exist because the proof's budget refusals
@@ -333,6 +357,10 @@ pub(super) fn write_fake_tools(tools: &Path) {
         FAKE_SEMVER_CHECKS,
     );
     write_executable(&tools.join("bodies/release-plz"), FAKE_RELEASE_PLZ);
+    write_executable(
+        &tools.join(format!("bodies/{NAVIGATION_PACKAGE}")),
+        FAKE_NAVIGATION_PRODUCT,
+    );
 }
 
 /// The stand-in Cargo, which implements the proof's whole operation protocol.
@@ -358,3 +386,7 @@ const FAKE_SEMVER_CHECKS: &str = include_str!("cargo-semver-checks.sh");
 /// reached its `PATH` and stages the versions and requirements the real tool
 /// would have computed.
 const FAKE_RELEASE_PLZ: &str = include_str!("release-plz.sh");
+
+/// The stand-in navigation product, which answers the journey the proof drives
+/// out of the archive it installs.
+const FAKE_NAVIGATION_PRODUCT: &str = include_str!("pedant-snippet.sh");

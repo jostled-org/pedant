@@ -28,10 +28,9 @@ mod capability_analysis;
 #[path = "substrate_support/release_contract.rs"]
 mod release_contract;
 
-/// The release graph those contracts are compared against, and the manifest
-/// readers they take it with. Split from [`release_contract`] for the
-/// source-file budget alone, the way `packaged_workspace_claims` sits beside
-/// `packaged_workspace`.
+/// The release graph those contracts are compared against. Split from
+/// [`release_contract`] for the source-file budget alone, the way
+/// `packaged_workspace_claims` sits beside `packaged_workspace`.
 #[path = "substrate_support/release_model.rs"]
 mod release_model;
 
@@ -55,14 +54,35 @@ mod repository_artifact_literals;
 #[path = "substrate_support/packaged_workspace.rs"]
 mod packaged_workspace;
 
-/// The tables that proof is compared against, and the readings that hold it to
-/// its stated cost. Split from [`packaged_workspace`] for the source-file
-/// budget alone, the way `fingerprint_claims` sits beside `fingerprint`.
+/// The tables that proof is compared against. Split from [`packaged_workspace`]
+/// for the source-file budget alone, the way `fingerprint_claims` sits beside
+/// `fingerprint`.
 #[path = "substrate_support/packaged_workspace_claims.rs"]
 mod packaged_workspace_claims;
 
+/// The one reading of that proof every prover shares. Split from
+/// [`packaged_workspace_claims`] because a stated table and held filesystem
+/// state are two concerns, and named directly by every prover that takes it.
+#[path = "substrate_support/packaged_workspace_reading.rs"]
+mod packaged_workspace_reading;
+
 #[path = "substrate_support/packaged_workspace_budget.rs"]
 mod packaged_workspace_budget;
+
+/// How a tracked shell script is read, and the three shared assertions its
+/// readings are held to. Split from [`packaged_workspace_claims`] for the
+/// source-file budget alone, and named directly by every prover that takes one:
+/// a re-export through that module would be a second path to each name, which
+/// is what the single owner is for.
+#[path = "substrate_support/shell_script_reading.rs"]
+mod shell_script_reading;
+
+/// The packaged navigation journey that proof runs once the archives compile.
+/// Split from [`packaged_workspace`] because it is a different claim about the
+/// same script: that one reads the release, this one reads the product the
+/// release ships.
+#[path = "substrate_support/packaged_workspace_journey.rs"]
+mod packaged_workspace_journey;
 
 /// Focused lexical-path authority and production-wiring proofs. The test-only
 /// adapter exists only under the proof feature, so ordinary builds expose no
@@ -121,6 +141,7 @@ mod substrate_behavior {
 
 mod declared_surface {
     use std::collections::BTreeSet;
+    use std::path::PathBuf;
 
     use crate::declaration_scan::{
         CHECKS_FEATURE, LibSurface, PathIdents, SUBSTRATE_ROOTS, file_name, has_checks_gate,
@@ -147,11 +168,21 @@ mod declared_surface {
             "lib.rs should declare a judgment surface behind `{CHECKS_FEATURE}`"
         );
 
-        let roots = test_root_paths();
-        let names: Box<[Box<str>]> = roots.iter().map(|path| file_name(path)).collect();
+        // Each root carries the name derived from it, rather than a second list
+        // paired back by position. A `zip` stops at the shorter side and reports
+        // success, so the equality that makes it safe has to be stated — and a
+        // pair built where the name is derived states it by construction.
+        let roots: Box<[(PathBuf, Box<str>)]> = test_root_paths()
+            .into_vec()
+            .into_iter()
+            .map(|path| {
+                let name = file_name(&path);
+                (path, name)
+            })
+            .collect();
         let mut missing_gate: Vec<Box<str>> = Vec::new();
         let mut needless_gate: Vec<&str> = Vec::new();
-        for (path, name) in roots.iter().zip(&names) {
+        for (path, name) in &roots {
             let file = parse_rust_file(path);
             let gated = has_checks_gate(&file.attrs);
             let references = surface.judgment_references(&PathIdents::scan(&file));
@@ -172,7 +203,7 @@ mod declared_surface {
             "substrate test roots must carry no checks gate: {needless_gate:?}"
         );
 
-        let present: BTreeSet<&str> = names.iter().map(|name| &**name).collect();
+        let present: BTreeSet<&str> = roots.iter().map(|(_, name)| &**name).collect();
         for expected in SUBSTRATE_ROOTS {
             assert!(
                 present.contains(*expected),

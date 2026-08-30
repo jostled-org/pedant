@@ -1,6 +1,6 @@
 //! One reference site and where in the syntax it came from.
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use pedant_types::ReferenceKind;
 
@@ -51,7 +51,7 @@ pub struct ReferenceSite {
     pub(crate) segments: Box<[Box<str>]>,
     pub(crate) alias: Option<Box<str>>,
     pub(crate) glob: bool,
-    pub(crate) receiver: Option<Rc<str>>,
+    pub(crate) receiver: Option<Arc<str>>,
     pub(crate) condition: RustCfgCondition,
     pub(crate) containing_fn: Option<usize>,
 }

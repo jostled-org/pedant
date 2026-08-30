@@ -3,6 +3,7 @@
 //! Every row installs fake Cargo, release-plz, clock, and sizer executables
 //! that implement the whole operation protocol and can fail exactly once, in
 //! exactly one place, in exactly one way. This module owns that machinery;
+//! [`super::record`] owns the reading of what those tools left,
 //! [`super::verdict`] owns what a finished row must show, and the case modules
 //! beside it own the claims.
 //!
@@ -18,14 +19,14 @@
 //! that hands text to a child.
 
 use std::fs;
-use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use tempfile::TempDir;
 
-use super::fixture::{self, ISOLATED_GIT};
-use crate::cargo_classifier_cases::{entries, expanded, repository_root};
+use super::fixture::{self, ISOLATED_GIT, NAVIGATION_PACKAGE};
+use super::record::Record;
+use crate::cargo_classifier_cases::{expanded, repository_root};
 use crate::process_guard::{Completed, Run, execute};
 
 /// The tracked proof every row runs.
@@ -49,7 +50,9 @@ pub(super) const ORDINARY_STATUS: i32 = 3;
 /// also what a warm run asks for its version.
 pub(super) const PINNED_BINARIES: &[&str] = &["cargo-semver-checks", "release-plz"];
 
-/// The argument list the release proof takes: none.
+/// The stage selector the release proof takes: none.
+///
+/// The repository root is a separate, required argument every row supplies.
 pub(super) const RELEASE_STAGE: &[&str] = &[];
 
 /// A near miss the classifier must refuse, so the ordinary row proves the
@@ -229,11 +232,84 @@ impl RowRoot {
     /// Run the tracked proof with one exact argument list, which is what
     /// selects the stage under proof.
     pub(super) fn run_stage(&self, fault: &Fault<'_>, stage: &[&str]) -> Completed {
+        self.run_stage_with_repository_root(fault, &self.repository, stage)
+    }
+
+    /// Run the tracked proof without its required repository-root argument.
+    pub(super) fn run_without_repository_root(&self, fault: &Fault<'_>) -> Completed {
+        self.run_arguments(fault, None, RELEASE_STAGE)
+    }
+
+    /// Run the tracked proof with one explicit repository-root candidate.
+    pub(super) fn run_stage_with_repository_root(
+        &self,
+        fault: &Fault<'_>,
+        repository_root: &Path,
+        stage: &[&str],
+    ) -> Completed {
+        self.run_arguments(fault, Some(repository_root), stage)
+    }
+
+    /// An existing file, which cannot be a repository root.
+    pub(super) fn repository_root_file(&self) -> PathBuf {
+        let path = self.root.path().join("repository-root-file");
+        fs::write(&path, "not a directory\n").expect("a repository-root file fixture");
+        path
+    }
+
+    /// An existing directory that is not inside a Git working tree.
+    ///
+    /// The row root holds no `.git` of its own, and [`Self::git_ceiling`] stops
+    /// the proof's own discovery from climbing out of it, so this is a non-Git
+    /// root under every harness rather than only under a `TMPDIR` that happens
+    /// to sit outside a checkout.
+    pub(super) fn non_git_root(&self) -> &Path {
+        self.root.path()
+    }
+
+    /// The directory the proof's Git discovery must not climb into.
+    ///
+    /// `ISOLATED_GIT` neutralizes Git *configuration*; it says nothing about
+    /// upward repository *discovery*. Under a harness whose `TMPDIR` sits
+    /// inside a checkout, the row root discovers that checkout's toplevel, and
+    /// the non-Git row is refused with "does not match its Git toplevel"
+    /// instead — a red row reporting a claim nobody made. The ceiling is the
+    /// row root's parent rather than the root itself, because the root must
+    /// stay searchable: that is where a row expects Git to find nothing.
+    ///
+    /// Git resolves symlinks in this list before comparing, which is what keeps
+    /// it true on a host whose temporary root is reached through one.
+    fn git_ceiling(&self) -> Box<str> {
+        self.root
+            .path()
+            .parent()
+            .expect("a temporary row root sits inside a parent directory")
+            .to_string_lossy()
+            .into()
+    }
+
+    /// A directory inside the fixture checkout, but not its Git toplevel.
+    pub(super) fn nested_repository_root(&self) -> PathBuf {
+        self.repository.join(NAVIGATION_PACKAGE)
+    }
+
+    /// Run one row from outside the repository it explicitly names.
+    fn run_arguments(
+        &self,
+        fault: &Fault<'_>,
+        requested_repository_root: Option<&Path>,
+        stage: &[&str],
+    ) -> Completed {
         let script: Box<str> = repository_root()
             .join(PACKAGE_SCRIPT)
             .to_string_lossy()
             .into();
         let mut arguments: Vec<&str> = vec![script.as_ref()];
+        let repository_argument: Option<Box<str>> = requested_repository_root
+            .map(|path| path.to_string_lossy().into_owned().into_boxed_str());
+        if let Some(argument) = repository_argument.as_deref() {
+            arguments.push(argument);
+        }
         arguments.extend_from_slice(stage);
         let arguments = arguments.into_boxed_slice();
         let tmp: Box<str> = self.tmp.to_string_lossy().into();
@@ -241,6 +317,7 @@ impl RowRoot {
         let state: Box<str> = self.state.to_string_lossy().into();
         let staged: Box<str> = self.root.path().join("staged").to_string_lossy().into();
         let bodies: Box<str> = self.tools.join("bodies").to_string_lossy().into();
+        let ceiling = self.git_ceiling();
         let tuning = fault.tuning();
         let sample = expanded(tuning.sample);
         let ordinary: Box<str> = ORDINARY_STATUS.to_string().into();
@@ -263,71 +340,13 @@ impl RowRoot {
             ("FAKE_DU_STAGING_KIB", tuning.staging_kib),
         ];
         environment.extend_from_slice(ISOLATED_GIT);
+        environment.push(("GIT_CEILING_DIRECTORIES", ceiling.as_ref()));
         let environment = environment.into_boxed_slice();
-        let mut run = Run::program("bash", &self.repository, &arguments);
+        let mut run = Run::program("bash", self.root.path(), &arguments);
         run.path_prefix = Some(&self.tools);
         run.env = &environment;
         run.budget = ROW_BUDGET;
         execute(&run).unwrap_or_else(|failure| panic!("the guard failed: {failure}"))
-    }
-
-    /// Everything the fake tools recorded doing, in order.
-    pub(super) fn operations(&self) -> Box<[Box<str>]> {
-        recorded_lines(&self.state.join("operations"))
-    }
-
-    /// The target root every Cargo call inherited, one line per call.
-    pub(super) fn recorded_targets(&self) -> Box<[Box<str>]> {
-        recorded_lines(&self.state.join("targets"))
-    }
-
-    /// Every process the fake tools started or became.
-    ///
-    /// A line this reader cannot understand is a failure rather than a skipped
-    /// entry. [`super::verdict::assert_no_process_survives_the_row`] states
-    /// nothing about a pid it never read, so containment that stopped covering
-    /// the tree would read exactly like containment that worked.
-    pub(super) fn recorded_pids(&self) -> Box<[u32]> {
-        let path = self.state.join("pids");
-        recorded_lines(&path)
-            .iter()
-            .map(|line| {
-                line.parse().unwrap_or_else(|error| {
-                    panic!(
-                        "{} records the process [{line}], which is no pid this row can wait on: \
-                         {error}",
-                        path.display()
-                    )
-                })
-            })
-            .collect()
-    }
-
-    /// The archives this row's packaging left in the target root, sorted.
-    ///
-    /// The target root outlives the staging root the proof removes, which is
-    /// what makes the archives a row can still read after the proof has
-    /// finished releasing everything it owns.
-    pub(super) fn archives(&self) -> Box<[Box<str>]> {
-        entries(&self.target.join("package"))
-    }
-
-    /// The manifest one packaged archive carries, read from the tree the
-    /// packaging built that archive out of.
-    pub(super) fn packaged_manifest(&self, name: &str, version: &str) -> Box<str> {
-        read_recorded(
-            &self
-                .state
-                .join("pack")
-                .join(format!("{name}-{version}"))
-                .join("Cargo.toml"),
-        )
-    }
-
-    /// The generated workspace manifest the proof handed Cargo to resolve the
-    /// archive graph from.
-    pub(super) fn archive_manifest(&self) -> Box<str> {
-        read_recorded(&self.state.join("archive-manifest.toml"))
     }
 
     /// Where one pinned tool is installed: the revision-named root inside the
@@ -339,34 +358,13 @@ impl RowRoot {
             .join(binary)
     }
 
-    /// Forget what the fake tools recorded, so a second run over this root is
-    /// read on its own.
-    pub(super) fn clear_record(&self) {
-        fs::remove_dir_all(&self.state).expect("the recorded operations");
-        fs::create_dir_all(&self.state).expect("a writable row directory");
+    /// What this row's fake tools recorded, read back.
+    ///
+    /// One accessor rather than seven readers on the root: a root is built once
+    /// and handed to a run, and a record is asked a question after that run has
+    /// finished. [`super::record`] owns the reading; the two directories it
+    /// reads stay here, because the row is what hands both to its children.
+    pub(super) fn record(&self) -> Record<'_> {
+        Record::of(&self.state, &self.target)
     }
-}
-
-/// One record file's lines, empty when the fake tools wrote none.
-///
-/// A missing file is the only reading that means no lines. Every other IO
-/// error is a reader that failed, and the rows requiring exactly no operations
-/// would pass on one without reading anything at all.
-fn recorded_lines(path: &Path) -> Box<[Box<str>]> {
-    match fs::read_to_string(path) {
-        Ok(recorded) => recorded.lines().map(Box::from).collect(),
-        Err(error) if error.kind() == ErrorKind::NotFound => Box::default(),
-        Err(error) => panic!("{} could not be read: {error}", path.display()),
-    }
-}
-
-/// One document the row's fake tools left, which must be there.
-///
-/// Absence is a failure rather than an empty reading: every caller asks what a
-/// finished stage produced, and a stage that produced nothing is the regression
-/// those callers exist to catch.
-fn read_recorded(path: &Path) -> Box<str> {
-    fs::read_to_string(path)
-        .unwrap_or_else(|error| panic!("{} could not be read: {error}", path.display()))
-        .into()
 }

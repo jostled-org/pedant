@@ -3,8 +3,6 @@
 //! Nothing here touches extractor state — these are pure functions from AST
 //! nodes to IR vocabulary, shared by the extractor and its visitor.
 
-use std::rc::Rc;
-
 use syn::{Expr, ExprIf, Type};
 
 use crate::ir::facts::{IrSpan, Visibility};
@@ -90,25 +88,6 @@ fn restricted_path_string(path: &syn::Path) -> String {
         .map(|seg| seg.ident.to_string())
         .collect::<Vec<_>>()
         .join("::")
-}
-
-/// Return the feature name if `attr` is `#[cfg(feature = "…")]` (the direct
-/// form; nested `all(...)`/`any(...)` combinators are not decomposed).
-pub(super) fn cfg_feature_name(attr: &syn::Attribute) -> Option<Rc<str>> {
-    if !attr.path().is_ident("cfg") {
-        return None;
-    }
-    let name_value = attr.parse_args::<syn::MetaNameValue>().ok()?;
-    match (name_value.path.is_ident("feature"), &name_value.value) {
-        (
-            true,
-            syn::Expr::Lit(syn::ExprLit {
-                lit: syn::Lit::Str(feature),
-                ..
-            }),
-        ) => Some(Rc::from(feature.value())),
-        _ => None,
-    }
 }
 
 /// Visit binding identifiers with their spans and optional type annotation spans.

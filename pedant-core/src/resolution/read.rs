@@ -14,6 +14,43 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
+/// The two byte ceilings one seam charges its sources against.
+///
+/// A trait rather than a shared limits struct, because each language publishes
+/// its own ceilings under its own field names and these two are the whole of
+/// what the byte rule reads. Every seam that charges bytes — the shared record
+/// cache reading for the first time, and each language's snapshot store holding
+/// a record a provider already read — asks through this, so a snapshot cannot
+/// hold a source to a ceiling the read never applied.
+pub(crate) trait ByteCeilings {
+    /// The most bytes one source may itself hold.
+    fn source_bytes(&self) -> u64;
+
+    /// The most bytes every retained source may hold together.
+    fn total_bytes(&self) -> u64;
+
+    /// The bounds one seam reads under, given what it has already spent.
+    ///
+    /// Assemble both byte ceilings with the amount already retained.
+    fn bounds(&self, consumed: u64) -> ReadBounds {
+        ReadBounds {
+            source_bytes: self.source_bytes(),
+            total_bytes: self.total_bytes(),
+            consumed,
+        }
+    }
+
+    /// Whether a source of `length` bytes may be retained beside `consumed`.
+    ///
+    /// The gate a store applies to a record it did not read itself. A provider
+    /// may work beneath looser ceilings than the snapshot that asked, so a
+    /// record another snapshot already read is charged here exactly as a first
+    /// read is charged by [`bounded`] below.
+    fn retention(&self, consumed: u64, length: u64) -> Option<ReadFault> {
+        exceeded(self.bounds(consumed), length)
+    }
+}
+
 /// The two byte ceilings one read must respect, and the total already spent.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ReadBounds {
@@ -39,6 +76,28 @@ pub(crate) enum ReadFault {
     TotalBytes,
 }
 
+/// Which of the two ceilings `length` crosses, if either.
+///
+/// The one owner of that comparison. Every seam that charges bytes reaches it:
+/// the bounded read below directly, and each language's snapshot store through
+/// [`ByteCeilings::retention`], holding a record a provider already read to the
+/// snapshot's own ceilings. A second copy of the comparison would be a second
+/// answer to "is this length admissible", and the looser one would be the one
+/// an oversized source arrived through.
+///
+/// The per-source ceiling is answered first, because a source that is itself too
+/// large is too large whatever the total has already spent.
+pub(crate) fn exceeded(bounds: ReadBounds, length: u64) -> Option<ReadFault> {
+    match (
+        length > bounds.source_bytes,
+        bounds.consumed.saturating_add(length) > bounds.total_bytes,
+    ) {
+        (true, _) => Some(ReadFault::SourceBytes),
+        (false, true) => Some(ReadFault::TotalBytes),
+        (false, false) => None,
+    }
+}
+
 /// Read one file, holding it to both ceilings by the length that arrived.
 pub(crate) fn bounded(path: &Path, bounds: ReadBounds) -> Result<Vec<u8>, ReadFault> {
     let mut bytes = Vec::new();
@@ -48,14 +107,9 @@ pub(crate) fn bounded(path: &Path, bounds: ReadBounds) -> Result<Vec<u8>, ReadFa
                 .read_to_end(&mut bytes)
         })
         .map_err(ReadFault::Unreadable)?;
-    let length = byte_count(&bytes);
-    match (
-        length > bounds.source_bytes,
-        bounds.consumed.saturating_add(length) > bounds.total_bytes,
-    ) {
-        (true, _) => Err(ReadFault::SourceBytes),
-        (false, true) => Err(ReadFault::TotalBytes),
-        (false, false) => Ok(bytes),
+    match exceeded(bounds, byte_count(&bytes)) {
+        Some(fault) => Err(fault),
+        None => Ok(bytes),
     }
 }
 

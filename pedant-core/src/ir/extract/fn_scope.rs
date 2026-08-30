@@ -7,7 +7,7 @@
 //! and [`FnScope::leave`].
 
 use std::collections::BTreeSet;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use syn::{Expr, FnArg, Signature, Type};
 
@@ -25,7 +25,7 @@ pub(super) struct FnSavedState {
     refcounted_bindings: BTreeSet<Box<str>>,
     refcounted_containers: BTreeSet<Box<str>>,
     string_bindings: BTreeSet<Box<str>>,
-    body_types: BTreeSet<Rc<str>>,
+    body_types: BTreeSet<Arc<str>>,
 }
 
 /// Classification sets for the function body currently being traversed.
@@ -35,9 +35,9 @@ pub(super) struct FnScope {
     refcounted_bindings: BTreeSet<Box<str>>,
     refcounted_containers: BTreeSet<Box<str>>,
     string_bindings: BTreeSet<Box<str>>,
-    body_types: BTreeSet<Rc<str>>,
+    body_types: BTreeSet<Arc<str>>,
     /// Scratch buffer for edge computation, reused across function bodies.
-    body_type_names_buf: Vec<Rc<str>>,
+    body_type_names_buf: Vec<Arc<str>>,
 }
 
 impl FnScope {
@@ -177,12 +177,12 @@ impl FnScope {
         if self.body_types.contains(ident_str.as_str()) {
             return;
         }
-        self.body_types.insert(Rc::from(ident_str));
+        self.body_types.insert(Arc::from(ident_str));
     }
 
     /// Pairwise edges between every type mentioned in this body, for
     /// mixed-concerns analysis.
-    pub(super) fn body_type_edges(&mut self) -> Box<[(Rc<str>, Rc<str>)]> {
+    pub(super) fn body_type_edges(&mut self) -> Box<[(Arc<str>, Arc<str>)]> {
         self.body_type_names_buf.clear();
         self.body_type_names_buf
             .extend(self.body_types.iter().cloned());

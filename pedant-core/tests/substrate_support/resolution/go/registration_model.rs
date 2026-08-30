@@ -240,18 +240,29 @@ pub const REGISTERED_PREDICATES: &[(&str, &str)] = &[
         "go_production_structure_and_error_ownership_are_exact",
         "pedant-core/tests/substrate_support/resolution/go/policy.rs",
     ),
-    // Step 14 — the release the Go work has to be published through. Both live
-    // beside the release and package owners they read rather than in a Go tree:
-    // what they state is a fact about all eight published packages, and a copy
-    // under `go/` would be a second release model to keep in step with the one
-    // every other release predicate already uses.
+    // Step 14 — the release the Go work has to be published through. All three
+    // live beside the release and package owners they read rather than in a Go
+    // tree: what they state is a fact about all eight published packages, and a
+    // copy under `go/` would be a second release model to keep in step with the
+    // one every other release predicate already uses.
+    //
+    // None is named for Go any longer, and none should be: one release publishes
+    // this whole workspace, so there is one owner of its order, its gated edges,
+    // its archive protocol, and the navigation journey those archives are
+    // proved with. The Go gated edge is still one of the three that owner
+    // requires — a rename that had dropped it would fail the edge table rather
+    // than this registration.
     (
-        "go_release_and_archive_owners_are_exact",
+        "code_intelligence_release_and_archive_owners_are_exact",
         "pedant-core/tests/substrate_support/release_contract.rs",
     ),
     (
-        "packaged_workspace_go_dependency_order_models_release_protocol",
+        "packaged_workspace_dependency_order_models_release_protocol",
         "pedant/tests/supply_chain_support/packaged_workspace_cases.rs",
+    ),
+    (
+        "packaged_snippet_journey_is_registered_in_archive_proof",
+        "pedant-core/tests/substrate_support/packaged_workspace_journey.rs",
     ),
 ];
 
@@ -359,7 +370,3 @@ pub const GO_LINT_COMMANDS: &[&str] = &[
     "cargo doc --locked --no-deps -p pedant-core --no-default-features --features go-resolution",
     "cargo doc --locked --no-deps -p pedant-graph --all-features",
 ];
-
-/// The tracked repository owners each Go check must be registered in.
-pub const CI_WORKFLOW: &str = ".github/workflows/ci.yml";
-pub const SHELLCHECK_INVENTORY: &str = ".github/scripts/run_shellcheck.sh";

@@ -16,16 +16,15 @@
 //!
 //! Reads tracked text and runs nothing. Compiles under `go-resolution` alone.
 
-use std::collections::BTreeMap;
-
-use crate::resolution::go::policy_errors::{ErrorEnum, error_enums};
+use crate::resolution::authority_scan::read_text;
+use crate::resolution::body_nesting::MAX_NESTING;
+use crate::resolution::body_scan::{Body, bodies_by_owner, duplicate_sites};
+use crate::resolution::error_enums::{ErrorEnum, error_enums};
 use crate::resolution::go::policy_model::{
-    DEFENSIVE_ONLY_VARIANTS, ERROR_OWNERS, ErrorOwner, ErrorReach, FORBIDDEN_MACROS,
-    FORBIDDEN_METHODS, MAX_BODY_STATEMENTS, MAX_NESTING, MIN_DUPLICATE_STATEMENTS,
+    DEFENSIVE_ONLY_VARIANTS, ERROR_OWNERS, ErrorOwner, ErrorReach, MAX_BODY_STATEMENTS,
 };
-use crate::resolution::go::policy_routes::forbidden_routes;
-use crate::resolution::go::policy_scan::{Body, bodies};
-use crate::resolution::go::surface::{plan_sources, tracked_text};
+use crate::resolution::go::surface::plan_sources;
+use crate::resolution::source_routes::{PRODUCTION_ROUTES, forbidden_routes};
 
 /// 13.T5 (Exit Criteria 14 to 16): every production owner this plan wrote or
 /// changed states unique, one-job, shallow bodies; refuses through typed
@@ -38,9 +37,10 @@ fn go_production_structure_and_error_ownership_are_exact() {
         parsed.len() > ERROR_OWNERS.len(),
         "the surface must be wider than its error owners"
     );
+    let bodies = bodies_by_owner(parsed.iter().map(|(path, file)| (&**path, file)));
     assert_no_forbidden_route_is_taken(&parsed);
-    assert_every_body_is_one_shallow_job(&parsed);
-    assert_no_body_is_written_twice(&parsed);
+    assert_every_body_is_one_shallow_job(&bodies);
+    assert_no_body_is_written_twice(&bodies);
     assert_every_seam_refuses_through_its_own_typed_error(&parsed);
 }
 
@@ -54,10 +54,10 @@ fn parsed_surface() -> Box<[(Box<str>, syn::File)]> {
     plan_sources()
         .iter()
         .map(|path| {
-            let text = tracked_text(path);
+            let text = read_text(path);
             let parsed = syn::parse_file(&text)
                 .unwrap_or_else(|error| panic!("{path} should parse as Rust: {error}"));
-            (path.as_str().into(), parsed)
+            (path.clone(), parsed)
         })
         .collect()
 }
@@ -65,13 +65,13 @@ fn parsed_surface() -> Box<[(Box<str>, syn::File)]> {
 /// No owner panics, prints, asserts, declares an inline test, or names a trait
 /// object.
 fn assert_no_forbidden_route_is_taken(surface: &[(Box<str>, syn::File)]) {
-    let offenders: Vec<String> = surface
+    let offenders: Box<[Box<str>]> = surface
         .iter()
         .flat_map(|(path, file)| {
-            forbidden_routes(file, FORBIDDEN_MACROS, FORBIDDEN_METHODS)
+            forbidden_routes(file, &PRODUCTION_ROUTES)
                 .into_vec()
                 .into_iter()
-                .map(move |route| format!("{path} takes {route}"))
+                .map(move |route| format!("{path} takes {route}").into_boxed_str())
         })
         .collect();
     assert!(
@@ -81,11 +81,11 @@ fn assert_no_forbidden_route_is_taken(surface: &[(Box<str>, syn::File)]) {
 }
 
 /// Every body states one job's worth of statements at one readable depth.
-fn assert_every_body_is_one_shallow_job(surface: &[(Box<str>, syn::File)]) {
+fn assert_every_body_is_one_shallow_job(bodies: &[(Box<str>, Body)]) {
     let mut widest = 0;
     let mut deepest = 0;
     let mut offenders: Vec<String> = Vec::new();
-    for (path, body) in surface_bodies(surface).iter() {
+    for (path, body) in bodies {
         widest = widest.max(body.statements);
         deepest = deepest.max(body.nesting);
         if body.statements > MAX_BODY_STATEMENTS {
@@ -118,21 +118,9 @@ fn assert_every_body_is_one_shallow_job(surface: &[(Box<str>, syn::File)]) {
 /// Name-independent: a copied body renamed on arrival is still one
 /// implementation in two places, and it is the copy a later fix reaches only
 /// one of.
-fn assert_no_body_is_written_twice(surface: &[(Box<str>, syn::File)]) {
-    let mut sites: BTreeMap<Box<str>, Vec<String>> = BTreeMap::new();
-    let wide = surface_bodies(surface)
-        .into_vec()
-        .into_iter()
-        .filter(|(_, body)| body.statements >= MIN_DUPLICATE_STATEMENTS);
-    // The body is moved out rather than copied: its shape is the map key and its
-    // name is part of the site, so nothing here needs a second owner.
-    for (path, body) in wide {
-        sites
-            .entry(body.shape)
-            .or_default()
-            .push(format!("{path}::{}", body.name));
-    }
-    let copied: Vec<&Vec<String>> = sites.values().filter(|held| held.len() > 1).collect();
+fn assert_no_body_is_written_twice(bodies: &[(Box<str>, Body)]) {
+    let sites = duplicate_sites(bodies);
+    let copied: Box<[&Vec<String>]> = sites.values().filter(|held| held.len() > 1).collect();
     assert!(
         copied.is_empty(),
         "one implementation belongs in one place: {copied:?}"
@@ -141,19 +129,6 @@ fn assert_no_body_is_written_twice(surface: &[(Box<str>, syn::File)]) {
         !sites.is_empty(),
         "no body reached the duplicate scan, so it constrains nothing"
     );
-}
-
-/// Every body of the surface, paired with the owner that declares it.
-fn surface_bodies(surface: &[(Box<str>, syn::File)]) -> Box<[(Box<str>, Body)]> {
-    surface
-        .iter()
-        .flat_map(|(path, file)| {
-            bodies(file)
-                .into_vec()
-                .into_iter()
-                .map(move |body| (path.clone(), body))
-        })
-        .collect()
 }
 
 /// Each seam publishes exactly its modelled error enum, and no Go owner
@@ -210,7 +185,7 @@ fn assert_reaches_only_its_callers(declared: &ErrorEnum, path: &str, owner: &Err
         ErrorReach::Published => assert!(
             declared.published
                 && (declared.derives_thiserror
-                    || tracked_text(path)
+                    || read_text(path)
                         .contains(&format!("impl std::error::Error for {}", declared.name))),
             "{} is published, so it must be pub and implement std::error::Error",
             declared.name

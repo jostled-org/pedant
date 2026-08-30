@@ -30,8 +30,10 @@ pub(super) fn path_segments(path: &syn::Path) -> Box<[Box<str>]> {
 }
 
 /// The `::`-joined spelling of a segment list.
+///
+/// The destination is sized from the segments and separators before writing.
 pub(super) fn path_text(segments: &[Box<str>]) -> Box<str> {
-    let mut text = String::new();
+    let mut text = String::with_capacity(joined_width(segments));
     for segment in segments {
         if !text.is_empty() {
             text.push_str(PATH_SEPARATOR);
@@ -39,6 +41,12 @@ pub(super) fn path_text(segments: &[Box<str>]) -> Box<str> {
         text.push_str(segment);
     }
     text.into_boxed_str()
+}
+
+/// The exact byte width the joined spelling of `segments` occupies.
+fn joined_width(segments: &[Box<str>]) -> usize {
+    let separators = segments.len().saturating_sub(1) * PATH_SEPARATOR.len();
+    separators + segments.iter().map(|segment| segment.len()).sum::<usize>()
 }
 
 /// The range a path's identifiers occupy, generic arguments excluded.

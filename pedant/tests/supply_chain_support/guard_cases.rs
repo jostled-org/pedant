@@ -9,10 +9,9 @@ use std::time::Duration;
 
 use pedant_process_guard::{
     FIXTURE_OUTCOME_ENV, FIXTURE_PID_FILE_ENV, FIXTURE_RELEASE_FILE_ENV, FIXTURE_ROLE_ENV,
-    FIXTURE_TEST_ENV, wait_until_gone, wait_until_tree_gone,
+    FIXTURE_TEST_ENV, descendant_pid, wait_until_gone,
 };
 
-use crate::fake_cargo::descendant_pid;
 use crate::fixtures::VendorFixture;
 use crate::process_guard::{Completed, Failure, Guard, Run};
 
@@ -116,9 +115,9 @@ pub(crate) fn guarded_run_leaves_no_descendant(row: &GuardRow) {
     // The recorded descendant is the one the fixture named. The tree is every
     // member, including one this row never learned the pid of.
     assert!(
-        wait_until_tree_gone(completed.tree_root, DESCENDANT_BUDGET),
+        completed.tree_is_gone(DESCENDANT_BUDGET),
         "{}: tree {} outlived its guard",
         row.label,
-        completed.tree_root
+        completed.tree_root()
     );
 }

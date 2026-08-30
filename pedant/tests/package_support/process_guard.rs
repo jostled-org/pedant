@@ -19,13 +19,17 @@
 //! write. That row still drains stderr, still bounds its wait, and still kills,
 //! reaps, and joins before it asserts.
 
+use std::ffi::OsString;
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
+use std::rc::Rc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use pedant_process_guard::{ContainedProcessTree, ContainmentError, configure_child};
+use pedant_process_guard::{
+    ContainedProcessTree, ContainmentError, adopt_child, configure_child, wait_until_released,
+};
 
 /// Budget for a run that is expected to finish on its own.
 pub(crate) const BUDGET: Duration = Duration::from_secs(120);
@@ -142,13 +146,6 @@ pub(crate) enum Outcome {
 
 /// One finished run, reported only after its whole tree is gone.
 pub(crate) struct Completed {
-    /// The process the guard contained, which names the whole tree.
-    ///
-    /// Teardown has already killed that tree and reaped its root, so a caller
-    /// holds this to state the claim rather than to act on it: a row asks
-    /// whether anything the child started outlived the guard, and a failure
-    /// message says which tree it was asking about.
-    pub(crate) tree_root: u32,
     /// The ceiling the guard actually bounded this run by.
     ///
     /// Recorded by the wait itself rather than copied from the caller's
@@ -168,9 +165,38 @@ pub(crate) struct Completed {
     pub(crate) stderr: Box<str>,
     /// Whether a drain ran for stdout at all.
     pub(crate) captured_stdout: bool,
+    /// The containment this run owned, kept past teardown.
+    ///
+    /// A Windows Job Object is destroyed when its last handle closes, so a
+    /// caller asking what the tree still holds *after* the guard is gone opens
+    /// nothing and reads the answer as an empty tree — a leak reported as a
+    /// clean exit. Holding the owner here keeps the question answerable, which
+    /// is what [`Completed::tree_is_gone`] asks and what every by-pid reader of
+    /// [`Completed::tree_root`] relies on.
+    tree: Rc<ContainedProcessTree>,
 }
 
 impl Completed {
+    /// Whether every member of the guarded tree is gone within the budget.
+    ///
+    /// Asked through the containment this run owned rather than through the pid
+    /// alone, so the claim is the tree's own and not the reaped root's.
+    pub(crate) fn tree_is_gone(&self, budget: Duration) -> bool {
+        wait_until_released(&self.tree, budget)
+    }
+
+    /// The process the guard contained, which names the whole tree.
+    ///
+    /// Read from the containment rather than recorded beside it. Teardown has
+    /// already killed that tree and reaped its root, so a caller holds this to
+    /// state the claim rather than to act on it: a row asks whether anything
+    /// the child started outlived the guard, and a failure message says which
+    /// tree it was asking about. A second copy taken from the child would be a
+    /// second record of one identity with nothing holding the two in agreement.
+    pub(crate) fn tree_root(&self) -> u32 {
+        self.tree.root()
+    }
+
     /// Whether the child exited successfully.
     pub(crate) fn success(&self) -> bool {
         matches!(&self.outcome, Outcome::Exited(status) if status.success())
@@ -212,7 +238,12 @@ pub(crate) fn execute(run: &Run<'_>) -> Result<Completed, Failure> {
 /// lifecycle owner.
 pub(crate) struct Guard {
     child: Child,
-    group: ContainedProcessTree,
+    /// Shared with the [`Completed`] this guard reports.
+    ///
+    /// The tree question outlives the guard by one assertion, and on Windows
+    /// the object that answers it dies with its last handle. Two owners is the
+    /// honest shape: the guard kills the tree, the result keeps it nameable.
+    group: Rc<ContainedProcessTree>,
     stdout: Option<JoinHandle<std::io::Result<Vec<u8>>>>,
     stderr: Option<JoinHandle<std::io::Result<Vec<u8>>>>,
 }
@@ -232,7 +263,7 @@ impl Guard {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         if let Some(prefix) = run.path_prefix {
-            command.env("PATH", prepended_path(prefix));
+            command.env("PATH", prepended_path(prefix)?);
         }
         for (key, value) in run.env {
             command.env(key, value);
@@ -243,7 +274,7 @@ impl Guard {
         // nobody, and `Child::drop` neither kills nor reaps: the tree would run
         // on under a `PATH` this fixture wrote.
         let mut child = command.spawn().map_err(io("the spawn"))?;
-        let group = ContainedProcessTree::adopt(&mut child)?;
+        let group = Rc::new(adopt_child(&mut child)?);
         let mut guard = Self {
             child,
             group,
@@ -262,27 +293,33 @@ impl Guard {
 
     /// Wait out the budget, tear the tree down, and report what it wrote.
     pub(crate) fn finish(mut self, budget: Duration) -> Result<Completed, Failure> {
-        let tree_root = self.child.id();
         let waited = self.wait(budget);
         let captured_stdout = self.stdout.is_some();
         let (stdout, stderr) = self.teardown()?;
         Ok(Completed {
-            tree_root,
             budget,
             outcome: waited?,
             stdout,
             stderr,
             captured_stdout,
+            tree: Rc::clone(&self.group),
         })
     }
 
     /// Wait for the child's own exit, or report that the budget expired.
+    ///
+    /// A ceiling no clock can name is an unbounded wait, not a panic: `Instant`
+    /// addition ends the whole test process on overflow, and a harness that dies
+    /// there reports nothing about the row that started it. The budget is a
+    /// row's own value, so the guard must not be the thing that trusts it.
     fn wait(&mut self, budget: Duration) -> Result<Outcome, Failure> {
-        let deadline = Instant::now() + budget;
+        let deadline = Instant::now().checked_add(budget);
         loop {
             match self.child.try_wait().map_err(io("the wait"))? {
                 Some(status) => return Ok(Outcome::Exited(status)),
-                None if Instant::now() >= deadline => return Ok(Outcome::TimedOut),
+                None if deadline.is_some_and(|deadline| Instant::now() >= deadline) => {
+                    return Ok(Outcome::TimedOut);
+                }
                 None => thread::sleep(POLL),
             }
         }
@@ -311,6 +348,11 @@ impl Guard {
 /// `teardown` is the only path that reports a result; a panic before it, or a
 /// spawn that could not hand over its pipes, would otherwise leave a killed
 /// child unreaped and any drain thread parked on a pipe that never closes.
+///
+/// The kill is stated here even though [`ContainedProcessTree`] ends its own
+/// tree when it drops: a field drops *after* its owner's body runs, and by then
+/// this body has already joined the drains — which a leaked descendant holding
+/// the inherited pipes never lets finish. The order is the point, not the call.
 impl Drop for Guard {
     fn drop(&mut self) {
         std::mem::drop(self.group.terminate());
@@ -393,10 +435,21 @@ fn joined(
     }
 }
 
-fn prepended_path(prefix: &Path) -> String {
-    format!(
-        "{}:{}",
-        prefix.display(),
-        std::env::var("PATH").unwrap_or_default()
-    )
+/// This process's `PATH` with `prefix` searched ahead of every entry on it.
+///
+/// Split and rejoined by the platform's own rule rather than punctuated with a
+/// literal separator. This module's contract covers Windows and its guard rows
+/// run there, where the separator is `;`: a hard-coded `:` produces one
+/// unparseable entry, the fake Cargo this fixture installed is never found, and
+/// the row resolves the real Cargo and passes for the wrong reason.
+///
+/// Refuses rather than dropping an entry, because a `PATH` holding the
+/// separator inside a directory name cannot be rejoined and a fixture that
+/// silently searched a shorter one is the same wrong-reason pass.
+fn prepended_path(prefix: &Path) -> Result<OsString, Failure> {
+    let inherited = std::env::var_os("PATH").unwrap_or_default();
+    let searched = std::iter::once(PathBuf::from(prefix)).chain(std::env::split_paths(&inherited));
+    std::env::join_paths(searched).map_err(|error| {
+        Failure::Protocol(format!("the fixture PATH is unjoinable: {error}").into())
+    })
 }

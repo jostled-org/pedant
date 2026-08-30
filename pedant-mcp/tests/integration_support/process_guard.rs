@@ -22,11 +22,14 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
 use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
+use std::rc::Rc;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use pedant_process_guard::{ContainedProcessTree, ContainmentError, configure_child};
+use pedant_process_guard::{
+    ContainedProcessTree, ContainmentError, adopt_child, configure_child, wait_until_released,
+};
 
 /// Budget for a run that is expected to finish on its own.
 pub(crate) const BUDGET: Duration = Duration::from_secs(120);
@@ -128,22 +131,53 @@ pub(crate) enum Outcome {
 
 /// One finished run, reported only after its whole tree is gone.
 pub(crate) struct Completed {
-    /// The process the guard contained, which names the whole tree.
+    /// The ceiling the guard actually bounded this run by.
     ///
-    /// Teardown has already killed that tree and reaped its root, so a caller
-    /// holds this to state the claim rather than to act on it: a row asks
-    /// whether anything the server started outlived the guard, and a failure
-    /// message says which tree it was asking about.
-    pub(crate) tree_root: u32,
+    /// Recorded by the wait itself rather than copied from the caller's
+    /// request, so a row can state which ceiling its child ran under. A row
+    /// whose ceiling never reached the guard reads the shared default here even
+    /// though it asked for its own, and its outcome assertion would hold either
+    /// way — a lifecycle row that expects a timeout still times out, just at
+    /// somebody else's bound.
+    pub(crate) budget: Duration,
     /// How the child ended.
     pub(crate) outcome: Outcome,
     /// Every line the tree wrote to stdout, read or unread.
     pub(crate) stdout: Box<[Box<str>]>,
     /// Everything the tree wrote to stderr.
     pub(crate) stderr: Box<str>,
+    /// The containment this run owned, kept past teardown.
+    ///
+    /// A Windows Job Object is destroyed when its last handle closes, so a
+    /// caller asking what the tree still holds *after* the guard is gone opens
+    /// nothing and reads the answer as an empty tree — a leak reported as a
+    /// clean exit. Holding the owner here keeps the question answerable, which
+    /// is what [`Completed::tree_is_gone`] asks and what every by-pid reader of
+    /// [`Completed::tree_root`] relies on.
+    tree: Rc<ContainedProcessTree>,
 }
 
 impl Completed {
+    /// Whether every member of the guarded tree is gone within the budget.
+    ///
+    /// Asked through the containment this run owned rather than through the pid
+    /// alone, so the claim is the tree's own and not the reaped root's.
+    pub(crate) fn tree_is_gone(&self, budget: Duration) -> bool {
+        wait_until_released(&self.tree, budget)
+    }
+
+    /// The process the guard contained, which names the whole tree.
+    ///
+    /// Read from the containment rather than recorded beside it. Teardown has
+    /// already killed that tree and reaped its root, so a caller holds this to
+    /// state the claim rather than to act on it: a row asks whether anything
+    /// the server started outlived the guard, and a failure message says which
+    /// tree it was asking about. A second copy taken from the child would be a
+    /// second record of one identity with nothing holding the two in agreement.
+    pub(crate) fn tree_root(&self) -> u32 {
+        self.tree.root()
+    }
+
     /// Whether the child exited successfully.
     pub(crate) fn success(&self) -> bool {
         matches!(&self.outcome, Outcome::Exited(status) if status.success())
@@ -182,7 +216,12 @@ struct Transcripts {
 /// Owns one child, its process tree, its stdin, and the threads draining it.
 pub(crate) struct Guard {
     child: Child,
-    group: ContainedProcessTree,
+    /// Shared with the [`Completed`] this guard reports.
+    ///
+    /// The tree question outlives the guard by one assertion, and on Windows
+    /// the object that answers it dies with its last handle. Two owners is the
+    /// honest shape: the guard kills the tree, the result keeps it nameable.
+    group: Rc<ContainedProcessTree>,
     stdin: Option<ChildStdin>,
     lines: Receiver<Box<str>>,
     /// Every line already handed to a caller, in arrival order.
@@ -210,7 +249,7 @@ impl Guard {
         }
         configure_child(&mut command);
         let mut child = command.spawn().map_err(io("the spawn"))?;
-        let group = ContainedProcessTree::adopt(&mut child)?;
+        let group = Rc::new(adopt_child(&mut child)?);
         let (sender, lines) = mpsc::channel();
         let mut guard = Self {
             child,
@@ -245,11 +284,19 @@ impl Guard {
     ///
     /// The line is kept before it is returned, so the transcript records what a
     /// caller consumed as well as what it ignored.
+    ///
+    /// The position is taken before the push and indexed after it, rather than
+    /// reading the tail back through an `Option`. There is no absent tail to
+    /// report — the line was pushed on the previous statement — and standing in
+    /// an empty string for one would hand a framing assertion a value it cannot
+    /// tell from a genuinely empty line the server wrote, turning a harness
+    /// defect into "the server sent an unparseable line".
     pub(crate) fn read_line(&mut self, budget: Duration) -> Result<&str, Failure> {
         match self.lines.recv_timeout(budget) {
             Ok(line) => {
+                let position = self.transcript.len();
                 self.transcript.push(line);
-                Ok(self.transcript.last().map_or("", |line| &**line))
+                Ok(&self.transcript[position])
             }
             Err(RecvTimeoutError::Timeout) => Err(protocol(format!(
                 "the server wrote no line within {budget:?}"
@@ -268,24 +315,31 @@ impl Guard {
     /// Shut the child down and return only after its whole tree is reaped.
     pub(crate) fn finish(mut self, budget: Duration) -> Result<Completed, Failure> {
         self.close_stdin();
-        let tree_root = self.child.id();
         let waited = self.wait(budget);
         let transcripts = self.teardown()?;
         Ok(Completed {
-            tree_root,
+            budget,
             outcome: waited?,
             stdout: transcripts.stdout,
             stderr: transcripts.stderr,
+            tree: Rc::clone(&self.group),
         })
     }
 
     /// Wait for the child's own exit, or report that the budget expired.
+    ///
+    /// A ceiling no clock can name is an unbounded wait, not a panic: `Instant`
+    /// addition ends the whole test process on overflow, and a harness that dies
+    /// there reports nothing about the row that started it. The budget is a
+    /// row's own value, so the guard must not be the thing that trusts it.
     fn wait(&mut self, budget: Duration) -> Result<Outcome, Failure> {
-        let deadline = Instant::now() + budget;
+        let deadline = Instant::now().checked_add(budget);
         loop {
             match self.child.try_wait().map_err(io("the wait"))? {
                 Some(status) => return Ok(Outcome::Exited(status)),
-                None if Instant::now() >= deadline => return Ok(Outcome::TimedOut),
+                None if deadline.is_some_and(|deadline| Instant::now() >= deadline) => {
+                    return Ok(Outcome::TimedOut);
+                }
                 None => thread::sleep(POLL),
             }
         }

@@ -37,6 +37,23 @@ pub(super) fn member<'closure>(closure: &'closure [Member], label: &str) -> &'cl
         .unwrap_or_else(|| panic!("{label} should be part of the discovered closure"))
 }
 
+/// Every member whose label opens with `prefix`.
+///
+/// The sibling of [`member`], for a claim about one owner family rather than one
+/// owner: a second descent, a second insertion, or a second check would hide in
+/// some module of the family, so the family is asked as a set. Beside `member`
+/// because both answer from the same discovered closure.
+#[cfg(feature = "ts-go")]
+pub(super) fn members_under<'closure>(
+    closure: &'closure [Member],
+    prefix: &str,
+) -> Box<[&'closure Member]> {
+    closure
+        .iter()
+        .filter(|member| member.label.starts_with(prefix))
+        .collect()
+}
+
 /// Every production source `lib.rs` reaches, by resolving `mod` declarations.
 ///
 /// Each source is read and parsed exactly once: the tree that answers "what

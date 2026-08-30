@@ -3,41 +3,133 @@ name = "pedant-snippet"
 version = "0.4.1"
 edition = "2024"
 rust-version = "1.96"
-description = "Byte-exact enclosing-declaration extraction as a library, CLI, and MCP server"
+description = "Repository code intelligence as a library, CLI, and MCP server"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/jostled-org/pedant"
 readme = "../README.md"
-keywords = ["mcp", "extraction", "syntax", "tree-sitter", "snippet"]
+keywords = ["mcp", "navigation", "code-intelligence", "tree-sitter", "symbols"]
 categories = ["development-tools", "command-line-utilities"]
 
 [[bin]]
 name = "pedant-snippet"
 path = "src/main.rs"
 
+[features]
+# Internal observation used only by integration tests. Normal library, CLI,
+# and MCP builds carry no trace state.
+test-support = []
+
+# What `cargo install pedant-snippet` compiles: every supported language and
+# both graph producers. The installed application is the one that has to answer
+# for a mixed repository, so it selects the whole closed table rather than a
+# profile a caller has to know to ask for.
+default = [
+  "lang-rust",
+  "lang-go",
+  "lang-javascript",
+  "lang-typescript",
+  "lang-python",
+  "lang-bash",
+  "graph-rust",
+  "graph-go",
+]
+
+# One language each, and each one forwards to exactly one `pedant-syntax`
+# grammar. A library consumer that indexes only Python pays for one parser, and
+# the grammar list stays a property of this manifest rather than of the
+# `pedant-syntax` edge — an edge that named a grammar would link it into every
+# consumer with no feature left to turn it off.
+lang-rust = ["pedant-syntax/rust"]
+lang-go = ["pedant-syntax/ts-go"]
+lang-javascript = ["pedant-syntax/ts-javascript"]
+lang-typescript = ["pedant-syntax/ts-typescript"]
+lang-python = ["pedant-syntax/ts-python"]
+lang-bash = ["pedant-syntax/ts-bash"]
+
+# The two graph producers. Each one selects the resolution substrate and the
+# graph projector, and neither selects the judgment surface, the semantic tier,
+# rust-analyzer, or ECMAScript resolution — `pedant-core` is taken with
+# `default-features = false` below, so `checks` is off unless something names
+# it, and nothing here does.
+#
+# `graph-go` reaches `pedant-core/go-resolution` through `pedant-graph/go`
+# rather than naming it directly: the graph adapter and the resolution surface
+# it projects must never be selectable apart, and one forwarding edge is the
+# only shape in which they cannot be.
+graph-rust = ["lang-rust", "dep:pedant-core", "dep:pedant-graph"]
+graph-go = ["lang-go", "dep:pedant-core", "dep:pedant-graph", "pedant-graph/go"]
+
 [dependencies]
-pedant-syntax = { version = "0.5.0", path = "../pedant-syntax", default-features = false, features = [
-  "rust",
-  "ts-python",
-  "ts-javascript",
-  "ts-typescript",
-  "ts-go",
-  "ts-bash",
-] }
+pedant-types = { version = "0.16.0", path = "../pedant-types" }
+# No feature is selected here. Every grammar arrives through a `lang-*` feature
+# above, so a build that asked for none links none.
+pedant-syntax = { version = "0.5.0", path = "../pedant-syntax", default-features = false }
+# The resolution substrate, selected only by a graph feature.
+# `default-features = false` is what keeps `checks` — the style rules, the gate
+# engine, and the violation surface — out of a navigation binary.
+pedant-core = { version = "0.23.0", path = "../pedant-core", default-features = false, optional = true }
+# The graph projector, selected only by a graph feature. Its own Go adapter is
+# default-off, so `graph-rust` alone links no Go grammar.
+pedant-graph = { version = "0.4.0", path = "../pedant-graph", default-features = false, optional = true }
 clap = { version = "4", features = ["derive"] }
 rmcp = { version = "2", features = ["server", "transport-io"] }
-serde = { version = "1", features = ["derive"] }
+# `rc` is what lets an answer serialize the shared handles it already holds.
+# Without it every `Arc` in a response would have to be deep-copied into an
+# owned twin on the way out, which is the allocation the sharing exists to
+# avoid. `pedant-types` and `pedant-graph` select it for the same reason.
+serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 thiserror = "2"
 # `time` is not optional: rmcp's normal shutdown path calls `tokio::time::timeout`,
 # which panics when the timer driver is off. Relying on another crate's manifest
 # to pull the feature in leaves this binary one semver-compatible release away
 # from panicking on every clean exit.
+#
+# `rt` and `time` are the whole selection. `process`, `net`, and `fs` are one
+# list entry away and would each hand a read-only product a capability it has
+# no reason to hold.
 tokio = { version = "1", features = ["rt", "time"] }
+# The root watcher the live index publishes from. notify's FSEvents backend
+# registers macOS temporary roots successfully but misses ordinary create,
+# modify, and rename events in them, so this repository selects kqueue for the
+# same reason `pedant-mcp` does. Linux and Windows keep notify's own
+# platform-gated backends.
+notify = { version = "8", default-features = false, features = ["macos_kqueue"] }
+# The ignore-aware repository walker. `default-features = false` leaves out the
+# SIMD acceleration feature; the walker reads directory entries and ignore
+# files, which is the whole capability the index needs from it.
+ignore = { version = "0.4", default-features = false }
+# The digest behind every source, index, and state revision. No feature is
+# selected: a revision claim is a fixed-size output this crate formats itself,
+# so it needs neither the allocating helpers nor `oid`, the object-identifier
+# encoding this repository never emits.
+sha2 = { version = "0.11", default-features = false }
 
 [dev-dependencies]
+# The workspace's one authority for operating-system process-tree containment:
+# a Unix process group, a Windows kill-on-close Job Object, and the liveness
+# question a case asks after a child has been reaped. The transport journeys
+# claim the server leaves no descendant, and nothing but a tree observation can
+# tell that from a server nobody looked at.
+pedant-process-guard = { path = "../test-support/process-guard" }
 serde_json = "1"
 tempfile = "3"
 # No `rt-multi-thread`: every test is a bare `#[tokio::test]`, which builds the
 # current-thread runtime the binary itself uses, and nothing here spawns onto a
 # second scheduler.
 tokio = { version = "1", features = ["macros", "rt", "process", "io-util", "time"] }
+
+# Most of the surface is conditional on a language or graph feature, so the
+# published page would otherwise carry whichever profile docs.rs picked.
+[package.metadata.docs.rs]
+features = [
+  "lang-rust",
+  "lang-go",
+  "lang-javascript",
+  "lang-typescript",
+  "lang-python",
+  "lang-bash",
+  "graph-rust",
+  "graph-go",
+]
+rustdoc-args = ["--cfg", "docsrs"]

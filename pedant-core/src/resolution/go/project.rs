@@ -4,14 +4,19 @@
 use std::path::Path;
 
 use super::exclusion::GoExclusion;
+use super::fault::GoSourceFault;
 use super::identity::{GoModuleId, ProjectAuthority, index_of};
+use super::inventory::GoFileInventory;
 use super::limits::GoResolutionLimits;
 use super::module::GoModule;
+use super::provider::GoSourceProvider;
 use super::replacement::GoReplacement;
 use super::requirement::GoRequirement;
 use super::snapshot::GoResolutionSnapshot;
 use super::snapshot_error::GoSnapshotError;
 use super::{error::GoProjectError, load, snapshot};
+
+use pedant_types::SourceProvider;
 
 /// A factual Go module project rooted at one canonical repository root.
 ///
@@ -45,8 +50,31 @@ impl GoProject {
     /// Reads the `.go` sources the walk admits and nothing else: no process,
     /// toolchain, code generator, or network client is invoked, and no
     /// environment or host selection state decides which sources exist.
+    /// Reads through a provider of this project's own, which lives exactly as
+    /// long as the call: every source this snapshot reaches is read once, and
+    /// nothing it read outlives the answer.
     pub fn snapshot_resolution(&self) -> Result<GoResolutionSnapshot, GoSnapshotError> {
-        snapshot::build(self)
+        snapshot::build(self, &mut private_provider(self))
+    }
+
+    /// The same snapshot, reading through a provider the caller owns.
+    ///
+    /// Package selection, contexts, ceilings, ordering, errors, and the
+    /// fingerprint are the ones [`Self::snapshot_resolution`] states. What
+    /// changes is who read the sources: a provider that already holds a path
+    /// answers from what it holds, so a file several project slices reach is
+    /// read, parsed, and walked once for all of them. This snapshot still
+    /// charges every source it selects against its own ceilings, because a
+    /// shared read is not a free source for the corpus that selected it.
+    pub fn snapshot_resolution_with_provider<P>(
+        &self,
+        provider: &mut P,
+    ) -> Result<GoResolutionSnapshot, GoSnapshotError>
+    where
+        P: SourceProvider<GoFileInventory>,
+        P::Error: Into<GoSourceFault>,
+    {
+        snapshot::build(self, provider)
     }
 
     /// The canonical repository root this project was loaded from.
@@ -111,4 +139,20 @@ impl GoProject {
             false => None,
         }
     }
+}
+
+/// A provider that reads one project's root under its limits, for the length of
+/// one convenience call.
+///
+/// A convenience snapshot reads exactly the sources it reaches and keeps none
+/// of them, which is why its published behavior is unchanged by the seam: a
+/// provider born and dropped inside one call has nothing earlier to answer
+/// from.
+///
+/// This is the one caller that may skip the constructor's canonicalization: a
+/// loaded project's root is what `canonical_root` already answered, so asking
+/// the filesystem a second time could only add a failure the snapshot below
+/// would report anyway on its first read.
+fn private_provider(project: &GoProject) -> GoSourceProvider {
+    GoSourceProvider::at_project_root(project.root.to_path_buf(), project.limits)
 }

@@ -6,7 +6,130 @@
 //! round trip alone.
 
 use pedant_types::resolution::{ReferenceKind, SymbolKind};
-use pedant_types::{AnalysisTier, Capability, ExecutionContext, FindingOrigin, Language};
+use pedant_types::{
+    AnalysisTier, Capability, ExecutionContext, FindingOrigin, Language, StructureKind,
+};
+
+/// Declare one vocabulary's variant list and its exhaustive spelling from a
+/// single written-down table.
+///
+/// A hand-written array of listed variants keeps compiling when the model gains
+/// one: only an exhaustive match breaks, and the array silently stays a row
+/// short. Generating both from one list closes that. The match fails to compile
+/// until the new variant is listed, listing it grows the array, and the array is
+/// then what the model's own published list is measured against.
+macro_rules! stated_vocabulary {
+    ($enum:ident, $listed:ident, $spelling:ident, $($variant:ident => $token:literal),+ $(,)?) => {
+        /// Every variant this root states for the vocabulary, in the order the
+        /// model declares them.
+        const $listed: [$enum; [$(stringify!($variant)),+].len()] = [$($enum::$variant),+];
+
+        /// The token this root states for one variant, independently of the
+        /// model's own `token` method.
+        fn $spelling(value: $enum) -> &'static str {
+            match value {
+                $($enum::$variant => $token),+
+            }
+        }
+    };
+}
+
+stated_vocabulary!(
+    StructureKind,
+    STATED_STRUCTURE_KINDS,
+    structure_kind_spelling,
+    Module => "module",
+    Function => "function",
+    Method => "method",
+    Struct => "struct",
+    Enum => "enum",
+    Union => "union",
+    Trait => "trait",
+    TypeAlias => "type_alias",
+    Impl => "impl",
+    Class => "class",
+    Interface => "interface",
+    DefinedType => "defined_type",
+    Constant => "constant",
+    Static => "static",
+    Variable => "variable",
+    Field => "field",
+    Package => "package",
+);
+
+stated_vocabulary!(
+    Language,
+    STATED_LANGUAGES,
+    language_spelling,
+    Rust => "rust",
+    Python => "python",
+    JavaScript => "java_script",
+    TypeScript => "type_script",
+    Go => "go",
+    Bash => "bash",
+);
+
+/// The published structure vocabulary is the whole model, in order, and every
+/// token it claims is the token serde writes.
+#[test]
+fn structure_kind_publishes_every_variant_and_its_wire_token() {
+    assert_published(
+        &STATED_STRUCTURE_KINDS,
+        &StructureKind::ALL,
+        structure_kind_spelling,
+        StructureKind::token,
+        "StructureKind",
+    );
+}
+
+/// The published language vocabulary is the whole model, in order, and every
+/// token it claims is the token serde writes.
+#[test]
+fn language_publishes_every_variant_and_its_wire_token() {
+    assert_published(
+        &STATED_LANGUAGES,
+        &Language::ALL,
+        language_spelling,
+        Language::token,
+        "Language",
+    );
+}
+
+/// One published vocabulary states exactly the variants this root lists, in the
+/// same order, each claiming the token serde spells it with.
+///
+/// The length is asserted against the generated list rather than a written
+/// number, because a number is what a new variant leaves stale. A schema built
+/// from a list one variant short accepts a token it never advertised, which is
+/// the failure this guard exists for.
+fn assert_published<T>(
+    listed: &[T],
+    published: &[T],
+    stated: fn(T) -> &'static str,
+    claimed: fn(T) -> &'static str,
+    vocabulary: &str,
+) where
+    T: serde::Serialize + serde::de::DeserializeOwned + PartialEq + std::fmt::Debug + Copy,
+{
+    assert_eq!(
+        published.len(),
+        listed.len(),
+        "{vocabulary}::ALL publishes one entry per declared variant"
+    );
+    for (position, value) in listed.iter().copied().enumerate() {
+        assert_eq!(
+            published[position], value,
+            "{vocabulary}::ALL states {value:?} at position {position}"
+        );
+        let token = stated(value);
+        assert_eq!(
+            claimed(value),
+            token,
+            "{vocabulary}::token claims the spelling this root states for {value:?}"
+        );
+        assert_round_trip(value, token);
+    }
+}
 
 /// Every definition kind a resolution report can state, beside its exact wire
 /// token.
@@ -169,23 +292,6 @@ fn capability_display_matches_from_str() {
         let display = cap.to_string();
         let parsed: Capability = display.parse().unwrap();
         assert_eq!(cap, parsed, "Display/FromStr mismatch for {cap:?}");
-    }
-}
-
-#[test]
-fn language_enum_round_trip() {
-    let variants = [
-        Language::Rust,
-        Language::Python,
-        Language::JavaScript,
-        Language::TypeScript,
-        Language::Go,
-        Language::Bash,
-    ];
-    for lang in variants {
-        let json = serde_json::to_string(&lang).unwrap();
-        let back: Language = serde_json::from_str(&json).unwrap();
-        assert_eq!(lang, back);
     }
 }
 

@@ -79,10 +79,8 @@ pub(super) fn named_children<'tree>(node: Node<'tree>) -> Box<[Node<'tree>]> {
 
 /// How many `name` field children one node states.
 ///
-/// The count alone, for a reader that needs the arity rather than the nodes:
-/// `a, b int` is one declaration stating two terms of one type, and collecting
-/// the identifiers to ask a slice for its length allocates once per parameter
-/// declaration in every signature the walk reads.
+/// The count alone, for a reader that needs arity rather than the nodes. For
+/// example, `a, b int` is one declaration with two terms of one type.
 pub(super) fn name_count(node: Node<'_>) -> usize {
     let mut cursor = node.walk();
     node.children_by_field_name("name", &mut cursor).count()

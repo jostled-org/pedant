@@ -24,9 +24,6 @@ use crate::hash::digest_bytes;
 use crate::observe::{self, Observation};
 use crate::resolution::capacity::admits_one_more;
 
-/// The file name a module manifest always has.
-const MANIFEST: &str = "go.mod";
-
 /// The one reason a repository root anchors no Go project.
 const NO_ROOT_MANIFEST: &str = "the project root holds no readable go.mod";
 
@@ -87,26 +84,13 @@ pub(super) fn load_project(
 
 /// The main module's manifest, which a Go project cannot be loaded without.
 fn read_root_manifest(root: &Path) -> Result<GoManifestDocument, GoProjectError> {
-    match confined_manifest(root, root)? {
-        Some(manifest) => GoManifestDocument::read(root, &manifest),
+    match paths::confined_manifest(root, root)? {
+        Some(manifest) => GoManifestDocument::read(root, manifest.path()),
         None => Err(GoProjectError::InvalidRoot {
             path: paths::path_text(root),
             reason: Box::from(NO_ROOT_MANIFEST),
         }),
     }
-}
-
-/// The canonical `go.mod` one directory holds, confined to the repository root.
-///
-/// The manifest is resolved, not reconstructed. Repository-relative naming is
-/// lexical and cannot see a symlink, so a `go.mod` linked out of the root would
-/// otherwise be read and its tokens echoed back in a published refusal.
-///
-/// Only "no such file" is absence. A `go.mod` that exists and cannot be read is
-/// reported by the read that fails on it, never reported as one the directory
-/// does not have.
-fn confined_manifest(root: &Path, directory: &Path) -> Result<Option<PathBuf>, GoProjectError> {
-    Ok(paths::canonical_in_root(root, &directory.join(MANIFEST))?)
 }
 
 impl<'a> Loader<'a> {
@@ -244,7 +228,7 @@ impl<'a> Loader<'a> {
             return Ok(*admitted);
         }
         let document = self.read_module_manifest(&canonical, replacement)?;
-        let relative: Arc<str> = Arc::from(paths::relative_text(self.root, &canonical)?);
+        let relative = paths::relative_shared(self.root, &canonical)?;
         self.check_declared_module(&document, (&relative, &requirement.path))?;
         let module = LoadedModule {
             path: Arc::clone(&document.module),
@@ -279,8 +263,8 @@ impl<'a> Loader<'a> {
         replacement: (&str, &ParsedRequirement),
     ) -> Result<GoManifestDocument, GoProjectError> {
         let (directory, requirement) = replacement;
-        match confined_manifest(self.root, canonical)? {
-            Some(manifest) => GoManifestDocument::read(self.root, &manifest),
+        match paths::confined_manifest(self.root, canonical)? {
+            Some(manifest) => GoManifestDocument::read(self.root, manifest.path()),
             None => Err(GoProjectError::MissingReplacementManifest {
                 directory: directory.into(),
                 module: requirement.path.clone(),

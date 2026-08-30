@@ -74,6 +74,12 @@ impl RustTarget {
         &self.entry_path
     }
 
+    /// The same entry path, shared rather than copied, for the snapshots that
+    /// keep it as their own crate root.
+    pub(super) fn shared_entry_path(&self) -> &Arc<str> {
+        &self.entry_path
+    }
+
     /// The edition this target inherits from its package.
     pub fn edition(&self) -> CargoEdition {
         self.edition

@@ -19,6 +19,10 @@ name = "pedant-core"
 [[package]]
 name = "pedant-graph"
 
+# After both graph producers: pedant-snippet takes pedant-core and pedant-graph
+# as optional, versioned dependencies, and an optional path edge becomes a
+# registry edge while packaging exactly as an unconditional one does. Released
+# first, it would ask crates.io for versions that do not exist yet.
 [[package]]
 name = "pedant-snippet"
 

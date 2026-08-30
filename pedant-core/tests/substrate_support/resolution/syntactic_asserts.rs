@@ -6,10 +6,10 @@ use std::sync::Arc;
 use pedant_core::resolution::rust::{
     RustResolutionError, RustResolutionSnapshot, RustResolver, RustTargetResolution,
 };
-use pedant_types::resolution::{ReferenceKind, ResolutionGap, ResolutionUnitHandle};
 use pedant_types::{
-    Language, ResolutionReport, ResolutionReportBuilder, ResolutionReportLimits, ResolutionTier,
-    SourcePosition, SourceSpan, SymbolKind,
+    Language, ReferenceKind, ResolutionGap, ResolutionReport, ResolutionReportBuilder,
+    ResolutionReportLimits, ResolutionTier, ResolutionUnitHandle, SourcePosition, SourceSpan,
+    SymbolKind,
 };
 
 use crate::resolution::fixture::{self, FixtureFile};

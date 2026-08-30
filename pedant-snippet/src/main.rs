@@ -1,32 +1,46 @@
-//! CLI and MCP entry point for the pedant-snippet tool.
+//! CLI and MCP entry point for the pedant-snippet code-intelligence tool.
 
 mod cli;
 mod command;
+mod operation;
+mod registry;
+mod render;
+mod request;
 mod server;
-mod tool;
+mod token;
+
+use std::process::ExitCode;
 
 use clap::Parser;
-use pedant_snippet::SnippetError;
+use pedant_snippet::LiveIndexError;
 
 use crate::cli::Cli;
+use crate::command::Outcome;
 
-/// Why a subcommand could not finish.
+/// The status a command that could not answer exits with.
 ///
-/// Absence is not a failure: a location in no declaration prints an absent
-/// result and exits zero. Every variant here means the command produced no
-/// answer at all. It lives at the crate root so the transports report failures
-/// in one vocabulary without depending on each other.
+/// Two statuses, and no third. Clap already exits two for a malformed command
+/// line, and an operator scripting this binary reads "the question was not
+/// answered" from one number rather than from a table of reasons — the typed
+/// diagnostic on stderr is where the reason lives.
+const REFUSED: u8 = 2;
+
+/// Why a command could not finish.
+///
+/// A refused query is not here: it is an answer about the repository, and it
+/// travels as a serialized envelope on both transports. Every variant below is a
+/// failure of this process rather than of the question.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum CommandError {
-    /// The source file could not be read.
-    #[error(transparent)]
-    Extract(#[from] SnippetError),
     /// The result could not be encoded as JSON.
     #[error("failed to serialize the result: {0}")]
-    Serialize(#[from] serde_json::Error),
+    Serialize(#[source] serde_json::Error),
     /// Standard output rejected the result.
     #[error("failed to write the result: {0}")]
     Write(#[source] std::io::Error),
+    /// The live index could not be opened, watched, or read.
+    #[error(transparent)]
+    Live(#[from] LiveIndexError),
     /// The async runtime the MCP transport needs could not start.
     #[error("failed to start the runtime: {0}")]
     Runtime(#[source] std::io::Error),
@@ -51,20 +65,14 @@ pub(crate) enum CommandError {
     ServerQuit(Box<str>),
 }
 
-/// A failure on its way to the operator.
+/// Run one command and state its outcome as an exit status.
 ///
-/// Returning `Result` from `main` reports the error and terminates non-zero
-/// without this crate naming any process API, which keeps its capability
-/// profile read-only. The runtime reports through `Debug`, so this wrapper
-/// forwards to `Display` and the operator reads the sentence, not the struct.
-struct Reported(CommandError);
-
-impl std::fmt::Debug for Reported {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "{}", self.0)
+/// Every diagnostic is written by the command itself, so nothing is reported
+/// here: the runtime's own `Debug` rendering of a returned error would print a
+/// struct where the operator is already holding a typed envelope.
+fn main() -> ExitCode {
+    match command::run(Cli::parse().command) {
+        Outcome::Answered => ExitCode::SUCCESS,
+        Outcome::Refused => ExitCode::from(REFUSED),
     }
-}
-
-fn main() -> Result<(), Reported> {
-    command::run(Cli::parse().command).map_err(Reported)
 }

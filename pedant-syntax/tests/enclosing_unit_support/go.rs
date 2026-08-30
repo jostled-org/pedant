@@ -1,15 +1,17 @@
 //! Go backend: recognized declarations, grouped type specifications, and
 //! method precedence over a receiver type.
 
+use pedant_syntax::go::{GoFactError, GoFactLimits};
 use pedant_syntax::{LineSpan, SourceUnitKind, SyntaxLanguage};
 
 use crate::fixture_support::assert_absent;
 use crate::fixtures::{GO, GO_SOURCE, Row};
+use crate::go_fact_source::facts;
 use crate::table::{assert_rows, assert_table};
 
 const LANGUAGE: SyntaxLanguage = SyntaxLanguage::Go;
 
-pub(crate) const ROWS: [Row; 4] = [
+pub(crate) const ROWS: [Row; 5] = [
     // A sole ungrouped specification returns its whole declaration, so the
     // `type` keyword opens the text.
     Row {
@@ -39,16 +41,37 @@ pub(crate) const ROWS: [Row; 4] = [
         span: LineSpan { start: 24, end: 26 },
         text: "Group struct {\n        Name string\n    }",
     },
+    // An alias returns its own declaration, matching the Rust and TypeScript
+    // `TypeAlias` row.
+    Row {
+        needle: "type Alias = int",
+        kind: SourceUnitKind::TypeAlias,
+        name: Some("Alias"),
+        span: LineSpan { start: 33, end: 33 },
+        text: "type Alias = int",
+    },
 ];
 
-/// The table, plus both halves of the rule that a type specification is a unit
-/// only when it declares a struct: an interface is not one, and neither is an
-/// alias.
+/// The table, plus the rule that an interface's method is no unit: a signature
+/// with no body would return one line in place of the declaring type.
 #[test]
 fn recognized_declaration_table() {
     assert_table(&GO, &ROWS);
     assert_absent(GO_SOURCE, LANGUAGE, "    Run() int");
-    assert_absent(GO_SOURCE, LANGUAGE, "type Alias = int");
+}
+
+/// Neither zero ceiling is a request for the crate default: both refuse the
+/// first fact walk they govern.
+#[test]
+fn zero_go_syntax_and_fact_ceilings_refuse() {
+    assert_eq!(
+        facts(GO_SOURCE, GoFactLimits::new(0, u32::MAX)),
+        Err(GoFactError::SyntaxDepthExceeded { limit: 0 })
+    );
+    assert_eq!(
+        facts(GO_SOURCE, GoFactLimits::new(u32::MAX, 0)),
+        Err(GoFactError::FactCapacityExceeded { limit: 0 })
+    );
 }
 
 /// A non-struct specification beside a struct one stays absent, and the group

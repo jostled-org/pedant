@@ -5,33 +5,17 @@
 //! descendant, and then exits, times out, or fails. The MCP guard keeps its
 //! protocol-aware drains while the shared containment owns the process tree.
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use pedant_process_guard::{
     FIXTURE_OUTCOME_ENV, FIXTURE_PID_FILE_ENV, FIXTURE_RELEASE_FILE_ENV, FIXTURE_ROLE_ENV,
-    FIXTURE_TEST_ENV, wait_until_gone, wait_until_tree_gone,
+    FIXTURE_TEST_ENV, descendant_pid, wait_until_gone,
 };
 
 use crate::process_guard::{Completed, Guard, Run};
 
 const DESCENDANT_BUDGET: Duration = Duration::from_secs(5);
 const FIXTURE_TEST: &str = "process_tree_fixture";
-
-#[test]
-fn containment_adoption_precedes_fallible_pipe_handoff() {
-    let source = include_str!("process_guard.rs");
-    let adoption = source
-        .find("ContainedProcessTree::adopt(&mut child)")
-        .expect("the MCP guard must adopt its child");
-    let first_pipe = source
-        .find("take_pipe(guard.child.stdout.take()")
-        .expect("the MCP guard must take stdout through its owned guard");
-
-    assert!(
-        adoption < first_pipe,
-        "containment must own the child before a missing pipe can return an error"
-    );
-}
 
 /// One termination path the guarded Rust fixture must survive.
 pub(crate) struct GuardRow {
@@ -97,9 +81,19 @@ pub(crate) fn guarded_run_leaves_no_descendant(row: &GuardRow) {
         .unwrap_or_else(|failure| panic!("{}: the guard failed to spawn: {failure}", row.label));
     std::fs::write(&release_file, b"adopted")
         .unwrap_or_else(|failure| panic!("{}: fixture release failed: {failure}", row.label));
+    // The ceiling is read back from the run the guard was spawned with, so this
+    // row states it once. `finish` is then held to it below, because nothing
+    // else here observes which bound the wait used: a row whose budget never
+    // reached the guard still times out, just at the shared default, and every
+    // assertion under it holds.
     let completed = guard
-        .finish(row.budget)
+        .finish(run.budget)
         .unwrap_or_else(|failure| panic!("{}: the guard failed: {failure}", row.label));
+    assert_eq!(
+        completed.budget, row.budget,
+        "{}: the guard bounded the child by the ceiling this row stated",
+        row.label
+    );
     assert!(
         (row.expected)(&completed),
         "{}: unexpected outcome {:?}: {}",
@@ -108,7 +102,7 @@ pub(crate) fn guarded_run_leaves_no_descendant(row: &GuardRow) {
         completed.transcript()
     );
 
-    let pid = descendant_pid(&pid_file)
+    let pid = descendant_pid(&pid_file, DESCENDANT_BUDGET)
         .unwrap_or_else(|| panic!("{}: the fixture left no descendant to reap", row.label));
     assert!(
         wait_until_gone(pid, DESCENDANT_BUDGET),
@@ -118,23 +112,9 @@ pub(crate) fn guarded_run_leaves_no_descendant(row: &GuardRow) {
     // The recorded descendant is the one the fixture named. The tree is every
     // member, including one this row never learned the pid of.
     assert!(
-        wait_until_tree_gone(completed.tree_root, DESCENDANT_BUDGET),
+        completed.tree_is_gone(DESCENDANT_BUDGET),
         "{}: tree {} outlived its guard",
         row.label,
-        completed.tree_root
+        completed.tree_root()
     );
-}
-
-fn descendant_pid(path: &std::path::Path) -> Option<u32> {
-    let deadline = Instant::now() + DESCENDANT_BUDGET;
-    loop {
-        let recorded = std::fs::read_to_string(path)
-            .ok()
-            .and_then(|text| text.trim().parse().ok());
-        match (recorded, Instant::now() >= deadline) {
-            (Some(pid), _) => return Some(pid),
-            (None, true) => return None,
-            (None, false) => std::thread::sleep(crate::process_guard::POLL),
-        }
-    }
 }

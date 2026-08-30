@@ -236,7 +236,7 @@ fn semantic_resolution_reuses_verified_workspace_and_cached_file_setup() {
         "Tier 2 loads no second rust-analyzer workspace"
     );
     assert_eq!(
-        observed(&probe.semantic_file_setups()),
+        &*observed(&probe.semantic_file_setups()),
         CORPUS_SEMANTIC_SETUPS,
         "each source is set up once and every later query reuses the cache"
     );

@@ -1,5 +1,5 @@
 //! Every table the tracked packaged-workspace release proof is compared
-//! against, and the readers its provers take that script with.
+//! against.
 //!
 //! The tables sit beside their readings rather than inside them, for the
 //! source-file budget alone — the way `fingerprint_claims` sits beside
@@ -7,29 +7,32 @@
 //! describe and [`crate::packaged_workspace_budget`] reads the cost, and both
 //! spell the script the same way because they spell it once, here.
 //!
-//! The file readers and the three shared assertions live here for the same
-//! reason. Three modules take them, and a test module that owned another test
-//! module's utilities would make one of them the other's library.
-
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
-
-/// The tracked proof that compiles the release archives as a registry consumer
-/// receives them.
-pub(crate) const PACKAGED_WORKSPACE_SCRIPT: &str = ".github/scripts/check_packaged_workspace.sh";
+//! Neither the readings nor the readers are here. The one shared reading of the
+//! tracked proof is [`crate::packaged_workspace_reading`], and the script
+//! readers and three shared assertions are [`crate::shell_script_reading`]. Both
+//! splits are the same rule twice: a test module that owned another test
+//! module's utilities would make one of them the other's library, and a
+//! re-export through this module would be a second path to each name, which is
+//! the thing the single owner is for. How a tracked file is read at all is no
+//! module's here: that is
+//! [`crate::resolution::authority_scan::read_text`], which every structural
+//! claim in this repository shares.
 
 /// The conventional-commit subject the release finalization squashes this
 /// plan's history to, and the subject the proof has to show release-plz.
 ///
 /// release-plz reads the subject to choose the next version, so a proof that
 /// showed it the checkpoint history this branch actually holds would stage a
-/// version the release never publishes. The value lives here because two
-/// predicates need it: [`crate::packaged_workspace`] requires the tracked proof
-/// to state it once and carry it into one commit, and
-/// [`crate::release_contract`] requires it to be this plan's release. A copy
-/// beside either of them could name a different release from the other.
-pub(crate) const PROOF_COMMIT_SUBJECT: &str = "feat!: implement go graph extraction";
+/// version the release never publishes. Finalization writes
+/// `<type>!: implement <plan>`, where the plan is the file name its history
+/// belongs to, so this is that sentence for the code-intelligence release. The
+/// value lives here because two predicates need it:
+/// [`crate::packaged_workspace`] requires the tracked proof to state it once and
+/// carry it into one commit, and [`crate::release_contract`] requires it to be
+/// this plan's release. A copy beside either of them could name a different
+/// release from the other.
+pub(crate) const PROOF_COMMIT_SUBJECT: &str =
+    "feat!: implement code-intelligence-index-and-surfaces";
 
 /// That subject as the tracked proof declares it.
 pub(crate) fn subject_declaration() -> Box<str> {
@@ -38,45 +41,61 @@ pub(crate) fn subject_declaration() -> Box<str> {
 
 /// The responsibilities that script gives one function each, sorted.
 ///
-/// Twelve stages, because a stage that shares a function with its neighbour
-/// cannot be reordered, skipped, or read; and the two sequences that run them,
-/// because the script has two entry points and a cold tool build belongs to
-/// only one of them. Sortedness is asserted rather than asked for, so a name
+/// Nineteen responsibilities, because one that shares a function with its
+/// neighbour cannot be reordered, skipped, or read; and the three sequences that
+/// run them — the release proof, the tool installation the script's second entry
+/// point selects, and the packaged snippet journey the proof runs once the
+/// archives compile. Sortedness is asserted rather than asked for, so a name
 /// added out of place is refused rather than left to the next reader to notice.
+///
+/// The leak refusal is a row like any other. Its placement at the close of the
+/// journey sequence is [`crate::packaged_workspace_journey`]'s claim, and that
+/// claim reads a call: without a row here, a second definition of the refusal
+/// later in the script would silently override the first and the call would
+/// still be in place.
 pub(crate) const PACKAGE_SCRIPT_FUNCTIONS: &[&str] = &[
+    "assert_no_checkout_leakage",
+    "assert_packaged_cli_journey",
+    "assert_packaged_mcp_journey",
+    "assert_release_order_names_the_navigation_product",
     "begin_stage",
+    "capture_repository_root",
     "cleanup",
     "generate_archive_workspace",
+    "install_packaged_snippet",
     "install_pinned_tools",
     "install_release_plz",
     "install_semver_checks",
     "measure_budget",
     "package_archives",
     "preflight",
+    "run_packaged_snippet_journey",
     "run_packaged_workspace_proof",
     "run_release_update",
     "run_tool_installation",
     "stage_isolated_source",
     "verify_packaged_graph",
+    "write_journey_repository",
 ];
 
 /// The entry point that chooses a stage, as the script spells it.
 ///
 /// Building both pinned tools cold costs 1,429 measured seconds against a
 /// 1,200-second verification slice, so `--install-tools` takes one tool and is
-/// its own invocation. Nothing else may be an argument, and both the count and
-/// the name are part of that: a proof that accepted an unknown flag would run
-/// the wrong stage silently, one that dispatched on the first word alone would
-/// answer a two-word question for a caller that asked a longer one, and one
-/// that left an unknown tool name to the installer would refuse it only after
-/// creating a staging root and running both pinned binaries. So the entry point
-/// spells out the two sentences it accepts, whole.
+/// its own invocation. After the required root, nothing else may be an
+/// argument, and both the count and the name are part of that: a proof that
+/// accepted an unknown flag would run the wrong stage silently, one that
+/// dispatched on the first word alone would answer a two-word question for a
+/// caller that asked a longer one, and one that left an unknown tool name to
+/// the installer would refuse it only after creating a staging root and running
+/// both pinned binaries. So the entry point spells out the two sentences it
+/// accepts, whole.
 pub(crate) const STAGE_SELECTION: &[&str] = &[
-    "case \"$#:${1:-}:${2:-}\" in",
-    "2:--install-tools:cargo-semver-checks) run_tool_installation install_semver_checks ;;",
-    "2:--install-tools:release-plz) run_tool_installation install_release_plz ;;",
-    "0::) run_packaged_workspace_proof ;;",
-    "*) fail \"unknown arguments",
+    "case \"$#:${2:-}:${3:-}\" in",
+    "3:--install-tools:cargo-semver-checks) run_tool_installation \"$1\" install_semver_checks ;;",
+    "3:--install-tools:release-plz) run_tool_installation \"$1\" install_release_plz ;;",
+    "1::) run_packaged_workspace_proof \"$1\" ;;",
+    "fail \"unknown arguments",
 ];
 
 /// Dispatch spellings that read part of the request and act on the rest.
@@ -86,6 +105,17 @@ pub(crate) const STAGE_SELECTION: &[&str] = &[
 /// staging root, probed both pinned binaries, and started the clock.
 pub(crate) const REJECTED_STAGE_SELECTIONS: &[&str] =
     &["case \"${1:-}\" in", "case \"$#:${1:-}\" in"];
+
+/// What the one explicit repository root must satisfy before any state moves.
+pub(crate) const REPOSITORY_ROOT_REQUIREMENTS: &[&str] = &[
+    "test -n \"${requested_root}\"",
+    "test -d \"${requested_root}\"",
+    "repository_root=\"$(CDPATH='' cd -- \"${requested_root}\" && pwd -P)\"",
+    "git_root=\"$(git -C \"${repository_root}\" rev-parse --show-toplevel",
+    "test \"${repository_root}\" = \"${git_root}\"",
+    "readonly repository_root",
+    "cd -- \"${repository_root}\"",
+];
 
 /// One revision-pinned tool the proof builds before it stages anything.
 pub(crate) struct PinnedTool {
@@ -215,6 +245,7 @@ pub(crate) const PROOF_STAGE_SEQUENCE: &[&str] = &[
     "package_archives",
     "generate_archive_workspace",
     "verify_packaged_graph",
+    "run_packaged_snippet_journey",
     "measure_proof_budget",
 ];
 
@@ -283,7 +314,11 @@ pub(crate) const ARCHIVE_MEMBER_ENTRY: &str = "\"%s-%s\",\\n' \"${name}\" \"${st
 /// a member the manifest never listed and the graph checks never read.
 pub(crate) const ARCHIVE_MEMBER_EXTRACTION: &[&str] = &[
     "extracted=\"${workspace_root}/${name}-${version}\"",
-    "rg -N -v -e \"^${name}-${version}/\"",
+    // The prefix is escaped before it is matched. A version splices `.`
+    // separators into the pattern, and unescaped each of those matches any
+    // character — so the stray-entry refusal this row proves was looser than
+    // the archive name it claims to be anchored on.
+    "rg_status_over \"${listing}\" -N -v -e \"^$(regex_escaped \"${name}-${version}/\")\"",
     "tar -xzf \"${archive}\" -C \"${workspace_root}\"",
     "test -d \"${extracted}\"",
 ];
@@ -380,105 +415,3 @@ pub(crate) const TARGET_ROOT_REQUIREMENTS: &[&str] = &[
     "test -w \"${target_root}\"",
     "export CARGO_TARGET_DIR",
 ];
-
-/// This workspace's root, which every tracked file below is read from.
-pub(crate) fn repository_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("pedant-core has a workspace parent")
-        .to_path_buf()
-}
-
-/// One tracked file, read whole.
-pub(crate) fn read_repository_file(path: &str) -> String {
-    fs::read_to_string(repository_root().join(path))
-        .unwrap_or_else(|error| panic!("failed to read {path}: {error}"))
-}
-
-/// Every shell script this repository tracks, in Git's own order.
-///
-/// Git is asked rather than the filesystem walked, because `tracked` is the
-/// whole claim: `docs/` holds ignored lifecycle adapters that this repository
-/// does not own and must not lint, and a filesystem walk would sweep them in.
-pub(crate) fn tracked_shell_scripts() -> Box<[Box<str>]> {
-    let output = Command::new("git")
-        .args(["ls-files", "-z", "--", "*.sh"])
-        .current_dir(repository_root())
-        .output()
-        .expect("git is available");
-    assert!(
-        output.status.success(),
-        "git ls-files failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    String::from_utf8_lossy(&output.stdout)
-        .split('\0')
-        .filter(|path| !path.is_empty())
-        .map(Box::from)
-        .collect()
-}
-
-/// One shell function's body, between its opening line and its closing brace.
-pub(crate) fn function_body(source: &str, name: &str) -> Box<str> {
-    let opening: Box<str> = format!("\n{name}() {{\n").into();
-    let start = source
-        .find(&*opening)
-        .unwrap_or_else(|| panic!("{name} should be defined"))
-        + opening.len();
-    let length = source[start..]
-        .find("\n}\n")
-        .unwrap_or_else(|| panic!("{name} should have a closing brace"));
-    source[start..start + length].into()
-}
-
-/// Where one required fragment starts in the text one subject is read from.
-///
-/// The subject travels with the fragment because half of these readings are
-/// taken over a single function body and half over the whole script, and a
-/// panic that named neither would leave the reader guessing which text was
-/// searched and which claim wanted it.
-pub(crate) fn offset_of(text: &str, fragment: &str, subject: &str) -> usize {
-    text.find(fragment)
-        .unwrap_or_else(|| panic!("{subject}: the text read holds no [{fragment}]"))
-}
-
-/// One text holds every fragment of a table, and the table holds something.
-///
-/// The emptiness check is the point of sharing this. A `for` loop over a table
-/// that lost its entries asserts nothing and reports success, which is the one
-/// failure a structural prover cannot afford.
-pub(crate) fn assert_contains_all(text: &str, table: &[&str], subject: &str) {
-    assert!(
-        !table.is_empty(),
-        "{subject}: an empty table requires nothing"
-    );
-    for fragment in table {
-        assert!(text.contains(fragment), "{subject} is missing [{fragment}]");
-    }
-}
-
-/// One text holds every step of a table, each after the one before it.
-pub(crate) fn assert_in_order(text: &str, steps: &[&str], subject: &str) {
-    assert!(
-        !steps.is_empty(),
-        "{subject}: an empty sequence requires nothing"
-    );
-    let mut previous: Option<usize> = None;
-    for step in steps {
-        let offset = offset_of(text, step, subject);
-        if let Some(earlier) = previous {
-            assert!(offset > earlier, "{subject}: [{step}] runs out of order");
-        }
-        previous = Some(offset);
-    }
-}
-
-/// One text states a fragment once, so a second statement of it cannot answer
-/// for the first.
-pub(crate) fn assert_exactly_once(text: &str, fragment: &str, subject: &str) {
-    assert_eq!(
-        text.matches(fragment).count(),
-        1,
-        "{subject} must be stated exactly once [{fragment}]"
-    );
-}

@@ -1,171 +1,66 @@
 //! Contract tests for every `pedant-snippet` interface.
 //!
-//! This root owns the library boundary, the spawned CLI, and the real stdio MCP
-//! server. It stays the crate's only integration executable: the fixtures, the
-//! bounded child harness, and both transport journeys reach it through `#[path]`
-//! support modules, which Cargo links into this same binary instead of a second
-//! one.
+//! This root owns the library boundary, the spawned CLI, the real stdio MCP
+//! server, the repository index, and the navigation questions that index
+//! answers. It stays the crate's only integration executable: the fixtures, the
+//! bounded child harness, both transport journeys, the index cases, and the
+//! query cases reach it through `#[path]` support modules, which Cargo links
+//! into this same binary instead of a second one.
 //!
-//! All three interfaces answer one table, `cases::cases` and `cases::FAILURES`.
-//! Each asserts against the same expected declaration and the same expected
-//! envelope bytes, so parity is a property of one statement of the facts rather
-//! than of three copies agreeing.
+//! One repository is the authority for all of it. The index cases build it, the
+//! navigation cases query it, and the transport journeys spawn a CLI and a
+//! server over the same tree — so a claim one layer makes about a declaration is
+//! a claim about the declaration the other layers answered for.
 
-#[path = "interfaces_support/cases.rs"]
-mod cases;
+#[path = "interfaces_support/profile_gate.rs"]
+mod profile_gate;
 
-#[path = "interfaces_support/child.rs"]
-mod child;
+use crate::profile_gate::complete_profile_path_modules;
 
-#[path = "interfaces_support/cli.rs"]
-mod cli;
+// The spawned-child harness the transport journeys reach the binary through,
+// and the three modules beside it: the command builder, the contained process
+// tree, and the typed setup failure.
+//
+// Gated with the journeys rather than beside them. Every consumer of all four
+// sits inside `journeys`, which compiles only where the whole closed language
+// and graph selection is linked — so in a reduced profile these would be four
+// modules nothing calls, which is a warning the `--all-targets` lint of that
+// profile refuses.
+complete_profile_path_modules!(
+    "interfaces_support/cases.rs" => cases,
+    "interfaces_support/child.rs" => child,
+    "interfaces_support/command.rs" => command,
+    "interfaces_support/contained.rs" => contained,
+    "interfaces_support/failure.rs" => failure,
+);
 
-#[path = "interfaces_support/mcp.rs"]
-mod mcp;
+#[path = "interfaces_support/graph/mod.rs"]
+mod graph;
 
-#[path = "interfaces_support/mcp_journey.rs"]
-mod mcp_journey;
+#[path = "interfaces_support/index/mod.rs"]
+mod index;
 
-mod library {
-    use std::io::ErrorKind;
+#[path = "interfaces_support/journeys/mod.rs"]
+mod journeys;
 
-    use pedant_snippet::{Extraction, SnippetError, extract_path};
+#[path = "interfaces_support/live/mod.rs"]
+mod live;
 
-    use crate::cases::{self, Source, Tree};
+#[path = "interfaces_support/queries/mod.rs"]
+mod queries;
 
-    #[test]
-    fn extract_path_contract() {
-        let tree = Tree::new().expect("temporary fixture tree");
-
-        for case in cases::cases() {
-            let extracted = extract_path(&tree.resolve(case.source), case.at)
-                .unwrap_or_else(|error| panic!("{}: {error}", case.label));
-            assert_eq!(extracted, case.unit, "{}", case.label);
-
-            let rendered = Extraction { unit: extracted }
-                .to_json()
-                .expect("the extraction serializes");
-            assert_eq!(
-                &*rendered, case.envelope,
-                "{}: the library renders the envelope both transports send",
-                case.label
-            );
-            let restored: Extraction = serde_json::from_str(&rendered)
-                .unwrap_or_else(|error| panic!("{}: {rendered:?} parses: {error}", case.label));
-            assert_eq!(
-                restored.unit, case.unit,
-                "{}: the envelope round trips",
-                case.label
-            );
-        }
-
-        for failure in &cases::FAILURES {
-            let path = tree.resolve(failure.source);
-            let error = extract_path(&path, cases::present_point()).expect_err(failure.label);
-            let message = error.to_string();
-            match error {
-                SnippetError::Read {
-                    path: reported,
-                    source,
-                } => {
-                    assert_eq!(
-                        &*reported,
-                        path.as_path(),
-                        "{}: the error keeps the caller's spelling",
-                        failure.label
-                    );
-                    // Nothing canonicalizes the caller's path, so a committed
-                    // row comes back relative and a fixture row comes back
-                    // under its temporary root. Asserted on what the library
-                    // returned, and in both directions: a `Tree` that started
-                    // absolutizing committed rows, and a library that resolved
-                    // a relative one, each fail here.
-                    assert_eq!(
-                        matches!(failure.source, Source::Committed(_)),
-                        reported.is_relative(),
-                        "{}: the returned path keeps the caller's form: {}",
-                        failure.label,
-                        reported.display()
-                    );
-                    assert_eq!(
-                        source.kind(),
-                        failure.kind,
-                        "{}: the I/O kind reaches the caller",
-                        failure.label
-                    );
-                    // The reason text is the operating system's, and this
-                    // assertion runs in the test runner's own locale rather
-                    // than the `LC_ALL=C` every spawned child gets. Composition
-                    // is the claim that holds in any locale, and it is the one
-                    // the two child journeys cannot make: the outer message
-                    // carries the cause verbatim.
-                    assert!(
-                        message.contains(&source.to_string()),
-                        "{}: the message carries the I/O cause: {message}",
-                        failure.label
-                    );
-                }
-            }
-            assert!(
-                message.contains(&*path.display().to_string()),
-                "{}: the message names the path: {message}",
-                failure.label
-            );
-        }
-    }
-
-    /// Bytes that are not UTF-8 fail the read; malformed source does not.
-    ///
-    /// Both rows already state their own outcome, and this test restates
-    /// neither: it names them and asserts the one thing a row cannot, that the
-    /// two sit on opposite sides of the boundary. Source that never decodes
-    /// never reaches the parser; malformed source is read and then found to
-    /// hold no declaration.
-    ///
-    /// The `InvalidData` kind is spelled here rather than taken from the row,
-    /// so reordering [`cases::FAILURES`] fails this test instead of quietly
-    /// swapping the contrast for a different one.
-    #[test]
-    fn invalid_utf8_is_read_failure() {
-        let tree = Tree::new().expect("temporary fixture tree");
-
-        let undecodable = &cases::FAILURES[1];
-        let failed = extract_path(&tree.resolve(undecodable.source), cases::present_point())
-            .expect_err(undecodable.label);
-        let SnippetError::Read { source, .. } = failed;
-        assert_eq!(
-            source.kind(),
-            ErrorKind::InvalidData,
-            "{}: source that never decodes never reaches the parser",
-            undecodable.label
-        );
-
-        let malformed = cases::malformed_case();
-        let read = extract_path(&tree.resolve(malformed.source), malformed.at)
-            .unwrap_or_else(|error| panic!("{}: {error}", malformed.label));
-        assert_eq!(
-            read, malformed.unit,
-            "{}: the parser rejecting source is absence, not failure",
-            malformed.label
-        );
-    }
-}
-
-/// The shared `Language` enum gains Rust, and it names the grammar this crate
-/// already links.
+/// The lingering process tree one containment row needs something to observe.
 ///
-/// The token is asserted here because `pedant-snippet` links the same syntax
-/// substrate every transport reads. Only the token is asserted: the extraction,
-/// the envelope, and the round trip are the table's own claims, which
-/// [`library::extract_path_contract`] and both transport journeys already run
-/// over every case.
+/// `pedant-process-guard` builds its fixture out of whichever test executable
+/// asks for it: the parent role starts a descendant that outlives it and then
+/// exits, and the descendant role sleeps. The role arrives in the environment,
+/// so an ordinary run of this root — which sets none — passes straight through.
+///
+/// This is what makes the process-tree observation falsifiable rather than
+/// merely asserted. Every journey here requires its child to leave nothing
+/// behind, and a run that has never seen the observation report a survivor has
+/// not established that it could.
 #[test]
-fn rust_snippet_interfaces_remain_unchanged() {
-    use pedant_syntax::{Language, SyntaxLanguage};
-
-    assert_eq!(
-        SyntaxLanguage::from(Language::Rust),
-        SyntaxLanguage::Rust,
-        "the shared Rust token selects the Rust grammar this crate already links"
-    );
+fn process_tree_fixture() {
+    pedant_process_guard::run_fixture().expect("the process fixture runs the role it was given");
 }

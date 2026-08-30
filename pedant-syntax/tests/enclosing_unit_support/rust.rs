@@ -13,7 +13,7 @@ use crate::table::{assert_rows, assert_table};
 const LANGUAGE: SyntaxLanguage = SyntaxLanguage::Rust;
 
 /// Every recognized `syn` item, keyed by a substring it contains.
-pub(crate) const ROWS: [Row; 11] = [
+pub(crate) const ROWS: [Row; 12] = [
     Row {
         needle: "pub retries: usize,",
         kind: SourceUnitKind::Struct,
@@ -92,6 +92,18 @@ pub(crate) const ROWS: [Row; 11] = [
         name: Some("build"),
         span: LineSpan { start: 36, end: 38 },
         text: "pub fn build(retries: usize) -> Config {\n    Config { retries }\n}",
+    },
+    // A receiverless associated `fn`, beside the `&self` method above that
+    // answers `Method`. The receiver is the whole rule, and this route reads it
+    // through the shared item table's `callable` rows — so without this row the
+    // rule was stated by the structure walk alone and the boundary that
+    // published the change had nothing red.
+    Row {
+        needle: "Config { retries: 0 }",
+        kind: SourceUnitKind::Function,
+        name: Some("new"),
+        span: LineSpan { start: 41, end: 43 },
+        text: "pub fn new() -> Config {\n        Config { retries: 0 }\n    }",
     },
 ];
 

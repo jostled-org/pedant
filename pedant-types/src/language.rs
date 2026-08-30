@@ -23,3 +23,36 @@ pub enum Language {
     /// Bash/shell (`.sh`, `.bash`, `.zsh`).
     Bash,
 }
+
+impl Language {
+    /// Every language, in the order they are declared.
+    ///
+    /// The one list a transport describes its vocabulary from, so a schema that
+    /// tells a client which tokens it may send is built from the same table the
+    /// deserializer reads them back through.
+    pub const ALL: [Self; 6] = [
+        Self::Rust,
+        Self::Python,
+        Self::JavaScript,
+        Self::TypeScript,
+        Self::Go,
+        Self::Bash,
+    ];
+
+    /// The stable token this language is claimed under.
+    ///
+    /// Exhaustive, so a seventh language fails to compile here rather than
+    /// publishing a schema one token short of what it accepts. Every spelling is
+    /// the one the `snake_case` rename above produces, which is why the two
+    /// compound names carry a separator the language's own name does not.
+    pub fn token(self) -> &'static str {
+        match self {
+            Self::Rust => "rust",
+            Self::Python => "python",
+            Self::JavaScript => "java_script",
+            Self::TypeScript => "type_script",
+            Self::Go => "go",
+            Self::Bash => "bash",
+        }
+    }
+}

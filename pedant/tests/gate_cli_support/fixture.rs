@@ -14,8 +14,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use pedant_process_guard::wait_until_tree_gone;
-
 use crate::process_guard::{BUDGET, Completed, Run, execute};
 
 /// How long a killed tree may take to leave the process table.
@@ -276,9 +274,9 @@ fn assert_bounded_by_stated_ceiling(completed: &Completed, options: &RunOptions<
 /// having missed a member.
 fn assert_tree_is_gone(completed: &Completed) {
     assert!(
-        wait_until_tree_gone(completed.tree_root, REAP_BUDGET),
+        completed.tree_is_gone(REAP_BUDGET),
         "tree {} outlived its guard: {}",
-        completed.tree_root,
+        completed.tree_root(),
         completed.transcript()
     );
 }

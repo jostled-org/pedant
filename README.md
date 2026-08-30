@@ -270,20 +270,38 @@ Tools: `query_capabilities`, `query_gate_verdicts`, `query_violations`, `search_
 
 ### pedant-snippet
 
-`pedant-snippet` returns the source declaration enclosing one file location, byte for byte. It serves the same operation as a CLI and as a stdio MCP server. It parses Rust, Python, JavaScript, TypeScript, TSX, Go, and Bash.
+`pedant-snippet` indexes one repository and answers navigation questions about it. It parses Rust, Python, JavaScript, TypeScript, TSX, Go, and Bash. The server rebuilds the index as the tree changes, so an answer describes the repository as it is.
 
 ```bash
 cargo install pedant-snippet
-claude mcp add --transport stdio --scope user pedant-snippet -- pedant-snippet mcp
+claude mcp add --transport stdio --scope user pedant-snippet -- pedant-snippet mcp --root .
 ```
 
-The CLI takes the location and the output shape:
+Eight questions, served as CLI commands and as MCP tools. With `mcp`, which serves the other eight over stdio, that is nine CLI commands and eight MCP tools — one library operation behind each pair.
+
+| Command | Tool | Answers |
+| --- | --- | --- |
+| `list-projects` | `list_projects` | every project the index resolved |
+| `search` | `search_symbols` | every named structure a query selects |
+| `outline` | `outline_file` | one file's structure forest, in source order |
+| `read` | `read_structure` | one structure and its exact source |
+| `at` | `structure_at` | the narrowest structure containing one point |
+| `relations` | `query_relations` | one declaration's graph neighborhood |
+| `path` | `find_path` | the shortest route between two declarations |
+| `graph` | `analyze_graph` | one derived answer about a project graph |
 
 ```bash
-pedant-snippet extract --file src/lib.rs --line 42 --column 9 --format text
+pedant-snippet at src/lib.rs 42 --column 9 --format text
+pedant-snippet search make --mode exact
 ```
 
-`--column` is optional and `--format` defaults to `json`. Tool: `enclosing_unit`.
+`--root` defaults to the working directory and `--format` defaults to `json`. Both transports call the same library operation and serialize what it returns, so a CLI answer and a tool answer to one question are the same bytes.
+
+Every language and both graph producers are default features, so an installed binary answers all eight questions. A build that selects no graph producer serves the first five and advertises no others.
+
+Rust and Go projects are graph-backed, so `relations`, `path`, and `graph` answer from a resolved project graph. JavaScript, TypeScript, Python, and Bash are syntax-only: search, outline, read, and point lookup are complete for them, and a graph request over one of them returns typed syntax-only coverage rather than an empty answer that reads as "no callers". Their graph extractors are later work and change no command, tool, or index.
+
+The index reads source files and does nothing else. It writes no file, spawns no process, opens no socket, and invokes no language server or toolchain, so it is safe to point at a repository you did not author.
 
 ## Configuration
 

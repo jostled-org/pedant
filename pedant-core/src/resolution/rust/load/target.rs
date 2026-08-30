@@ -273,7 +273,7 @@ fn push_draft(
     drafts.push(TargetDraft {
         name,
         kind,
-        entry: paths::relative_text(context.root, &entry)?,
+        entry: paths::relative_shared(context.root, &entry)?,
     });
     Ok(())
 }

@@ -15,8 +15,8 @@ pub const CORPUS_UNITS: &[&str] = &[
 pub const CORPUS_DEFINITIONS: &[&str] = &[
     "app|Struct|Widget|src/alpha.rs:0:11-0:17|alpha",
     "app|Method|render|src/alpha.rs:3:20-3:26|alpha",
-    "app|Module|alpha|src/lib.rs:0:4-0:13|-",
-    "app|Module|shapes|src/lib.rs:1:4-1:14|-",
+    "app|Module|alpha|src/lib.rs:0:8-0:13|-",
+    "app|Module|shapes|src/lib.rs:1:8-1:14|-",
     "app|Function|run|src/lib.rs:5:7-5:10|-",
     "app|Function|paint|src/lib.rs:11:7-11:12|-",
     "app|Trait|Draw|src/shapes.rs:0:10-0:14|shapes",

@@ -6,13 +6,14 @@ use crate::go::condition::GoBuildConditionFact;
 use crate::go::declaration::{GoDeclarationFact, GoDeclarationKind};
 use crate::go::error::GoFactError;
 use crate::go::import::GoImportFact;
+use crate::go::inventory::Inventory;
 use crate::go::limits::GoFactLimits;
 use crate::go::reference::GoReferenceFact;
 use crate::go::retention::GoFactScope;
 use crate::go::scope::GoScopeFact;
 use crate::go::signature::GoSignatureTermFact;
 use crate::go::span::GoFactSpan;
-use crate::go::walk::{self, Inventory};
+use crate::go::walk;
 use crate::location::Location;
 use crate::tree_sitter::{Node, SourceUnitAnchor};
 use crate::unit::SourceUnitKind;
@@ -39,25 +40,27 @@ pub struct GoFileFacts<'source> {
     references: Box<[GoReferenceFact<'source>]>,
     scopes: Box<[GoScopeFact]>,
     bindings: Box<[GoBindingFact<'source>]>,
+    facts: u32,
+    depth: u32,
 }
 
 impl<'source> GoFileFacts<'source> {
-    /// Walk one bound Go tree once and seal what it states.
+    /// Walk one bound Go tree once and seal every fact it states.
     pub(crate) fn extract(
         root: Node<'_>,
         source: &'source str,
         has_errors: bool,
         limits: GoFactLimits,
     ) -> Result<Self, GoFactError> {
-        Ok(Self::seal(
-            walk::extract(root, source, limits, GoFactScope::Everything)?,
-            source,
-            has_errors,
-        ))
+        walked(root, source, has_errors, limits, GoFactScope::Everything)
     }
 
     /// Seal one completed walk.
     fn seal(inventory: Inventory<'source>, source: &'source str, has_errors: bool) -> Self {
+        // Read before the fields move: `depth` is behind an accessor, so a
+        // reading taken in field position borrows an inventory the boxing above
+        // it has already partially moved.
+        let depth = inventory.depth();
         Self {
             source,
             has_errors,
@@ -69,7 +72,51 @@ impl<'source> GoFileFacts<'source> {
             references: inventory.references.into_boxed_slice(),
             scopes: inventory.scopes.into_boxed_slice(),
             bindings: inventory.bindings.into_boxed_slice(),
+            facts: inventory.counted,
+            depth,
         }
+    }
+
+    /// How many facts the bounded walk retained, as its ceiling counts them.
+    ///
+    /// Stated so a consumer that shares one extraction across several bounded
+    /// corpora can hold it to each corpus's own fact ceiling without walking
+    /// the tree again.
+    pub fn fact_count(&self) -> u32 {
+        self.facts
+    }
+
+    /// The deepest grammar level the bounded walk entered, the root counting as
+    /// zero.
+    pub fn syntax_depth(&self) -> u32 {
+        self.depth
+    }
+
+    /// The exact source every span here indexes.
+    ///
+    /// Crate-visible: the structure projection slices this string, and a caller
+    /// outside the crate already holds the source it handed the parser.
+    pub(crate) fn source(&self) -> &'source str {
+        self.source
+    }
+
+    /// Every logical structure these facts state, in source order.
+    ///
+    /// Walks nothing and parses nothing: this inventory is already the sole Go
+    /// declaration authority, so the structure set is projected from it rather
+    /// than recognized a second time.
+    ///
+    /// Refuses on a recovery tree and on the structure ceiling in `limits`. The
+    /// depth ceiling has no descent left to bound here, so it is compared
+    /// against the depth the walk already reported: a caller holding a retained
+    /// inventory may state a shallower ceiling than the one that walk ran
+    /// beneath, and an inventory deeper than the ceiling stated here is refused
+    /// rather than projected whole.
+    pub fn structure_inventory(
+        &self,
+        limits: crate::StructureInventoryLimits,
+    ) -> Result<crate::StructureInventory<'source>, crate::StructureError> {
+        crate::structure::go_inventory(self, limits)
     }
 
     /// Whether the tree these facts came from carries recovery errors.
@@ -169,6 +216,57 @@ fn offer_units<'source>(
     }
 }
 
+/// Walk one bound Go tree for the facts a structure inventory projects.
+///
+/// Declarations, the scopes that place them, and the package clause. The
+/// projection reads nothing else, and every fact a walk retains is charged
+/// against the same ceiling, so a whole-inventory walk here spent the structure
+/// route's own ceiling on imports, references, bindings, and signature terms it
+/// then dropped.
+///
+/// The inventory this seals is therefore partial by construction, and the
+/// structure router is its one caller: it projects the structures and drops the
+/// facts in the same expression. Every other reader asks
+/// [`GoFileFacts::extract`].
+///
+/// A function beside the sealed type rather than a second constructor on it,
+/// for the reason [`offer_units`] is one: what a walk retains is a property of
+/// the caller that asked for it, not of the inventory it fills.
+pub(crate) fn structure_facts<'source>(
+    root: Node<'_>,
+    source: &'source str,
+    has_errors: bool,
+    limits: GoFactLimits,
+) -> Result<GoFileFacts<'source>, GoFactError> {
+    walked(
+        root,
+        source,
+        has_errors,
+        limits,
+        GoFactScope::DeclaredStructures,
+    )
+}
+
+/// Walk one bound Go tree once for `retained`, and seal what it held.
+///
+/// The one body both sealing entry points call. They differ in the scope they
+/// name and in nothing else, so a second copy of the walk-then-seal pair was a
+/// second place for the tree, the source, and the recovery answer to be bound
+/// together — and one of the two could bind them differently.
+fn walked<'source>(
+    root: Node<'_>,
+    source: &'source str,
+    has_errors: bool,
+    limits: GoFactLimits,
+    retained: GoFactScope,
+) -> Result<GoFileFacts<'source>, GoFactError> {
+    Ok(GoFileFacts::seal(
+        walk::extract(root, source, limits, retained)?,
+        source,
+        has_errors,
+    ))
+}
+
 /// Offer one Go source's units without keeping its inventory.
 ///
 /// The route the generic extraction boundary takes. Go declarations come from
@@ -201,22 +299,45 @@ pub(crate) fn offer_unit_declarations<'source>(
 
 /// The source unit one declaration carries, if it carries one.
 ///
-/// Only a function, a method, and a named struct type return their own text.
-/// An interface, an alias, a defined type, a constant, a variable, and a member
-/// are declarations the unit model states no kind for, and a caller asking
-/// inside one reads the declaration that holds it instead.
+/// The Go vocabulary is mapped once — by `structure::go::structure_kind`, the
+/// projection's own table — and narrowed here by the unit model, the way the
+/// Rust and tree-sitter backends already reach
+/// [`SourceUnitKind::of`](crate::SourceUnitKind::of). A second table spelling
+/// the same eleven rows is a second place for a declaration kind to be a
+/// structure the outline names and a unit the extraction refuses.
+///
+/// One kind is refused past that narrowing, and [`writes_its_definition`] is
+/// where. Every other declaration defers to the unit that contains it because
+/// the model states no kind for it.
 fn unit_kind(kind: GoDeclarationKind) -> Option<SourceUnitKind> {
+    match writes_its_definition(kind) {
+        true => SourceUnitKind::of(crate::structure::go_structure_kind(kind)),
+        false => None,
+    }
+}
+
+/// Whether a declaration's own text holds what it defines.
+///
+/// The Go half of the rule the TypeScript `abstract_method_signature` row
+/// states one grammar away: an interface method is a method, and the structure
+/// inventory names it one, but its text stops at the signature and whatever
+/// type implements it writes the body. A source unit carries the declaration's
+/// text, so a reader inside one is handed the interface that declares it.
+///
+/// Total, so a twelfth declaration kind fails to compile here rather than
+/// joining the unit model with a body it does not write.
+fn writes_its_definition(kind: GoDeclarationKind) -> bool {
     match kind {
-        GoDeclarationKind::Function => Some(SourceUnitKind::Function),
-        GoDeclarationKind::Method => Some(SourceUnitKind::Method),
-        GoDeclarationKind::Struct => Some(SourceUnitKind::Struct),
-        GoDeclarationKind::Interface
+        GoDeclarationKind::InterfaceMethod => false,
+        GoDeclarationKind::Function
+        | GoDeclarationKind::Method
+        | GoDeclarationKind::Struct
+        | GoDeclarationKind::Interface
         | GoDeclarationKind::DefinedType
         | GoDeclarationKind::TypeAlias
         | GoDeclarationKind::Constant
         | GoDeclarationKind::Variable
         | GoDeclarationKind::Field
-        | GoDeclarationKind::EmbeddedField
-        | GoDeclarationKind::InterfaceMethod => None,
+        | GoDeclarationKind::EmbeddedField => true,
     }
 }

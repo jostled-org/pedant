@@ -1,9 +1,6 @@
-use std::rc::Rc;
 use std::sync::Arc;
 
 use syn::{FnArg, ReturnType, Signature, Type};
-
-use pedant_types::SymbolKind;
 
 use crate::ir::cfg::cfg_predicate;
 use crate::ir::facts::{
@@ -18,12 +15,15 @@ use crate::ir::type_introspection::{
 };
 use crate::pattern::extract_type_text;
 
+use super::super::extent::DeclarationExtent;
 use super::super::fn_scope::FnScope;
+use super::super::receivers::ReceiverScope;
+use super::super::site_visitor::{enter_impl_block, record_value_item};
 use super::super::sites::SiteCollector;
-use super::super::syn_helpers::{
-    block_line_count, cfg_feature_name, normalize_visibility, span_from,
-};
+use super::super::syn_helpers::{block_line_count, normalize_visibility, span_from};
 use super::super::use_paths::project_use_paths;
+use super::gates::{CfgGate, cfg_gate};
+use super::visited::{TypeDefinition, ValueItem};
 
 pub(in crate::ir::extract) struct IrExtractor {
     pub(in crate::ir::extract) file_path: Arc<str>,
@@ -50,11 +50,11 @@ pub(in crate::ir::extract) struct IrExtractor {
 
     /// Enclosing impl context: (self type, is_trait_impl). Set while visiting an
     /// `impl` block so methods can be tagged with their type and inherent-ness.
-    pub(in crate::ir::extract) current_impl: Option<(Rc<str>, bool)>,
+    pub(in crate::ir::extract) current_impl: Option<(Arc<str>, bool)>,
 
     /// Enclosing trait name, set while visiting a trait's items so associated
     /// items can name the trait they belong to.
-    pub(in crate::ir::extract) current_trait: Option<Rc<str>>,
+    pub(in crate::ir::extract) current_trait: Option<Arc<str>>,
 
     /// `#[cfg(…)]` gates currently in scope, pushed on entry to a gated
     /// item/module and popped on exit.
@@ -69,17 +69,10 @@ pub(in crate::ir::extract) struct IrExtractor {
 
     /// Classification state for the function body under traversal.
     pub(in crate::ir::extract) fn_scope: FnScope,
+    pub(in crate::ir::extract) receivers: ReceiverScope,
 
     /// The authoritative definition and reference site inventory.
     pub(in crate::ir::extract) sites: SiteCollector,
-}
-
-/// One `#[cfg(…)]` gate in scope during traversal.
-pub(in crate::ir::extract) struct CfgGate {
-    /// Rendered predicate text: the identity of a build alternative.
-    pub(in crate::ir::extract) predicate: Rc<str>,
-    /// Feature name when the predicate is exactly `feature = "…"`.
-    pub(in crate::ir::extract) feature: Option<Rc<str>>,
 }
 
 impl IrExtractor {
@@ -110,6 +103,7 @@ impl IrExtractor {
             in_non_body_type: false,
             in_callee: false,
             fn_scope: FnScope::new(),
+            receivers: ReceiverScope::default(),
             sites: SiteCollector::new(),
         }
     }
@@ -122,6 +116,7 @@ impl IrExtractor {
             module_declarations: sites.declarations,
             definition_sites: sites.definitions,
             reference_sites: sites.references,
+            structure_sites: sites.structures,
             file_path: self.file_path,
             source_line_count: 0,
             functions: self.functions.into_boxed_slice(),
@@ -141,14 +136,6 @@ impl IrExtractor {
             data_flows: Arc::from([]),
         }
     }
-}
-
-/// Build a gate from an attribute, or `None` when it is not a `#[cfg(…)]`.
-fn cfg_gate(attr: &syn::Attribute) -> Option<CfgGate> {
-    Some(CfgGate {
-        predicate: cfg_predicate(attr)?,
-        feature: cfg_feature_name(attr),
-    })
 }
 
 impl IrExtractor {
@@ -189,7 +176,7 @@ impl IrExtractor {
 
         let mut sig_type_names = Vec::new();
         collect_signature_type_names_into(sig, &mut sig_type_names);
-        let signature_type_names: Box<[Rc<str>]> = sig_type_names.into();
+        let signature_type_names: Box<[Arc<str>]> = sig_type_names.into();
         let item_depth = self.item_depth;
 
         let index = self.functions.len();
@@ -327,7 +314,7 @@ impl IrExtractor {
     }
 
     /// Feature names of the `#[cfg(feature = "…")]` gates in scope.
-    pub(in crate::ir::extract) fn cfg_feature_gates(&self) -> Box<[Rc<str>]> {
+    pub(in crate::ir::extract) fn cfg_feature_gates(&self) -> Box<[Arc<str>]> {
         self.cfg_gates
             .iter()
             .filter_map(|gate| gate.feature.clone())
@@ -335,10 +322,10 @@ impl IrExtractor {
     }
 
     /// Predicates of every `#[cfg(…)]` gate in scope, of any kind.
-    pub(in crate::ir::extract) fn cfg_predicates(&self) -> Box<[Rc<str>]> {
+    pub(in crate::ir::extract) fn cfg_predicates(&self) -> Box<[Arc<str>]> {
         self.cfg_gates
             .iter()
-            .map(|gate| Rc::clone(&gate.predicate))
+            .map(|gate| Arc::clone(&gate.predicate))
             .collect()
     }
 
@@ -347,21 +334,21 @@ impl IrExtractor {
     pub(in crate::ir::extract) fn cfg_predicates_with(
         &self,
         attrs: &[syn::Attribute],
-    ) -> Box<[Rc<str>]> {
+    ) -> Box<[Arc<str>]> {
         self.cfg_gates
             .iter()
-            .map(|gate| Rc::clone(&gate.predicate))
+            .map(|gate| Arc::clone(&gate.predicate))
             .chain(attrs.iter().filter_map(cfg_predicate))
             .collect()
     }
 
     fn register_type_with_edges(
         &mut self,
-        name: Rc<str>,
+        name: Arc<str>,
         kind: TypeDefKind,
         span: IrSpan,
         visibility: Visibility,
-        edges: Box<[(Rc<str>, Rc<str>)]>,
+        edges: Box<[(Arc<str>, Arc<str>)]>,
     ) {
         self.type_defs.push(TypeDefFact {
             name,
@@ -373,25 +360,32 @@ impl IrExtractor {
         });
     }
 
-    /// Shared scaffolding for type-def visitors: extract name/span from ident,
+    /// Shared scaffolding for type-def visitors: take the span from the ident,
     /// compute edges via the provided closure, register the type def, and wrap
     /// the syn visit dispatch in item_depth guards.
+    ///
+    /// The name arrives rendered, so the fact table, the edges, and a trait's
+    /// item scope all hold the one handle the arm established.
     pub(in crate::ir::extract) fn visit_type_def(
         &mut self,
-        ident: &syn::Ident,
-        kind: TypeDefKind,
-        vis: &syn::Visibility,
-        attrs: &[syn::Attribute],
-        compute_edges: impl FnOnce(&Rc<str>) -> Box<[(Rc<str>, Rc<str>)]>,
+        definition: TypeDefinition<'_>,
+        compute_edges: impl FnOnce(&Arc<str>) -> Box<[(Arc<str>, Arc<str>)]>,
         visit: impl FnOnce(&mut Self),
     ) {
-        let name: Rc<str> = Rc::from(ident.to_string());
-        let span = span_from(ident.span().start());
+        let declared = definition.declared_item();
+        let span = span_from(declared.ident.span().start());
+        let attrs = declared.attrs;
+        let TypeDefinition {
+            name,
+            kind,
+            visibility,
+            ..
+        } = definition;
         let edges = compute_edges(&name);
-        let visibility = normalize_visibility(vis);
+        let visibility = normalize_visibility(visibility);
         self.with_cfg_gates(attrs, |this| {
             this.register_type_with_edges(name, kind, span, visibility, edges);
-            let saved = super::super::site_visitor::enter_type_definition(this, ident, kind);
+            let saved = record_value_item(this, declared);
             this.item_depth += 1;
             visit(this);
             this.item_depth -= 1;
@@ -399,28 +393,42 @@ impl IrExtractor {
         });
     }
 
-    /// Shared scaffolding for the constant, static, and type-alias visitors:
-    /// enter the item's `cfg` gates, record its definition, walk it under an
-    /// item-depth guard, then restore the enclosing position.
-    ///
-    /// `associated_with` is the owner the syntax states: an `impl` self type,
-    /// a trait, or nothing at all for a free item.
+    /// Shared scaffolding for the named-declaration visitors: enter the item's
+    /// `cfg` gates, record its definition, walk it under an item-depth guard,
+    /// then restore the enclosing position.
     pub(in crate::ir::extract) fn visit_value_item(
         &mut self,
-        ident: &syn::Ident,
-        kind: SymbolKind,
-        attrs: &[syn::Attribute],
-        associated_with: Option<Rc<str>>,
+        item: ValueItem<'_>,
         visit: impl FnOnce(&mut Self),
     ) {
+        let attrs = item.attrs;
         self.with_cfg_gates(attrs, |this| {
-            let saved =
-                super::super::site_visitor::record_value_item(this, ident, kind, associated_with);
+            let saved = record_value_item(this, item);
             this.item_depth += 1;
             visit(this);
             this.item_depth -= 1;
             this.sites.restore(saved);
         });
+    }
+
+    /// Enter one `impl` block: the physical declaration site it states, the
+    /// `#[cfg(…)]` gates it carries, and the item-depth level it opens.
+    ///
+    /// Both `impl` routes take it — the one whose self type has a name and the
+    /// one whose does not — because the block owns the items inside it either
+    /// way. Only what the named route additionally records differs.
+    pub(in crate::ir::extract) fn within_impl_block(
+        &mut self,
+        node: &syn::ItemImpl,
+        body: impl FnOnce(&mut Self),
+    ) {
+        self.item_depth += 1;
+        self.with_cfg_gates(&node.attrs, |this| {
+            let saved = enter_impl_block(this, node.extent());
+            body(this);
+            this.sites.restore(saved);
+        });
+        self.item_depth -= 1;
     }
 
     /// Shared scaffolding for loop visitors: increment depth + loop_depth,

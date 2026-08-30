@@ -33,9 +33,7 @@ pub(super) struct TypeName {
 
 /// One named type an in-snapshot package embeds.
 ///
-/// The name is shared rather than copied: one identity is cloned once per
-/// reached type per embedding level of every method-set walk, and a `Box<str>`
-/// there allocates a second copy of a name the slot already holds.
+/// The name is shared across embedding-level method-set walks.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct EmbeddedType {
     pub(super) unit: usize,

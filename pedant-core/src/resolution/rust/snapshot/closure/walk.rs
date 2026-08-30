@@ -1,6 +1,6 @@
 //! Traversal of one target's module declarations into frames.
 
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 
 use super::super::declaration::ModuleDeclaration;
@@ -12,15 +12,20 @@ use super::entry::ClosureEntry;
 use super::path::{
     candidate_paths, child_directory, external_child_directory, file_directory, inline_directories,
 };
-use super::state::{UnitClosure, Walk};
+use super::state::{UnitWalk, Walk};
 use crate::resolution::rust::edition::CargoEdition;
+use crate::resolution::rust::fault::RustSourceFault;
+use crate::resolution::rust::inventory::RustFileInventory;
+use crate::resolution::supply::SourceSupply;
 
 /// One module instance that still owes its children.
+///
+/// Both directories are shared because frames never mutate them.
 pub(super) struct Frame {
     pub(super) module: RustModuleId,
     pub(super) source: Arc<str>,
-    pub(super) directory: PathBuf,
-    pub(super) declared_directory: PathBuf,
+    pub(super) directory: Arc<Path>,
+    pub(super) declared_directory: Arc<Path>,
     declarations: Arc<[ModuleDeclaration]>,
     depth: u32,
     edition: CargoEdition,
@@ -33,61 +38,137 @@ pub(super) struct ChildContext<'a> {
     depth: u32,
 }
 
+/// Whether the traversal goes on after one resolved declaration.
+///
+/// Named rather than a `bool`, because both readings of a bare flag are
+/// plausible here — "this branch resolved" and "keep walking" — and only one of
+/// them is what the value carries.
+enum Traversal {
+    /// Take the next frame off the pending stack.
+    Continue,
+    /// A crossed ceiling makes every later step meaningless; stop.
+    Halt,
+}
+
+/// The crate-root instance one unit's walk starts from.
+struct Rooted {
+    walk: Walk,
+    pending: Vec<Frame>,
+}
+
 /// Walk one target's module closure into the shared store.
 ///
-/// Returns `None` when the entry point itself could not be reached; any other
-/// failure is recorded and leaves the caller to refuse the whole snapshot.
-pub(in crate::resolution::rust::snapshot) fn walk_unit(
+/// Reports how the walk ended rather than only what it reached. A crossed
+/// ceiling is decided here, on the failure this walk collected, so the caller
+/// that stops selecting units reads that decision instead of rescanning the
+/// failures for it.
+pub(in crate::resolution::rust::snapshot) fn walk_unit<
+    P: SourceSupply<RustFileInventory, RustSourceFault>,
+>(
     store: &mut SourceStore,
+    provider: &mut P,
     entry: &ClosureEntry<'_>,
     failures: &mut Vec<SourceClosureFailure>,
-) -> Option<UnitClosure> {
+) -> UnitWalk {
     let site = ClosureSite::Target {
         name: Box::from(entry.target_name),
         entry: Box::from(entry.entry_path),
     };
-    let absolute = store.root().join(entry.entry_path);
-    let canonical = collect(store.canonical_inside(&absolute, &site), failures)?;
-    let path = collect(store.intern(&canonical, &site, entry.edition), failures)?;
-    let declarations = collect(store.declarations((&*path, 0), &site), failures)?;
+    match rooted(store, provider, entry, &site) {
+        Ok(rooted) => follow_from(store, provider, rooted, failures),
+        Err(failure) => unreached(failure, failures),
+    }
+}
 
-    let mut walk = Walk::rooted(&path, store.limits().max_module_instances);
-    let mut pending = vec![Frame {
+/// The crate-root frame this unit's walk starts from, or the failure that
+/// stopped the entry point itself.
+fn rooted<P: SourceSupply<RustFileInventory, RustSourceFault>>(
+    store: &mut SourceStore,
+    provider: &mut P,
+    entry: &ClosureEntry<'_>,
+    site: &ClosureSite,
+) -> Result<Rooted, SourceClosureFailure> {
+    let absolute = store.root().join(entry.entry_path);
+    let canonical = store.canonical_inside(&absolute, site)?;
+    let path = store.intern(provider, &canonical, site, entry.edition)?;
+    let declarations = store.declarations((&*path, 0), site)?;
+    let walk = Walk::rooted(&path, store.limits().max_module_instances);
+    let declared: Arc<Path> = Arc::from(file_directory(&canonical));
+    let pending = vec![Frame {
         module: walk.root_id(),
-        source: Arc::clone(&path),
-        directory: child_directory(&canonical, true),
-        declared_directory: file_directory(&canonical),
+        source: path,
+        directory: child_directory(&canonical, &declared, true),
+        declared_directory: declared,
         declarations,
         depth: 0,
         edition: entry.edition,
     }];
-    while let Some(frame) = pending.pop() {
-        if !expand(store, &frame, (&mut walk, &mut pending), failures) {
-            break;
-        }
-    }
-    Some(walk.finish())
+    Ok(Rooted { walk, pending })
 }
 
-fn collect<T>(
-    outcome: Result<T, SourceClosureFailure>,
-    failures: &mut Vec<SourceClosureFailure>,
-) -> Option<T> {
-    match outcome {
-        Ok(value) => Some(value),
-        Err(failure) => {
-            failures.push(failure);
-            None
-        }
-    }
-}
-
-fn expand(
+/// Follow every pending frame, then name how the walk ended.
+fn follow_from<P: SourceSupply<RustFileInventory, RustSourceFault>>(
     store: &mut SourceStore,
+    provider: &mut P,
+    rooted: Rooted,
+    failures: &mut Vec<SourceClosureFailure>,
+) -> UnitWalk {
+    let Rooted {
+        mut walk,
+        mut pending,
+    } = rooted;
+    match follow(store, provider, (&mut walk, &mut pending), failures) {
+        Traversal::Continue => UnitWalk::Followed(walk.finish()),
+        Traversal::Halt => UnitWalk::Halted(walk.finish()),
+    }
+}
+
+/// Take frames off the pending stack until it empties or a ceiling ends it.
+fn follow<P: SourceSupply<RustFileInventory, RustSourceFault>>(
+    store: &mut SourceStore,
+    provider: &mut P,
+    walk: (&mut Walk, &mut Vec<Frame>),
+    failures: &mut Vec<SourceClosureFailure>,
+) -> Traversal {
+    let (instances, pending) = walk;
+    while let Some(frame) = pending.pop() {
+        match expand(store, provider, &frame, (instances, pending), failures) {
+            Traversal::Continue => (),
+            Traversal::Halt => return Traversal::Halt,
+        }
+    }
+    Traversal::Continue
+}
+
+/// The entry point could not be reached, in the two ways that ends a selection.
+fn unreached(failure: SourceClosureFailure, failures: &mut Vec<SourceClosureFailure>) -> UnitWalk {
+    match collect(failure, failures) {
+        Traversal::Halt => UnitWalk::Exhausted,
+        Traversal::Continue => UnitWalk::Unreached,
+    }
+}
+
+/// Record one failure and answer whether the traversal survives it.
+///
+/// The one owner of that decision. A crossed ceiling makes every later step
+/// meaningless, so reporting the same limit once per remaining source would
+/// bury the one real cause.
+fn collect(failure: SourceClosureFailure, failures: &mut Vec<SourceClosureFailure>) -> Traversal {
+    let fatal = failure.is_fatal();
+    failures.push(failure);
+    match fatal {
+        true => Traversal::Halt,
+        false => Traversal::Continue,
+    }
+}
+
+fn expand<P: SourceSupply<RustFileInventory, RustSourceFault>>(
+    store: &mut SourceStore,
+    provider: &mut P,
     frame: &Frame,
     walk: (&mut Walk, &mut Vec<Frame>),
     failures: &mut Vec<SourceClosureFailure>,
-) -> bool {
+) -> Traversal {
     let (instances, pending) = walk;
     for declaration in frame.declarations.iter() {
         let context = ChildContext {
@@ -95,41 +176,39 @@ fn expand(
             declaration,
             depth: frame.depth.saturating_add(1),
         };
-        let outcome = resolve(store, &context, instances);
-        if !queue(outcome, pending, failures) {
-            return false;
+        let outcome = resolve(store, provider, &context, instances);
+        match queue(outcome, pending, failures) {
+            Traversal::Continue => (),
+            Traversal::Halt => return Traversal::Halt,
         }
     }
-    true
+    Traversal::Continue
 }
 
 fn queue(
     outcome: Result<Vec<Frame>, SourceClosureFailure>,
     pending: &mut Vec<Frame>,
     failures: &mut Vec<SourceClosureFailure>,
-) -> bool {
+) -> Traversal {
     match outcome {
         Ok(next) => {
             pending.extend(next);
-            true
+            Traversal::Continue
         }
-        Err(failure) => {
-            let fatal = failure.is_fatal();
-            failures.push(failure);
-            !fatal
-        }
+        Err(failure) => collect(failure, failures),
     }
 }
 
-fn resolve(
+fn resolve<P: SourceSupply<RustFileInventory, RustSourceFault>>(
     store: &mut SourceStore,
+    provider: &mut P,
     context: &ChildContext<'_>,
     walk: &mut Walk,
 ) -> Result<Vec<Frame>, SourceClosureFailure> {
     check_depth(store, context)?;
     match context.declaration.inline_scope {
         Some(scope) => inline_frames(store, context, (scope, walk)),
-        None => external_frames(store, context, walk),
+        None => external_frames(store, provider, context, walk),
     }
 }
 
@@ -176,7 +255,7 @@ fn inline_frames(
     for directory in inline_directories(context).into_vec() {
         frames.push(inline_frame(
             context,
-            (scope, Arc::clone(&children), directory),
+            (scope, Arc::clone(&children), Arc::from(directory)),
             walk,
         )?);
     }
@@ -185,7 +264,7 @@ fn inline_frames(
 
 fn inline_frame(
     context: &ChildContext<'_>,
-    inline: (u32, Arc<[ModuleDeclaration]>, PathBuf),
+    inline: (u32, Arc<[ModuleDeclaration]>, Arc<Path>),
     walk: &mut Walk,
 ) -> Result<Frame, SourceClosureFailure> {
     let (scope, children, directory) = inline;
@@ -203,7 +282,7 @@ fn inline_frame(
     Ok(Frame {
         module,
         source: Arc::clone(&context.frame.source),
-        declared_directory: directory.clone(),
+        declared_directory: Arc::clone(&directory),
         directory,
         declarations: children,
         depth: context.depth,
@@ -211,28 +290,36 @@ fn inline_frame(
     })
 }
 
-fn external_frames(
+fn external_frames<P: SourceSupply<RustFileInventory, RustSourceFault>>(
     store: &mut SourceStore,
+    provider: &mut P,
     context: &ChildContext<'_>,
     walk: &mut Walk,
 ) -> Result<Vec<Frame>, SourceClosureFailure> {
     let site = module_site(context);
     let mut frames = Vec::new();
     for candidate in candidate_paths(store, context, &site)?.into_vec() {
-        frames.extend(external_frame(store, context, (&candidate, &site), walk)?);
+        frames.extend(external_frame(
+            store,
+            provider,
+            context,
+            (&candidate, &site),
+            walk,
+        )?);
     }
     Ok(frames)
 }
 
-fn external_frame(
+fn external_frame<P: SourceSupply<RustFileInventory, RustSourceFault>>(
     store: &mut SourceStore,
+    provider: &mut P,
     context: &ChildContext<'_>,
-    candidate: (&std::path::Path, &ClosureSite),
+    candidate: (&Path, &ClosureSite),
     walk: &mut Walk,
 ) -> Result<Option<Frame>, SourceClosureFailure> {
     let (candidate, site) = candidate;
     let canonical = store.canonical_inside(candidate, site)?;
-    let path = store.intern(&canonical, site, context.frame.edition)?;
+    let path = store.intern(provider, &canonical, site, context.frame.edition)?;
     check_instances(walk, context)?;
     let module = walk.push(RustModuleInstance {
         id: walk.next_id(),
@@ -247,15 +334,18 @@ fn external_frame(
     walk.record_source(&path);
     match walk.ancestor_holds(context.frame.module, &path) {
         true => Ok(None),
-        false => Ok(Some(Frame {
-            module,
-            declarations: store.declarations((&*path, 0), site)?,
-            source: path,
-            directory: external_child_directory(&canonical, context),
-            declared_directory: file_directory(&canonical),
-            depth: context.depth,
-            edition: context.frame.edition,
-        })),
+        false => {
+            let declared: Arc<Path> = Arc::from(file_directory(&canonical));
+            Ok(Some(Frame {
+                module,
+                declarations: store.declarations((&*path, 0), site)?,
+                source: path,
+                directory: external_child_directory(&canonical, context, &declared),
+                declared_directory: declared,
+                depth: context.depth,
+                edition: context.frame.edition,
+            }))
+        }
     }
 }
 

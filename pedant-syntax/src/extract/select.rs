@@ -139,9 +139,6 @@ impl<'s> UnitSelector<'s> {
             {
                 continue;
             }
-            // Two `usize` ends copied into a new range. `Range` is not `Copy`,
-            // because it is also an iterator, so the ends are named rather than
-            // cloned: nothing here allocates.
             *best = Some(Candidate {
                 kind,
                 name,
@@ -150,20 +147,15 @@ impl<'s> UnitSelector<'s> {
         }
     }
 
-    /// The byte offset of a zero-based character column, for parser spans.
-    #[cfg(feature = "rust")]
-    pub(crate) fn offset_at_char_column(&self, line: usize, column: usize) -> Option<usize> {
-        self.index.offset_at_char_column(line, column)
-    }
-
-    /// The source this selector resolves against.
+    /// The line index this selector resolves against.
     ///
-    /// A backend that slices its own text reads it from here rather than
-    /// carrying a second reference, so one string answers both the offsets and
-    /// the slices.
+    /// A backend that maps parser positions reads the index from here rather
+    /// than carrying a second one, so the offsets it computes, the text it
+    /// slices, and the targets it is being compared against all come from one
+    /// scan of one string.
     #[cfg(feature = "rust")]
-    pub(crate) fn source(&self) -> &'s str {
-        self.index.source()
+    pub(crate) fn index(&self) -> &SourceIndex<'s> {
+        &self.index
     }
 
     /// The winning declaration as an owned boundary value.

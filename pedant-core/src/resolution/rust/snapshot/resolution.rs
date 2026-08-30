@@ -8,17 +8,21 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::resolution::line_index;
+use crate::resolution::rust::fault::RustSourceFault;
 use crate::resolution::rust::fingerprint::{self, RustSnapshotFingerprint};
 use crate::resolution::rust::identity::{TargetId, index_of, position};
+use crate::resolution::rust::inventory::RustFileInventory;
 use crate::resolution::rust::limits::ResolutionLimits;
 use crate::resolution::rust::project::RustProject;
 use crate::resolution::rust::warning::{self, RustResolutionWarning};
+use crate::resolution::supply::SourceSupply;
 
 use super::authority;
-use super::closure::{self, ClosureEntry};
+use super::closure::{self, ClosureEntry, UnitClosure, UnitWalk};
 use super::error::{RustSnapshotError, SourceClosureFailure};
 use super::selection::{self, EdgeDraft, Selection, UnitDraft};
-use super::source::{self, RustSource};
+use super::source::RustSource;
 use super::store::{SourceStore, refuse};
 use super::unit::{RustResolutionUnit, RustSnapshotEdge, RustSnapshotUnitId};
 
@@ -88,7 +92,7 @@ impl RustResolutionSnapshot {
 
     /// The source at one repository-relative path.
     pub fn source(&self, path: &str) -> Option<&RustSource> {
-        source::find(&self.sources, path)
+        line_index::find(&self.sources, path)
     }
 
     /// The opaque identity computed when this snapshot was completed.
@@ -102,15 +106,16 @@ impl RustResolutionSnapshot {
 }
 
 /// Validate authority, select the units, then walk each unit's closure.
-pub(in crate::resolution::rust) fn build(
+pub(in crate::resolution::rust) fn build<P: SourceSupply<RustFileInventory, RustSourceFault>>(
     project: &RustProject,
+    provider: &mut P,
     id: TargetId,
 ) -> Result<RustResolutionSnapshot, RustSnapshotError> {
     let root = authority::validated_target(project, id)?;
     let selection = selection::select(project, root)?;
     let mut store = SourceStore::new(project.root(), project.limits());
     let mut failures = Vec::new();
-    let units = build_units(&selection, &mut store, &mut failures);
+    let units = build_units(&selection, &mut store, provider, &mut failures);
     match failures.is_empty() {
         false => Err(refuse(&store, failures)),
         true => Ok(complete(
@@ -155,39 +160,49 @@ fn complete(
     }
 }
 
-fn build_units(
+/// Walk each selected unit in turn, stopping where the walk says it stopped.
+///
+/// A crossed ceiling ends the whole selection: the walk that met it already
+/// decided that, on the failure it collected, so this reads its answer rather
+/// than rescanning the failures it added.
+fn build_units<P: SourceSupply<RustFileInventory, RustSourceFault>>(
     selection: &Selection,
     store: &mut SourceStore,
+    provider: &mut P,
     failures: &mut Vec<SourceClosureFailure>,
 ) -> Box<[RustResolutionUnit]> {
     let mut units = Vec::new();
     for (index, draft) in selection.units.iter().enumerate() {
-        let seen = failures.len();
-        units.extend(build_unit((draft, index), store, failures));
-        if failures
-            .iter()
-            .skip(seen)
-            .any(SourceClosureFailure::is_fatal)
-        {
-            break;
+        match walk_draft(draft, store, provider, failures) {
+            UnitWalk::Followed(closure) => units.push(build_unit((draft, index), closure)),
+            UnitWalk::Halted(closure) => {
+                units.push(build_unit((draft, index), closure));
+                break;
+            }
+            UnitWalk::Unreached => (),
+            UnitWalk::Exhausted => break,
         }
     }
     units.into_boxed_slice()
 }
 
-fn build_unit(
-    draft: (&UnitDraft, usize),
+fn walk_draft<P: SourceSupply<RustFileInventory, RustSourceFault>>(
+    unit: &UnitDraft,
     store: &mut SourceStore,
+    provider: &mut P,
     failures: &mut Vec<SourceClosureFailure>,
-) -> Option<RustResolutionUnit> {
-    let (unit, index) = draft;
+) -> UnitWalk {
     let entry = ClosureEntry {
         target_name: &unit.target_name,
         entry_path: &unit.entry,
         edition: unit.edition,
     };
-    let closure = closure::walk_unit(store, &entry, failures)?;
-    Some(RustResolutionUnit {
+    closure::walk_unit(store, provider, &entry, failures)
+}
+
+fn build_unit(draft: (&UnitDraft, usize), closure: UnitClosure) -> RustResolutionUnit {
+    let (unit, index) = draft;
+    RustResolutionUnit {
         id: RustSnapshotUnitId::new(position(index)),
         package: unit.package,
         target: unit.target,
@@ -198,7 +213,7 @@ fn build_unit(
         crate_root: Arc::clone(&unit.entry),
         modules: closure.modules,
         sources: closure.sources,
-    })
+    }
 }
 
 fn build_edges(drafts: &[EdgeDraft]) -> Box<[RustSnapshotEdge]> {

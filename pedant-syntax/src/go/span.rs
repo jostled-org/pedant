@@ -14,7 +14,7 @@ use crate::tree_sitter::Node;
 ///
 /// Lines and columns are zero-based, and a column is a UTF-8 byte offset within
 /// its line — the same model
-/// [`SourcePosition`](pedant_types::resolution::SourcePosition) states, without
+/// [`SourcePosition`](pedant_types::SourcePosition) states, without
 /// a file path, because a fact names a position inside one already-known
 /// source.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]

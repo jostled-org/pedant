@@ -163,6 +163,30 @@ impl<'source> ParsedSyntax<'source> {
         }
     }
 
+    /// Every logical structure this session's source states.
+    ///
+    /// Walks the bound tree once and parses nothing. Go is answered from
+    /// [`GoFileFacts`](crate::go::GoFileFacts), which is the sole Go
+    /// declaration index; every other bound grammar is answered by the shared
+    /// declaration walk.
+    ///
+    /// Returns a [`StructureError`](crate::StructureError) rather than an empty
+    /// inventory whenever the source states no complete structure set — a
+    /// recovery tree, an absent backend, or either spent ceiling — because an
+    /// empty inventory already means "this source declares nothing".
+    pub fn structure_inventory(
+        &self,
+        limits: crate::StructureInventoryLimits,
+    ) -> Result<crate::StructureInventory<'source>, crate::StructureError> {
+        crate::structure::bound_inventory(
+            self.tree.root_node(),
+            self.source,
+            self.language,
+            self.has_errors(),
+            limits,
+        )
+    }
+
     /// The narrowest recognized declaration containing `at`.
     ///
     /// One slot of [`Self::enclosing_unit_anchors`], which owns the whole

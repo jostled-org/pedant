@@ -9,7 +9,7 @@
 //! finds it, and the single walk that answers what a parsed source names.
 
 use super::closure::{Member, crate_path, discover_closure, member, parse_rust_file};
-use super::scan::{SourceScan, free_function, impl_method};
+use super::scan::{SourceScan, method_owner, owner};
 
 /// Every production source `lib.rs` owns, written out rather than derived.
 ///
@@ -17,6 +17,7 @@ use super::scan::{SourceScan, free_function, impl_method};
 /// declarations, and the two must agree, so a new or moved module fails here
 /// instead of arriving unscanned.
 const MODULE_INVENTORY: &[&str] = &[
+    "backend.rs",
     "classify.rs",
     "extract/dispatch.rs",
     "extract/index.rs",
@@ -32,6 +33,7 @@ const MODULE_INVENTORY: &[&str] = &[
     "go/facts.rs",
     "go/frame.rs",
     "go/import.rs",
+    "go/inventory.rs",
     "go/limits.rs",
     "go/mod.rs",
     "go/reference.rs",
@@ -45,6 +47,19 @@ const MODULE_INVENTORY: &[&str] = &[
     "lib.rs",
     "location.rs",
     "span.rs",
+    "structure/bound.rs",
+    "structure/builder.rs",
+    "structure/dispatch.rs",
+    "structure/error.rs",
+    "structure/fact.rs",
+    "structure/go.rs",
+    "structure/inventory.rs",
+    "structure/items.rs",
+    "structure/limits.rs",
+    "structure/mod.rs",
+    "structure/recognize.rs",
+    "structure/rust.rs",
+    "structure/ts.rs",
     "tree_sitter/mod.rs",
     "tree_sitter/parser.rs",
     "tree_sitter/session.rs",
@@ -141,6 +156,14 @@ fn assert_go_grammar_is_owned_by_the_fact_inventory(closure: &[Member]) {
             .filter(|member| member.scan.quotes(kind))
             .map(|member| member.label.as_ref())
             .collect();
+        // `all` holds over nothing, so a kind no production module writes down
+        // at all passes the ownership claim below in silence — which is the
+        // shape of the `type_spec` regression this list was written for, one
+        // step further along.
+        assert!(
+            !naming.is_empty(),
+            "some production module must name `{kind}`, and none does"
+        );
         assert!(
             naming.iter().all(|label| label.starts_with("go/")),
             "only the Go fact inventory may name `{kind}`, but {naming:?} do"
@@ -203,8 +226,7 @@ fn assert_session_parses_nothing(closure: &[Member]) {
 /// the single-location answer asks that batch rather than selecting again.
 fn assert_session_delegates_once(closure: &[Member]) {
     let file = &member(closure, SESSION_MODULE).file;
-    let batch = impl_method(file, ANCHOR_METHOD)
-        .unwrap_or_else(|| panic!("{SESSION_MODULE} should declare `{ANCHOR_METHOD}`"));
+    let batch = method_owner(file, ANCHOR_METHOD, SESSION_MODULE);
     let scan = SourceScan::of_block(&batch.block);
 
     assert_eq!(
@@ -226,8 +248,7 @@ fn assert_session_delegates_once(closure: &[Member]) {
         "`{ANCHOR_METHOD}` must index the bound source"
     );
 
-    let single = impl_method(file, SINGLE_ANCHOR_METHOD)
-        .unwrap_or_else(|| panic!("{SESSION_MODULE} should declare `{SINGLE_ANCHOR_METHOD}`"));
+    let single = method_owner(file, SINGLE_ANCHOR_METHOD, SESSION_MODULE);
     let single_scan = SourceScan::of_block(&single.block);
     assert_eq!(
         single_scan.method_calls(ANCHOR_METHOD),
@@ -258,8 +279,7 @@ fn parse_bound_propagates_parser_failure_as_absence() {
     let parser_source = crate_path("src").join(PARSER_MODULE);
     let file = parse_rust_file(&parser_source);
 
-    let bound = free_function(&file, "parse_bound")
-        .unwrap_or_else(|| panic!("{PARSER_MODULE} should declare `parse_bound`"));
+    let bound = owner(&file, "parse_bound", PARSER_MODULE);
     let bound_scan = SourceScan::of_block(&bound.block);
     assert_eq!(
         bound_scan.calls("parse"),
@@ -272,8 +292,7 @@ fn parse_bound_propagates_parser_failure_as_absence() {
     );
     assert_no_fallback(&bound_scan, "parse_bound");
 
-    let parse = free_function(&file, "parse")
-        .unwrap_or_else(|| panic!("{PARSER_MODULE} should declare `parse`"));
+    let parse = owner(&file, "parse", PARSER_MODULE);
     let parse_scan = SourceScan::of_block(&parse.block);
     assert_eq!(
         parse_scan.method_calls("parse"),

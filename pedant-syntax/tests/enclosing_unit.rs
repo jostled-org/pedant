@@ -429,6 +429,19 @@ mod bash;
 #[path = "enclosing_unit_support/kind_coverage.rs"]
 mod kind_coverage;
 
+/// Source-bound structure inventories, which the same all-features
+/// configuration proves for every grammar at once.
+#[cfg(all(
+    feature = "rust",
+    feature = "ts-python",
+    feature = "ts-javascript",
+    feature = "ts-typescript",
+    feature = "ts-go",
+    feature = "ts-bash"
+))]
+#[path = "enclosing_unit_support/structure_inventory/mod.rs"]
+mod structure_inventory;
+
 /// The shared `Language` enum gains Rust, and the exhaustive conversion sends
 /// it to the Rust backend, which extracts what the fixtures' Rust row already
 /// writes down. Path classification and detection exemption stay with

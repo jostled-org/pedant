@@ -9,6 +9,8 @@ mod authority;
 mod binding;
 /// A controlled snapshot claim whose field families a proof can perturb.
 mod claim;
+/// The site-coordinate resolution, including the fallbacks no parse reaches.
+mod coordinates;
 
 pub use authority::{RelativePathNormalizationError, normalize_relative_path, unknown_target_id};
 pub use binding::{
@@ -18,3 +20,4 @@ pub use binding::{
 pub use claim::{
     EdgeFingerprintClaim, SnapshotFingerprintClaim, SourceFingerprintClaim, UnitFingerprintClaim,
 };
+pub use coordinates::{SourceCoordinate, source_offset_at, source_span_between};

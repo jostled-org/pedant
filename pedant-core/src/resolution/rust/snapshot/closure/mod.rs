@@ -10,5 +10,5 @@ mod state;
 mod walk;
 
 pub(super) use entry::ClosureEntry;
-pub(super) use state::UnitClosure;
+pub(super) use state::{UnitClosure, UnitWalk};
 pub(super) use walk::walk_unit;

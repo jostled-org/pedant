@@ -54,7 +54,7 @@ pub(super) struct Index {
     positions: BTreeMap<(usize, usize), usize>,
     names: Scoped<usize>,
     modules: Scoped<usize>,
-    associated: Scoped<Box<str>>,
+    associated: Scoped<Arc<str>>,
     module_slots: Box<[Option<usize>]>,
 }
 
@@ -104,7 +104,7 @@ struct Draft {
     slots: Vec<DefinitionSlot>,
     positions: BTreeMap<(usize, usize), usize>,
     names: ScopedDraft<usize>,
-    associated: ScopedDraft<Box<str>>,
+    associated: ScopedDraft<Arc<str>>,
 }
 
 /// What one node contributes: its unit handle and the conditions its
@@ -218,7 +218,12 @@ fn record(draft: &mut Draft, position: (usize, usize, usize), definition: &Defin
     draft.positions.insert((node, site), slot);
     push(&mut draft.names, node, &definition.name, slot);
     if let Some(owner) = definition.associated_with.as_ref() {
-        push(&mut draft.associated, owner.clone(), &definition.name, slot);
+        push(
+            &mut draft.associated,
+            Arc::clone(owner),
+            &definition.name,
+            slot,
+        );
     }
 }
 
@@ -274,35 +279,62 @@ fn span_of(context: &NodeContext<'_>, definition: &DefinitionSite) -> Option<Sou
 
 fn freeze(draft: Draft, graph: &Graph) -> Index {
     let mut modules: ScopedDraft<usize> = ScopedDraft::new();
-    let module_slots: Box<[Option<usize>]> = (0..graph.nodes.len())
-        .map(|node| register_module(&draft, &mut modules, graph, node))
-        .collect();
+    let mut module_slots: Vec<Option<usize>> = Vec::with_capacity(graph.nodes.len());
+    for node in 0..graph.nodes.len() {
+        let selecting = declaring(&draft, graph, node);
+        if let Some(declaring) = &selecting {
+            register_module(&mut modules, (node, declaring));
+        }
+        module_slots.push(selecting.map(|declaring| declaring.slot));
+    }
     Index {
         slots: draft.slots.into_boxed_slice(),
         positions: draft.positions,
         names: sealed(draft.names),
         modules: sealed(modules),
         associated: sealed(draft.associated),
-        module_slots,
+        module_slots: module_slots.into_boxed_slice(),
     }
 }
 
-/// Bind one node to the `mod` definition that selected it, and make that
-/// definition's name select this node inside the declaring module.
-fn register_module(
-    draft: &Draft,
-    modules: &mut ScopedDraft<usize>,
+/// The `mod` item that selected one node.
+struct Declaring<'draft> {
+    /// The node whose source holds that `mod` item.
+    node: usize,
+    /// The definition slot the `mod` item produced.
+    slot: usize,
+    /// The name it declares, which is what selects the node it brought in.
+    name: &'draft str,
+}
+
+/// The `mod` definition that selected `node`, when a `mod` item selected it.
+///
+/// A lookup and nothing else. The name table below is written beside it rather
+/// than inside it, so a caller reading this for the slot it answers is not also
+/// growing a table it never named.
+fn declaring<'draft>(
+    draft: &'draft Draft,
     graph: &Graph,
     node: usize,
-) -> Option<usize> {
+) -> Option<Declaring<'draft>> {
     let declaration = graph.nodes.get(node)?.declaration?;
     let slot = draft
         .positions
         .get(&(declaration.node, declaration.definition))
         .copied()?;
     let named = draft.slots.get(slot)?;
-    push(modules, declaration.node, &named.name, node);
-    Some(slot)
+    Some(Declaring {
+        node: declaration.node,
+        slot,
+        name: &named.name,
+    })
+}
+
+/// Make one `mod` item's own name select the node it brought in, inside the
+/// module that declares it.
+fn register_module(modules: &mut ScopedDraft<usize>, selected: (usize, &Declaring<'_>)) {
+    let (node, declaring) = selected;
+    push(modules, declaring.node, declaring.name, node);
 }
 
 fn select<'a, K: Ord>(table: &'a Scoped<K>, key: &K, name: &str) -> &'a [usize] {

@@ -7,8 +7,11 @@
 
 mod dispatch;
 
+// Visible to the crate, not just to this module: a structure inventory states
+// its line spans and resolves its parser positions through the same checked
+// index every extraction does, so both read one definition of "line 3".
 #[cfg(any(feature = "rust", feature = "_ts"))]
-mod index;
+pub(crate) mod index;
 
 // Visible to the crate, not just to this module: a bound parse session selects
 // declarations through the same selector and the same recognizer, so both are

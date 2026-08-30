@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use proc_macro2::LineColumn;
 use syn::{Expr, FnArg, ReturnType, Signature, Type};
@@ -281,13 +281,13 @@ fn get_type_param_bound_span(bound: &syn::TypeParamBound) -> LineColumn {
 
 /// Returns the first type name from a type (the first path segment), without
 /// allocating the full list of recursively collected names.
-pub(crate) fn first_type_name(ty: &Type) -> Option<Rc<str>> {
+pub(crate) fn first_type_name(ty: &Type) -> Option<Arc<str>> {
     match ty {
         Type::Path(tp) => tp
             .path
             .segments
             .first()
-            .map(|seg| Rc::from(seg.ident.to_string())),
+            .map(|seg| Arc::from(seg.ident.to_string())),
         Type::Reference(r) => first_type_name(&r.elem),
         Type::Tuple(t) => t.elems.iter().find_map(first_type_name),
         Type::Slice(s) => first_type_name(&s.elem),
@@ -296,14 +296,14 @@ pub(crate) fn first_type_name(ty: &Type) -> Option<Rc<str>> {
     }
 }
 
-pub(crate) fn collect_type_names_into(ty: &Type, names: &mut Vec<Rc<str>>) {
+pub(crate) fn collect_type_names_into(ty: &Type, names: &mut Vec<Arc<str>>) {
     match ty {
         Type::Path(tp) => {
             names.extend(
                 tp.path
                     .segments
                     .iter()
-                    .map(|seg| Rc::from(seg.ident.to_string())),
+                    .map(|seg| Arc::from(seg.ident.to_string())),
             );
             for seg in &tp.path.segments {
                 collect_segment_arg_type_names(seg, names);
@@ -322,7 +322,7 @@ pub(crate) fn collect_type_names_into(ty: &Type, names: &mut Vec<Rc<str>>) {
 }
 
 /// Recurse into a path segment's angle-bracketed type arguments.
-fn collect_segment_arg_type_names(seg: &syn::PathSegment, names: &mut Vec<Rc<str>>) {
+fn collect_segment_arg_type_names(seg: &syn::PathSegment, names: &mut Vec<Arc<str>>) {
     let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
         return;
     };
@@ -332,7 +332,7 @@ fn collect_segment_arg_type_names(seg: &syn::PathSegment, names: &mut Vec<Rc<str
         .for_each(|inner| collect_type_names_into(inner, names));
 }
 
-pub(crate) fn collect_signature_type_names_into(sig: &Signature, names: &mut Vec<Rc<str>>) {
+pub(crate) fn collect_signature_type_names_into(sig: &Signature, names: &mut Vec<Arc<str>>) {
     for input in &sig.inputs {
         match input {
             FnArg::Typed(pat) => collect_type_names_into(&pat.ty, names),

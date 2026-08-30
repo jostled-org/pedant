@@ -1,0 +1,177 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "f408daaa10386c50f1cdb412e6f0ebf2f0a3ce0c904e276385677dda1228621a",
+  "crate_name": "ignore",
+  "crate_version": "0.4.32",
+  "analysis_tier": "syntactic",
+  "timestamp": 1787670593,
+  "analysis_completeness": {
+    "analyzed_files": 9,
+    "skipped_files": 0
+  },
+  "rust_version": "1.88",
+  "profile": {
+    "findings": [
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/dir.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "std::fs::self",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/dir.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "std::fs::File",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/dir.rs",
+          "line": 16,
+          "column": 1
+        },
+        "evidence": "std::fs::FileType",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/dir.rs",
+          "line": 1125,
+          "column": 24
+        },
+        "evidence": "std::fs::File::create",
+        "origin": "import"
+      },
+      {
+        "capability": "file_write",
+        "location": {
+          "file": "./src/dir.rs",
+          "line": 1130,
+          "column": 9
+        },
+        "evidence": "std::fs::create_dir_all",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/gitignore.rs",
+          "line": 10,
+          "column": 1
+        },
+        "evidence": "std::fs::File",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/incremental.rs",
+          "line": 559,
+          "column": 5
+        },
+        "evidence": "std::fs::self",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/incremental.rs",
+          "line": 559,
+          "column": 5
+        },
+        "evidence": "std::fs::File",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 491,
+          "column": 5
+        },
+        "evidence": "std::fs",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/walk.rs",
+          "line": 1,
+          "column": 1
+        },
+        "evidence": "std::fs::self",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/walk.rs",
+          "line": 1,
+          "column": 1
+        },
+        "evidence": "std::fs::FileType",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/walk.rs",
+          "line": 1,
+          "column": 1
+        },
+        "evidence": "std::fs::Metadata",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/walk.rs",
+          "line": 11,
+          "column": 1
+        },
+        "evidence": "walkdir::WalkDir",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/walk.rs",
+          "line": 221,
+          "column": 9
+        },
+        "evidence": "walkdir::DirEntryExt",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/walk.rs",
+          "line": 2196,
+          "column": 5
+        },
+        "evidence": "std::fs::self",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/walk.rs",
+          "line": 2196,
+          "column": 5
+        },
+        "evidence": "std::fs::File",
+        "origin": "import"
+      }
+    ]
+  }
+}

@@ -1,4 +1,3 @@
-use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::check_config::CheckConfig;
@@ -48,7 +47,7 @@ pub(super) fn check_ungated_test_api(
 
 fn maybe_flag(
     name: &str,
-    gates: &[Rc<str>],
+    gates: &[Arc<str>],
     span: IrSpan,
     patterns: &[Arc<str>],
     feature: &str,

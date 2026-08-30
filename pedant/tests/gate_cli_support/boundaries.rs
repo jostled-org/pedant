@@ -1,5 +1,11 @@
-//! The module, support, dependency, and release boundaries this design states,
-//! read from tracked source, Cargo manifests, and release workflows only.
+//! The module, support, dependency, and release-order boundaries this design
+//! states, read from tracked source and manifests only.
+//!
+//! Who may publish, and who may run the guards that decide it, is the release
+//! authority's claim rather than this one: `pedant-core`'s
+//! `code_intelligence_release_and_archive_owners_are_exact` requires each of
+//! those routes to appear in exactly one tracked workflow. A weaker copy here
+//! would agree with a second job that published from an ungated tree.
 
 use std::path::PathBuf;
 
@@ -63,7 +69,6 @@ pub(crate) fn repository_boundaries_are_exact() {
         &read(&workspace_root().join("release-plz.toml")),
     );
     graph_holds_no_policy_owner();
-    release_only_manifest_check_is_release_only();
 }
 
 fn production_source_holds_no_tests() {
@@ -97,26 +102,4 @@ fn graph_holds_no_policy_owner() {
             path.display()
         );
     }
-}
-
-/// The tagged-manifest immutability check is a release-only gate.
-fn release_only_manifest_check_is_release_only() {
-    let script = "check_published_manifests.sh";
-    let ci = read(&workspace_root().join(".github/workflows/ci.yml"));
-    assert!(
-        !ci.contains(script),
-        "ordinary implementation CI must not run the release-only manifest check"
-    );
-
-    let release = read(&workspace_root().join(".github/workflows/release-plz.yml"));
-    let readiness = release
-        .find("check_release_readiness.sh")
-        .expect("the release workflow gates on readiness");
-    let manifests = release
-        .find(script)
-        .expect("the release workflow retains the strict manifest check");
-    assert!(
-        readiness < manifests,
-        "the strict manifest check stays behind release readiness"
-    );
 }

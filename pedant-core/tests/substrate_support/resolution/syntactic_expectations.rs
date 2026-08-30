@@ -5,8 +5,10 @@
 //! moved. Five rules produce all of it:
 //!
 //! 1. **Span.** A site spans the declared name, zero-based line and zero-based
-//!    UTF-8 byte column, end exclusive. A `mod` item instead spans `mod` through
-//!    its name; a `use` item spans `use` through its semicolon.
+//!    UTF-8 byte column, end exclusive. Every definition does, a `mod` item's
+//!    included. Two reference sites are wider than a name: an external `mod`
+//!    item's reference spans `mod` through the name, because it mentions the
+//!    source it selects, and a `use` item's spans `use` through its semicolon.
 //! 2. **Parent.** A definition names its lexical owner when the source states
 //!    one — a trait states one, an `impl` block does not — and otherwise the
 //!    `mod` item that selected its source.
@@ -60,7 +62,7 @@ pub const CORPUS_DEFINITIONS: &[&str] = &[
     "app|Function|plain|src/alpha.rs:10:7-10:12|alpha",
     "app|Struct|Panel|src/alpha.rs:12:11-12:16|alpha",
     "app|Method|draw|src/alpha.rs:17:11-17:15|alpha",
-    "app|Module|alpha|src/lib.rs:0:4-0:13|-",
+    "app|Module|alpha|src/lib.rs:0:8-0:13|-",
     "app|Struct|Root|src/lib.rs:5:11-5:15|-",
     "app|Function|build|src/lib.rs:8:11-8:16|-",
     "app|Trait|Shape|src/lib.rs:13:10-13:15|-",
@@ -122,9 +124,9 @@ pub const SHARED_DEFINITIONS: &[&str] = &[
     "app|Struct|Item|shared/common.rs:0:11-0:15|common",
     "app|Function|make|shared/common.rs:3:11-3:15|common",
     "app|Function|shared|shared/common.rs:8:7-8:13|common",
-    "app|Module|common|src/lib.rs:1:4-1:14|-",
+    "app|Module|common|src/lib.rs:1:8-1:14|-",
     "app|Function|root_call|src/lib.rs:3:7-3:16|-",
-    "helper|Module|common|crates/helper/src/lib.rs:1:4-1:14|-",
+    "helper|Module|common|crates/helper/src/lib.rs:1:8-1:14|-",
     "helper|Function|helper_call|crates/helper/src/lib.rs:3:7-3:18|-",
     "helper|Struct|Item|shared/common.rs:0:11-0:15|common",
     "helper|Function|make|shared/common.rs:3:11-3:15|common",
@@ -142,11 +144,11 @@ pub const SHARED_DEFINITIONS: &[&str] = &[
 pub const SHARED_TARGETS: &[&str] = &[
     "app|Item@shared/common.rs:2:5-2:9|Resolved:app/Item@shared/common.rs:0:11-0:15|",
     "app|Item@shared/common.rs:3:21-3:25|Resolved:app/Item@shared/common.rs:0:11-0:15|",
-    "app|common@src/lib.rs:1:4-1:14|Resolved:app/common@src/lib.rs:1:4-1:14|",
+    "app|common@src/lib.rs:1:4-1:14|Resolved:app/common@src/lib.rs:1:8-1:14|",
     "app|common::shared@src/lib.rs:4:4-4:18|Resolved:app/shared@shared/common.rs:8:7-8:13|",
     "app|common::Item::make@src/lib.rs:5:4-5:22|Resolved:app/make@shared/common.rs:3:11-3:15|",
     "helper|common@crates/helper/src/lib.rs:1:4-1:14|\
-     Resolved:helper/common@crates/helper/src/lib.rs:1:4-1:14|",
+     Resolved:helper/common@crates/helper/src/lib.rs:1:8-1:14|",
     "helper|common::shared@crates/helper/src/lib.rs:4:4-4:18|\
      Resolved:helper/shared@shared/common.rs:8:7-8:13|",
     "helper|common::Item::make@crates/helper/src/lib.rs:5:4-5:22|\

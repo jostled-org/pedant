@@ -13,11 +13,25 @@ state="${FAKE_STATE_DIR}"
 printf '%s\n' "$$" >> "${state}/pids"
 printf '%s\n' "${CARGO_TARGET_DIR:-}" >> "${state}/targets"
 
+# One failure convention, shared with the other fake this proof installs: name
+# the fake, state what it was asked, and leave with 2. A fake that answered 0 to
+# a request it did not recognize would make every row that reached it vacuous,
+# and two fakes each inventing a refusal are two shapes a row has to know.
+refuse() {
+    printf 'error: the fake cargo %s\n' "$1" >&2
+    exit 2
+}
+
+# Declared above the scan, because an empty argument list is a request this fake
+# has to refuse in its own words rather than one `set -u` reports on its behalf.
+[ "$#" -gt 0 ] || refuse "was given no operation"
+
 operation="$1"
 shift
 
 manifest=""
 install_root=""
+package_path=""
 last_argument=""
 no_deps=0
 previous=""
@@ -25,6 +39,7 @@ for argument in "$@"; do
     case "${previous}" in
         --manifest-path) manifest="${argument}" ;;
         --root) install_root="${argument}" ;;
+        --path) package_path="${argument}" ;;
     esac
     case "${argument}" in
         --no-deps) no_deps=1 ;;
@@ -46,11 +61,16 @@ log() {
 # report success.
 require() {
     if [ -z "$2" ]; then
-        printf 'error: the fake cargo needs %s for %s\n' "$1" "${operation}" >&2
-        exit 2
+        refuse "needs $1 for ${operation}"
     fi
 }
 
+# Every producer below writes to a file and every reader is given that file.
+# `#!/bin/sh` has no `pipefail`, so a pipeline reports the reader's status alone:
+# a producer that failed on a member manifest it could not read would emit
+# nothing, `jq` would turn the empty stream into a well-formed document, and this
+# fake would answer 0 with a graph the proof then judges as real.
+#
 # One manifest as `cargo metadata` describes it, with its first-party edges.
 #
 # An edge is read in both spellings a manifest may carry it in: the bare
@@ -64,10 +84,22 @@ package_json() {
     package_directory=$(dirname "${package_manifest}")
     package_name=$(rg -N -o -r '${1}' '^name = "([^"]+)"$' "${package_manifest}")
     package_version=$(rg -N -o -r '${1}' '^version = "([^"]+)"$' "${package_manifest}")
-    if ! rg -N -o -r '${1}|${2}${3}' \
+    # The scan's own status is read, not just its failure. Ripgrep answers 1 for
+    # a manifest that declares no first-party edge, which is an empty edge list
+    # and a graph this fake may still describe. Every other status — an
+    # unreadable manifest, a pattern it refused, a ripgrep that is not installed
+    # — means the manifest was never searched, and an empty edge list from a
+    # search that never ran produces a well-formed metadata document with no
+    # dependencies at all: the silent success the file-based producers above
+    # exist to close.
+    edge_status=0
+    rg -N -o -r '${1}|${2}${3}' \
         '^(fixture-[a-h]) = (?:"([^"]+)"|\{ version = "([^"]+)"[^}]*\})$' \
-        "${package_manifest}" > "${state}/edges.txt"; then
+        "${package_manifest}" > "${state}/edges.txt" || edge_status=$?
+    if [ "${edge_status}" -eq 1 ]; then
         : > "${state}/edges.txt"
+    elif [ "${edge_status}" -ne 0 ]; then
+        refuse "could not search ${package_manifest} for its edges (rg exited ${edge_status})"
     fi
     jq -n \
         --arg name "${package_name}" \
@@ -121,8 +153,7 @@ if [ "${FAKE_FAULT_OPERATION:-}" = "${operation}" ]; then
             exit 0
             ;;
         *)
-            printf 'error: unknown fault mode [%s]\n' "${FAKE_FAULT_MODE:-}" >&2
-            exit 2
+            refuse "was given the unknown fault mode [${FAKE_FAULT_MODE:-}]"
             ;;
     esac
 fi
@@ -130,10 +161,19 @@ fi
 case "${operation}" in
     install)
         require --root "${install_root}"
+        # A registry installation names its crate last; a local one names the
+        # tree it builds, and the package that tree declares is what the
+        # installed binary is called. Reading the name out of that manifest is
+        # what keeps the journey's installation an installation of whatever the
+        # proof pointed it at, rather than of a name this fake decided.
+        installed="${last_argument}"
+        if [ -n "${package_path}" ]; then
+            installed=$(rg -N -o -r '${1}' '^name = "([^"]+)"$' "${package_path}/Cargo.toml")
+        fi
         mkdir -p "${install_root}/bin"
-        cp "${FAKE_TOOL_BODIES}/${last_argument}" "${install_root}/bin/${last_argument}"
-        chmod +x "${install_root}/bin/${last_argument}"
-        log "install ${last_argument}"
+        cp "${FAKE_TOOL_BODIES}/${installed}" "${install_root}/bin/${installed}"
+        chmod +x "${install_root}/bin/${installed}"
+        log "install ${installed}"
         ;;
     package)
         require --manifest-path "${manifest}"
@@ -142,7 +182,14 @@ case "${operation}" in
         # The staging commit for the release-plz update is what makes that tree
         # clean; without it the real tool refuses here, and so does this one.
         clone_root=$(dirname "${manifest}")
-        if [ -n "$(git -C "${clone_root}" status --porcelain --untracked-files=all)" ]; then
+        # Captured before it is tested rather than read inside the test. A `git`
+        # that failed inside `[ -n "$(...)" ]` reports its status to the
+        # substitution and leaves the test an empty string, so a tree this fake
+        # could not read would package as a clean one — the same silent success
+        # the file-based producers above exist to close. An assignment is what
+        # `set -e` sees.
+        uncommitted=$(git -C "${clone_root}" status --porcelain --untracked-files=all)
+        if [ -n "${uncommitted}" ]; then
             printf 'error: %s\n' \
                 'files in the working directory contain changes that were not yet committed into git' \
                 >&2
@@ -175,7 +222,8 @@ case "${operation}" in
             else
                 extracted=$(rg -N -o -r '${1}' '^name = "([^"]+)"$' "${manifest}")
                 log "metadata extracted ${extracted}"
-                package_json "${manifest}" | jq -s '{packages: .}'
+                package_json "${manifest}" > "${state}/metadata.json"
+                jq -s '{packages: .}' "${state}/metadata.json"
             fi
         else
             # The one reading the graph refusals judge. A row that wants a
@@ -191,7 +239,8 @@ case "${operation}" in
             if [ -n "${FAKE_METADATA_WARNING:-}" ]; then
                 printf '%s\n' "${FAKE_METADATA_WARNING}" >&2
             fi
-            workspace_json "${manifest}" | jq "${FAKE_GRAPH_MUTATION:-.}"
+            workspace_json "${manifest}" > "${state}/metadata.json"
+            jq "${FAKE_GRAPH_MUTATION:-.}" "${state}/metadata.json"
         fi
         ;;
     generate-lockfile)
@@ -200,10 +249,10 @@ case "${operation}" in
         log "generate-lockfile"
         ;;
     check)
+        require --manifest-path "${manifest}"
         log "check"
         ;;
     *)
-        printf 'error: the fake cargo does not implement %s\n' "${operation}" >&2
-        exit 2
+        refuse "does not implement [${operation} $*]"
         ;;
 esac

@@ -52,8 +52,21 @@ jobs:
       # build stays Go-free or that a Go build stops at the grammar. Cargo-only,
       # so it runs beside its three siblings.
       - run: .github/scripts/check_go_dependency_closure.sh
-      - run: cargo fmt --check
-      - run: cargo fmt --manifest-path test-support/process-guard/Cargo.toml --check
+      # Every `pedant-snippet` language and graph feature is default-off too,
+      # and this is the closure that decides whether one navigation binary can
+      # reach the linter. Cargo-only, so it runs beside its siblings.
+      - run: .github/scripts/check_code_intelligence_dependency_closure.sh
+      # Format every tracked Rust source, including modules declared through
+      # macros and the workspace-excluded process helper.
+      - run: |
+          set -euo pipefail
+          listing="${RUNNER_TEMP}/tracked-rust-sources"
+          git ls-files -z -- '*.rs' > "${listing}"
+          test -s "${listing}" || {
+            echo "error: the repository holds no tracked Rust source; rustfmt would check nothing" >&2
+            exit 1
+          }
+          xargs -0 rustfmt --edition 2024 --check < "${listing}"
       - run: cargo clippy -- -D warnings
       - run: cargo clippy --locked --manifest-path test-support/process-guard/Cargo.toml --all-targets -- -D warnings
       # `--all-targets` is what puts the `tests/` trees of pedant, pedant-core,
@@ -85,6 +98,7 @@ jobs:
       - uses: ./.github/actions/pedant-check
         with:
           paths: pedant-snippet/tests pedant-syntax/tests
+          max-source-file-lines: '500'
       # The roots and `#[path]` support trees this resolution work owns. Each
       # root is named on its own and each support tree whole, rather than the
       # five crates' `tests/` directories, because the rest of those directories
@@ -94,6 +108,7 @@ jobs:
       - uses: ./.github/actions/pedant-check
         with:
           paths: pedant-types/tests/serialization.rs pedant-types/tests/serialization_support pedant-syntax/tests/enclosing_unit.rs pedant-lang/tests/detection.rs pedant-lang/tests/capability.rs pedant-lang/tests/capability_support pedant-snippet/tests/interfaces.rs pedant-core/tests/substrate.rs pedant-core/tests/substrate_support pedant-graph/tests/graph.rs pedant-graph/tests/graph_support pedant-core/tests/semantic.rs pedant-core/tests/semantic_support pedant/tests/gate_cli.rs pedant/tests/gate_cli_support pedant/tests/package_support pedant/tests/supply_chain.rs pedant/tests/supply_chain_support pedant-core/tests/gate.rs pedant-core/tests/gate_support pedant-mcp/tests/index.rs pedant-mcp/tests/index_support pedant-mcp/tests/watcher.rs pedant-mcp/tests/watcher_support pedant-mcp/tests/tools.rs pedant-mcp/tests/tools_support pedant-mcp/tests/integration.rs pedant-mcp/tests/integration_support pedant-mcp/tests/fixture_support test-support/process-guard/src
+          max-source-file-lines: '500'
       - uses: ./.github/actions/pedant-gate
         with:
           paths: ${{ env.FIRST_PARTY_SOURCES }}
@@ -131,10 +146,17 @@ jobs:
       # The three Go trees behind the same sentinel guard. Only the core
       # resolution tree may open a path, and it may only read.
       - run: .github/scripts/check_go_capabilities.sh
+      # The code-intelligence product tree behind the same sentinel guard. It is
+      # the one first-party tree in that closure that opens a path, and it may
+      # only read.
+      - run: .github/scripts/check_code_intelligence_capabilities.sh
       # Every Go feature configuration, listed before it runs. The Go features
       # are default-off, so no job above compiles the adapters, lints them,
       # denies a missing doc on them, or executes one of their predicates.
       - run: .github/scripts/check_go_configurations.sh
+      # Every code-intelligence feature configuration, read from the compiler's
+      # own artifact stream.
+      - run: .github/scripts/check_code_intelligence_configurations.sh
       - run: cargo clippy -p pedant-graph --all-targets -- -D warnings
       - run: RUSTDOCFLAGS="-D missing_docs" cargo doc --no-deps -p pedant-graph
       - run: cargo clippy -p pedant-syntax -p pedant-snippet --all-targets --all-features -- -D warnings
@@ -227,6 +249,50 @@ jobs:
       # The macOS Kqueue selection is behavioral, not compile-only: every
       # create, degraded-write, and rename case must reach the shared index.
       - run: cargo test --locked -p pedant-mcp --test watcher -- --nocapture
+
+  windows-code-intelligence:
+    runs-on: windows-latest
+    # Bound the platform proof so a stuck child or pipe cannot occupy a runner
+    # indefinitely.
+    timeout-minutes: 30
+    steps:
+      # Test the commit associated with this ordinary push or pull request.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      - uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+      # Windows owns path serialization, real stdio framing, job-object
+      # descendant containment, timeout, and clean exit. The Linux job runs the
+      # whole snippet root; this one runs the predicate that is about the host.
+      #
+      # The containment half is a claim this host can fail. One row inside the
+      # predicate puts a live member into a contained tree, reaps the root, and
+      # requires the job object to report the survivor — so the empty trees the
+      # other rows require are a result rather than the only answer available.
+      #
+      # The filter is the module path, because `--exact` matches the whole test
+      # name and this target declares its predicates inside modules. A bare name
+      # selects nothing and the job passes having run no test at all. So does a
+      # module renamed under a filter nobody updated:
+      # `code_intelligence_test_and_release_inventory_is_exact` resolves every
+      # exact filter in this file against the tree and refuses both.
+      - run: cargo test --locked -p pedant-snippet --test interfaces journeys::platform::code_intelligence_platform_process_contract_is_exact -- --exact
+
+  macos-code-intelligence:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      - uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+      # macOS owns the recursive watcher replacement, normalized rename, stdio
+      # EOF, and bounded join. The live transaction predicate runs beside the
+      # platform one because the watcher is what it is about.
+      - run: cargo test --locked -p pedant-snippet --test interfaces journeys::platform::code_intelligence_platform_process_contract_is_exact -- --exact
+      - run: cargo test --locked -p pedant-snippet --test interfaces live::transactions::live_index_create_modify_remove_and_rename_publish_atomic_states -- --exact
 
   supply-chain:
     runs-on: ubuntu-latest

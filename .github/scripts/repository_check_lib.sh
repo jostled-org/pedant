@@ -28,20 +28,48 @@
 # This file is sourced, never executed. It defines functions and runs nothing,
 # so the caller keeps its own shell options and exit contract.
 
+# The same guarded prologue every caller of this file carries, for the same
+# reason and one step further down.
+#
+# A caller's `. "${script_dir}/repository_check_lib.sh" || exit 75` cannot see
+# through this line: sourcing returns the status of the LAST command in the
+# sourced file, which here is a function definition, so an unguarded source that
+# failed would still leave this file with 0 and every caller's guard satisfied.
+# With `cargo_infrastructure.sh` unread, `require_tools`, `rg_status`,
+# `rg_status_over`, `cargo_capture`, and `cargo_run` are all "command not
+# found" — and `set -e` is off in every row table that reads this file, so
+# `require_tools` becomes a 127 no-op and a machine with no `jq` or `cargo` is
+# reported as a clean repository. The exit is therefore taken here, where the
+# failure is visible.
+#
+# `CDPATH` is cleared inside the substitution: `dirname` yields a bare relative
+# path for a file sourced by a relative path, `cd` then consults `CDPATH`, and a
+# match there both enters the wrong directory and prints it.
+#
+# Emptiness alone cannot catch a `dirname` that failed: `cd -- ""` succeeds and
+# stays put, so `pwd` answers with the caller's own directory and the guard sees
+# a non-empty value naming a tree that holds none of these files. The
+# readability probe is what proves the resolution landed beside this file.
+#
+# The directory is named `REPOSITORY_CHECK_LIB_DIR` rather than `script_dir`,
+# which is the name every caller resolves itself into: a sourced file assigning
+# that name would overwrite the caller's own answer.
+REPOSITORY_CHECK_LIB_DIR="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" \
+    || REPOSITORY_CHECK_LIB_DIR=""
+if [ -z "${REPOSITORY_CHECK_LIB_DIR}" ] \
+    || [ ! -r "${REPOSITORY_CHECK_LIB_DIR}/cargo_infrastructure.sh" ]; then
+    echo "error: cannot resolve the directory holding ${BASH_SOURCE[0]}" >&2
+    exit 75
+fi
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=cargo_infrastructure.sh
-. "$(dirname -- "${BASH_SOURCE[0]}")/cargo_infrastructure.sh"
+. "${REPOSITORY_CHECK_LIB_DIR}/cargo_infrastructure.sh" || exit 75
 
-# Fail unless every named tool resolves on PATH.
-require_tools() {
-    local tool
-    for tool in "$@"; do
-        if ! command -v "${tool}" >/dev/null 2>&1; then
-            echo "error: ${tool} is required on PATH" >&2
-            exit 1
-        fi
-    done
-}
+# `require_tools`, `rg_status`, `rg_status_over`, and `cargo_capture` are
+# `cargo_infrastructure.sh`'s and reach every caller of this file through the
+# source above. They live there rather than here because the packaged-workspace
+# proof and the two lifecycle runners source that file alone, and a probe with
+# two owners is a probe two owners can disagree about.
 
 # ---------------------------------------------------------------------------
 # Violations shared by repository checks
@@ -62,11 +90,49 @@ violation() {
 }
 
 # Fail with one summary line unless every row of this check was clean.
+#
+# The status is the caller's, because only the caller knows what its own
+# refusal means. A boundary check's drift is 1; the code-intelligence admission
+# gate's unmet prerequisite is 64, which sends its caller to the plan rather
+# than to the repository. That gate had written the counter, the reporter, and
+# this refusal out line for line to change one number.
 assert_no_violations() {
     if [ "${CHECK_VIOLATIONS}" -ne 0 ]; then
         echo "error: $1" >&2
-        exit 1
+        exit "${2:-1}"
     fi
+}
+
+# How many non-empty lines one newline-separated document holds.
+#
+# Every row table, every source listing, and every derived member list asks this
+# question, and three copies of it had answered differently: one read a ripgrep
+# matcher failure as a count of zero, and `wc -l` has the other half of the
+# problem, because a listing of no rows is still one empty line. A loop over
+# non-empty lines has neither hazard.
+count_nonempty_lines() {
+    local line count=0
+    while IFS= read -r line; do
+        [ -n "${line}" ] || continue
+        count=$((count + 1))
+    done <<<"$1"
+    printf '%s' "${count}"
+}
+
+# How many separator-delimited fields one row states.
+#
+# A reader that splits on the first separator truncates a row that holds one
+# too many to its prefix, which makes a required claim weaker rather than
+# louder — and a row table's needles are exactly where a separator is the
+# natural thing to write. Counted so a malformed row is refused where it is
+# read.
+count_fields() {
+    local rest="$1" separator="$2" fields=1
+    while [ "${rest}" != "${rest#*"${separator}"}" ]; do
+        rest="${rest#*"${separator}"}"
+        fields=$((fields + 1))
+    done
+    printf '%s' "${fields}"
 }
 
 # Whether a captured listing holds a line equal to a needle.
@@ -83,36 +149,77 @@ contains_line() {
     return 1
 }
 
+# Whether a captured text holds one fixed substring anywhere.
+#
+# `contains_line` above answers the whole-line question; this answers the
+# substring one, which is what a claim about a sentence inside a paragraph needs.
+# Written as a `case` rather than through an external matcher for the reason the
+# rest of this file gives: a matcher that failed to run and a document that does
+# not state the claim leave through statuses a caller can confuse.
+holds_text() {
+    case "$1" in
+        *"$2"*) return 0 ;;
+    esac
+    return 1
+}
+
+# One document with every run of whitespace reduced to a single space.
+#
+# A claim read out of prose is a claim about a sentence, and a sentence is the
+# same claim whether its author's editor wrapped it at seventy-eight columns or
+# left it on one line. A comparison over raw bytes would go red the day somebody
+# reflowed a paragraph, and — worse — would push the next author toward claims
+# short enough to survive wrapping, which is how a documentation contract stops
+# asking anything.
+#
+# Stated here because the documentation check and its row table both need it, and
+# two copies of a reduction are two ways to disagree about what a document says.
+#
+# Word splitting is the reduction: `set -f` keeps a `*` in the text from being
+# read as a glob, and `"$*"` rejoins the fields with the first character of
+# `IFS`. Bash's own `${var%%…}` and `${var#…}` are quadratic in the subject, so a
+# reduction written with them costs eighteen seconds on a three-hundred-kilobyte
+# document; this costs a twentieth of a second.
+#
+# The caller's own globbing is restored rather than turned on. Every call today
+# sits inside a command substitution, so an unconditional `set +f` reaches no
+# caller — but this is a shared library, and the first caller that reduces a
+# document with `noglob` set would have it silently taken away.
+collapse_whitespace() {
+    local IFS=$' \t\n' joined had_noglob=""
+    case $- in
+        *f*) had_noglob=1 ;;
+    esac
+    set -f
+    # Word splitting is the point.
+    # shellcheck disable=SC2086
+    set -- $1
+    joined="$*"
+    [ -n "${had_noglob}" ] || set +f
+    printf '%s' "${joined}"
+}
+
 # ---------------------------------------------------------------------------
 # Classified cargo invocations whose output the caller reads
 # ---------------------------------------------------------------------------
 
-# The combined output of the last `cargo_capture` run.
-CARGO_CAPTURE_OUTPUT=""
-
-# Run one cargo command, keep its combined output, and answer with its status.
+# Run one lint or documentation command that no other job reaches.
 #
-# `cargo_run` replays a transcript and folds the result into the aggregate,
-# which is what a runner needs. A check reads the output instead, and it must
-# read it in the caller's own shell: `cargo_record` leaves the whole process
-# with 75 for an unavailable machine, and a command substitution around this
-# function would swallow that exit and report a registry outage as drift.
+# Usage: check_command <prefix> <label> <command> [args ...]
 #
-# The status returned is cargo's own, so an ordinary failure stays the caller's
-# to report. An unavailable machine never returns here at all.
-cargo_capture() {
-    local label="$1"
-    shift
-    local code=0
-    CARGO_CAPTURE_OUTPUT="$("$@" 2>&1)" || code=$?
-    local classified
-    classified="$(cargo_classify_output "${code}" "${CARGO_CAPTURE_OUTPUT}")"
-    if [ "${classified}" != "${code}" ]; then
-        printf '[cargo_infrastructure] %s: INFRASTRUCTURE (exit %s reclassified as %s)\n' \
-            "${label}" "${code}" "${classified}"
-    fi
-    cargo_record "${classified}"
-    return "${code}"
+# The prefix is the tag its caller's matrix prints, and it is the only thing the
+# two configuration checks did not share: the rest of this function was
+# byte-identical in both, down to the order of the two printfs. A failure is
+# folded into the aggregate rather than left to `set -e`, so one run names every
+# command that failed instead of the first.
+check_command() {
+    local prefix="$1" label="$2"
+    shift 2
+    local failed=""
+    printf '%s %s: %s\n' "${prefix}" "${label}" "$*"
+    cargo_capture "${label}" "$@" || failed=1
+    printf '%s\n' "${CARGO_CAPTURE_OUTPUT}"
+    [ -z "${failed}" ] || violation "${label} failed"
 }
 
 # Anchor the working directory at the repository root.
@@ -134,8 +241,14 @@ cd_repo_root() {
     # relative path for a script sourced through a relative path, `cd` then
     # consults `CDPATH`, and a match there both enters the wrong directory and
     # prints it — leaving `lib_dir` a two-line value naming another tree.
+    #
+    # Emptiness alone cannot catch a `dirname` that failed: `cd -- ""` succeeds
+    # and stays put, so `pwd` would answer with the caller's own directory and
+    # `lib_dir` would be non-empty and wrong. This file's own presence beside
+    # `lib_dir` is what says the resolution landed where this function was
+    # defined.
     lib_dir="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || lib_dir=""
-    if [ -z "${lib_dir}" ]; then
+    if [ -z "${lib_dir}" ] || [ ! -r "${lib_dir}/repository_check_lib.sh" ]; then
         echo "error: cannot resolve the directory holding ${BASH_SOURCE[0]}" >&2
         exit 1
     fi
@@ -277,6 +390,22 @@ assert_jq() {
 # no parent.
 CLOSURE_CAPTURE_FORMAT='{p}|{f}'
 
+# The edges every closure row reads.
+#
+# Cargo's own default kinds, named so the choice is visible: dev edges stay out,
+# and build and proc-macro edges stay in. A `[build-dependencies]` on a grammar
+# links it just as surely as a normal one, and `-e normal` alone dropped a fifth
+# of the graph. Three closure checks had stated the constant and a paraphrase of
+# that reasoning each, beside the capture format they already read from here.
+#
+# Not `readonly`: this file is sourced by checks that may declare their own
+# copy while they are being brought over, and a sealed name would abort the
+# source rather than the row.
+#
+# Read by the closure checks that source this file.
+# shellcheck disable=SC2034
+CLOSURE_EDGE_KINDS='normal,build'
+
 # Print one capture's resolved packages as `<name> <features>`, one per line.
 #
 # Cargo prints `(*)` on an already-expanded subtree and repeats a package once
@@ -356,17 +485,22 @@ sorted_feature_list() {
 # A forbid list of feature names says nothing about the name nobody thought to
 # forbid. Where a row's claim is "this package carries these features and no
 # other", the whole set is the claim, so the whole set is compared.
+#
+# A capture holding the package nowhere matches nothing, and a loop that matched
+# nothing used to return 0 — so the row passed having compared no feature set at
+# all. The occurrences are counted and none is a refusal.
 capture_features_are_exactly() {
-    local capture="$1" package="$2" expected line
+    local capture="$1" package="$2" expected line matched=0
     expected="$(sorted_feature_list "$3")"
     while IFS= read -r line; do
         case "${line}" in
             "${package} "*)
+                matched=$((matched + 1))
                 [ "$(sorted_feature_list "${line#"${package}" }")" = "${expected}" ] || return 1
                 ;;
         esac
     done <<<"${capture}"
-    return 0
+    [ "${matched}" -ne 0 ]
 }
 
 # Run one dependency-closure configuration against its specifications.
@@ -435,6 +569,15 @@ check_tree_closure() {
     load_workspace_metadata
     local members forbidden forbidden_count=0 member
     members="$(workspace_members_excluding)"
+    # The list a `member:` claim is validated against, guarded the way the
+    # forbid set below is. Unguarded, a jq that failed left it empty and every
+    # `member:` specification was then refused with "which is not a workspace
+    # member" — a false statement about this repository, from the reader rather
+    # than from the row, and the operator sent to a manifest that is correct.
+    if [ "$(count_nonempty_lines "${members}")" -eq 0 ]; then
+        echo "error: ${label} read no workspace member at all; the member list could not be taken" >&2
+        exit 1
+    fi
     forbidden="$(workspace_members_excluding ${admitted[@]+"${admitted[@]}"})"
 
     printf '[closure] %s: cargo tree %s\n' "${label}" "${args[*]}"
@@ -517,43 +660,71 @@ check_tree_closure() {
                     || violation "${label} reaches a package named ${value}*"
                 ;;
             only-features)
-                capture_features_are_exactly "${capture}" "${package}" "${feature}" \
-                    || violation "${label} resolves ${package} with features other than '${feature}'"
+                # The absence is named on its own, because "resolves other
+                # features" is the wrong sentence for a capture that holds no
+                # such package at all.
+                if ! capture_has_package "${capture}" "${package}"; then
+                    violation "${label} states only-features for ${package}, which the capture does not hold"
+                elif ! capture_features_are_exactly "${capture}" "${package}" "${feature}"; then
+                    violation "${label} resolves ${package} with features other than '${feature}'"
+                fi
                 ;;
         esac
     done
 
+    forbidden_count="$(count_nonempty_lines "${forbidden}")"
+    if [ "${forbidden_count}" -eq 0 ]; then
+        violation "${label} forbids no workspace member; the member list constrains nothing"
+    fi
     while IFS= read -r member; do
         [ -n "${member}" ] || continue
-        forbidden_count=$((forbidden_count + 1))
         if capture_has_package "${capture}" "${member}"; then
             violation "${label} reaches workspace member ${member}"
         fi
     done <<<"${forbidden}"
-    if [ "${forbidden_count}" -eq 0 ]; then
-        violation "${label} forbids no workspace member; the member list constrains nothing"
-    fi
 }
 
 # ---------------------------------------------------------------------------
 # Capability scanning shared by repository checks
 # ---------------------------------------------------------------------------
 
-# Build pedant from this workspace and read a tree's capability profile.
+# Build pedant from this workspace and read a tree's capability profile into
+# `CARGO_CAPTURE_OUTPUT`.
 #
-# Both callers run it twice — once over a sentinel mirror and once over the real
-# tree — and one decision with four call sites is four places for it to drift to
-# a `PATH` binary that is not this tree's. The array is the command; the
-# function is the direct form for a caller that keeps no capture directory. A
-# runner that owns one passes the array to `cargo_capture_document` instead, so
-# an unavailable registry reaches the classifier as infrastructure.
+# Every capability check runs it twice — once over a sentinel mirror and once
+# over the real tree — and one decision with several call sites is several places
+# for it to drift to a `PATH` binary that is not this tree's.
 #
-# Both forms are used from callers rather than here.
-# shellcheck disable=SC2034
-PEDANT_CAPABILITIES_COMMAND=(cargo run --quiet -p pedant -- capabilities)
+# Routed through `cargo_capture` for the reason this file's header gives. A bare
+# `cargo run` here left a registry outage or a full disk with 1 under the
+# caller's `set -e`, and every one of these checks reports a 1 as the capability
+# drift it is named for — the machine blamed on the source.
+#
+# The profile lands in the shared capture variable rather than on standard
+# output, because `cargo_record` leaves the whole shell with 75 for an
+# unavailable machine and a command substitution around this function would
+# leave from a subshell instead.
+read_pedant_capabilities() {
+    cargo_capture pedant_capabilities cargo run --quiet -p pedant -- capabilities "$@"
+}
 
+# The same scan for a caller that reads the profile through a command
+# substitution.
+#
+# Two forms for the reason `check_jq` and `assert_jq` are two forms. This one is
+# taken in a subshell, so the 75 above reaches the caller as the substitution's
+# own status; every caller of this form runs under `set -e`, which is what turns
+# that status back into the exit the classifier intended. A failed scan replays
+# cargo's message on the diagnostic stream, which the capture would otherwise
+# hold and nobody would read.
 pedant_capabilities() {
-    cargo run --quiet -p pedant -- capabilities "$@"
+    local status=0
+    read_pedant_capabilities "$@" || status=$?
+    if [ "${status}" -ne 0 ]; then
+        printf '%s\n' "${CARGO_CAPTURE_OUTPUT}" >&2
+        return "${status}"
+    fi
+    printf '%s\n' "${CARGO_CAPTURE_OUTPUT}"
 }
 
 # The capabilities every sentinel names, and therefore the capabilities a caller
@@ -587,23 +758,18 @@ RUST_SOURCE_COUNT=0
 # and a count of one, and `mirror_sentinels` would compare that against itself
 # and pass.
 #
-# The count is then taken from the listing by the shell. `rg --count` reports a
-# broken matcher through a status a caller can read as "no match", and `wc -l`
-# has the other half of the problem: a listing of no paths is still one empty
-# line, so it counts one. A loop over non-empty lines has neither hazard.
+# The count is then taken from the listing by `count_nonempty_lines`, which is
+# the one counter in this repository for the reason its own comment gives.
 #
 # An empty tree is a count of zero and the caller's own refusal, not a failure
 # here: the two callers say different things about it. Returning 1 means the
 # listing could not be taken at all.
 read_rust_sources() {
-    local tree="$1" path
+    local tree="$1"
     RUST_SOURCE_LISTING=""
     RUST_SOURCE_COUNT=0
-    RUST_SOURCE_LISTING="$(find "${tree}" -type f -name '*.rs')" || return 1
-    while IFS= read -r path; do
-        [ -n "${path}" ] || continue
-        RUST_SOURCE_COUNT=$((RUST_SOURCE_COUNT + 1))
-    done <<<"${RUST_SOURCE_LISTING}"
+    RUST_SOURCE_LISTING="$(find -- "${tree}" -type f -name '*.rs')" || return 1
+    RUST_SOURCE_COUNT="$(count_nonempty_lines "${RUST_SOURCE_LISTING}")"
 }
 
 # Give every mirrored source one file that names each sentinel capability.
@@ -768,8 +934,16 @@ assert_capability_detectors_live() {
     for tree in "$@"; do
         mirrored+=("${mirror}/${tree}")
     done
+    # Read in this shell rather than through a command substitution, so a
+    # registry outage or a full disk during the sentinel scan leaves with the
+    # classifier's 75 instead of being reported as a detector that went quiet.
     local reach
-    reach="$(pedant_capabilities "${mirrored[@]}")"
+    read_pedant_capabilities "${mirrored[@]}" || {
+        printf '%s\n' "${CARGO_CAPTURE_OUTPUT}" >&2
+        echo "error: pedant could not scan the sentinel mirror of ${subject}." >&2
+        exit 1
+    }
+    reach="${CARGO_CAPTURE_OUTPUT}"
     assert_sentinel_reach "${reach}" "${TREE_SOURCE_COUNT}" "${subject}"
 }
 
@@ -804,4 +978,73 @@ and any(.findings[];
         "$@"
 }
 
-# ---------------------------------------------------------------------------
+# Fail unless a profile reports file reads, hashing, one exit status, and one
+# elapsed span alone, all under one tree.
+#
+# The same claim as `assert_only_file_read_under` for a tree whose product is a
+# command-line application watching a directory. A revision is a hash of what
+# was admitted, so the tree that mints one imports a hasher, and a predicate
+# forbidding `crypto` here would forbid the capability the closure was audited
+# to hold. A command states its outcome as an exit status, and the only stable
+# way to state one is `std::process::ExitCode` — which the Rust detector
+# resolves by module prefix,
+# so it arrives as `process_exec` beside the spawns that prefix normally means.
+# A watcher coalescing a burst of reports has to bound the wait it opens, and the
+# only clock that cannot run backwards under it is `std::time::Instant` — which
+# the detector reports as `system_time` beside the wall clocks that name
+# normally means.
+#
+# Both admissions are spelled out as evidence rather than waived as
+# capabilities: a `process_exec` finding whose evidence is not the exit-status
+# type fails, so `std::process::Command` in this tree is refused exactly as
+# before, and a `system_time` finding whose evidence is not the monotonic clock
+# fails, so a wall-clock reading — which would put the host's time-of-day into a
+# revision — is refused too. The four `any` conjuncts are load-bearing for the
+# reason the one above is — a regressed detector reports nothing, and nothing
+# satisfies `all`.
+# shellcheck disable=SC2016
+assert_only_read_digest_exit_status_and_elapsed_under() {
+    local profile="$1" tree="$2" subject="$3"
+    shift 3
+    assert_jq "${profile}" '
+def admitted:
+    .capability == "file_read"
+    or .capability == "crypto"
+    or (.capability == "process_exec" and (.evidence | startswith($exit_status)))
+    or (.capability == "system_time" and (.evidence | startswith($monotonic)));
+all(.findings[]; admitted and (.location.file | test($anchor)))
+and any(.findings[]; .capability == "file_read" and (.location.file | test($anchor)))
+and any(.findings[]; .capability == "crypto" and (.location.file | test($anchor)))
+and any(.findings[]; .capability == "process_exec" and (.location.file | test($anchor)))
+and any(.findings[]; .capability == "system_time" and (.location.file | test($anchor)))
+' \
+        --arg anchor "(^|/)${tree}/" \
+        --arg exit_status "std::process::ExitCode" \
+        --arg monotonic "std::time::Instant" \
+        -- \
+        "error: the ${subject} capability profile drifted." \
+        "Expected only file_read, crypto, std::process::ExitCode, and" \
+        "std::time::Instant findings, every one under ${tree}, and at least one" \
+        "of each." \
+        "$@"
+}
+
+# Fail unless a profile reports nothing at all.
+#
+# The claim a pure tree makes: it takes source text and returns a span, so it
+# opens no path, writes nothing, spawns nothing, reaches no network, and asks no
+# clock. There is no `any` conjunct to keep this honest, because the claim is
+# that there is nothing to find — so the whole non-vacuity argument is
+# `assert_capability_detectors_live`, which says the four detectors that would
+# have reported are live over exactly these files.
+#
+# Arguments after the subject are further lines of the failure report.
+assert_no_capability_under() {
+    local profile="$1" subject="$2"
+    shift 2
+    assert_jq "${profile}" '(.findings | length) == 0' \
+        -- \
+        "error: the ${subject} capability profile drifted." \
+        "Expected no finding at all." \
+        "$@"
+}

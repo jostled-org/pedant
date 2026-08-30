@@ -3,9 +3,15 @@
 //! Go keeps four kinds of directory out of package discovery — dot-prefixed,
 //! underscore-prefixed, `testdata`, and the vendored tree — and treats a
 //! directory holding its own manifest as another module. All four are decided
-//! here, before any source is opened, and every admitted path is canonicalized
-//! and confined to the repository root first, so a link cannot widen what the
-//! snapshot goes on to read.
+//! here, before any source is opened.
+//!
+//! Only a link is resolved. The walk starts at a canonical directory and every
+//! directory it queues is one, so an ordinary entry beneath one of them is
+//! already named canonically and cannot leave the root; the one entry whose
+//! target may sit anywhere is the one the listing reports as a link. The
+//! confinement of an ordinary source belongs to the provider that opens it,
+//! which is the seam that has to make that test anyway — resolving each source
+//! here as well charged two canonicalization chains per file for one answer.
 //!
 //! The walk is a worklist rather than a recursion, and it remembers every
 //! canonical directory it has entered. Confinement stops a link leaving the
@@ -18,6 +24,7 @@
 
 use std::borrow::Cow;
 use std::collections::{BTreeSet, VecDeque};
+use std::fs::FileType;
 use std::path::{Path, PathBuf};
 
 use crate::resolution::capacity::admits_one_more;
@@ -27,9 +34,6 @@ use super::limits::GoResolutionLimits;
 use super::paths;
 use super::snapshot_error::GoSnapshotError;
 
-/// The file name a module manifest always has, which marks a nested module.
-const MANIFEST: &str = "go.mod";
-
 /// The extension an admitted source has.
 const SOURCE_EXTENSION: &str = ".go";
 
@@ -38,6 +42,16 @@ const RESERVED_DIRECTORIES: &[&str] = &["testdata", "vendor"];
 
 /// One listing's admitted sources and admitted subdirectories, in that order.
 type AdmittedEntries = (Box<[PathBuf]>, Box<[PathBuf]>);
+
+/// One directory entry as the listing reported it.
+///
+/// The type comes from the listing rather than from a second question to the
+/// filesystem: it is what tells an ordinary file, which needs no resolution,
+/// apart from a link, which is the only entry this walk resolves.
+struct ListedEntry {
+    path: PathBuf,
+    file_type: FileType,
+}
 
 /// One directory of one module that holds at least one Go source.
 pub(super) struct GoPackageDirectory {
@@ -132,49 +146,61 @@ impl PackageWalk<'_> {
     ///
     /// The one body that grows the found table, so the budget the listing
     /// charged dominates every directory a walk ever keeps.
+    /// The push is written here rather than behind a second helper: this body is
+    /// the one that grows the table, and the substrate reads it by that name.
+    /// Splitting the non-empty arm out moved the growth to a body the ownership
+    /// claim does not know about, which is the drift the claim exists to catch.
     fn retain(&mut self, directory: &Path, sources: Box<[PathBuf]>) -> Result<(), GoSnapshotError> {
-        let Some(sources) = (!sources.is_empty()).then_some(sources) else {
-            return Ok(());
-        };
-        self.found.push(GoPackageDirectory {
-            within_module: paths::relative_text(self.module, directory)?,
-            canonical: directory.to_path_buf(),
-            sources,
-        });
-        Ok(())
+        match sources.is_empty() {
+            true => Ok(()),
+            false => {
+                self.found.push(GoPackageDirectory {
+                    within_module: paths::relative_text(self.module, directory)?,
+                    canonical: directory.to_path_buf(),
+                    sources,
+                });
+                Ok(())
+            }
+        }
     }
 
     /// One directory's entries, name-sorted and charged one by one, split into
     /// the sources and the subdirectories it admits.
+    ///
+    /// The type each entry states is taken from the listing that reported it,
+    /// because the listing already knows and a second stat would ask again.
     fn listing(&mut self, directory: &Path) -> Result<AdmittedEntries, GoSnapshotError> {
         let read = std::fs::read_dir(directory)
             .map_err(|source| directory_error(self.root, directory, source))?;
-        let mut entries: Vec<PathBuf> = Vec::new();
+        let mut entries: Vec<ListedEntry> = Vec::new();
         for entry in read {
             self.budget.spend()?;
             let held = entry.map_err(|source| directory_error(self.root, directory, source))?;
-            entries.push(held.path());
+            let file_type = held
+                .file_type()
+                .map_err(|source| directory_error(self.root, directory, source))?;
+            entries.push(ListedEntry {
+                path: held.path(),
+                file_type,
+            });
         }
-        entries.sort();
+        entries.sort_by(|left, right| left.path.cmp(&right.path));
         self.admitted(&entries)
     }
 
-    /// Every admitted entry of one listing, canonicalized once and split by the
-    /// type the canonical path turns out to have.
+    /// Every admitted entry of one listing, split by the type it states.
     ///
-    /// One pass and one canonicalization per entry. Two passes over the same
-    /// listing resolved every name twice and asked the filesystem for the type
-    /// of each of them twice more.
-    fn admitted(&mut self, entries: &[PathBuf]) -> Result<AdmittedEntries, GoSnapshotError> {
+    /// One pass. An excluded name is never resolved and never listed, so a
+    /// reserved tree and a `vendor` link leaving the root both cost nothing.
+    fn admitted(&mut self, entries: &[ListedEntry]) -> Result<AdmittedEntries, GoSnapshotError> {
         let mut sources: Vec<PathBuf> = Vec::new();
         let mut subdirectories: Vec<PathBuf> = Vec::new();
         let named = entries
             .iter()
-            .map(|entry| (entry, entry_name(entry)))
+            .map(|entry| (entry, entry_name(&entry.path)))
             .filter(|(_, name)| !is_excluded_name(name));
         for (entry, name) in named {
-            let held = paths::canonical_in_root(self.root, entry)?;
-            self.sort_entry(held, &name, (&mut sources, &mut subdirectories));
+            self.sort_entry(entry, &name, (&mut sources, &mut subdirectories))?;
         }
         Ok((
             sources.into_boxed_slice(),
@@ -182,22 +208,55 @@ impl PackageWalk<'_> {
         ))
     }
 
-    /// File one resolved entry under the list its type and name put it in.
+    /// File one listed entry under the list its type and name put it in.
+    ///
+    /// An ordinary file and an ordinary directory are named beneath a canonical
+    /// directory, so each one already is its own canonical path and neither can
+    /// leave the root. A link is the one entry whose target the name does not
+    /// state, so it is the one entry resolved.
     fn sort_entry(
         &mut self,
-        canonical: Option<PathBuf>,
+        entry: &ListedEntry,
         name: &str,
         admitted: (&mut Vec<PathBuf>, &mut Vec<PathBuf>),
-    ) {
+    ) -> Result<(), GoSnapshotError> {
         let (sources, subdirectories) = admitted;
-        let Some(canonical) = canonical else {
-            return;
+        match (entry.file_type.is_dir(), entry.file_type.is_file()) {
+            (true, _) => {
+                subdirectories.extend(self.walkable(entry.path.clone())?);
+                Ok(())
+            }
+            (false, true) => {
+                sources.extend(is_source_name(name).then(|| entry.path.clone()));
+                Ok(())
+            }
+            (false, false) => self.sort_link(entry, name, (sources, subdirectories)),
+        }
+    }
+
+    /// File one entry the listing reported as neither a file nor a directory.
+    ///
+    /// A link, whose target may sit anywhere, so it is canonicalized and
+    /// confined here: a link the root does not hold refuses the snapshot, and a
+    /// link the filesystem states nothing for is the absence it is. A link that
+    /// resolves inside the root is filed under the path it resolves to, so two
+    /// links to one source name one admitted source.
+    fn sort_link(
+        &mut self,
+        entry: &ListedEntry,
+        name: &str,
+        admitted: (&mut Vec<PathBuf>, &mut Vec<PathBuf>),
+    ) -> Result<(), GoSnapshotError> {
+        let (sources, subdirectories) = admitted;
+        let Some(canonical) = paths::canonical_in_root(self.root, &entry.path)? else {
+            return Ok(());
         };
-        match (canonical.is_dir(), name.ends_with(SOURCE_EXTENSION)) {
-            (true, _) => subdirectories.extend(self.walkable(canonical)),
+        match (canonical.is_dir(), is_source_name(name)) {
+            (true, _) => subdirectories.extend(self.walkable(canonical)?),
             (false, true) => sources.push(canonical),
             (false, false) => (),
         }
+        Ok(())
     }
 
     /// One subdirectory this walk may still enter, recorded as entered.
@@ -205,15 +264,20 @@ impl PackageWalk<'_> {
     /// A directory that declares its own module belongs to that module's tree,
     /// and one this walk already entered yields nothing: a link inside the root
     /// resolves to a directory the walk may already hold.
-    fn walkable(&mut self, canonical: PathBuf) -> Option<PathBuf> {
-        match holds_manifest(&canonical) || self.walked.contains(&canonical) {
-            true => None,
+    fn walkable(&mut self, canonical: PathBuf) -> Result<Option<PathBuf>, GoSnapshotError> {
+        match holds_manifest(self.root, &canonical)? || self.walked.contains(&canonical) {
+            true => Ok(None),
             false => {
                 self.walked.insert(canonical.clone());
-                Some(canonical)
+                Ok(Some(canonical))
             }
         }
     }
+}
+
+/// Whether one entry's name is a name the Go toolchain compiles.
+fn is_source_name(name: &str) -> bool {
+    name.ends_with(SOURCE_EXTENSION)
 }
 
 /// Whether one entry's name keeps it out of every Go build.
@@ -240,8 +304,18 @@ fn is_excluded_name(name: &str) -> bool {
 
 /// Whether a directory declares its own module, which makes it another
 /// module's tree rather than this one's package.
-fn holds_manifest(directory: &Path) -> bool {
-    directory.join(MANIFEST).is_file()
+fn holds_manifest(root: &Path, directory: &Path) -> Result<bool, GoSnapshotError> {
+    match paths::confined_manifest(root, directory)? {
+        None => Ok(false),
+        Some(manifest) if manifest.is_regular() => Ok(true),
+        Some(manifest) => Err(GoSnapshotError::PathRead {
+            path: paths::path_text(manifest.path()),
+            source: std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "go.mod is not a regular file",
+            ),
+        }),
+    }
 }
 
 /// One entry's file name, lossily, which is what the name rules read.

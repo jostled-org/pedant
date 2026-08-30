@@ -1,20 +1,27 @@
 //! Rust declaration recognition over a `syn` syntax tree.
 //!
+//! Which `syn` items are recognized, and what each declares, is
+//! [`structure::items`](crate::structure::items) — the one table this backend
+//! and the structure inventory both read. A unit is that recognition narrowed to
+//! the kinds the unit model declares.
+//!
 //! `syn` reports positions as one-based lines and zero-based character
 //! columns; the shared source index turns those into byte ranges, so this
 //! backend never counts bytes itself.
 
-use std::ops::Range;
-
+use pedant_types::StructureKind;
 use proc_macro2::Span;
 use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
 use syn::{
-    Ident, ImplItemFn, ImplItemType, ItemEnum, ItemFn, ItemImpl, ItemStruct, ItemTrait, ItemType,
-    ItemUnion, TraitItemFn, TraitItemType,
+    Ident, ImplItemConst, ImplItemFn, ImplItemType, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod,
+    ItemStatic, ItemStruct, ItemTrait, ItemType, ItemUnion, TraitItemConst, TraitItemFn,
+    TraitItemType,
 };
 
+use crate::extract::index::{span_range, span_text};
 use crate::extract::select::UnitSelector;
+use crate::structure::items::{callable_kind, rust_items};
 use crate::unit::SourceUnitKind;
 
 /// Release the thread-local source map `syn` fills while parsing.
@@ -61,7 +68,7 @@ struct RustDeclarations<'s, 'sel> {
     selector: &'sel mut UnitSelector<'s>,
 }
 
-impl<'s> RustDeclarations<'s, '_> {
+impl RustDeclarations<'_, '_> {
     /// Offer one declaration spanning `span`, named by `ident`, and report
     /// whether anything inside it can still hold the target.
     ///
@@ -69,8 +76,15 @@ impl<'s> RustDeclarations<'s, '_> {
     /// nests every child's tokens inside its parent's span, so no descendant
     /// can contain a point the parent does not. Pruning also skips resolving
     /// the identifier's text, which only the winning declaration ever needs.
-    fn offer(&mut self, kind: SourceUnitKind, ident: Option<&Ident>, span: Span) -> bool {
-        let Some(range) = self.range_of(span) else {
+    ///
+    /// A structure the unit model states no kind for is not offered, and its
+    /// subtree is still walked. That is the whole of the narrowing: a `mod`
+    /// holds the declarations a caller inside it is asking about, and a
+    /// constant's initializer may hold one too, so refusing the kind must not
+    /// refuse the descent.
+    fn offer(&mut self, kind: StructureKind, ident: Option<&Ident>, span: Span) -> bool {
+        let index = self.selector.index();
+        let Some(range) = span_range(index, span) else {
             // An unmappable span says nothing about its children, so the walk
             // continues rather than dropping them with it.
             return true;
@@ -78,46 +92,44 @@ impl<'s> RustDeclarations<'s, '_> {
         if !self.selector.contains(&range) {
             return false;
         }
-        let name = ident.and_then(|ident| self.text_of(ident.span()));
+        let Some(kind) = SourceUnitKind::of(kind) else {
+            return true;
+        };
+        let name = ident.and_then(|ident| span_text(self.selector.index(), ident.span()));
         self.selector.keep(kind, name, range);
         true
     }
-
-    /// The source byte range one parser span covers.
-    fn range_of(&self, span: Span) -> Option<Range<usize>> {
-        let start = span.start();
-        let end = span.end();
-        let from = self
-            .selector
-            .offset_at_char_column(start.line, start.column)?;
-        let to = self.selector.offset_at_char_column(end.line, end.column)?;
-        (from < to).then_some(from..to)
-    }
-
-    /// The source text one parser span covers.
-    fn text_of(&self, span: Span) -> Option<&'s str> {
-        self.selector.source().get(self.range_of(span)?)
-    }
 }
 
-/// Define one named-declaration visit per row.
+/// Write one offering visit per row of the shared item table.
 ///
-/// Every row is `visit_fn(SynType) => Kind named field.path`, and every body is
-/// the same: offer the declaration under `Kind`, named by the identifier at
-/// `field.path`, spanning the whole item, then descend only where the offer says
-/// the location can still be inside. Writing the bodies out made the set of
-/// recognized declarations a list of eleven three-line copies; the rows keep it
-/// a table, and a twelfth declaration is one more row.
-///
-/// The unnamed [`ItemImpl`] is not a row: it offers `None` and carries the
-/// reasoning for why, so it stays written out below.
-macro_rules! named_declarations {
-    ($($(#[$doc:meta])* $visit:ident($item:ty) => $kind:ident named $($field:ident).+;)*) => {
+/// Each body offers the declaration and then descends only where the offer says
+/// the location can still be inside. The three groups differ only in where the
+/// kind and the name come from.
+macro_rules! declaration_visits {
+    (
+        named { $($named:ident($named_item:ty) => $kind:ident named $($field:ident).+;)* }
+        callable { $($callable:ident($callable_item:ty);)* }
+        unnamed { $($unnamed:ident($unnamed_item:ty) => $unnamed_kind:ident;)* }
+    ) => {
         $(
-            $(#[$doc])*
-            fn $visit(&mut self, node: &'ast $item) {
-                if self.offer(SourceUnitKind::$kind, Some(&node.$($field).+), node.span()) {
-                    visit::$visit(self, node);
+            fn $named(&mut self, node: &'ast $named_item) {
+                if self.offer(StructureKind::$kind, Some(&node.$($field).+), node.span()) {
+                    visit::$named(self, node);
+                }
+            }
+        )*
+        $(
+            fn $callable(&mut self, node: &'ast $callable_item) {
+                if self.offer(callable_kind(&node.sig), Some(&node.sig.ident), node.span()) {
+                    visit::$callable(self, node);
+                }
+            }
+        )*
+        $(
+            fn $unnamed(&mut self, node: &'ast $unnamed_item) {
+                if self.offer(StructureKind::$unnamed_kind, None, node.span()) {
+                    visit::$unnamed(self, node);
                 }
             }
         )*
@@ -125,32 +137,5 @@ macro_rules! named_declarations {
 }
 
 impl<'ast> Visit<'ast> for RustDeclarations<'_, '_> {
-    named_declarations! {
-        visit_item_fn(ItemFn) => Function named sig.ident;
-        visit_impl_item_fn(ImplItemFn) => Method named sig.ident;
-        visit_trait_item_fn(TraitItemFn) => Method named sig.ident;
-        visit_item_struct(ItemStruct) => Struct named ident;
-        visit_item_enum(ItemEnum) => Enum named ident;
-        visit_item_union(ItemUnion) => Union named ident;
-        visit_item_trait(ItemTrait) => Trait named ident;
-        visit_item_type(ItemType) => TypeAlias named ident;
-
-        /// An associated type an `impl` block defines.
-        ///
-        /// `syn` gives a free `type` item, an impl's, and a trait's three item
-        /// types, so the alias inside a block needs its own visit for the same
-        /// reason a method does — otherwise the whole block answers for it.
-        visit_impl_item_type(ImplItemType) => TypeAlias named ident;
-
-        /// An associated type a trait declares, with or without a default.
-        visit_trait_item_type(TraitItemType) => TypeAlias named ident;
-    }
-
-    fn visit_item_impl(&mut self, node: &'ast ItemImpl) {
-        // An impl block declares no name, and it wins only where no method,
-        // type, or nested item inside it contains the location.
-        if self.offer(SourceUnitKind::Impl, None, node.span()) {
-            visit::visit_item_impl(self, node);
-        }
-    }
+    rust_items!(declaration_visits);
 }

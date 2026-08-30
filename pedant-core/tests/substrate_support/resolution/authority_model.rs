@@ -77,6 +77,9 @@ pub const AUTHORITIES: &[Authority] = &[
         marker: "RustProject::load(",
         sites: &[
             "pedant-mcp/src/index/workspace.rs",
+            // The code-intelligence index loads one project per selected Cargo
+            // authority, which is the fourth consumer of the one loader.
+            "pedant-snippet/src/index/rust_slices.rs",
             "pedant/src/gate/project.rs",
             "pedant/src/supply_chain/discovery.rs",
         ],

@@ -7,14 +7,18 @@
 
 use std::sync::Arc;
 
+use crate::resolution::line_index;
+use crate::resolution::rust::fault::RustSourceFault;
 use crate::resolution::rust::identity::{PackageId, TargetId};
+use crate::resolution::rust::inventory::RustFileInventory;
 use crate::resolution::rust::project::RustProject;
 use crate::resolution::rust::target::{CargoTargetKind, RustTarget};
+use crate::resolution::supply::SourceSupply;
 
 use super::authority;
 use super::closure::{self, ClosureEntry, UnitClosure};
 use super::error::RustSnapshotError;
-use super::source::{self, RustSource};
+use super::source::RustSource;
 use super::store::{SourceStore, refuse};
 
 /// One primary target's closure inside a package snapshot.
@@ -74,7 +78,7 @@ impl RustPackageSnapshot {
 
     /// The one stored source at a repository-relative path.
     pub fn source(&self, path: &str) -> Option<&RustSource> {
-        source::find(&self.sources, path)
+        line_index::find(&self.sources, path)
     }
 }
 
@@ -115,8 +119,9 @@ impl RustPackageSnapshotError {
 }
 
 /// Validate one package, then walk all of its primary targets into one store.
-pub(in crate::resolution::rust) fn build(
+pub(in crate::resolution::rust) fn build<P: SourceSupply<RustFileInventory, RustSourceFault>>(
     project: &RustProject,
+    provider: &mut P,
     id: PackageId,
 ) -> Result<RustPackageSnapshot, RustPackageSnapshotError> {
     let package =
@@ -127,7 +132,7 @@ pub(in crate::resolution::rust) fn build(
     let mut store = SourceStore::new(project.root(), project.limits());
     let mut targets = Vec::new();
     for target in primary_targets {
-        targets.push(build_target(&mut store, target)?);
+        targets.push(build_target(&mut store, provider, target)?);
     }
     Ok(RustPackageSnapshot {
         package: id,
@@ -136,17 +141,14 @@ pub(in crate::resolution::rust) fn build(
     })
 }
 
-fn build_target(
+fn build_target<P: SourceSupply<RustFileInventory, RustSourceFault>>(
     store: &mut SourceStore,
+    provider: &mut P,
     target: &RustTarget,
 ) -> Result<RustPrimaryTargetSnapshot, RustPackageSnapshotError> {
-    let entry = ClosureEntry {
-        target_name: target.name(),
-        entry_path: target.entry_path(),
-        edition: target.edition(),
-    };
+    let entry = ClosureEntry::of_target(target);
     let mut failures = Vec::new();
-    let closure = closure::walk_unit(store, &entry, &mut failures);
+    let closure = closure::walk_unit(store, provider, &entry, &mut failures).completed();
     match (closure, failures.is_empty()) {
         (Some(closure), true) => Ok(target_snapshot(target, closure)),
         (None, _) | (Some(_), false) => Err(RustPackageSnapshotError::for_target(
@@ -160,7 +162,7 @@ fn target_snapshot(target: &RustTarget, closure: UnitClosure) -> RustPrimaryTarg
     RustPrimaryTargetSnapshot {
         target: target.id(),
         kind: target.kind(),
-        crate_root: Arc::clone(&target.entry_path),
+        crate_root: Arc::clone(target.shared_entry_path()),
         sources: closure.sources,
     }
 }

@@ -14,6 +14,13 @@ inputs:
   config:
     description: 'Path to a .pedant.toml. Defaults to pedant''s own config discovery.'
     default: ''
+  max-source-file-lines:
+    description: >-
+      Blocking line ceiling for one source file. Empty leaves the project
+      config's own tiers in place, where `large-source-file` is advisory and a
+      file over the warning threshold is reported but still exits 0. Set it when
+      the caller's acceptance contract requires that ceiling to fail the run.
+    default: ''
   working-directory:
     description: >-
       Directory to run from. Must be the workspace root: the project-level checks
@@ -54,12 +61,16 @@ runs:
         PEDANT_PATHS: ${{ inputs.paths }}
         PEDANT_CONFIG: ${{ inputs.config }}
         PEDANT_FORMAT: ${{ inputs.format }}
+        PEDANT_MAX_SOURCE_FILE_LINES: ${{ inputs.max-source-file-lines }}
       run: |
         set -uo pipefail
 
         args=( check --format "$PEDANT_FORMAT" )
         if [ -n "$PEDANT_CONFIG" ]; then
           args+=( --config "$PEDANT_CONFIG" )
+        fi
+        if [ -n "$PEDANT_MAX_SOURCE_FILE_LINES" ]; then
+          args+=( --max-source-file-lines "$PEDANT_MAX_SOURCE_FILE_LINES" )
         fi
 
         # Unquoted on purpose: split the path list into separate arguments.

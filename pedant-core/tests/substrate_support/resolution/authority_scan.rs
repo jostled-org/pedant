@@ -10,14 +10,18 @@
 
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::Path;
 use std::sync::OnceLock;
 
 use crate::resolution::authority_model::{
     AUTHORITIES, Authority, FIRST_PARTY_SOURCES, FORBIDDEN_IDENTIFIERS, FORBIDDEN_PATHS,
     MIGRATED_PREDICATE_SITE, MIGRATED_PREDICATES,
 };
+use crate::resolution::production_tree::nested_sources_from;
 use crate::resolution::root_inventory::workspace_root;
+use crate::resolution::tracked_script::CI_WORKFLOW;
+
+/// The workflow key that names the trees CI scans.
+const CI_SOURCE_KEY: &str = "FIRST_PARTY_SOURCES:";
 
 /// One first-party source, read once for every question asked of it.
 pub struct Source {
@@ -47,11 +51,13 @@ pub fn first_party_sources() -> &'static [Source] {
 }
 
 fn scan_first_party_sources() -> Box<[Source]> {
+    assert_the_scanned_trees_are_the_workflows();
     let root = workspace_root();
-    let mut found: BTreeSet<Box<str>> = BTreeSet::new();
-    for tree in FIRST_PARTY_SOURCES {
-        collect_rust_files(&root.join(tree), &root, &mut found);
-    }
+    let found: BTreeSet<Box<str>> = FIRST_PARTY_SOURCES
+        .iter()
+        .flat_map(|tree| nested_sources_from(&root, &root.join(tree)))
+        .map(String::into_boxed_str)
+        .collect();
     assert!(
         found.len() > 50,
         "the first-party source scan found only {} files, so it is not reading the tree",
@@ -66,40 +72,43 @@ fn scan_first_party_sources() -> Box<[Source]> {
         .collect()
 }
 
-fn collect_rust_files(directory: &Path, root: &Path, found: &mut BTreeSet<Box<str>>) {
-    let entries =
-        fs::read_dir(directory).unwrap_or_else(|error| panic!("{}: {error}", directory.display()));
-    for entry in entries
-        .map(|entry| entry.unwrap_or_else(|error| panic!("{}: {error}", directory.display())))
-    {
-        let path = entry.path();
-        match (path.is_dir(), path.extension().is_some_and(|it| it == "rs")) {
-            (true, _) => collect_rust_files(&path, root, found),
-            (false, true) => {
-                found.insert(relative_text(root, &path));
-            }
-            (false, false) => (),
-        }
-    }
-}
-
-fn relative_text(root: &Path, path: &Path) -> Box<str> {
-    let relative = path.strip_prefix(root).unwrap_or_else(|error| {
-        panic!(
-            "{} is outside scanned root {}: {error}",
-            path.display(),
-            root.display()
-        )
-    });
-    relative
-        .to_str()
-        .unwrap_or_else(|| panic!("{} is not valid UTF-8", path.display()))
-        .replace('\\', "/")
-        .into_boxed_str()
+/// The model's trees are the trees the tracked workflow scans.
+///
+/// [`FIRST_PARTY_SOURCES`] was a second hand-written copy of the workflow's own
+/// job-env list with nothing holding the two together. A crate added to CI and
+/// not here leaves the authority and forbidden-identifier scans reading a
+/// narrower surface than the job does, and every claim over them goes on
+/// passing — which is the failure this whole model is written down to reject.
+///
+/// Asserted where the scan is built rather than beside one case, so every
+/// consumer of that one reading gets it.
+fn assert_the_scanned_trees_are_the_workflows() {
+    let workflow = read_text(CI_WORKFLOW);
+    let stated: BTreeSet<&str> = workflow
+        .lines()
+        .map(str::trim)
+        .find_map(|line| line.strip_prefix(CI_SOURCE_KEY))
+        .unwrap_or_else(|| {
+            panic!("{CI_WORKFLOW} must state {CI_SOURCE_KEY}, or nothing binds this scan to it")
+        })
+        .split_whitespace()
+        .collect();
+    assert!(
+        !stated.is_empty(),
+        "{CI_WORKFLOW} states {CI_SOURCE_KEY} with no tree, so the job scans nothing"
+    );
+    let modelled: BTreeSet<&str> = FIRST_PARTY_SOURCES.iter().copied().collect();
+    assert_eq!(
+        stated, modelled,
+        "{CI_WORKFLOW}'s {CI_SOURCE_KEY} and the authority model must name the same trees"
+    );
 }
 
 /// Every first-party source that names `needle`, in path order.
-fn sources_naming<'a>(sources: &'a [Source], needle: &str) -> Vec<&'a str> {
+///
+/// Settled the moment the filter is over; both callers read it and neither
+/// appends to it.
+fn sources_naming<'a>(sources: &'a [Source], needle: &str) -> Box<[&'a str]> {
     sources
         .iter()
         .filter(|source| source.text.contains(needle))
@@ -117,7 +126,7 @@ pub fn assert_authorities(sources: &[Source]) {
 fn assert_authority(sources: &[Source], authority: &Authority) {
     let found = sources_naming(sources, authority.marker);
     assert_eq!(
-        found, authority.sites,
+        &*found, authority.sites,
         "{}: {:?} must be named by exactly {:?}",
         authority.label, authority.marker, authority.sites
     );

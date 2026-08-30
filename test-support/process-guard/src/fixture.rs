@@ -1,8 +1,10 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use thiserror::Error;
+
+use crate::poll::until_answered;
 
 /// Environment variable selecting the fixture process role.
 pub const FIXTURE_ROLE_ENV: &str = "PEDANT_PROCESS_FIXTURE_ROLE";
@@ -17,7 +19,6 @@ pub const FIXTURE_OUTCOME_ENV: &str = "PEDANT_PROCESS_FIXTURE_OUTCOME";
 
 const FIXTURE_WAIT: Duration = Duration::from_secs(10);
 const FIXTURE_SLEEP: Duration = Duration::from_secs(300);
-const POLL: Duration = Duration::from_millis(25);
 
 /// A failure inside the reusable Rust process-tree fixture.
 #[derive(Debug, Error)]
@@ -57,10 +58,7 @@ pub enum FixtureError {
 pub fn run_fixture() -> Result<(), FixtureError> {
     match std::env::var(FIXTURE_ROLE_ENV) {
         Err(std::env::VarError::NotPresent) => Ok(()),
-        Err(std::env::VarError::NotUnicode(_)) => Err(FixtureError::InvalidValue {
-            name: FIXTURE_ROLE_ENV,
-            value: "<non-Unicode>".into(),
-        }),
+        Err(std::env::VarError::NotUnicode(_)) => Err(not_unicode(FIXTURE_ROLE_ENV)),
         Ok(role) if role == "parent" => run_parent(),
         Ok(role) if role == "descendant" => {
             std::thread::sleep(FIXTURE_SLEEP);
@@ -106,25 +104,60 @@ fn run_parent() -> Result<(), FixtureError> {
 fn environment(name: &'static str) -> Result<String, FixtureError> {
     std::env::var(name).map_err(|error| match error {
         std::env::VarError::NotPresent => FixtureError::MissingEnvironment(name),
-        std::env::VarError::NotUnicode(_) => FixtureError::InvalidValue {
-            name,
-            value: "<non-Unicode>".into(),
-        },
+        std::env::VarError::NotUnicode(_) => not_unicode(name),
     })
+}
+
+/// The refusal both environment readers state for a value that is not Unicode.
+///
+/// The two readers disagree about what an *absent* variable means — one is the
+/// fixture's harmless no-op role, the other a missing requirement — and agree
+/// about nothing else. A value the platform will not spell as Unicode is that
+/// one thing, so the sentinel standing in for it, and the variant carrying it,
+/// are written here rather than at each reader.
+fn not_unicode(name: &'static str) -> FixtureError {
+    FixtureError::InvalidValue {
+        name,
+        value: "<non-Unicode>".into(),
+    }
 }
 
 fn environment_path(name: &'static str) -> Result<PathBuf, FixtureError> {
     environment(name).map(PathBuf::from)
 }
 
+/// The pid the fixture descendant recorded, once its file holds one.
+///
+/// The file is the one the parent fixture writes under [`FIXTURE_PID_FILE_ENV`],
+/// and its contents are a decimal pid with no framing of any kind. Reading that
+/// back is this crate's half of its own contract, not either consuming root's
+/// protocol: a root spelling the poll itself would be parsing a format it does
+/// not own, and every such root would own a separate chance to parse it wrongly.
+///
+/// `None` reports a budget that expired with the file still holding no pid.
+/// The wait is bounded on the same schedule every other wait in this crate
+/// runs on, and a budget no clock can name is an unbounded wait rather than a
+/// panic.
+pub fn descendant_pid(path: &Path, budget: Duration) -> Option<u32> {
+    until_answered(|| recorded_pid(path), budget)
+}
+
+/// The pid the descendant file holds, or nothing while it holds none yet.
+///
+/// A file that is absent, unreadable, empty, or mid-write answers the same way:
+/// not yet. The parent writes the pid in one call, so a read that does not
+/// parse is a read taken before that call rather than a torn one.
+fn recorded_pid(path: &Path) -> Option<u32> {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|text| text.trim().parse::<u32>().ok())
+}
+
+/// Poll for a file until it appears or the fixture budget expires.
 fn wait_for_file(path: &Path, subject: &'static str) -> Result<(), FixtureError> {
-    let deadline = Instant::now() + FIXTURE_WAIT;
-    loop {
-        match (path.is_file(), Instant::now() >= deadline) {
-            (true, _) => return Ok(()),
-            (false, true) => return Err(FixtureError::TimedOut(subject)),
-            (false, false) => std::thread::sleep(POLL),
-        }
+    match until_answered(|| path.is_file().then_some(()), FIXTURE_WAIT) {
+        Some(()) => Ok(()),
+        None => Err(FixtureError::TimedOut(subject)),
     }
 }
 

@@ -27,25 +27,38 @@ set -euo pipefail
 # path for a script invoked by a relative path, `cd` then consults `CDPATH`, and
 # a match there both enters the wrong directory and prints it — leaving
 # `script_dir` a two-line value naming a tree this repository does not own.
-script_dir="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+#
+# Emptiness alone cannot catch a `dirname` that failed: `cd -- ""` succeeds and
+# stays put, so `script_dir` comes back non-empty and names whatever directory
+# the caller stood in. The library this script is about to source is what says
+# the resolution landed beside the script, and an unreadable library is an
+# unavailable machine rather than the drift this check is named for — so it
+# leaves with 75 and the caller retries, instead of the 1 an unguarded `set -e`
+# would report as the Go closure drifting.
+script_dir="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || script_dir=""
+if [ -z "${script_dir}" ] || [ ! -r "${script_dir}/repository_check_lib.sh" ]; then
+    echo "error: cannot resolve the directory holding ${BASH_SOURCE[0]}" >&2
+    exit 75
+fi
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=repository_check_lib.sh
-. "${script_dir}/repository_check_lib.sh"
+. "${script_dir}/repository_check_lib.sh" || exit 75
 
 cd_repo_root
 require_tools cargo jq rg
 
-# Cargo's default edge kinds, named so the choice is visible: dev edges stay
-# out, and build and proc-macro edges stay in. A `[build-dependencies]` on the
-# Go grammar links it just as surely as a normal one.
-readonly EDGE_KINDS="normal,build"
+# The edge kinds every row reads are `CLOSURE_EDGE_KINDS`, which
+# `repository_check_lib.sh` owns beside the capture format for the same readers.
+# A `[build-dependencies]` on the Go grammar links it just as surely as a normal
+# one, and three closure checks had each stated that constant and a paraphrase
+# of its reasoning.
 
 # ---------------------------------------------------------------------------
 # Default-off: no Go grammar reaches a build that asked for none.
 # ---------------------------------------------------------------------------
 
 check_tree_closure "go core-default" \
-    -p pedant-core -e "${EDGE_KINDS}" -- \
+    -p pedant-core -e "${CLOSURE_EDGE_KINDS}" -- \
     member:pedant-core member:pedant-types \
     require:pedant-core require:pedant-types require:syn \
     feature:pedant-core/checks \
@@ -54,7 +67,7 @@ check_tree_closure "go core-default" \
     no-prefix:ra_ap_
 
 check_tree_closure "go core-no-default" \
-    -p pedant-core --no-default-features -e "${EDGE_KINDS}" -- \
+    -p pedant-core --no-default-features -e "${CLOSURE_EDGE_KINDS}" -- \
     member:pedant-core member:pedant-types \
     require:pedant-core require:pedant-types \
     feature:syn/visit \
@@ -64,7 +77,7 @@ check_tree_closure "go core-no-default" \
     no-prefix:ra_ap_
 
 check_tree_closure "go graph-default" \
-    -p pedant-graph -e "${EDGE_KINDS}" -- \
+    -p pedant-graph -e "${CLOSURE_EDGE_KINDS}" -- \
     member:pedant-graph member:pedant-core member:pedant-types \
     require:pedant-graph require:pedant-core require:pedant-types \
     feature:serde/rc \
@@ -101,7 +114,7 @@ readonly OTHER_GRAMMARS=(
 )
 
 check_tree_closure "go core-go-only" \
-    -p pedant-core --no-default-features --features go-resolution -e "${EDGE_KINDS}" -- \
+    -p pedant-core --no-default-features --features go-resolution -e "${CLOSURE_EDGE_KINDS}" -- \
     member:pedant-core member:pedant-types member:pedant-syntax \
     require:pedant-core require:pedant-syntax require:tree-sitter require:tree-sitter-go \
     feature:pedant-core/go-resolution feature:pedant-syntax/ts-go \
@@ -111,7 +124,7 @@ check_tree_closure "go core-go-only" \
     no-prefix:ra_ap_
 
 check_tree_closure "go graph-go-only" \
-    -p pedant-graph --no-default-features --features go -e "${EDGE_KINDS}" -- \
+    -p pedant-graph --no-default-features --features go -e "${CLOSURE_EDGE_KINDS}" -- \
     member:pedant-graph member:pedant-core member:pedant-types member:pedant-syntax \
     require:pedant-graph require:pedant-core require:pedant-syntax require:tree-sitter-go \
     feature:pedant-graph/go feature:pedant-core/go-resolution feature:pedant-syntax/ts-go \
@@ -131,7 +144,7 @@ check_tree_closure "go graph-go-only" \
 
 check_tree_closure "go unified-core-and-graph" \
     -p pedant-core -p pedant-graph --no-default-features \
-    --features pedant-core/go-resolution,pedant-graph/go -e "${EDGE_KINDS}" -- \
+    --features pedant-core/go-resolution,pedant-graph/go -e "${CLOSURE_EDGE_KINDS}" -- \
     member:pedant-graph member:pedant-core member:pedant-types member:pedant-syntax \
     require:pedant-graph require:pedant-core require:pedant-syntax require:tree-sitter-go \
     feature:pedant-graph/go feature:pedant-core/go-resolution feature:pedant-syntax/ts-go \

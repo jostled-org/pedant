@@ -3,59 +3,53 @@
 //! [`crate::release_workflow`] states the claim as one test; this module holds
 //! the readings that prove the proof stages, packages, and compiles what it
 //! says it does. [`crate::packaged_workspace_claims`] owns the tables those
-//! readings compare against, the readers that take the script, and the three
-//! shared assertions; [`crate::packaged_workspace_budget`] reads what the run
-//! costs. Both splits are the 500-line boundary, not a second owner: nothing
-//! here is reachable from any other predicate.
+//! readings compare against and the one reading of the script all three
+//! predicates share; [`crate::shell_script_reading`] owns how a shell script is
+//! read at all; [`crate::packaged_workspace_budget`] reads what the run costs.
+//! Every split is the 500-line boundary, not a second owner: nothing here is
+//! reachable from any other predicate.
 
 use crate::packaged_workspace_budget::assert_budget_contract;
 use crate::packaged_workspace_claims::{
     ARCHIVE_GRAPH_COMMANDS, ARCHIVE_IDENTITY_REFUSALS, ARCHIVE_MEMBER_ENTRY,
     ARCHIVE_MEMBER_EXTRACTION, ARCHIVE_PACKAGING_STEPS, GRAPH_REFUSAL_CHECKS, GRAPH_REFUSALS,
     ISOLATED_BASE_STEPS, ISOLATED_COMMIT_IDENTITY, ISOLATED_STAGING_SEQUENCE, MEMBER_LIST_CLOSE,
-    MEMBER_LIST_OPEN, PACKAGE_SCRIPT_FUNCTIONS, PACKAGED_WORKSPACE_SCRIPT, PINNED_IDENTITIES,
-    PINNED_TOOLS, PROOF_STAGE_SEQUENCE, RELEASE_STAGING_STEPS, TARGET_ROOT_REQUIREMENTS,
-    UNTRACKED_COPY_STEPS, WORKING_TREE_OVERLAY_STEPS, assert_contains_all, assert_exactly_once,
-    assert_in_order, function_body, offset_of, read_repository_file, subject_declaration,
-    tracked_shell_scripts,
+    MEMBER_LIST_OPEN, PACKAGE_SCRIPT_FUNCTIONS, PINNED_IDENTITIES, PINNED_TOOLS,
+    PROOF_STAGE_SEQUENCE, RELEASE_STAGING_STEPS, REPOSITORY_ROOT_REQUIREMENTS,
+    TARGET_ROOT_REQUIREMENTS, UNTRACKED_COPY_STEPS, WORKING_TREE_OVERLAY_STEPS,
+    subject_declaration,
+};
+use crate::packaged_workspace_reading::packaged_workspace_script;
+use crate::resolution::tracked_script::linted_scripts;
+use crate::shell_script_reading::{
+    assert_contains_all, assert_exactly_once, assert_in_order, defined_functions, function_body,
+    offset_of, tracked_shell_scripts,
 };
 
 /// Read the tracked proof once and require every part of it.
 pub(crate) fn assert_release_graph_is_exact() {
-    let source = read_repository_file(PACKAGED_WORKSPACE_SCRIPT);
-    let joined = joined_lines(&source);
+    let script = packaged_workspace_script();
+    let (source, joined) = (script.source, script.joined);
 
-    assert_package_script_stages(&source);
-    assert_target_root_contract(&source);
-    assert_release_order_authority(&source);
-    assert_proof_stage_sequence(&joined);
-    assert_isolated_staging(&joined);
-    assert_pinned_tool_installation(&joined);
-    assert_release_update_precedes_packaging(&joined);
-    assert_archive_packaging(&joined);
-    assert_generated_workspace(&joined);
-    assert_members_are_extracted_archives(&joined);
-    assert_packaged_graph_verification(&joined);
-    assert_budget_contract(&joined);
-    assert_package_script_ownership(&source, &joined);
+    assert_package_script_stages(source);
+    assert_repository_root_contract(source);
+    assert_target_root_contract(source);
+    assert_release_order_authority(source);
+    assert_proof_stage_sequence(joined);
+    assert_isolated_staging(joined);
+    assert_pinned_tool_installation(joined);
+    assert_release_update_precedes_packaging(joined);
+    assert_archive_packaging(joined);
+    assert_generated_workspace(joined);
+    assert_members_are_extracted_archives(joined);
+    assert_packaged_graph_verification(joined);
+    assert_budget_contract(joined);
+    assert_package_script_ownership(source, joined);
 }
 
-/// The twelve stages the proof owns and the two sequences that run them.
-const PACKAGE_SCRIPT_FUNCTION_COUNT: usize = 14;
-
-/// One logical shell command per line, so a fragment states a whole command
-/// rather than whichever slice of it survived the author's line wrapping.
-fn joined_lines(source: &str) -> Box<str> {
-    let continued = source.replace("\\\n", " ");
-    let lines: Box<[Box<str>]> = continued
-        .lines()
-        .map(|line| {
-            let words: Box<[&str]> = line.split_whitespace().collect();
-            words.join(" ").into()
-        })
-        .collect();
-    lines.join("\n").into()
-}
+/// The nineteen responsibilities the proof owns and the three sequences that
+/// run them.
+const PACKAGE_SCRIPT_FUNCTION_COUNT: usize = 22;
 
 /// Every stage the proof owns is one function, no stage is missing, and the
 /// inventory is the sorted list it says it is.
@@ -63,7 +57,7 @@ fn assert_package_script_stages(source: &str) {
     assert_eq!(
         PACKAGE_SCRIPT_FUNCTIONS.len(),
         PACKAGE_SCRIPT_FUNCTION_COUNT,
-        "the proof owns twelve stages and the two sequences that run them"
+        "the proof owns nineteen responsibilities and the three sequences that run them"
     );
     let mut sorted: Box<[&str]> = PACKAGE_SCRIPT_FUNCTIONS.into();
     sorted.sort_unstable();
@@ -71,11 +65,7 @@ fn assert_package_script_stages(source: &str) {
         &*sorted, PACKAGE_SCRIPT_FUNCTIONS,
         "the stage inventory is stated sorted"
     );
-    let defined: Box<[Box<str>]> = source
-        .lines()
-        .filter_map(|line| line.strip_suffix("() {"))
-        .map(Box::from)
-        .collect();
+    let defined = defined_functions(source);
     for stage in PACKAGE_SCRIPT_FUNCTIONS {
         assert_eq!(
             defined
@@ -86,6 +76,25 @@ fn assert_package_script_stages(source: &str) {
             "the packaged-workspace proof needs exactly one {stage} owner"
         );
     }
+}
+
+/// One explicit directory is normalized, proved to be its Git toplevel, and
+/// entered before target or release state is read.
+fn assert_repository_root_contract(source: &str) {
+    assert_contains_all(
+        &function_body(source, "capture_repository_root"),
+        REPOSITORY_ROOT_REQUIREMENTS,
+        "the repository-root contract",
+    );
+    assert_in_order(
+        &function_body(source, "preflight"),
+        &[
+            "capture_repository_root \"$1\"",
+            "capture_target_root",
+            "read_release_order",
+        ],
+        "repository-root preflight",
+    );
 }
 
 /// The inherited target root is checked, captured, sealed, and re-exported
@@ -415,13 +424,11 @@ fn assert_package_script_ownership(source: &str, joined: &str) {
 /// including this proof and the tracked classifier is a subject exactly once,
 /// and the next script added is too.
 fn assert_shellcheck_covers_every_tracked_script() {
-    let wrapper = read_repository_file(".github/scripts/run_shellcheck.sh");
-    let mut subjects: Box<[Box<str>]> = wrapper
-        .lines()
-        .map(|line| line.trim().trim_end_matches('\\').trim())
-        .filter(|token| token.ends_with(".sh"))
-        .map(Box::from)
-        .collect();
+    // Asked of the runner, not read out of it. The subject list is derived from
+    // the two directories that hold the scripts, so the file states globs and no
+    // path a reader could scan for; `--list` prints the same expansion the lint
+    // run hands the analyser, which is the set this equality is about.
+    let mut subjects: Box<[Box<str>]> = linted_scripts().iter().cloned().collect();
     subjects.sort();
     let mut tracked = tracked_shell_scripts();
     tracked.sort();

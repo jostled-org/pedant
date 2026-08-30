@@ -1,6 +1,6 @@
-//! The type-relationship fact one `impl` block contributes.
+//! What one `impl` block contributes to the fact tables.
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::graph::extend_edges_from_names;
 use crate::ir::facts::{ImplFact, IrSpan};
@@ -10,12 +10,12 @@ use crate::ir::type_introspection::collect_signature_type_names_into;
 /// methods create for mixed-concerns analysis.
 pub(super) fn impl_fact(
     node: &syn::ItemImpl,
-    position: (&Rc<str>, IrSpan, Box<[Rc<str>]>),
+    position: (&Arc<str>, IrSpan, Box<[Arc<str>]>),
 ) -> ImplFact {
     let (self_name, span, cfg_predicates) = position;
     let trait_name = trait_name(node);
     ImplFact {
-        self_type: Rc::clone(self_name),
+        self_type: Arc::clone(self_name),
         edges: edges(node, self_name, trait_name.as_deref()),
         trait_name,
         span,
@@ -32,11 +32,11 @@ fn trait_name(node: &syn::ItemImpl) -> Option<Box<str>> {
 
 fn edges(
     node: &syn::ItemImpl,
-    self_name: &Rc<str>,
+    self_name: &Arc<str>,
     trait_name: Option<&str>,
-) -> Box<[(Rc<str>, Rc<str>)]> {
-    let mut edges: Vec<(Rc<str>, Rc<str>)> = trait_name
-        .map(|named| (Rc::clone(self_name), Rc::from(named)))
+) -> Box<[(Arc<str>, Arc<str>)]> {
+    let mut edges: Vec<(Arc<str>, Arc<str>)> = trait_name
+        .map(|named| (Arc::clone(self_name), Arc::from(named)))
         .into_iter()
         .collect();
     let mut names = Vec::new();

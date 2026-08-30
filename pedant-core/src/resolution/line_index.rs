@@ -44,9 +44,7 @@ pub(crate) trait SnapshotSource {
 impl<'source> LineIndex<'source> {
     /// Index the lines of one exact source text.
     ///
-    /// The line breaks are counted before the table is built. `match_indices`
-    /// reports no size hint, so a growing table doubles and then copies every
-    /// offset it already held into its final allocation.
+    /// The line breaks are counted before the table is built.
     pub(crate) fn new(source: &'source str) -> Self {
         let breaks = source.bytes().filter(|byte| *byte == b'\n').count();
         let mut starts = Vec::with_capacity(breaks.saturating_add(1));
@@ -73,6 +71,44 @@ impl<'source> LineIndex<'source> {
             .is_some_and(|bounds| self.within(bounds, column))
     }
 
+    /// The byte offset one zero-based line and zero-based *character* column
+    /// names in this source.
+    ///
+    /// `syn` counts columns in characters, so the answer is the byte the
+    /// requested character starts at rather than the column added to the line's
+    /// own start. Absent when this source states no such line, or when the
+    /// line's own bounds do not slice it.
+    ///
+    /// A column past the line's last character answers the line's end. That is
+    /// the position a report's exclusive span end takes, and it is the widest
+    /// extent the line can state.
+    ///
+    /// One owner, because a coordinate resolved twice is two answers to "where
+    /// does this `syn` column sit", and the one that saturates and the one that
+    /// propagates absence would each be reading a different source position.
+    pub(crate) fn char_offset(&self, line: usize, column: usize) -> Option<usize> {
+        let (start, _) = self.line_bounds(line)?;
+        Some(start.saturating_add(self.char_column(line, column)?))
+    }
+
+    /// The same answer, measured from the line's own start rather than the
+    /// source's.
+    ///
+    /// A caller that reports a zero-based column wants this and nothing else.
+    /// Asking [`char_offset`](Self::char_offset) for it meant looking the line's
+    /// bounds up a second time and subtracting the start back off, so the two
+    /// spellings walked the table twice to reach one number.
+    pub(crate) fn char_column(&self, line: usize, column: usize) -> Option<usize> {
+        let (start, end) = self.line_bounds(line)?;
+        let content = self.source.get(start..end)?;
+        Some(
+            content
+                .char_indices()
+                .nth(column)
+                .map_or(content.len(), |(offset, _)| offset),
+        )
+    }
+
     /// The byte offsets one zero-based line spans, its line break excluded.
     pub(crate) fn line_bounds(&self, line: usize) -> Option<(usize, usize)> {
         let start = self.starts.get(line).copied()?;
@@ -95,6 +131,22 @@ impl<'source> LineIndex<'source> {
     }
 }
 
+/// The source at `path`, when the sorted slice holds one.
+///
+/// Beside the trait that already states `path()`, because the search reads
+/// nothing else. Every language sorts its snapshot sources by that same
+/// normalized path, so a second copy of this search was a second chance for one
+/// language to look a source up by a key its own slice was not ordered on.
+pub(crate) fn find<'sources, S: SnapshotSource>(
+    sources: &'sources [S],
+    path: &str,
+) -> Option<&'sources S> {
+    sources
+        .binary_search_by(|source| source.path().cmp(path))
+        .ok()
+        .and_then(|index| sources.get(index))
+}
+
 /// One line table per snapshot source, in the snapshot's own order.
 ///
 /// A source is instantiated once per unit and read by several passes, so
@@ -105,6 +157,16 @@ pub(crate) fn index_sources(sources: &[impl SnapshotSource]) -> Box<[LineIndex<'
 }
 
 /// The same tables, keyed by the paths their sources are named under.
+///
+/// The tables arrive separately from the sources they were built over, which is
+/// the one mismatch this module's borrow-the-text design cannot rule out on its
+/// own: `zip` stops at the shorter side, so a short table would key some sources
+/// and drop the rest with nothing said. Both callers derive the tables from the
+/// same slice they pass here, under one `'snapshot` lifetime — [`source_lines`]
+/// below by construction, and the resolver by handing over the [`index_sources`]
+/// result for the slice it is about to key. A refusal is not the answer: this
+/// returns a map, no caller states a third outcome for it, and the production
+/// surface takes no assertion route.
 pub(crate) fn keyed_lines<'snapshot>(
     sources: &'snapshot [impl SnapshotSource],
     lines: Box<[LineIndex<'snapshot>]>,

@@ -64,6 +64,15 @@ pub fn parse_bound(source: &str, language: SyntaxLanguage) -> Option<ParsedSynta
     Some(ParsedSyntax::bind(source, language, tree))
 }
 
+/// Whether this build links a grammar for `language`.
+///
+/// The one honest difference between "no parser here" and "the parser found
+/// nothing": both leave [`parse_bound`] absent, and a caller that must not read
+/// absence as "this source declares nothing" needs to tell them apart.
+pub(crate) fn links_grammar(language: SyntaxLanguage) -> bool {
+    grammar(language).is_some()
+}
+
 /// The enabled tree-sitter grammar for `language`, if this build has one.
 ///
 /// Every variant names both arms — the grammar its feature enables and the

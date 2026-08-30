@@ -10,7 +10,11 @@
 # the version is immutable. This proof stages the release the way finalization
 # will squash it, lets release-plz generate every version and requirement,
 # packages all eight members, and compiles the extracted archives against each
-# other under exactly those generated requirements.
+# other under exactly those generated requirements. It then installs the
+# navigation product out of its own archive and asks it every question it
+# publishes, over a mixed-language repository this run wrote outside the
+# checkout, through both the command line and a real stdio MCP session — because
+# a release that compiles and cannot answer is a release nobody can use.
 #
 # It owns its clone, its tool root, its archives, and its generated workspace.
 # It releases all but the tool root on success, failure, and interruption; that
@@ -26,11 +30,12 @@
 #
 # Two stages, because building the two pinned tools from source costs 1,429
 # measured seconds against a 1,200-second verification slice, and five times
-# what the release proof itself costs. `--install-tools <tool>` builds one of
-# them into a revision-named root inside the caller's target and stops; the
-# release proof that follows asks those binaries their versions and is held to
-# the warm budget they earn. Any stage run alone is still correct: a proof that
-# finds no pinned build makes one and pays the cold budget for it.
+# what the release proof itself costs. `<repository-root> --install-tools
+# <tool>` builds one of them into a revision-named root inside the caller's
+# target and stops; `<repository-root>` alone runs the release proof, which asks
+# those binaries their versions and is held to the warm budget they earn. Any
+# stage run alone is still correct: a proof that finds no pinned build makes one
+# and pays the cold budget for it.
 #
 # Exit 0 clean, 75 when the machine could not do the work, non-zero otherwise.
 
@@ -50,7 +55,7 @@ readonly SEMVER_CHECKS_VERSION SEMVER_CHECKS_REVISION
 # writes it. release-plz reads conventional-commit subjects to choose the next
 # version, so the proof must show it the subject finalization will squash to
 # rather than the checkpoint history this branch actually holds.
-PROOF_COMMIT_SUBJECT="feat!: implement go graph extraction"
+PROOF_COMMIT_SUBJECT="feat!: implement code-intelligence-index-and-surfaces"
 RELEASE_STAGING_SUBJECT="chore: stage the release-plz update"
 PROOF_IDENTITY_NAME="pedant packaged workspace proof"
 PROOF_IDENTITY_EMAIL="packaged-workspace-proof@pedant.invalid"
@@ -61,6 +66,26 @@ readonly PROOF_IDENTITY_NAME PROOF_IDENTITY_EMAIL PROOF_BRANCH_NAME
 RELEASE_PACKAGE_COUNT=8
 STAGING_PREFIX="pedant-packaged-workspace"
 readonly RELEASE_PACKAGE_COUNT STAGING_PREFIX
+
+# The navigation product this release ships, the binary installing it produces,
+# and how many tools that binary serves.
+#
+# Three statements because they are three facts. A workspace whose binary is not
+# named for its package would still install correctly and the journey would look
+# for something that is not there. And the tool count is the product's own, not
+# the release's package count: eight tools and eight packages agree today by
+# coincidence, so a ninth published package borrowed as a tool count would refuse
+# a correct listing and name a package total while doing it.
+#
+# Compiling the archives says the release links. It does not say the product an
+# operator installs out of them can index a repository and answer a question,
+# which is the whole reason this release exists — so the proof installs that
+# binary and asks it, over a repository of its own outside the caller's
+# checkout.
+NAVIGATION_PACKAGE="pedant-snippet"
+NAVIGATION_BINARY="pedant-snippet"
+NAVIGATION_TOOL_COUNT=8
+readonly NAVIGATION_PACKAGE NAVIGATION_BINARY NAVIGATION_TOOL_COUNT
 
 # Where the pinned tools live, and what each stage is allowed to cost.
 #
@@ -80,6 +105,13 @@ readonly RELEASE_PACKAGE_COUNT STAGING_PREFIX
 # Measured cold, empty target: cargo-semver-checks 836s and 808,620KiB,
 # release-plz 593s and 1,476,192KiB, the release proof over those 266s and
 # 925,252KiB, owned staging peaking at 92,528KiB.
+#
+# The packaged journey adds one debug installation of the navigation product,
+# measured against an empty target at 11s and 473,428KiB on a ten-core Apple
+# silicon host, under the same profile the stage states rather than the caller's.
+# That is why the ceilings below are unchanged: the warm pair still holds the
+# release proof and the journey together with room, and a budget raised for work
+# nobody measured is a budget that no longer refuses anything.
 TOOL_ROOT_NAME=".pedant-packaged-workspace-7e38e7a-c9d2ce64.tools"
 INSTALL_RUNTIME_BUDGET_SECONDS=1100
 INSTALL_TARGET_BUDGET_KIB=2097152
@@ -100,11 +132,21 @@ readonly REQUIRED_TOOLS
 # path for a script invoked by a relative path, `cd` then consults `CDPATH`, and
 # a match there both enters the wrong directory and prints it — leaving
 # `script_dir` a two-line value naming a tree this repository does not own.
-script_dir="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+#
+# Emptiness alone cannot catch a `dirname` that failed: `cd -- ""` succeeds and
+# stays put, so `script_dir` comes back non-empty and names whatever directory
+# the caller stood in — and the proof would then anchor its repository root two
+# levels above that. The classifier's presence beside the script is what says
+# the resolution landed here.
+script_dir="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || script_dir=""
+if [ -z "${script_dir}" ] || [ ! -r "${script_dir}/cargo_infrastructure.sh" ]; then
+    echo "error: cannot resolve the directory holding ${BASH_SOURCE[0]}" >&2
+    exit 75
+fi
 readonly script_dir
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=cargo_infrastructure.sh
-. "${script_dir}/cargo_infrastructure.sh"
+. "${script_dir}/cargo_infrastructure.sh" || exit 75
 
 # Everything this run owns or measures. Named before the first trap, because a
 # handler that fires between two assignments must still be able to read them.
@@ -123,6 +165,11 @@ release_order_json="[]"
 release_versions=()
 staged_version=""
 inbound_packages=""
+journey_root=""
+journey_install_root=""
+journey_binary=""
+journey_revision=""
+journey_answers=0
 start_seconds=0
 target_start_kib=0
 temp_peak_kib=0
@@ -187,12 +234,38 @@ capture_classified() {
 # The interpreter is not on that list. A shell this script never invokes is a
 # shell the list cannot claim to have checked, and a list holding a name nobody
 # calls invites the next one to hold a name somebody does.
-require_tools() {
-    local tool
-    for tool in ${REQUIRED_TOOLS}; do
-        command -v "${tool}" > /dev/null 2>&1 \
-            || unavailable "${tool} is required on PATH."
-    done
+#
+# The probe itself is the classifier's, and it leaves with the same 75 this
+# file's own `unavailable` does. A private copy of the loop is a second owner of
+# the answer "an absent tool is not this repository's fault".
+require_proof_tools() {
+    # The list is space-separated names, and splitting it is the point.
+    # shellcheck disable=SC2086
+    require_tools ${REQUIRED_TOOLS}
+}
+
+# Capture the one checkout this proof is allowed to read, and seal it.
+#
+# A scheduler or fixture may invoke this script from another directory. That
+# working directory is not authority for the release under proof. The caller
+# names the root; this function normalizes it and requires that exact directory,
+# rather than a parent discovered from a nested path, to be Git's toplevel.
+capture_repository_root() {
+    local requested_root="${1:-}" git_root
+    test -n "${requested_root}" \
+        || fail "a repository-root argument is required."
+    test -d "${requested_root}" \
+        || fail "repository root must be an existing directory: ${requested_root}"
+    repository_root="$(CDPATH='' cd -- "${requested_root}" && pwd -P)" \
+        || fail "repository root could not be entered: ${requested_root}"
+    git_root="$(git -C "${repository_root}" rev-parse --show-toplevel 2> /dev/null)" \
+        || fail "repository root is not a Git working tree: ${repository_root}"
+    git_root="$(CDPATH='' cd -- "${git_root}" && pwd -P)" \
+        || fail "the Git toplevel could not be entered: ${git_root}"
+    test "${repository_root}" = "${git_root}" \
+        || fail "repository root ${repository_root} does not match its Git toplevel ${git_root}."
+    readonly repository_root
+    cd -- "${repository_root}"
 }
 
 # Capture the target root this proof inherits, and seal it.
@@ -227,37 +300,78 @@ capture_target_root() {
 # order, so the generated workspace, the patch table, and every refusal name the
 # eight members the same way on every run. Packaging itself is a single
 # workspace-wide invocation and needs no order at all.
+#
+# The matcher runs through `rg_status` and its answer is read from `RG_OUTPUT`,
+# not from a process substitution. Fed from one of those, ripgrep's status is
+# nobody's — the hazard this same file documents at `copy_untracked_files` — and
+# a matcher that exited 2 produced "release-plz.toml names 0 packages rather
+# than 8": a false statement about the tree, from a reader that never ran.
 read_release_order() {
-    local name
+    local name read_status=0
+    # `${1}` is ripgrep's own capture-group reference, so it stays unexpanded.
+    # shellcheck disable=SC2016
+    rg_status -N -o -r '${1}' '^name = "([^"]+)"$' -- release-plz.toml || read_status=$?
+    case "${read_status}" in
+        0) ;;
+        1) fail "release-plz.toml names no package at all." ;;
+        *) unavailable "release-plz.toml could not be read for its release order." ;;
+    esac
     while IFS= read -r name; do
+        test -n "${name}" || continue
         release_order+=("${name}")
-    done < <(rg -N -o -r '${1}' '^name = "([^"]+)"$' release-plz.toml)
+    done <<< "${RG_OUTPUT}"
     test "${#release_order[@]}" -eq "${RELEASE_PACKAGE_COUNT}" \
         || fail "release-plz.toml names ${#release_order[@]} packages rather than ${RELEASE_PACKAGE_COUNT}."
     release_order_json="$(printf '%s\n' "${release_order[@]}" \
         | jq -R -s -c 'split("\n") | map(select(length > 0))')"
     assert_release_order_matches_manifests
+    assert_release_order_names_the_navigation_product
+}
+
+# The release publishes the product the journey installs.
+#
+# Asked here rather than where the journey needs it, because everything between
+# the two costs a clone, two pinned tool builds, a release-plz run, and eight
+# archives. A release order that lost this package has no journey to run, and
+# the cheapest moment to say so is before any of that.
+assert_release_order_names_the_navigation_product() {
+    local name
+    for name in "${release_order[@]}"; do
+        case "${name}" in
+            "${NAVIGATION_PACKAGE}") return 0 ;;
+            *) ;;
+        esac
+    done
+    fail "the release order does not publish the navigation product ${NAVIGATION_PACKAGE}."
 }
 
 # Every named package has the manifest it claims, before anything is staged.
+#
+# The search runs through `rg_status`, so "the manifest does not declare this
+# package" and "the matcher failed" stay two answers. Collapsed into one, a
+# reader that never ran would be reported as a manifest that names the wrong
+# package, and the operator would go and read a file that is already correct.
 assert_release_order_matches_manifests() {
-    local name manifest
+    local name manifest read_status
     for name in "${release_order[@]}"; do
         manifest="${repository_root}/${name}/Cargo.toml"
         test -f "${manifest}" \
             || fail "the release order names ${name}, which has no manifest at ${manifest}."
-        rg -N -q "^name = \"${name}\"\$" "${manifest}" \
-            || fail "${manifest} does not declare package ${name}."
+        read_status=0
+        rg_status -N -q "^name = \"${name}\"\$" -- "${manifest}" || read_status=$?
+        case "${read_status}" in
+            0) ;;
+            1) fail "${manifest} does not declare package ${name}." ;;
+            *) unavailable "${manifest} could not be read for its package name." ;;
+        esac
     done
 }
 
 # Prove the machine, the target root, and the release order before this proof
 # changes any state at all.
 preflight() {
-    require_tools
-    repository_root="$(git rev-parse --show-toplevel)" \
-        || fail "the packaged-workspace proof must run inside a Git repository."
-    cd -- "${repository_root}"
+    require_proof_tools
+    capture_repository_root "$1"
     capture_target_root
     read_release_order
 }
@@ -306,6 +420,9 @@ create_staging_root() {
     workspace_root="${staging_root}/archive-workspace"
     staged_metadata="${staging_root}/capture/staged-metadata.json"
     archive_metadata="${staging_root}/capture/archive-metadata.json"
+    journey_root="${staging_root}/journey"
+    journey_install_root="${staging_root}/install"
+    journey_binary="${journey_install_root}/bin/${NAVIGATION_BINARY}"
     mkdir -p -- "${archive_root}" "${workspace_root}" \
         "${staging_root}/capture" "${staging_root}/tmp"
     export TMPDIR="${staging_root}/tmp"
@@ -565,16 +682,63 @@ assert_extracted_identity() {
         || fail "the ${name} archive normalizes to [${reported}] rather than [${name} ${version}]."
 }
 
+# One string as a regular expression that matches exactly itself.
+#
+# A package name and a version become a pattern here, and a version is mostly
+# separators: `.` matches any character, and `+` and its neighbours mean
+# something too. Escaping every character that is not plainly a literal is what
+# makes an anchored prefix test mean the prefix. `-F` would answer the escaping
+# but takes the anchor away with it, and the anchor is half the claim.
+regex_escaped() {
+    local subject="$1" escaped="" index=0 character
+    while [ "${index}" -lt "${#subject}" ]; do
+        character="${subject:${index}:1}"
+        case "${character}" in
+            [A-Za-z0-9_/-]) ;;
+            *) escaped="${escaped}\\" ;;
+        esac
+        escaped="${escaped}${character}"
+        index=$((index + 1))
+    done
+    printf '%s' "${escaped}"
+}
+
 # Unpack one archive into the generated workspace and read what it holds.
+#
+# The listing is taken on its own, and its status is tar's alone. Read through a
+# pipeline answered with `|| true`, an archive tar could not open and a matcher
+# that never ran both produced the empty string the confinement test accepts — a
+# proof that the archive holds nothing outside its package directory, from a run
+# that never saw the archive.
+#
+# The matcher's own status is then split three ways. Inverted, 0 means an entry
+# outside the package directory, 1 means every entry is inside it, and anything
+# else is a reader that failed — which is an unavailable machine and not a clean
+# archive.
 extract_archive() {
     local name="$1"
     local version="$2"
     local archive="${archive_root}/${name}-${version}.crate"
     local extracted="${workspace_root}/${name}-${version}"
-    local stray
-    stray="$(tar -tzf "${archive}" | rg -N -v -e "^${name}-${version}/" || true)"
-    test -z "${stray}" \
-        || fail "the ${name} archive holds entries outside ${name}-${version}/: ${stray}"
+    local listing stray read_status=0
+    listing="$(tar -tzf "${archive}")" \
+        || fail "the ${name} archive could not be listed."
+    # A here-string carries a trailing newline, so an empty listing reaches the
+    # matcher as one empty line and is refused as a stray entry with nothing to
+    # name. Refuse it here, where it can be named for what it is.
+    test -n "${listing}" \
+        || fail "the ${name} archive lists no entry at all."
+    # The prefix is escaped before it becomes a pattern. Spliced in raw, the
+    # version's `.` separators matched any character, so the inverted test was
+    # looser than the sentence above it claims.
+    rg_status_over "${listing}" -N -v -e "^$(regex_escaped "${name}-${version}/")" \
+        || read_status=$?
+    stray="${RG_OUTPUT}"
+    case "${read_status}" in
+        0) fail "the ${name} archive holds entries outside ${name}-${version}/: ${stray}" ;;
+        1) ;;
+        *) unavailable "the ${name} archive listing could not be read for stray entries." ;;
+    esac
     tar -xzf "${archive}" -C "${workspace_root}" \
         || fail "the ${name} archive could not be extracted."
     test -d "${extracted}" \
@@ -694,11 +858,22 @@ assert_patch_set_is_exact() {
          | .[]' \
         "${archive_metadata}")" \
         || fail "the packaged metadata could not be read for its inbound edges."
-    # 1 is ripgrep's "no match", which is a patch table this check may still
-    # judge. Anything else is a reader that failed, and an empty answer from a
-    # broken reader would agree with an empty required set.
-    written="$(rg -N -o -r '${1}' '^([a-zA-Z0-9_-]+) = \{ path = ' \
-        "${workspace_root}/Cargo.toml")" || read_status=$?
+    # Both sides being empty satisfies the comparison below, and a check that
+    # passes having constrained nothing is the one thing "no wider, no narrower"
+    # must not mean. This release is eight packages that depend on each other, so
+    # an archive set stating no first-party edge is a set nothing patched and
+    # nothing would have to.
+    test -n "${required}" \
+        || fail "the packaged metadata states no first-party edge, so an empty patch table would satisfy this check having constrained nothing."
+    # 1 is the classified "no match", which is a patch table this check may
+    # still judge. 2 is a reader that failed, and an empty answer from a broken
+    # reader would agree with an empty required set.
+    #
+    # `${1}` is ripgrep's own capture-group reference, so it stays unexpanded.
+    # shellcheck disable=SC2016
+    rg_status -N -o -r '${1}' '^([a-zA-Z0-9_-]+) = \{ path = ' \
+        -- "${workspace_root}/Cargo.toml" || read_status=$?
+    written="${RG_OUTPUT}"
     case "${read_status}" in
         0 | 1) ;;
         *) unavailable "the generated workspace manifest could not be read for its patch table." ;;
@@ -709,10 +884,19 @@ assert_patch_set_is_exact() {
 
 # A patch Cargo never consulted means the requirement it was meant to redirect
 # does not exist, so the graph below proves nothing about it.
+#
+# The search runs outside the `if` and its status is kept, for the reason
+# `assert_patch_set_is_exact` keeps ripgrep's: inside the condition, "the patch
+# table is clean" and "the matcher never ran" are one false branch, and the
+# second of those is a transcript nobody read.
 assert_no_unused_patch() {
-    if rg -N -q "was not used in the crate graph" "${archive_metadata}.err"; then
-        fail "the generated workspace holds a patch that was not used in the crate graph."
-    fi
+    local read_status=0
+    rg_status -N -q "was not used in the crate graph" -- "${archive_metadata}.err" || read_status=$?
+    case "${read_status}" in
+        0) fail "the generated workspace holds a patch that was not used in the crate graph." ;;
+        1) ;;
+        *) unavailable "the packaged metadata transcript could not be read for unused patches." ;;
+    esac
 }
 
 # Every way the packaged graph can be wrong, refused before anything compiles.
@@ -782,6 +966,270 @@ verify_packaged_graph() {
     assert_packaged_graph_shape
     run_classified archive-check cargo check --workspace --all-features --locked \
         --manifest-path "${workspace_root}/Cargo.toml"
+}
+
+# The mixed-language repository the packaged binary is asked about.
+#
+# One file per language this product admits, plus the three project authorities
+# that make two of them resolvable. The whole table is the point: this build
+# links six grammars and both graph producers, and a fixture of one language
+# would let a packaged binary that lost five of them answer the journey exactly
+# as a complete one does.
+#
+# It is written under the staging root rather than anywhere in the caller's
+# tree, so what the journey proves is a binary answering about a repository it
+# was pointed at rather than about the workspace it was built from.
+write_journey_repository() {
+    mkdir -p -- "${journey_root}/crate-a/src" "${journey_root}/scripts" "${journey_root}/web" \
+        || fail "the journey repository could not be created."
+    printf '[workspace]\nmembers = ["crate-a"]\nresolver = "3"\n' \
+        > "${journey_root}/Cargo.toml" || fail "the journey workspace manifest could not be written."
+    printf '[package]\nname = "crate-a"\nversion = "0.1.0"\nedition = "2024"\n' \
+        > "${journey_root}/crate-a/Cargo.toml" || fail "the journey package manifest could not be written."
+    printf 'pub fn make() -> u8 {\n    1\n}\n' \
+        > "${journey_root}/crate-a/src/lib.rs" || fail "the journey library could not be written."
+    printf 'fn main() {\n    let value = crate_a::make();\n    assert_eq!(value, 1);\n}\n' \
+        > "${journey_root}/crate-a/src/main.rs" || fail "the journey binary could not be written."
+    printf 'module example.com/main\n\ngo 1.22\n' \
+        > "${journey_root}/go.mod" || fail "the journey module manifest could not be written."
+    printf 'package main\n\ntype Node struct{ Name string }\n\nfunc New(name string) *Node { return &Node{Name: name} }\n\nfunc main() { _ = New("root") }\n' \
+        > "${journey_root}/main.go" || fail "the journey Go source could not be written."
+    printf 'def build():\n    return 1\n' \
+        > "${journey_root}/scripts/tool.py" || fail "the journey Python source could not be written."
+    printf 'run_it() {\n    printf "hi\\n"\n}\n' \
+        > "${journey_root}/scripts/tool.sh" || fail "the journey Bash source could not be written."
+    printf 'export function widget() {\n  return 1;\n}\n' \
+        > "${journey_root}/web/app.js" || fail "the journey JavaScript source could not be written."
+    printf 'export function typed(): number {\n  return 1;\n}\n' \
+        > "${journey_root}/web/app.ts" || fail "the journey TypeScript source could not be written."
+}
+
+# Install the navigation product the way a consumer receives it.
+#
+# The source is the extracted archive member, inside the generated workspace, so
+# the binary this journey runs is built from the bytes crates.io would serve and
+# resolves every first-party edge through the patch table the graph checks
+# already accepted. `--locked` holds it to that resolution, `--debug` keeps the
+# build to what a journey needs rather than what a release needs, and the
+# profile is stated rather than inherited so the cost does not depend on the
+# caller's environment.
+#
+# The version assertion is what makes every answer below this run's. An
+# operator's own `pedant-snippet` earlier on `PATH` would answer the whole
+# journey plausibly, and only its version says which binary spoke.
+install_packaged_snippet() {
+    read_staged_version "${NAVIGATION_PACKAGE}"
+    run_classified journey-install env "CARGO_PROFILE_DEV_DEBUG=0" cargo install \
+        --path "${workspace_root}/${NAVIGATION_PACKAGE}-${staged_version}" \
+        --root "${journey_install_root}" --debug --locked
+    assert_tool_version "${journey_binary}" "${staged_version}" --version
+}
+
+# Ask the installed binary one question, and require it to be about the one
+# index this journey is over.
+#
+# The first question states the revision and every later one has to agree with
+# it. Nine processes indexing one tree either state one identity or that
+# identity is not the repository's, and no single answer can tell the two apart.
+ask_journey() {
+    local label="$1"
+    shift
+    local answer="${staging_root}/capture/journey-${label}.json"
+    capture_classified "journey-${label}" "${answer}" \
+        "${journey_binary}" "$@" --root "${journey_root}" --format json
+    journey_answers=$((journey_answers + 1))
+    local stated
+    stated="$(journey_field "${label}" '.index_revision')"
+    case "${journey_revision}" in
+        "") journey_revision="${stated}" ;;
+        "${stated}") ;;
+        *) fail "the ${label} answer states index ${stated} rather than ${journey_revision}." ;;
+    esac
+}
+
+# One field of one document the journey collected, which has to be there.
+#
+# Rendered rather than read raw, because half these fields are numbers and one
+# is a boolean, and `jq -e` reports a false or a zero as a failed read. Absence
+# is refused here instead: a filter that selected nothing prints nothing, a
+# field that is not there prints `null`, and a journey that compared either as
+# text would accept a binary answering nothing at all.
+#
+# One owner, two callers — the command line's answers and the server's session —
+# because a second copy of this rule is a second answer to what "the binary said
+# nothing" means.
+document_field() {
+    local document="$1"
+    local filter="$2"
+    local subject="$3"
+    local reported
+    reported="$(jq -r "${filter} | tostring" "${document}")" \
+        || fail "${subject} could not be read for [${filter}]."
+    case "${reported}" in
+        "" | null) fail "${subject} states no [${filter}]." ;;
+        *) ;;
+    esac
+    printf '%s\n' "${reported}"
+}
+
+# One field of one answer the command line printed.
+journey_field() {
+    local label="$1"
+    document_field "${staging_root}/capture/journey-${label}.json" "$2" "the ${label} answer"
+}
+
+# One field of one answer is what it has to be.
+assert_journey_field() {
+    local label="$1"
+    local filter="$2"
+    local expected="$3"
+    local reported
+    reported="$(journey_field "${label}" "${filter}")"
+    test "${reported}" = "${expected}" \
+        || fail "the ${label} answer states [${reported}] rather than [${expected}]."
+}
+
+# Every question this product publishes, asked of the packaged binary.
+#
+# One field per answer and never only the exit status: a binary that printed an
+# empty envelope for every question would exit zero nine times. The two graph
+# questions are here for the same reason the six languages are — a feature
+# closure that arrived at the registry without its graph producers would answer
+# the first five and refuse these.
+assert_packaged_cli_journey() {
+    local make_id main_id project_id
+    ask_journey projects list-projects
+    assert_journey_field projects '[.result[].language] | sort | unique | join(",")' "go,rust"
+    project_id="$(journey_field projects \
+        '[.result[] | select(.unit == "crate-a::bin::crate-a")][0].handle.id')"
+
+    ask_journey search search make --mode exact --language rust
+    assert_journey_field search '.result | length' 1
+    make_id="$(journey_field search '.result[0].handle.id')"
+
+    ask_journey entry search main --mode exact --language rust
+    assert_journey_field entry '.result | length' 1
+    main_id="$(journey_field entry '.result[0].handle.id')"
+
+    ask_journey outline outline crate-a/src/lib.rs
+    assert_journey_field outline '.result.structures | length' 1
+
+    ask_journey read read "${journey_revision}" "${make_id}"
+    assert_journey_field read '.result.structure.qualified_name' "crate-a/src/lib.rs::make"
+
+    ask_journey at at main.go 5
+    assert_journey_field at '.result.structure.qualified_name' "main.go::New"
+
+    ask_journey relations relations "${journey_revision}" "${main_id}" \
+        --direction outgoing --max-depth 2 --edge-kind call --certainty resolved
+    assert_journey_field relations '[.result[].edges[].kind] | join(",")' call
+
+    ask_journey path path "${journey_revision}" "${main_id}" \
+        "${journey_revision}" "${make_id}" --edge-kind call --certainty resolved
+    assert_journey_field path '.result.selected.edges | length' 1
+
+    ask_journey analysis graph "${journey_revision}" "${project_id}" components \
+        --edge-kind call --certainty resolved
+    assert_journey_field analysis '.result.mode' components
+}
+
+# The packaged server, fed one session on standard input.
+#
+# A function rather than a command line, because the transport reads its
+# requests from a file and the one capture owner takes a command rather than a
+# redirection. Standard input closing is the client disconnecting, which is what
+# ends a stdio session.
+serve_journey_mcp() {
+    "${journey_binary}" mcp --root "${journey_root}" < "${staging_root}/capture/journey-requests.jsonl"
+}
+
+# One field of the server's session, read out of the responses it wrote.
+mcp_field() {
+    document_field "${staging_root}/capture/journey-mcp.jsonl" "$1" "the packaged MCP session"
+}
+
+# The same session, over the same repository, through the other transport.
+#
+# The listing is required whole rather than searched: a build that reached the
+# registry without its graph producers serves five of these eight, and every
+# membership check the five satisfy would pass. Parity is the claim the other
+# readings cannot make — two transports that each answer plausibly and
+# differently are two products, and the bytes are where that shows.
+assert_packaged_mcp_journey() {
+    local served cli
+    cat > "${staging_root}/capture/journey-requests.jsonl" <<'REQUESTS' || fail "the packaged MCP session could not be written."
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"packaged-workspace-proof","version":"1"}}}
+{"jsonrpc":"2.0","method":"notifications/initialized"}
+{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"list_projects","arguments":{}}}
+REQUESTS
+    capture_classified journey-mcp "${staging_root}/capture/journey-mcp.jsonl" serve_journey_mcp
+    journey_answers=$((journey_answers + 1))
+
+    served="$(mcp_field 'select(.id == 2) | [.result.tools[].name] | join(",")')"
+    test "${served}" = "list_projects,search_symbols,outline_file,read_structure,structure_at,query_relations,find_path,analyze_graph" \
+        || fail "the packaged server lists [${served}] rather than this product's eight tools."
+    served="$(mcp_field 'select(.id == 2) | [.result.tools[] | select(.annotations.readOnlyHint == true and .annotations.idempotentHint == true and .annotations.openWorldHint == false)] | length')"
+    test "${served}" = "${NAVIGATION_TOOL_COUNT}" \
+        || fail "the packaged server annotates ${served} tools read-only, idempotent, and closed-world."
+    served="$(mcp_field 'select(.id == 3) | .result.isError')"
+    test "${served}" = "false" \
+        || fail "the packaged server answered its own listed tool with an error."
+
+    served="$(mcp_field 'select(.id == 3) | .result.content[0].text' | jq -S -c .)" \
+        || fail "the packaged server's answer is not one JSON document."
+    cli="$(jq -S -c . "${staging_root}/capture/journey-projects.json")" \
+        || fail "the packaged CLI answer is not one JSON document."
+    test "${served}" = "${cli}" \
+        || fail "the two transports answer one question differently:"$'\n'"${served}"$'\n'"${cli}"
+}
+
+# No answer this journey collected names the tree the proof was started from.
+#
+# The binary, the repository, and the install root are all this run's own, so a
+# path from the caller's checkout in any of them means something resolved
+# through the workspace rather than through the archives — which is the failure
+# the whole proof exists to catch, arriving one stage later than the graph
+# checks look.
+#
+# A pure forbid needs both halves. The search's status is split rather than
+# discarded — 0 is the leak, 1 is a clean capture set, and anything else is a
+# matcher that never ran — because `|| true` gave a broken matcher, an unreadable
+# capture directory, and a glob that selected nothing the same empty answer a
+# clean run gives.
+#
+# The other half is the range. Ripgrep reports "no file matched" and "no file was
+# searched" identically, so the captures are counted here and held to the number
+# of answers the two journeys collected. Every answer leaves a document and a
+# diagnostic stream, and the session is fed one request script, so the count is
+# comfortably above that floor; what the floor rejects is a directory the search
+# never opened.
+assert_no_checkout_leakage() {
+    local leaked capture read_status=0 searched=0
+    for capture in "${staging_root}/capture"/journey-*; do
+        test -e "${capture}" || continue
+        searched=$((searched + 1))
+    done
+    test "${searched}" -ge "${journey_answers}" \
+        || fail "the leakage search ranges over ${searched} captures for ${journey_answers} collected journey answers."
+    rg_status -N -l -F -g 'journey-*' -e "${repository_root}/" -- "${staging_root}/capture" \
+        || read_status=$?
+    leaked="${RG_OUTPUT}"
+    case "${read_status}" in
+        0) fail "a packaged journey answer names the original checkout: ${leaked}" ;;
+        1) ;;
+        *) unavailable "the packaged journey answers could not be searched for checkout paths." ;;
+    esac
+}
+
+# Install the packaged navigation product and complete both transports over one
+# repository of this run's own.
+run_packaged_snippet_journey() {
+    write_journey_repository
+    install_packaged_snippet
+    assert_packaged_cli_journey
+    assert_packaged_mcp_journey
+    assert_no_checkout_leakage
 }
 
 # One directory's size, in kibibytes.
@@ -882,7 +1330,7 @@ measure_proof_budget() {
 # numbers and report a cost nobody measured, and the omission would look like
 # four lines that were nearly the same as four other lines.
 begin_stage() {
-    preflight
+    preflight "$1"
     create_staging_root
     read_warm_state
     begin_measurement
@@ -901,16 +1349,17 @@ begin_stage() {
 # create a staging root, run both pinned binaries to read the warm state, and
 # start the measurement for a request it was never going to accept.
 run_tool_installation() {
-    begin_stage
-    "$1"
+    begin_stage "$1"
+    "$2"
     measure_owned_temp
     measure_budget install \
         "${INSTALL_RUNTIME_BUDGET_SECONDS}" "${INSTALL_TARGET_BUDGET_KIB}"
 }
 
-# Stage the release, package all eight members, and compile the archives.
+# Stage the release, package all eight members, compile the archives, and run
+# the product they ship.
 run_packaged_workspace_proof() {
-    begin_stage
+    begin_stage "$1"
     stage_isolated_source
     install_pinned_tools
     measure_owned_temp
@@ -920,6 +1369,7 @@ run_packaged_workspace_proof() {
     measure_owned_temp
     generate_archive_workspace
     verify_packaged_graph
+    run_packaged_snippet_journey
     measure_owned_temp
     measure_proof_budget
 }
@@ -933,15 +1383,23 @@ run_packaged_workspace_proof() {
 # it actually asked. The tool name is read in the same breath as the count, so
 # the two accepted sentences are spelled out whole here: an unknown name refused
 # further in would already have created a staging root and run both pinned
-# binaries. Two exact lists select a tool stage, none selects the release proof,
-# and everything else is refused before any state moves.
+# binaries. Two exact lists after the required root select a tool stage, no
+# selector selects the release proof, and everything else is refused before any
+# state moves.
 main() {
-    case "$#:${1:-}:${2:-}" in
-        2:--install-tools:cargo-semver-checks) run_tool_installation install_semver_checks ;;
-        2:--install-tools:release-plz) run_tool_installation install_release_plz ;;
-        0::) run_packaged_workspace_proof ;;
-        *) fail "unknown arguments [$*]; this proof takes --install-tools \
-cargo-semver-checks, --install-tools release-plz, or nothing." ;;
+    case "$#" in
+        0) fail "a repository-root argument is required." ;;
+        *) ;;
+    esac
+    case "$#:${2:-}:${3:-}" in
+        3:--install-tools:cargo-semver-checks) run_tool_installation "$1" install_semver_checks ;;
+        3:--install-tools:release-plz) run_tool_installation "$1" install_release_plz ;;
+        1::) run_packaged_workspace_proof "$1" ;;
+        *)
+            shift
+            fail "unknown arguments [$*]; after its repository root this proof takes \
+--install-tools cargo-semver-checks, --install-tools release-plz, or nothing."
+            ;;
     esac
 }
 

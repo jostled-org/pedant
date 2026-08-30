@@ -20,6 +20,12 @@ mod traversal;
 
 pub use ::tree_sitter::{Node, Tree};
 
+pub(crate) use parser::links_grammar;
 pub use parser::{parse, parse_bound};
 pub use session::{ParsedSyntax, SourceUnitAnchor};
+// Visible to the crate, not just to this module: the structure walk and the Go
+// fact walk each ascend the same cursor the same way, one of them closing the
+// contexts it leaves, so the loop is shared rather than copied per walk.
+#[cfg(any(feature = "ts-go", feature = "_ts_generic"))]
+pub(crate) use traversal::advance;
 pub use traversal::{node_text, walk_descendants};

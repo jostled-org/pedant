@@ -10,8 +10,12 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::resolution::supply::SourceSupply;
+
 use super::condition::is_test_source;
 use super::discovery::GoPackageDirectory;
+use super::fault::GoSourceFault;
+use super::inventory::GoFileInventory;
 use super::paths::file_name;
 use super::snapshot_error::GoSnapshotError;
 use super::store::GoSourceStore;
@@ -49,13 +53,14 @@ struct ClassifiedSource {
 }
 
 /// Every unit one package directory states, in context order.
-pub(super) fn directory_units(
+pub(super) fn directory_units<P: SourceSupply<GoFileInventory, GoSourceFault>>(
     store: &mut GoSourceStore,
+    provider: &mut P,
     site: &PackageSite<'_>,
     directory: &GoPackageDirectory,
 ) -> Result<Box<[UnitDraft]>, GoSnapshotError> {
     let relative = super::paths::relative_shared(site.root, &directory.canonical)?;
-    let classified = classify(store, directory)?;
+    let classified = classify(store, provider, directory)?;
     let package = declared_package(&classified, &relative)?;
     let contexts = assign_contexts(&classified, &package, &relative)?;
     let import_path = import_path(site.module_path, &directory.within_module);
@@ -78,16 +83,20 @@ struct Placement {
 }
 
 /// Read every source the directory admits and record the clause it declares.
-fn classify(
+///
+/// The store answers with the position it retained each source at, so the
+/// clause is read directly from that position.
+fn classify<P: SourceSupply<GoFileInventory, GoSourceFault>>(
     store: &mut GoSourceStore,
+    provider: &mut P,
     directory: &GoPackageDirectory,
 ) -> Result<Box<[ClassifiedSource]>, GoSnapshotError> {
-    let mut classified = Vec::new();
+    let mut classified = Vec::with_capacity(directory.sources.len());
     for source in directory.sources.iter() {
-        let path = store.intern(source)?;
+        let (path, index) = store.intern(provider, source)?;
         let package =
             store
-                .package_name(&path)
+                .package_name_at(index)
                 .ok_or_else(|| GoSnapshotError::MissingStoredSource {
                     path: Box::from(&*path),
                 })?;

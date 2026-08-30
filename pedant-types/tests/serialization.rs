@@ -83,6 +83,10 @@ mod attestation_cases;
 #[path = "serialization_support/legacy_decode_cases.rs"]
 mod legacy_decode_cases;
 
+/// The generic source-provider contract, its request path, and its record.
+#[path = "serialization_support/source_provider_cases.rs"]
+mod source_provider_cases;
+
 // --- Resolution contract: Invariants 1-4 and the Rust language spelling ---
 
 /// Two builders both issue local index zero, so a handle passed to the wrong
@@ -90,7 +94,7 @@ mod legacy_decode_cases;
 /// refuse it on brand identity and leave the receiving builder untouched.
 #[test]
 fn resolution_builder_rejects_every_same_index_foreign_handle_without_mutation() {
-    use pedant_types::resolution::ResolutionReportLimits;
+    use pedant_types::ResolutionReportLimits;
 
     let mut local = resolution_seed::seeded_builder(ResolutionReportLimits::default());
     let foreign = resolution_seed::seeded_builder(ResolutionReportLimits::default());
@@ -136,7 +140,7 @@ fn resolution_report_bounded_decode_ignores_hostile_sequence_size_hints() {
 /// width of the report's identifiers.
 #[test]
 fn resolution_builder_enforces_configured_and_id_ceiling_capacities_without_mutation() {
-    use pedant_types::resolution::ResolutionReportLimits;
+    use pedant_types::ResolutionReportLimits;
 
     let mut seeded = resolution_seed::seeded_builder(ResolutionReportLimits {
         max_units: 1,
@@ -175,7 +179,7 @@ fn resolution_report_validation_rejects_every_malformed_invariant_family() {
 /// identically by `finish` and by deserialization.
 #[test]
 fn resolution_report_enforces_unit_parent_candidate_and_certainty_rules() {
-    use pedant_types::resolution::ResolutionGap;
+    use pedant_types::ResolutionGap;
 
     resolution_asserts::unit_containment_and_cross_unit_candidate();
     resolution_asserts::possible_candidates_are_accepted(&[]);

@@ -7,20 +7,20 @@
 //! decides whether a predicate holds: this tier chooses no feature or platform
 //! universe, so it records structure and never evaluates satisfiability.
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use quote::ToTokens;
 
 /// The conjunction of the predicates guarding one site. Empty is unconditional.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RustCfgCondition {
-    predicates: Rc<[Rc<str>]>,
+    predicates: Arc<[Arc<str>]>,
 }
 
 impl Default for RustCfgCondition {
     fn default() -> Self {
         Self {
-            predicates: Rc::from(Vec::<Rc<str>>::new()),
+            predicates: Arc::from(Vec::<Arc<str>>::new()),
         }
     }
 }
@@ -28,7 +28,7 @@ impl Default for RustCfgCondition {
 impl RustCfgCondition {
     /// The condition one already-rendered predicate states.
     pub(crate) fn stated(predicate: &str) -> Self {
-        Self::normalized(vec![Rc::from(predicate)])
+        Self::normalized(vec![Arc::from(predicate)])
     }
 
     /// This condition conjoined with the one `attrs` states.
@@ -60,34 +60,46 @@ impl RustCfgCondition {
         self.predicates.is_empty()
     }
 
-    fn normalized(mut predicates: Vec<Rc<str>>) -> Self {
+    fn normalized(mut predicates: Vec<Arc<str>>) -> Self {
         predicates.sort();
         predicates.dedup();
         Self {
-            predicates: Rc::from(predicates),
+            predicates: Arc::from(predicates),
         }
     }
 }
 
-/// The rendered predicate of a `#[cfg(…)]` attribute (`unix`,
-/// `feature = "x"`, …), or `None` for any other attribute.
+/// The predicate list one `#[cfg(…)]` attribute writes, or `None` for any other
+/// attribute.
+///
+/// Recognizing the attribute and reaching its predicate is one step, so a reader
+/// wanting both the rendered text and something parsed out of the same tokens
+/// asks once and derives both from the list it gets back. Two readers each
+/// starting from the attribute could disagree about which one they were reading.
+pub(crate) fn cfg_list(attr: &syn::Attribute) -> Option<&syn::MetaList> {
+    match attr.path().is_ident("cfg") {
+        true => attr.meta.require_list().ok(),
+        false => None,
+    }
+}
+
+/// The rendered predicate one `#[cfg(…)]` list states (`unix`,
+/// `feature = "x"`, …).
 ///
 /// The text is the identity of a build alternative: items under the same
 /// predicate compile together, items under different ones may not. It is kept
 /// verbatim, so two predicates that differ only in spelling read as distinct
 /// alternatives — which can only cost a detection, never invent one.
-pub(crate) fn cfg_predicate(attr: &syn::Attribute) -> Option<Rc<str>> {
-    match attr.path().is_ident("cfg") {
-        true => attr
-            .meta
-            .require_list()
-            .ok()
-            .map(|list| Rc::from(list.tokens.to_string().as_str())),
-        false => None,
-    }
+pub(crate) fn predicate_text(list: &syn::MetaList) -> Arc<str> {
+    Arc::from(list.tokens.to_string().as_str())
 }
 
-fn predicates_of(attrs: &[syn::Attribute]) -> Vec<Rc<str>> {
+/// The rendered predicate of a `#[cfg(…)]` attribute, or `None` for any other.
+pub(crate) fn cfg_predicate(attr: &syn::Attribute) -> Option<Arc<str>> {
+    cfg_list(attr).map(predicate_text)
+}
+
+fn predicates_of(attrs: &[syn::Attribute]) -> Vec<Arc<str>> {
     attrs
         .iter()
         .flat_map(|attr| match attr.path().is_ident("cfg_attr") {
@@ -99,21 +111,37 @@ fn predicates_of(attrs: &[syn::Attribute]) -> Vec<Rc<str>> {
 
 /// `#[cfg_attr(P, cfg(Q), …)]` adds `cfg(Q)` when `P` holds, so each added
 /// `cfg` contributes the conjunction `all(P, Q)`.
-fn conditional_predicates(attr: &syn::Attribute) -> Vec<Rc<str>> {
-    let parsed = attr.parse_args_with(
-        syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
-    );
-    let Ok(metas) = parsed else {
+fn conditional_predicates(attr: &syn::Attribute) -> Vec<Arc<str>> {
+    let Some((gate, applied)) = conditional_attribute(attr) else {
         return Vec::new();
     };
-    let mut stated = metas.into_iter();
-    let Some(gate) = stated.next().map(|meta| meta.to_token_stream().to_string()) else {
-        return Vec::new();
-    };
-    stated
-        .filter_map(|meta| added_cfg(&meta))
-        .map(|added| Rc::from(format!("all({gate}, {added})").as_str()))
+    let rendered = gate.to_token_stream().to_string();
+    applied
+        .iter()
+        .filter_map(added_cfg)
+        .map(|added| Arc::from(format!("all({rendered}, {added})").as_str()))
         .collect()
+}
+
+/// Split one `#[cfg_attr(P, …)]` into the predicate that gates it and the
+/// attributes it would apply, or `None` when the argument list does not parse
+/// or states no predicate at all.
+///
+/// The "first element is the predicate, the rest are attributes" rule is stated
+/// here alone. Its two readers ask different questions of the same `cfg_attr` —
+/// the conjunction an added `cfg` contributes, and the `#[path]` override a
+/// `mod` selects — and a second parse is a second chance to disagree about
+/// where the predicate ends. The gate comes back unrendered, because only the
+/// condition reader wants it as text.
+pub(crate) fn conditional_attribute(
+    attr: &syn::Attribute,
+) -> Option<(syn::Meta, Box<[syn::Meta]>)> {
+    let metas = attr
+        .parse_args_with(syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated)
+        .ok()?;
+    let mut stated = metas.into_iter();
+    let gate = stated.next()?;
+    Some((gate, stated.collect()))
 }
 
 fn added_cfg(meta: &syn::Meta) -> Option<String> {

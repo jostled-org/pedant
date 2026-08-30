@@ -11,6 +11,8 @@ mod finding_origin;
 mod language;
 mod profile;
 pub mod resolution;
+mod source;
+mod structure;
 
 pub use attestation::{AnalysisCompleteness, AnalysisTier, AttestationContent, SkippedAnalysis};
 pub use capability::Capability;
@@ -32,3 +34,5 @@ pub use resolution::{
     ResolutionTier, ResolutionUnit, ResolutionUnitHandle, ResolutionUnitId, SourcePosition,
     SourceSpan, SymbolDefinition, SymbolKind, SymbolReference,
 };
+pub use source::{SourcePath, SourceProvider, SourceRecord};
+pub use structure::{StructureKind, StructureRecord, StructureSpan};

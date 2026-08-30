@@ -22,14 +22,16 @@ pub(super) fn span(index: &LineIndex<'_>, file: &Arc<str>, range: IrRange) -> Op
     (start < end).then(|| SourceSpan::new(Arc::clone(file), start, end))
 }
 
+/// One `syn` coordinate as a report position, absent where the source states
+/// no such coordinate.
+///
+/// The character-to-byte lookup belongs to the table; what stays here is the
+/// one-based-to-zero-based line shift and the narrowing a report's fields need.
+/// A coordinate the source does not hold is absence, because a report that
+/// pointed at the widest extent instead would state a span nothing declares.
 fn position(index: &LineIndex<'_>, span: IrSpan) -> Option<SourcePosition> {
     let line = span.line.checked_sub(1)?;
-    let (start, end) = index.line_bounds(line)?;
-    let content = index.source().get(start..end)?;
-    let column = content
-        .char_indices()
-        .nth(span.column)
-        .map_or(content.len(), |(offset, _)| offset);
+    let column = index.char_column(line, span.column)?;
     Some(SourcePosition::new(
         u32::try_from(line).ok()?,
         u32::try_from(column).ok()?,

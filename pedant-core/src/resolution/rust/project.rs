@@ -3,13 +3,18 @@
 
 use std::path::Path;
 
+use pedant_types::SourceProvider;
+
 use super::dependency::RustDependency;
 use super::error::RustProjectError;
+use super::fault::RustSourceFault;
 use super::identity::{PackageId, ProjectAuthority, TargetId, index_of};
+use super::inventory::RustFileInventory;
 use super::limits::ResolutionLimits;
 use super::load;
 use super::manifest::ManifestFingerprint;
 use super::package::RustPackage;
+use super::provider::RustSourceProvider;
 use super::snapshot::{
     RustPackageSnapshot, RustPackageSnapshotError, RustResolutionSnapshot, RustSnapshotError,
     RustTargetSnapshot, build_package_snapshot, build_resolution_snapshot, build_target_snapshot,
@@ -65,7 +70,7 @@ impl RustProject {
 
     /// The package an identity issued by this project selects.
     pub fn package(&self, id: PackageId) -> Option<&RustPackage> {
-        self.select(id.authority(), id.index())
+        select(id.authority(), self.authority, id.index())
             .and_then(|index| self.packages.get(index))
     }
 
@@ -76,8 +81,7 @@ impl RustProject {
 
     /// The target an identity issued by this project selects.
     pub fn target(&self, id: TargetId) -> Option<&RustTarget> {
-        self.select(id.authority(), id.index())
-            .and_then(|index| self.targets.get(index))
+        select(id.authority(), self.authority, id.index()).and_then(|index| self.targets.get(index))
     }
 
     /// Every target one package declares.
@@ -102,7 +106,7 @@ impl RustProject {
         &self,
         target: TargetId,
     ) -> Result<RustTargetSnapshot, RustSnapshotError> {
-        build_target_snapshot(self, target)
+        build_target_snapshot(self, &mut private_provider(self), target)
     }
 
     /// Snapshot every library, binary, and build-script target of one package.
@@ -114,17 +118,42 @@ impl RustProject {
         &self,
         package: PackageId,
     ) -> Result<RustPackageSnapshot, RustPackageSnapshotError> {
-        build_package_snapshot(self, package)
+        build_package_snapshot(self, &mut private_provider(self), package)
     }
 
     /// Snapshot this target together with its same-package library, when Cargo
     /// exposes one, and the in-repository dependency libraries its namespace
     /// resolves names against.
+    ///
+    /// Reads through a provider of this project's own, which lives exactly as
+    /// long as the call: every source this snapshot reaches is read once, and
+    /// nothing it read outlives the answer.
     pub fn snapshot_resolution(
         &self,
         target: TargetId,
     ) -> Result<RustResolutionSnapshot, RustSnapshotError> {
-        build_resolution_snapshot(self, target)
+        build_resolution_snapshot(self, &mut private_provider(self), target)
+    }
+
+    /// The same snapshot, reading through a provider the caller owns.
+    ///
+    /// Selection, closure walking, ceilings, ordering, errors, and the
+    /// fingerprint are the ones [`Self::snapshot_resolution`] states. What
+    /// changes is who read the sources: a provider that already holds a path
+    /// answers from what it holds, so a file several project slices reach is
+    /// read, parsed, and walked once for all of them. This snapshot still
+    /// charges every source it selects against its own ceilings, because a
+    /// shared read is not a free source for the corpus that selected it.
+    pub fn snapshot_resolution_with_provider<P>(
+        &self,
+        provider: &mut P,
+        target: TargetId,
+    ) -> Result<RustResolutionSnapshot, RustSnapshotError>
+    where
+        P: SourceProvider<RustFileInventory>,
+        P::Error: Into<RustSourceFault>,
+    {
+        build_resolution_snapshot(self, provider, target)
     }
 
     /// Every dependency edge one package declares.
@@ -136,12 +165,28 @@ impl RustProject {
             .iter()
             .filter(move |dependency| dependency.source() == package)
     }
+}
 
-    /// Reject an identity issued by another project before it selects a record.
-    fn select(&self, authority: ProjectAuthority, index: u32) -> Option<usize> {
-        match authority == self.authority {
-            true => Some(index_of(index)),
-            false => None,
-        }
+/// Reject an identity issued by another project before it selects a record.
+fn select(issuing: ProjectAuthority, project: ProjectAuthority, index: u32) -> Option<usize> {
+    match issuing == project {
+        true => Some(index_of(index)),
+        false => None,
     }
+}
+
+/// A provider that reads one project's root under its limits, for the length of
+/// one convenience call.
+///
+/// A convenience snapshot reads exactly the sources it reaches and keeps none
+/// of them, which is why its published behavior is unchanged by the seam: a
+/// provider born and dropped inside one call has nothing earlier to answer
+/// from.
+///
+/// This is the one caller that may skip the constructor's canonicalization: a
+/// loaded project's root is what `canonical_root` already answered, so asking
+/// the filesystem a second time could only add a failure the snapshot below
+/// would report anyway on its first read.
+fn private_provider(project: &RustProject) -> RustSourceProvider {
+    RustSourceProvider::at_project_root(project.root.to_path_buf(), project.limits)
 }

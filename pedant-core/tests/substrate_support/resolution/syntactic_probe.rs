@@ -60,17 +60,22 @@ pub const TIER1_SOURCES: &[&str] = &[
     "ir/cfg.rs",
     "ir/dataflow.rs",
     "ir/extract/enrich.rs",
+    "ir/extract/extent.rs",
     "ir/extract/extractor/entry.rs",
+    "ir/extract/extractor/gates.rs",
     "ir/extract/extractor/mod.rs",
     "ir/extract/extractor/state.rs",
+    "ir/extract/extractor/visited.rs",
     "ir/extract/fingerprint.rs",
     "ir/extract/fn_scope.rs",
     "ir/extract/impls.rs",
     "ir/extract/imports.rs",
     "ir/extract/locals.rs",
     "ir/extract/mod.rs",
+    "ir/extract/module_paths.rs",
     PARSE_ROUTE,
     "ir/extract/paths.rs",
+    "ir/extract/receivers.rs",
     "ir/extract/site_visitor.rs",
     "ir/extract/sites.rs",
     "ir/extract/syn_helpers.rs",
@@ -87,12 +92,14 @@ pub const TIER1_SOURCES: &[&str] = &[
     "ir/sites/range.rs",
     "ir/sites/reference.rs",
     "ir/sites/scope.rs",
+    "ir/sites/structure.rs",
     "ir/type_introspection.rs",
     "observe/event.rs",
     "observe/mod.rs",
     "observe/probe.rs",
     "resolution/binding.rs",
     "resolution/capacity.rs",
+    "resolution/confinement.rs",
     "resolution/digest.rs",
     "resolution/go/binding_fact.rs",
     "resolution/go/condition.rs",
@@ -102,9 +109,11 @@ pub const TIER1_SOURCES: &[&str] = &[
     "resolution/go/error.rs",
     "resolution/go/exclusion.rs",
     "resolution/go/facts.rs",
+    "resolution/go/fault.rs",
     "resolution/go/fingerprint.rs",
     "resolution/go/identity.rs",
     "resolution/go/import_fact.rs",
+    "resolution/go/inventory.rs",
     "resolution/go/limits.rs",
     "resolution/go/load.rs",
     "resolution/go/manifest.rs",
@@ -113,6 +122,7 @@ pub const TIER1_SOURCES: &[&str] = &[
     "resolution/go/packages.rs",
     "resolution/go/paths.rs",
     "resolution/go/project.rs",
+    "resolution/go/provider.rs",
     "resolution/go/reference_fact.rs",
     "resolution/go/replacement.rs",
     "resolution/go/requirement.rs",
@@ -154,12 +164,17 @@ pub const TIER1_SOURCES: &[&str] = &[
     "resolution/mod.rs",
     "resolution/path_normalization.rs",
     "resolution/paths.rs",
+    "resolution/provider.rs",
     "resolution/read.rs",
+    "resolution/record_cache.rs",
     "resolution/rust/dependency.rs",
+    "resolution/rust/depth.rs",
     "resolution/rust/edition.rs",
     "resolution/rust/error.rs",
+    "resolution/rust/fault.rs",
     "resolution/rust/fingerprint.rs",
     "resolution/rust/identity.rs",
+    "resolution/rust/inventory.rs",
     "resolution/rust/limits.rs",
     "resolution/rust/load/dependency.rs",
     "resolution/rust/load/entry.rs",
@@ -173,6 +188,7 @@ pub const TIER1_SOURCES: &[&str] = &[
     "resolution/rust/package.rs",
     "resolution/rust/paths.rs",
     "resolution/rust/project.rs",
+    "resolution/rust/provider.rs",
     "resolution/rust/resolve/bindings.rs",
     "resolution/rust/resolve/claim.rs",
     "resolution/rust/resolve/coordinates.rs",
@@ -200,13 +216,11 @@ pub const TIER1_SOURCES: &[&str] = &[
     "resolution/rust/snapshot/closure/state.rs",
     "resolution/rust/snapshot/closure/walk.rs",
     "resolution/rust/snapshot/declaration.rs",
-    "resolution/rust/snapshot/depth.rs",
     "resolution/rust/snapshot/error.rs",
     "resolution/rust/snapshot/failure.rs",
     "resolution/rust/snapshot/mod.rs",
     "resolution/rust/snapshot/module.rs",
     "resolution/rust/snapshot/primary.rs",
-    "resolution/rust/snapshot/reader.rs",
     "resolution/rust/snapshot/resolution.rs",
     "resolution/rust/snapshot/selection.rs",
     "resolution/rust/snapshot/selection_chain.rs",
@@ -219,11 +233,17 @@ pub const TIER1_SOURCES: &[&str] = &[
     "resolution/rust/test_support/authority.rs",
     "resolution/rust/test_support/binding.rs",
     "resolution/rust/test_support/claim.rs",
+    "resolution/rust/test_support/coordinates.rs",
     "resolution/rust/test_support/mod.rs",
     "resolution/rust/toml_view.rs",
     "resolution/rust/version.rs",
     "resolution/rust/warning.rs",
     "resolution/sites.rs",
+    "resolution/snapshot_record.rs",
+    "resolution/snapshot_rules.rs",
+    "resolution/snapshot_store.rs",
+    "resolution/source_language.rs",
+    "resolution/supply.rs",
 ];
 
 /// The one source that may turn Rust text into a tree, stated as the crate's
@@ -236,7 +256,13 @@ pub const PARSE_ROUTE: &str = "ir/extract/parse.rs";
 const SYN_PARSE_ENTRIES: &[&str] = &["parse_file", "parse_str", "parse2"];
 
 /// Every path a probe observed, as comparable borrowed text.
-pub fn observed(paths: &[Box<str>]) -> Vec<&str> {
+///
+/// Boxed because the list is built here and read whole by the comparison that
+/// follows; nothing appends to it. Its callers compare against a slice literal,
+/// so each one takes `&*` — `Box<[T]>` states no `PartialEq` against a slice
+/// the way `Vec<T>` does, which is the one cost of not carrying spare capacity
+/// for the rest of the value's life.
+pub fn observed(paths: &[Box<str>]) -> Box<[&str]> {
     paths.iter().map(|path| &**path).collect()
 }
 
@@ -266,7 +292,7 @@ pub fn assert_reads_stay_inside(paths: &[Box<str>]) {
 pub fn assert_tier1_names_no_process_api() {
     let sources = scanned_sources();
     assert_eq!(
-        relative_names(&sources),
+        &*relative_names(&sources),
         TIER1_SOURCES,
         "the scanned Tier 1 source set is not the stated one"
     );
@@ -298,15 +324,18 @@ pub fn assert_parse_route_is_single() {
         .cloned()
         .collect();
     assert_eq!(
-        relative_names(&routes),
-        [PARSE_ROUTE],
+        &*relative_names(&routes),
+        &[PARSE_ROUTE][..],
         "the crate's `syn` parse routes are not the stated one"
     );
 }
 
 /// Every file of every module in [`TIER1_MODULES`], less the semantic adapter
 /// subtree, sorted.
-fn scanned_sources() -> Vec<PathBuf> {
+///
+/// The `Vec` lives only as long as the sort needs it; the set is settled the
+/// moment it is ordered, and every reader borrows it.
+fn scanned_sources() -> Box<[PathBuf]> {
     let excluded = excluded_root();
     let mut files: Vec<PathBuf> = TIER1_MODULES
         .iter()
@@ -314,12 +343,12 @@ fn scanned_sources() -> Vec<PathBuf> {
         .filter(|path| !path.starts_with(&excluded))
         .collect();
     files.sort();
-    files
+    files.into_boxed_slice()
 }
 
 /// Each scanned path as `/`-separated text below `src/`, so the stated set
 /// reads the way the module tree does.
-fn relative_names(sources: &[PathBuf]) -> Vec<String> {
+fn relative_names(sources: &[PathBuf]) -> Box<[String]> {
     let root = crate_path("src");
     sources
         .iter()

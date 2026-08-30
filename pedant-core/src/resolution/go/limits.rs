@@ -1,5 +1,7 @@
 //! Resource ceilings shared by Go project loading, snapshots, and resolution.
 
+use crate::resolution::read::ByteCeilings;
+
 /// Explicit bounds on everything a Go project, snapshot, or resolution may
 /// traverse.
 ///
@@ -38,6 +40,18 @@ pub struct GoResolutionLimits {
     /// Concrete-type-to-interface comparisons one resolution may make.
     /// Default 1,048,576.
     pub max_interface_comparisons: u32,
+}
+
+/// The two fields the shared byte rule reads, named once for every seam that
+/// charges Go source bytes against these ceilings.
+impl ByteCeilings for GoResolutionLimits {
+    fn source_bytes(&self) -> u64 {
+        self.max_source_file_bytes
+    }
+
+    fn total_bytes(&self) -> u64 {
+        self.max_total_source_bytes
+    }
 }
 
 impl Default for GoResolutionLimits {

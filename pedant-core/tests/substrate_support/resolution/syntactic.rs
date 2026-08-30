@@ -134,29 +134,29 @@ fn tier1_probe_reads_only_the_repository_and_invokes_no_process_path() {
     );
 
     assert_eq!(
-        observed(&probe.parses()),
+        &*observed(&probe.parses()),
         CORPUS_SOURCES,
         "each source is parsed once, and resolution parses none again"
     );
     assert_parse_route_is_single();
     assert_eq!(
-        observed(&probe.site_visits()),
+        &*observed(&probe.site_visits()),
         CORPUS_SOURCES,
         "one site visitor runs per source"
     );
     assert_eq!(
-        observed(&probe.source_reads()),
+        &*observed(&probe.source_reads()),
         CORPUS_SOURCES,
         "each source is read once"
     );
     assert_eq!(
-        observed(&probe.import_walks()),
+        &*observed(&probe.import_walks()),
         CORPUS_IMPORT_WALKS,
         "each `use` item's tree is walked once, for sites and capability paths alike"
     );
     assert_eq!(probe.project_loads(), 1, "one project index is built");
     assert_eq!(
-        observed(&probe.manifest_reads()),
+        &*observed(&probe.manifest_reads()),
         CORPUS_MANIFEST_READS,
         "indexing reads each manifest once and snapshotting re-checks each once"
     );
@@ -178,12 +178,12 @@ fn tier1_parses_a_source_two_units_share_exactly_once() {
     );
 
     assert_eq!(
-        observed(&probe.parses()),
+        &*observed(&probe.parses()),
         SHARED_SOURCES,
         "a source two units instantiate is parsed once, not once per unit"
     );
     assert_eq!(
-        observed(&probe.source_reads()),
+        &*observed(&probe.source_reads()),
         SHARED_SOURCES,
         "a source two units instantiate is read once, not once per unit"
     );

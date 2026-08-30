@@ -17,3 +17,7 @@ mod closure;
 mod go_facts;
 mod modules;
 mod scan;
+/// Where the structure walk checks its ceilings. Gated with the Go grammar
+/// because the Go route it also reads exists only there.
+#[cfg(feature = "ts-go")]
+mod structure_limits;

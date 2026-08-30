@@ -6,24 +6,27 @@
 //! read: the depth check precedes the descent, the capacity check precedes the
 //! insertion, and neither the descent nor the insertion has a second site that
 //! could take an unchecked route.
+//!
+//! The two ceilings sit in two owners, because they bound two different things:
+//! the walk owns the descent it pays for, and the inventory owns the retention
+//! it pays for. Each claim below is read from the owner that makes it.
 
-use super::closure::{Member, crate_path, discover_closure, member, parse_rust_file};
-use super::scan::{SourceScan, free_function, statement_naming};
+use super::closure::{discover_closure, member, members_under};
+use super::scan::{
+    DESCENT_ROUTE, INSERTION_ROUTE, assert_check_precedes, assert_single_owner, owner,
+};
 
 /// The sole Go fact walk owner.
 const WALK_MODULE: &str = "go/walk.rs";
+
+/// The sole Go fact retention owner.
+const INVENTORY_MODULE: &str = "go/inventory.rs";
 
 /// The one function that descends into a node's children.
 const DESCENT: &str = "descend";
 
 /// The one function that retains a fact.
 const INSERTION: &str = "admit";
-
-/// The tree-sitter route that moves a cursor one level deeper.
-const DESCENT_ROUTE: &str = "goto_first_child";
-
-/// The route that retains one fact.
-const INSERTION_ROUTE: &str = "push";
 
 /// The frame stack, which is the other collection the walk grows.
 ///
@@ -36,37 +39,45 @@ const FRAME_MODULE: &str = "go/frame.rs";
 const DEPTH_CHECK: &str = "check_depth";
 const CAPACITY_CHECK: &str = "check_capacity";
 
-/// Every Go fact module, which is where a second descent or insertion would
-/// hide.
-fn go_members(closure: &[Member]) -> Box<[&Member]> {
-    closure
-        .iter()
-        .filter(|member| member.label.starts_with("go/"))
-        .collect()
-}
+/// The label prefix every Go fact module carries, which is where a second
+/// descent or insertion would hide.
+const GO_FAMILY: &str = "go/";
 
 /// 2.T3 (Invariant 5): the syntax-depth check dominates every descent and the
 /// fact-capacity check dominates every insertion.
 #[test]
 fn go_fact_limit_checks_dominate_descent_and_insertion() {
     let closure = discover_closure();
-    let go = go_members(&closure);
+    let go = members_under(&closure, GO_FAMILY);
     assert!(
         !go.is_empty(),
         "the Go fact inventory must own at least one production module"
     );
 
     assert_single_owner(&go, DESCENT_ROUTE, &[WALK_MODULE]);
-    assert_single_owner(&go, INSERTION_ROUTE, &[FRAME_MODULE, WALK_MODULE]);
+    assert_single_owner(&go, INSERTION_ROUTE, &[FRAME_MODULE, INVENTORY_MODULE]);
     assert_eq!(
-        member(&closure, WALK_MODULE).scan.reaches(INSERTION_ROUTE),
+        member(&closure, INVENTORY_MODULE)
+            .scan
+            .reaches(INSERTION_ROUTE),
         1,
-        "{WALK_MODULE} must retain a fact in exactly one place"
+        "{INVENTORY_MODULE} must retain a fact in exactly one place"
     );
 
-    let walk = parse_rust_file(&crate_path("src").join(WALK_MODULE));
-    assert_check_precedes(&walk, DESCENT, DEPTH_CHECK, DESCENT_ROUTE);
-    assert_check_precedes(&walk, INSERTION, CAPACITY_CHECK, INSERTION_ROUTE);
+    let walk = &member(&closure, WALK_MODULE).file;
+    assert_check_precedes(
+        &owner(walk, DESCENT, WALK_MODULE).block,
+        (WALK_MODULE, DESCENT),
+        DEPTH_CHECK,
+        DESCENT_ROUTE,
+    );
+    let inventory = &member(&closure, INVENTORY_MODULE).file;
+    assert_check_precedes(
+        &owner(inventory, INSERTION, INVENTORY_MODULE).block,
+        (INVENTORY_MODULE, INSERTION),
+        CAPACITY_CHECK,
+        INSERTION_ROUTE,
+    );
 
     assert_eq!(
         member(&closure, WALK_MODULE).scan.reaches(DEPTH_CHECK),
@@ -74,44 +85,10 @@ fn go_fact_limit_checks_dominate_descent_and_insertion() {
         "{WALK_MODULE} must check syntax depth in exactly one place"
     );
     assert_eq!(
-        member(&closure, WALK_MODULE).scan.reaches(CAPACITY_CHECK),
+        member(&closure, INVENTORY_MODULE)
+            .scan
+            .reaches(CAPACITY_CHECK),
         1,
-        "{WALK_MODULE} must check fact capacity in exactly one place"
-    );
-}
-
-/// Exactly the named modules may take `route`.
-fn assert_single_owner(go: &[&Member], route: &str, owners: &[&str]) {
-    let naming: Box<[&str]> = go
-        .iter()
-        .filter(|member| member.scan.reaches(route) > 0)
-        .map(|member| member.label.as_ref())
-        .collect();
-    assert_eq!(&*naming, owners, "only {owners:?} may reach `{route}`");
-}
-
-/// The statement that checks a ceiling precedes the statement that spends it.
-fn assert_check_precedes(file: &syn::File, owner: &str, check: &str, route: &str) {
-    let function = free_function(file, owner)
-        .unwrap_or_else(|| panic!("{WALK_MODULE} should declare `{owner}`"));
-    let scan = SourceScan::of_block(&function.block);
-    assert_eq!(
-        scan.reaches(check),
-        1,
-        "`{owner}` must reach `{check}` exactly once"
-    );
-    assert_eq!(
-        scan.reaches(route),
-        1,
-        "`{owner}` must reach `{route}` exactly once"
-    );
-
-    let checked = statement_naming(&function.block, check)
-        .unwrap_or_else(|| panic!("`{owner}` should state `{check}` as a statement"));
-    let spent = statement_naming(&function.block, route)
-        .unwrap_or_else(|| panic!("`{owner}` should state `{route}` as a statement"));
-    assert!(
-        checked < spent,
-        "`{owner}` must check with `{check}` (statement {checked}) before reaching `{route}` (statement {spent})"
+        "{INVENTORY_MODULE} must check fact capacity in exactly one place"
     );
 }

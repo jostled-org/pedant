@@ -23,6 +23,7 @@ mod error;
 mod facts;
 mod frame;
 mod import;
+mod inventory;
 mod limits;
 mod reference;
 mod retention;
@@ -44,4 +45,4 @@ pub use scope::{GoScopeFact, GoScopeKind};
 pub use signature::{GoSignatureRole, GoSignatureTermFact};
 pub use span::GoFactSpan;
 
-pub(crate) use facts::offer_unit_declarations;
+pub(crate) use facts::{offer_unit_declarations, structure_facts};

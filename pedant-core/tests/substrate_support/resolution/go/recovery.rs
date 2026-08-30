@@ -112,11 +112,19 @@ fn go_capability_fallback_and_snapshot_recovery_contract_is_exact() {
 /// tree, and the two defects stay distinguishable, so a defect that later
 /// became reachable could not pass as the one already proven.
 fn assert_the_parser_failed_defect_is_unreachable() {
-    let stated = ROWS
+    let stated: Box<[(&str, &FixtureFile)]> = ROWS
         .iter()
         .flat_map(|row| row.files.iter().map(move |file| (row.subject, file)))
-        .filter(|(_, (path, _))| path.ends_with(".go"));
-    for (subject, (path, text)) in stated {
+        .filter(|(_, (path, _))| path.ends_with(".go"))
+        .collect();
+    assert!(
+        stated.len() >= ROWS.len(),
+        "every row states at least one Go source; {} of {} reached the parse claim, so it \
+         ranges over less than the table it is read from",
+        stated.len(),
+        ROWS.len()
+    );
+    for (subject, (path, text)) in stated.iter().copied() {
         assert!(
             parse_bound(text, SyntaxLanguage::Go).is_some(),
             "{subject}: {path} binds a tree, so its refusal is the recovered defect"
@@ -199,10 +207,12 @@ fn variant_of(error: &GoSnapshotError) -> &'static str {
     match error {
         GoSnapshotError::OutOfRoot { .. } => "OutOfRoot",
         GoSnapshotError::NonUtf8Path { .. } => "NonUtf8Path",
+        GoSnapshotError::UnnormalizedPath { .. } => "UnnormalizedPath",
         GoSnapshotError::PathRead { .. } => "PathRead",
         GoSnapshotError::DirectoryRead { .. } => "DirectoryRead",
         GoSnapshotError::SourceRead { .. } => "SourceRead",
         GoSnapshotError::NonUtf8Source { .. } => "NonUtf8Source",
+        GoSnapshotError::UnparsedSource { .. } => "UnparsedSource",
         GoSnapshotError::IncompleteSource {
             defect: GoSourceDefect::Unparsed,
             ..
@@ -212,6 +222,7 @@ fn variant_of(error: &GoSnapshotError) -> &'static str {
             ..
         } => "IncompleteSource:Recovered",
         GoSnapshotError::MissingPackageClause { .. } => "MissingPackageClause",
+        GoSnapshotError::AlreadyRefused { .. } => "AlreadyRefused",
         GoSnapshotError::MissingStoredSource { .. } => "MissingStoredSource",
         GoSnapshotError::ConflictingPackageClause { .. } => "ConflictingPackageClause",
         GoSnapshotError::FactExtraction { .. } => "FactExtraction",
@@ -220,5 +231,8 @@ fn variant_of(error: &GoSnapshotError) -> &'static str {
         GoSnapshotError::SourceFileLimitExceeded { .. } => "SourceFileLimitExceeded",
         GoSnapshotError::SourceBytesLimitExceeded { .. } => "SourceBytesLimitExceeded",
         GoSnapshotError::TotalSourceBytesLimitExceeded { .. } => "TotalSourceBytesLimitExceeded",
+        GoSnapshotError::RetainedFactsExceeded { .. } => "RetainedFactsExceeded",
+        GoSnapshotError::RetainedDepthExceeded { .. } => "RetainedDepthExceeded",
+        GoSnapshotError::StructureProjection { .. } => "StructureProjection",
     }
 }

@@ -2,12 +2,13 @@
 
 mod containment;
 mod fixture;
+mod poll;
 
 pub use containment::{
-    ContainedProcessTree, ContainmentError, configure_child, process_is_running, tree_is_running,
-    wait_until_gone, wait_until_tree_gone,
+    ChildContainment, ContainedProcessTree, ContainmentError, adopt_child, configure_child,
+    tree_is_live, wait_until_gone, wait_until_released,
 };
 pub use fixture::{
     FIXTURE_OUTCOME_ENV, FIXTURE_PID_FILE_ENV, FIXTURE_RELEASE_FILE_ENV, FIXTURE_ROLE_ENV,
-    FIXTURE_TEST_ENV, FixtureError, run_fixture,
+    FIXTURE_TEST_ENV, FixtureError, descendant_pid, run_fixture,
 };

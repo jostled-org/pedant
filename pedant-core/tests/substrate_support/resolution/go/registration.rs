@@ -12,20 +12,34 @@
 //!     the state both Go features would be in if the tracked checks below were
 //!     not registered in the workflow and ShellCheck inventory.
 //!
-//! Reads tracked text and runs nothing. Compiles under `go-resolution` alone,
-//! because the configuration a consumer selects must be able to prove this.
+//! Compiles under `go-resolution` alone, because the configuration a consumer
+//! selects must be able to prove this.
+//!
+//! One process is run, and only one: the tracked ShellCheck inventory's own
+//! `--list`. The inventory derives its subjects from the directories that hold
+//! them, so it names no path a text scan could find, and a coverage clause read
+//! out of the file would report every script as unlinted. `--list` prints the
+//! same expansion the lint run hands the analyser, so the answer is the coverage
+//! rather than a second copy of it. Everything else here is tracked text.
 
 use std::collections::BTreeSet;
 
+use crate::resolution::authority_scan::read_text;
 use crate::resolution::go::registration_model::{
-    CI_WORKFLOW, FeatureEdge, GO_CHECKS, GO_CONFIGURATION_CHECK, GO_CONFIGURATIONS, GO_FEATURES,
-    GO_GRAMMAR_EDGE, GO_LINT_COMMANDS, REGISTERED_PREDICATES, SHELLCHECK_INVENTORY,
+    GO_CHECKS, GO_CONFIGURATION_CHECK, GO_CONFIGURATIONS, GO_FEATURES, GO_GRAMMAR_EDGE,
+    GO_LINT_COMMANDS, REGISTERED_PREDICATES,
 };
 use crate::resolution::go::support_trees::{GO_MODULE_PREFIX, GO_SUPPORT, SupportTree};
-use crate::resolution::go::surface::{
-    assert_directory_holds_exactly, nested_sources, production_sources, tracked_path, tracked_text,
+use crate::resolution::go::surface::production_sources;
+use crate::resolution::manifest_reader::{
+    default_features, dependency_edge, feature_selection, manifest_table, string_array,
 };
-use crate::resolution::root_inventory::{assert_exact_integration_roots, workspace_members};
+use crate::resolution::production_tree::{assert_directory_holds_exactly, nested_sources};
+use crate::resolution::root_inventory::assert_exact_integration_roots;
+use crate::resolution::test_identity::{declaration_sites, workspace_test_sources};
+use crate::resolution::tracked_index::is_tracked;
+use crate::resolution::tracked_script::assert_checks_are_executable_linted_and_in_ci;
+use crate::resolution::tracked_script::tracked_path;
 
 /// 13.T3 (Invariant 25): the complete Go owner, predicate, feature, and check
 /// registration matches the tracked tree, and the root count is unchanged.
@@ -39,7 +53,7 @@ fn go_test_and_feature_ownership_is_exact() {
     assert_support_trees_are_exactly_modelled();
     assert_every_predicate_is_registered_once();
     assert_feature_edges_are_default_off_and_exact();
-    assert_every_check_is_executable_linted_and_in_ci();
+    assert_checks_are_executable_linted_and_in_ci(GO_CHECKS);
     assert_the_matrix_states_every_configuration();
     assert_exact_integration_roots();
 }
@@ -48,7 +62,7 @@ fn go_test_and_feature_ownership_is_exact() {
 fn assert_support_trees_are_exactly_modelled() {
     for tree in GO_SUPPORT {
         assert!(
-            tracked_path(tree.root).is_file(),
+            is_tracked(tree.root),
             "{} must be a tracked integration root",
             tree.root
         );
@@ -102,9 +116,13 @@ fn file_name(path: &str) -> &str {
 /// a root the model never mentions is exactly the duplicate this rejects.
 fn assert_every_predicate_is_registered_once() {
     let sources = workspace_test_sources();
+    assert!(
+        sources.len() > REGISTERED_PREDICATES.len(),
+        "the workspace holds more test sources than registered predicates"
+    );
     let mut wrong: Vec<String> = Vec::new();
     for (name, owner) in REGISTERED_PREDICATES {
-        let sites = declaration_sites(&sources, name);
+        let sites = declaration_sites(sources, name);
         match &*sites {
             [only] if *only == *owner => {}
             _ => wrong.push(format!(
@@ -118,60 +136,20 @@ fn assert_every_predicate_is_registered_once() {
     );
 }
 
-/// Every tracked test file that declares one predicate, once per declaration.
-///
-/// Once per declaration rather than once per file, because two copies inside one
-/// support module are the same duplicate as two copies across two roots, and a
-/// set would report them as one.
-fn declaration_sites<'read>(sources: &'read [(String, String)], name: &str) -> Box<[&'read str]> {
-    let needle = format!("fn {name}(");
-    sources
-        .iter()
-        .flat_map(|(path, text)| std::iter::repeat_n(path.as_str(), text.matches(&needle).count()))
-        .collect()
-}
-
-/// Every `.rs` file beneath every workspace member's `tests/` directory, read
-/// once, as its repository-relative path and its text.
-///
-/// Read once rather than once per predicate: fifty-odd predicates over two
-/// hundred sources is ten thousand file reads, and the answer does not change
-/// between them.
-fn workspace_test_sources() -> Box<[(String, String)]> {
-    let root = crate::resolution::root_inventory::workspace_root();
-    let mut sources: Vec<(String, String)> = Vec::new();
-    for member in workspace_members(&root) {
-        let tests = root.join(&member).join("tests");
-        if !tests.is_dir() {
-            continue;
-        }
-        sources.extend(nested_sources(&tests).into_iter().map(|path| {
-            let relative = format!("{member}/tests/{path}");
-            let text = tracked_text(&relative);
-            (relative, text)
-        }));
-    }
-    assert!(
-        sources.len() > REGISTERED_PREDICATES.len(),
-        "the workspace holds more test sources than registered predicates"
-    );
-    sources.into_boxed_slice()
-}
-
 /// Both Go features select exactly what the model says and neither is on by
 /// default.
 fn assert_feature_edges_are_default_off_and_exact() {
     for edge in GO_FEATURES {
         let manifest = manifest_table(&format!("{}/Cargo.toml", edge.package));
         assert_eq!(
-            &*feature_selection(&manifest, edge),
+            &*feature_selection(manifest, edge.package, edge.feature),
             edge.selects,
             "{}'s `{}` feature must select exactly the modelled set",
             edge.package,
             edge.feature
         );
         assert!(
-            !default_features(&manifest).contains(&edge.feature.to_owned()),
+            !default_features(manifest).contains(&edge.feature),
             "{}'s `{}` feature must stay default-off",
             edge.package,
             edge.feature
@@ -185,10 +163,7 @@ fn assert_feature_edges_are_default_off_and_exact() {
 fn assert_the_grammar_edge_is_optional_and_narrow() {
     let (package, dependency, grammar) = GO_GRAMMAR_EDGE;
     let manifest = manifest_table(&format!("{package}/Cargo.toml"));
-    let edge = manifest
-        .get("dependencies")
-        .and_then(|table| table.get(dependency))
-        .unwrap_or_else(|| panic!("{package} declares a {dependency} dependency"));
+    let edge = dependency_edge(manifest, package, dependency);
     assert_eq!(
         edge.get("optional").and_then(toml::Value::as_bool),
         Some(true),
@@ -205,99 +180,15 @@ fn assert_the_grammar_edge_is_optional_and_narrow() {
     );
     assert_eq!(
         &*string_array(edge.get("features")),
-        [grammar.to_owned()],
+        [grammar],
         "{package}'s {dependency} edge must ask for the Go grammar alone"
-    );
-}
-
-/// One package's `[features]` entry, as the list it selects.
-fn feature_selection(manifest: &toml::Table, edge: &FeatureEdge) -> Box<[String]> {
-    let features = manifest
-        .get("features")
-        .unwrap_or_else(|| panic!("{} declares a [features] table", edge.package));
-    string_array(features.get(edge.feature))
-}
-
-/// One package's default feature list, which is empty when it declares none.
-fn default_features(manifest: &toml::Table) -> Box<[String]> {
-    string_array(
-        manifest
-            .get("features")
-            .and_then(|features| features.get("default")),
-    )
-}
-
-fn string_array(value: Option<&toml::Value>) -> Box<[String]> {
-    value
-        .and_then(toml::Value::as_array)
-        .map(|entries| {
-            entries
-                .iter()
-                .map(|entry| {
-                    entry
-                        .as_str()
-                        .expect("a manifest feature entry is a string")
-                        .to_owned()
-                })
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn manifest_table(relative: &str) -> toml::Table {
-    toml::from_str(&tracked_text(relative))
-        .unwrap_or_else(|error| panic!("{relative} should parse as TOML: {error}"))
-}
-
-/// Each Go check is executable, linted, and run by the tracked CI workflow.
-fn assert_every_check_is_executable_linted_and_in_ci() {
-    let workflow = tracked_text(CI_WORKFLOW);
-    let shellcheck = tracked_text(SHELLCHECK_INVENTORY);
-    for script in GO_CHECKS {
-        assert_executable(script);
-        assert_eq!(
-            workflow.matches(&format!("- run: {script}")).count(),
-            1,
-            "{CI_WORKFLOW} must run {script} exactly once"
-        );
-        assert!(
-            shellcheck.contains(script),
-            "{SHELLCHECK_INVENTORY} must lint {script}"
-        );
-    }
-}
-
-/// A tracked check is a file the workflow can execute.
-#[cfg(unix)]
-fn assert_executable(script: &str) {
-    use std::os::unix::fs::PermissionsExt;
-
-    let path = tracked_path(script);
-    let mode = std::fs::metadata(&path)
-        .unwrap_or_else(|error| panic!("{script}: {error}"))
-        .permissions()
-        .mode();
-    assert_eq!(
-        mode & 0o111,
-        0o111,
-        "{script} must be executable; the workflow invokes it directly"
-    );
-}
-
-/// The mode bit is a POSIX fact, and no job on this repository's Windows runner
-/// compiles this root. The file must still be tracked and readable.
-#[cfg(not(unix))]
-fn assert_executable(script: &str) {
-    assert!(
-        tracked_path(script).is_file(),
-        "{script} must be a tracked file"
     );
 }
 
 /// The matrix check states every modelled configuration and every lint command.
 fn assert_the_matrix_states_every_configuration() {
     let matrix = GO_CONFIGURATION_CHECK;
-    let text = tracked_text(matrix);
+    let text = read_text(matrix);
     for (label, arguments) in GO_CONFIGURATIONS {
         assert!(
             text.contains(&format!("check_root {label} ")),

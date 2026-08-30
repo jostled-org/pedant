@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0](https://github.com/jostled-org/pedant/compare/pedant-core-v0.23.0...pedant-core-v0.24.0) - 2026-08-30
+
+### Added
+
+- [**breaking**] implement code-intelligence-index-and-surfaces
+
+### Fixed
+
+- *(ci)* repair hosted verification boundaries
+
 ## [0.23.0](https://github.com/jostled-org/pedant/compare/pedant-core-v0.22.0...pedant-core-v0.23.0) - 2026-08-23
 
 ### Added

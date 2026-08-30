@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0](https://github.com/jostled-org/pedant/compare/pedant-syntax-v0.5.0...pedant-syntax-v0.6.0) - 2026-08-30
+
+### Added
+
+- [**breaking**] implement code-intelligence-index-and-surfaces
+
 ## [0.5.0](https://github.com/jostled-org/pedant/compare/pedant-syntax-v0.4.0...pedant-syntax-v0.5.0) - 2026-08-23
 
 ### Added

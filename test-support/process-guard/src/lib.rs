@@ -10,5 +10,5 @@ pub use containment::{
 };
 pub use fixture::{
     FIXTURE_OUTCOME_ENV, FIXTURE_PID_FILE_ENV, FIXTURE_RELEASE_FILE_ENV, FIXTURE_ROLE_ENV,
-    FIXTURE_TEST_ENV, FixtureError, descendant_pid, run_fixture,
+    FIXTURE_STDIO_ENV, FIXTURE_TEST_ENV, FixtureError, descendant_pid, run_fixture,
 };

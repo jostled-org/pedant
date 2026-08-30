@@ -38,6 +38,7 @@ mod graph_model;
 /// workflow says.
 mod hosted_filter_model;
 mod hosted_filters;
+mod hosted_format;
 /// The products an operator is told to install, one row per published binary.
 /// Beside [`operator_documentation`] rather than inside it because an installed
 /// product and a served command are different subjects: nothing relates the two

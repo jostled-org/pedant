@@ -98,13 +98,7 @@ fn a_default_page_of_projects_continues(repository: &Repository) {
 /// The two enums are rendered rather than compared as values, so a variant added
 /// to either arrives here as a different string instead of as a new arm nothing
 /// wrote. The two borrows are the record's own.
-type StatedProject<'project> = (
-    String,
-    &'project str,
-    &'project str,
-    String,
-    HealthStatus,
-);
+type StatedProject<'project> = (String, &'project str, &'project str, String, HealthStatus);
 
 /// The listing states every project the index resolved, and states it exactly.
 fn every_resolved_project_states_its_own_record(state: &CodeIntelligenceState) {

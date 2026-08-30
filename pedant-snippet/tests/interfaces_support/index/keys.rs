@@ -71,7 +71,12 @@ fn parent_authorities_sort_before_members() {
     let paths: Vec<&str> = authorities.iter().map(ProjectAuthority::path).collect();
     assert_eq!(
         paths,
-        ["Cargo.toml", "go.mod", "cmd/go.mod", "crates/member/Cargo.toml"]
+        [
+            "Cargo.toml",
+            "go.mod",
+            "cmd/go.mod",
+            "crates/member/Cargo.toml"
+        ]
     );
 }
 

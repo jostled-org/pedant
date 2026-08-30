@@ -16,6 +16,8 @@ pub const FIXTURE_PID_FILE_ENV: &str = "PEDANT_PROCESS_FIXTURE_PID_FILE";
 pub const FIXTURE_RELEASE_FILE_ENV: &str = "PEDANT_PROCESS_FIXTURE_RELEASE_FILE";
 /// Environment variable selecting success, timeout, or failure.
 pub const FIXTURE_OUTCOME_ENV: &str = "PEDANT_PROCESS_FIXTURE_OUTCOME";
+/// Environment variable selecting whether the descendant inherits stdio.
+pub const FIXTURE_STDIO_ENV: &str = "PEDANT_PROCESS_FIXTURE_STDIO";
 
 const FIXTURE_WAIT: Duration = Duration::from_secs(10);
 const FIXTURE_SLEEP: Duration = Duration::from_secs(300);
@@ -77,14 +79,13 @@ fn run_parent() -> Result<(), FixtureError> {
     let pid_file = environment_path(FIXTURE_PID_FILE_ENV)?;
     let test_name = environment(FIXTURE_TEST_ENV)?;
     let executable = std::env::current_exe().map_err(io("fixture executable discovery"))?;
-    let child = Command::new(executable)
+    let mut command = Command::new(executable);
+    command
         .args(["--exact", &test_name, "--nocapture"])
         .env(FIXTURE_ROLE_ENV, "descendant")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(io("fixture descendant spawn"))?;
+        .stdin(Stdio::null());
+    configure_descendant_stdio(&mut command)?;
+    let child = command.spawn().map_err(io("fixture descendant spawn"))?;
     std::fs::write(pid_file, child.id().to_string()).map_err(io("fixture descendant pid write"))?;
 
     match environment(FIXTURE_OUTCOME_ENV)?.as_str() {
@@ -97,6 +98,24 @@ fn run_parent() -> Result<(), FixtureError> {
         value => Err(FixtureError::InvalidValue {
             name: FIXTURE_OUTCOME_ENV,
             value: value.into(),
+        }),
+    }
+}
+
+fn configure_descendant_stdio(command: &mut Command) -> Result<(), FixtureError> {
+    match std::env::var(FIXTURE_STDIO_ENV) {
+        Err(std::env::VarError::NotPresent) => {
+            command.stdout(Stdio::null()).stderr(Stdio::null());
+            Ok(())
+        }
+        Err(std::env::VarError::NotUnicode(_)) => Err(not_unicode(FIXTURE_STDIO_ENV)),
+        Ok(value) if value == "inherit" => {
+            command.stdout(Stdio::inherit()).stderr(Stdio::inherit());
+            Ok(())
+        }
+        Ok(value) => Err(FixtureError::InvalidValue {
+            name: FIXTURE_STDIO_ENV,
+            value: value.into_boxed_str(),
         }),
     }
 }

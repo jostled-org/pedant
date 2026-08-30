@@ -112,10 +112,36 @@ fn reachable_alternative(
     candidate: &Path,
     site: &ClosureSite,
 ) -> Result<bool, SourceClosureFailure> {
-    match candidate.is_file() {
-        false => Ok(false),
-        true => store.canonical_inside(candidate, site).map(|_| true),
+    match (
+        lexically_inside(store.root(), candidate),
+        candidate.is_file(),
+    ) {
+        (false, _) | (_, false) => Ok(false),
+        (true, true) => store.canonical_inside(candidate, site).map(|_| true),
     }
+}
+
+/// Whether a conditional candidate has a spelling beneath this package root.
+///
+/// Cargo packages may retain a workspace-only `cfg_attr` path beside the path
+/// their archive ships. A vendor tree can make that sibling happen to exist,
+/// but existence beside the package does not make it package source. A path
+/// spelled inside the root is still canonicalized afterwards, so an in-root
+/// symlink cannot use this lexical decision to escape confinement.
+fn lexically_inside(root: &Path, candidate: &Path) -> bool {
+    let relative = match candidate.strip_prefix(root) {
+        Ok(relative) => relative,
+        Err(_) => return false,
+    };
+    relative
+        .components()
+        .try_fold(0_usize, |depth, component| match component {
+            std::path::Component::Normal(_) => Some(depth.saturating_add(1)),
+            std::path::Component::CurDir => Some(depth),
+            std::path::Component::ParentDir => depth.checked_sub(1),
+            std::path::Component::Prefix(_) | std::path::Component::RootDir => None,
+        })
+        .is_some()
 }
 
 fn standard_candidate(

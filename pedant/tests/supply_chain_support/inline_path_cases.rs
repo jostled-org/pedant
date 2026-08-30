@@ -41,6 +41,59 @@ fn init_and_verify_hash_generated_children_beneath_inline_path_overrides() {
     }
 }
 
+/// A published crate can retain a workspace-only `cfg_attr` path beside the
+/// packaged path Cargo actually builds. `cargo vendor` places the named
+/// workspace sibling beside it, but that sibling is not source shipped by this
+/// package and must not enter this package's attestation.
+#[test]
+fn conditional_path_outside_a_vendored_package_is_not_shipped_source() {
+    let fixture = VendorFixture::new();
+    write_workspace_conditional_crate(&fixture.crate_dir("derive-internals"));
+    write_library_crate(
+        &fixture.crate_dir("derive"),
+        &manifest("derive", "0.1.0"),
+        "pub mod internals;\n",
+    );
+    write(
+        &fixture.crate_dir("derive/src/internals.rs"),
+        "pub fn workspace_only() {}\n",
+    );
+
+    let init = fixture.supply_chain("init");
+    assert!(init.success(), "init failed: {}", init.transcript());
+    let debug = fixture.debug_package("derive-internals");
+    assert!(debug.success(), "debug failed: {}", debug.transcript());
+    let files: Vec<&str> = debug
+        .stderr
+        .lines()
+        .filter_map(|line| line.strip_prefix("file: "))
+        .filter_map(|line| line.split_once(" bytes=").map(|(path, _)| path))
+        .collect();
+    assert_eq!(
+        files,
+        ["./lib.rs", "./src/mod.rs"],
+        "the sibling package is attested under its own identity: {}",
+        debug.stderr
+    );
+}
+
+fn write_workspace_conditional_crate(root: &Path) {
+    write(
+        &root.join("Cargo.toml"),
+        format!(
+            "{}\n[lib]\npath = \"lib.rs\"\n",
+            manifest("derive-internals", "0.1.0")
+        ),
+    );
+    write(
+        &root.join("lib.rs"),
+        "#[cfg_attr(from_workspace, path = \"../derive/src/internals.rs\")]\n\
+         #[cfg_attr(not(from_workspace), path = \"src/mod.rs\")]\n\
+         mod internals;\n",
+    );
+    write(&root.join("src/mod.rs"), "pub fn packaged() {}\n");
+}
+
 /// Materializes the correct and duplicated-base trees used by the journey.
 fn write_inline_path_override_crate(root: &Path) {
     write_library_crate(

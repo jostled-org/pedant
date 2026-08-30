@@ -56,17 +56,9 @@ jobs:
       # and this is the closure that decides whether one navigation binary can
       # reach the linter. Cargo-only, so it runs beside its siblings.
       - run: .github/scripts/check_code_intelligence_dependency_closure.sh
-      # Format every tracked Rust source, including modules declared through
-      # macros and the workspace-excluded process helper.
-      - run: |
-          set -euo pipefail
-          listing="${RUNNER_TEMP}/tracked-rust-sources"
-          git ls-files -z -- '*.rs' > "${listing}"
-          test -s "${listing}" || {
-            echo "error: the repository holds no tracked Rust source; rustfmt would check nothing" >&2
-            exit 1
-          }
-          xargs -0 rustfmt --edition 2024 --check < "${listing}"
+      # Include support modules declared through macros and the workspace-
+      # excluded process helper, but not source-shaped fixture data.
+      - run: .github/scripts/check_rust_format.sh
       - run: cargo clippy -- -D warnings
       - run: cargo clippy --locked --manifest-path test-support/process-guard/Cargo.toml --all-targets -- -D warnings
       # `--all-targets` is what puts the `tests/` trees of pedant, pedant-core,

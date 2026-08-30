@@ -23,15 +23,16 @@ use std::time::{Duration, Instant};
 
 use pedant_process_guard::{
     FIXTURE_OUTCOME_ENV, FIXTURE_PID_FILE_ENV, FIXTURE_RELEASE_FILE_ENV, FIXTURE_ROLE_ENV,
-    FIXTURE_TEST_ENV, wait_until_gone,
+    FIXTURE_STDIO_ENV, FIXTURE_TEST_ENV, wait_until_gone,
 };
 use serde_json::json;
+use tokio::io::AsyncReadExt;
+use tokio::process::{ChildStderr, ChildStdout};
 use tokio::time::sleep;
 
 use crate::child::Server;
-use crate::command::bounded_run;
-use crate::contained::{Descendants, Spawned, contained, released};
-use crate::failure::{Failure, io};
+use crate::contained::{Descendants, Spawned, contained, pipes, released, text};
+use crate::failure::{Failure, bounded, io};
 use crate::journeys::client;
 use crate::journeys::fixture::{Fixture, root_arguments};
 use crate::journeys::outcome::{assert_bounded, refusal, run, value};
@@ -223,26 +224,31 @@ async fn assert_the_tree_observation_can_see_a_survivor() {
     );
 }
 
-/// Release the fixture parent, drain it, reap it, and read what its tree held.
+/// Release and reap the fixture parent, read and end its tree, then drain it.
 ///
 /// The release file is written only once adoption is complete: the parent
 /// blocks on it, so the descendant it starts is born inside the contained tree
 /// rather than beside it.
 ///
-/// The parent is drained rather than merely waited for. It is spawned with all
-/// three handles piped, and [`crate::child`] contracts that every pipe is
-/// drained for as long as the child lives — a wait alone leaves the parent's own
-/// account of a failure in a pipe nobody reads, so a re-executed
-/// `process_tree_fixture` that panicked would report an exit status and not one
-/// word of why. The drain terminates because the descendant is spawned with
-/// null stdio, so nothing outlives the parent holding the write ends.
+/// The descendant inherits the parent's output handles on purpose. Windows can
+/// do that even when the child requests null standard streams, and a drain
+/// waiting for EOF would then wait for the descendant this row exists to
+/// observe. The direct child writes only the bounded libtest report, so it is
+/// reaped first; the tree is observed and ended next; only then can both pipes
+/// be drained to EOF without hiding the parent's diagnostics.
 async fn survivor(
     spawned: &mut Spawned,
     pid_file: &std::path::Path,
     release_file: &std::path::Path,
 ) -> Result<(u32, Descendants), Failure> {
     std::fs::write(release_file, b"adopted").map_err(io("the fixture release"))?;
-    let (status, out, err) = bounded_run(&mut spawned.child, "the fixture parent").await?;
+    let (stdout, stderr) = pipes(&mut spawned.child, "the fixture parent")?;
+    let status = bounded("the fixture parent", spawned.child.wait()).await?;
+    let descendant = recorded_pid(pid_file).await.ok_or_else(|| {
+        Failure::Protocol("the fixture parent records the descendant it started".into())
+    })?;
+    let held = released(spawned)?;
+    let (out, err) = fixture_output(stdout, stderr).await?;
     if !status.success() {
         return Err(Failure::Protocol(
             format!(
@@ -252,10 +258,25 @@ async fn survivor(
             .into(),
         ));
     }
-    let descendant = recorded_pid(pid_file).await.ok_or_else(|| {
-        Failure::Protocol("the fixture parent records the descendant it started".into())
-    })?;
-    released(spawned).map(|held| (descendant, held))
+    Ok((descendant, held))
+}
+
+/// Drain the fixture pipes after its whole tree has released their write ends.
+async fn fixture_output(
+    mut stdout: ChildStdout,
+    mut stderr: ChildStderr,
+) -> Result<(Box<str>, Box<str>), Failure> {
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+    bounded("the fixture output", async {
+        let (read_out, read_err) =
+            tokio::join!(stdout.read_to_end(&mut out), stderr.read_to_end(&mut err),);
+        read_out?;
+        read_err?;
+        Ok(())
+    })
+    .await?;
+    Ok((text(&out), text(&err)))
 }
 
 /// The command that runs this test executable as the guard's fixture parent.
@@ -268,6 +289,7 @@ fn fixture_parent(pid_file: &std::path::Path, release_file: &std::path::Path) ->
         .env(FIXTURE_TEST_ENV, FIXTURE_TEST)
         .env(FIXTURE_PID_FILE_ENV, pid_file)
         .env(FIXTURE_RELEASE_FILE_ENV, release_file)
+        .env(FIXTURE_STDIO_ENV, "inherit")
         .env(FIXTURE_OUTCOME_ENV, "success");
     command
 }

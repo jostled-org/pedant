@@ -85,6 +85,10 @@ fn assert_declared_edge<'manifest>(
 /// Each first-party edge carries a published version beside its path, is
 /// optional exactly where a feature selects it, and selects no feature of its
 /// own.
+///
+/// The release contract compares that requirement with the dependency's
+/// published version. Repeating release-plz-owned numbers here would make this
+/// product-boundary test stale after every coordinated release.
 fn assert_first_party_edges_are_versioned_and_narrow(
     manifest: &toml::Table,
     declared: &BTreeSet<&str>,
@@ -107,10 +111,12 @@ fn assert_first_party_edges_are_versioned_and_narrow(
 fn assert_first_party_edge(manifest: &toml::Table, edge: &FirstPartyEdge) {
     let declared = assert_declared_edge(manifest, &edge.edge);
     let package = edge.edge.package;
-    assert_eq!(
-        declared.get("version").and_then(toml::Value::as_str),
-        Some(edge.version),
-        "{package}'s edge must carry the published version it releases against"
+    assert!(
+        declared
+            .get("version")
+            .and_then(toml::Value::as_str)
+            .is_some_and(|version| !version.is_empty()),
+        "{package}'s edge must carry a published version beside its workspace path"
     );
     assert_eq!(
         declared.get("path").and_then(toml::Value::as_str),

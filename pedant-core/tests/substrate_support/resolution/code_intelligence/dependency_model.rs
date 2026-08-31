@@ -5,6 +5,8 @@
 //! a reading of one. A table discovered from the manifest would agree with
 //! whatever the manifest happens to say, so it could not reject an edge that
 //! widened, dropped its published version, or arrived with no audit behind it.
+//! Exact first-party version equality belongs to the release contract because
+//! release-plz owns those numbers.
 
 use pedant_types::Capability;
 
@@ -84,12 +86,6 @@ pub(crate) struct DeclaredEdge {
 pub(crate) struct FirstPartyEdge {
     /// The crate and the exact selection it is taken with.
     pub(crate) edge: DeclaredEdge,
-    /// The published version requirement it carries beside its path.
-    ///
-    /// A path-only edge publishes as a registry dependency with no version,
-    /// which `cargo publish` refuses, so the release graph and the working tree
-    /// would disagree only at the moment of publication.
-    pub(crate) version: &'static str,
     /// The workspace-relative path it resolves through while unpublished.
     pub(crate) path: &'static str,
     /// Whether the edge is selected by a feature rather than always linked.
@@ -109,7 +105,6 @@ pub(crate) const FIRST_PARTY_EDGES: &[FirstPartyEdge] = &[
             default_features: None,
             features: &[],
         },
-        version: "0.16.0",
         path: "../pedant-types",
         optional: false,
     },
@@ -119,7 +114,6 @@ pub(crate) const FIRST_PARTY_EDGES: &[FirstPartyEdge] = &[
             default_features: Some(false),
             features: &[],
         },
-        version: "0.5.0",
         path: "../pedant-syntax",
         optional: false,
     },
@@ -129,7 +123,6 @@ pub(crate) const FIRST_PARTY_EDGES: &[FirstPartyEdge] = &[
             default_features: Some(false),
             features: &[],
         },
-        version: "0.23.0",
         path: "../pedant-core",
         optional: true,
     },
@@ -139,7 +132,6 @@ pub(crate) const FIRST_PARTY_EDGES: &[FirstPartyEdge] = &[
             default_features: Some(false),
             features: &[],
         },
-        version: "0.4.0",
         path: "../pedant-graph",
         optional: true,
     },

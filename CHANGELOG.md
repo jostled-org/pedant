@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.30.1](https://github.com/jostled-org/pedant/compare/pedant-v0.30.0...pedant-v0.30.1) - 2026-08-31
+
+### Other
+
+- updated the following local packages: pedant-core, pedant-graph
+
 ## [0.30.0](https://github.com/jostled-org/pedant/compare/pedant-v0.29.0...pedant-v0.30.0) - 2026-08-30
 
 ### Added

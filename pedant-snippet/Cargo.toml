@@ -1,6 +1,6 @@
 [package]
 name = "pedant-snippet"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2024"
 rust-version = "1.96"
 description = "Repository code intelligence as a library, CLI, and MCP server"
@@ -67,10 +67,10 @@ pedant-syntax = { version = "0.6.0", path = "../pedant-syntax", default-features
 # The resolution substrate, selected only by a graph feature.
 # `default-features = false` is what keeps `checks` — the style rules, the gate
 # engine, and the violation surface — out of a navigation binary.
-pedant-core = { version = "0.24.0", path = "../pedant-core", default-features = false, optional = true }
+pedant-core = { version = "0.24.1", path = "../pedant-core", default-features = false, optional = true }
 # The graph projector, selected only by a graph feature. Its own Go adapter is
 # default-off, so `graph-rust` alone links no Go grammar.
-pedant-graph = { version = "0.5.0", path = "../pedant-graph", default-features = false, optional = true }
+pedant-graph = { version = "0.5.1", path = "../pedant-graph", default-features = false, optional = true }
 clap = { version = "4", features = ["derive"] }
 rmcp = { version = "2", features = ["server", "transport-io"] }
 # `rc` is what lets an answer serialize the shared handles it already holds.

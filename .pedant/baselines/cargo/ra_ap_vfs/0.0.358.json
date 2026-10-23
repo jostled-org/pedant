@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "529003b814648e39f7ff863fbc522fdadd11260102348ebe540a97a405471a72",
+  "crate_name": "ra_ap_vfs",
+  "crate_version": "0.0.358",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725602,
+  "analysis_completeness": {
+    "analyzed_files": 8,
+    "skipped_files": 0
+  },
+  "rust_version": "1.98",
+  "profile": {
+    "findings": []
+  }
+}

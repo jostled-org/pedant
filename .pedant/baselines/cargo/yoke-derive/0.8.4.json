@@ -1,0 +1,27 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "76bd0c763387a2379553f7ba35b96f3608095c03adabcf272cfccbbc0e457e3a",
+  "crate_name": "yoke-derive",
+  "crate_version": "0.8.4",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725621,
+  "analysis_completeness": {
+    "analyzed_files": 3,
+    "skipped_files": 0
+  },
+  "rust_version": "1.82",
+  "profile": {
+    "findings": [
+      {
+        "capability": "proc_macro",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 51,
+          "column": 1
+        },
+        "evidence": "#[proc_macro_derive]",
+        "origin": "attribute"
+      }
+    ]
+  }
+}

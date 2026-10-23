@@ -1,0 +1,117 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "d369dee75a826ef7663f277d6fe133a9152e78c71c909ec0b181c4d6038db82b",
+  "crate_name": "icu_collections",
+  "crate_version": "2.4.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725573,
+  "analysis_completeness": {
+    "analyzed_files": 18,
+    "skipped_files": 0
+  },
+  "rust_version": "1.88",
+  "profile": {
+    "findings": [
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/codepointinvlist/cpinvlist.rs",
+          "line": 239,
+          "column": 15
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/codepointtrie/cptrie.rs",
+          "line": 280,
+          "column": 15
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/codepointtrie/cptrie.rs",
+          "line": 422,
+          "column": 43
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/codepointtrie/cptrie.rs",
+          "line": 425,
+          "column": 45
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/codepointtrie/cptrie.rs",
+          "line": 561,
+          "column": 18
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/codepointtrie/cptrie.rs",
+          "line": 577,
+          "column": 5
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/codepointtrie/cptrie.rs",
+          "line": 592,
+          "column": 75
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/codepointtrie/cptrie.rs",
+          "line": 606,
+          "column": 28
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/codepointtrie/cptrie.rs",
+          "line": 1521,
+          "column": 18
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/codepointtrie/cptrie.rs",
+          "line": 1576,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

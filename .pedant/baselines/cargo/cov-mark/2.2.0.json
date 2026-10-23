@@ -4,7 +4,7 @@
   "crate_name": "cov-mark",
   "crate_version": "2.2.0",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344426,
+  "timestamp": 1792725568,
   "analysis_completeness": {
     "analyzed_files": 1,
     "skipped_files": 0

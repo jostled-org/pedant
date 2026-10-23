@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "d48be0b092631361f6cfd5b606ce60575cc4b47ed5330a83b35f18cac170be8e",
+  "crate_name": "globset",
+  "crate_version": "0.4.20",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725571,
+  "analysis_completeness": {
+    "analyzed_files": 5,
+    "skipped_files": 0
+  },
+  "rust_version": "1.88",
+  "profile": {
+    "findings": []
+  }
+}

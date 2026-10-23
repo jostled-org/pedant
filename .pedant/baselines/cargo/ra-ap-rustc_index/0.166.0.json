@@ -1,0 +1,76 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "60de33899b7a05de5c9af88297593f89fa98fcad35022878bec3fbfbe20abcf0",
+  "crate_name": "ra-ap-rustc_index",
+  "crate_version": "0.166.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725592,
+  "analysis_completeness": {
+    "analyzed_files": 9,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": [
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/bit_set.rs",
+          "line": 648,
+          "column": 25
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/bit_set.rs",
+          "line": 699,
+          "column": 25
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/slice.rs",
+          "line": 33,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/slice.rs",
+          "line": 40,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/slice.rs",
+          "line": 277,
+          "column": 1
+        },
+        "evidence": "unsafe impl",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/vec.rs",
+          "line": 348,
+          "column": 1
+        },
+        "evidence": "unsafe impl",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

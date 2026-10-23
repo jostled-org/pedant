@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "f57d4732c642a40f1c64f34906df12c55730da940d00840a847796b48755f103",
+  "crate_name": "num-conv",
+  "crate_version": "0.2.2",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725589,
+  "analysis_completeness": {
+    "analyzed_files": 1,
+    "skipped_files": 0
+  },
+  "rust_version": "1.57.0",
+  "profile": {
+    "findings": []
+  }
+}

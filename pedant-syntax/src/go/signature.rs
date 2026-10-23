@@ -132,7 +132,7 @@ fn list_terms<'source>(
     role: GoSignatureRole,
 ) -> Vec<GoSignatureTermFact<'source>> {
     let mut cursor = list.walk();
-    named_nodes(list, &mut cursor)
+    named_nodes(&list, &mut cursor)
         .filter_map(|held| variadic_form(held).map(|variadic| (held, variadic)))
         .flat_map(|(held, variadic)| repeated(held, source, variadic))
         .enumerate()

@@ -4,7 +4,7 @@
   "crate_name": "cargo_metadata",
   "crate_version": "0.23.1",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344425,
+  "timestamp": 1792725566,
   "analysis_completeness": {
     "analyzed_files": 6,
     "skipped_files": 0

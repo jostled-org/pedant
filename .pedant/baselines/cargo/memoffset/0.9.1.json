@@ -4,7 +4,7 @@
   "crate_name": "memoffset",
   "crate_version": "0.9.1",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344431,
+  "timestamp": 1792725589,
   "analysis_completeness": {
     "analyzed_files": 5,
     "skipped_files": 0

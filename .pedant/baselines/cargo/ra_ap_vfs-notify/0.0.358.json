@@ -1,0 +1,57 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "0c6dec3f182566f903d8c91d3423c2cb3abcfd19fd35932a4089413e9e90b2ed",
+  "crate_name": "ra_ap_vfs-notify",
+  "crate_version": "0.0.358",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725602,
+  "analysis_completeness": {
+    "analyzed_files": 1,
+    "skipped_files": 0
+  },
+  "rust_version": "1.98",
+  "profile": {
+    "findings": [
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 10,
+          "column": 1
+        },
+        "evidence": "std::fs",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 22,
+          "column": 1
+        },
+        "evidence": "walkdir::WalkDir",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 368,
+          "column": 5
+        },
+        "evidence": "std::fs::read",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 382,
+          "column": 27
+        },
+        "evidence": "std::fs::read_link",
+        "origin": "import"
+      }
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "8a788300a6566fe50386be0c681465b00bc744680ed8191ad2829d7511009612",
+  "crate_name": "ra_ap_ide_diagnostics",
+  "crate_version": "0.0.358",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725600,
+  "analysis_completeness": {
+    "analyzed_files": 82,
+    "skipped_files": 0
+  },
+  "rust_version": "1.98",
+  "profile": {
+    "findings": [
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 155,
+          "column": 30
+        },
+        "evidence": "https://doc.rust-lang.org/stable/reference/",
+        "origin": "string_literal"
+      }
+    ]
+  }
+}

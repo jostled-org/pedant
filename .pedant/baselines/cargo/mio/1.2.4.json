@@ -1,0 +1,87 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "ef12b7a424c67c5d3120553eecb22ee72916c4011ff3bcb62a7fc00d7158500e",
+  "crate_name": "mio",
+  "crate_version": "1.2.4",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725589,
+  "analysis_completeness": {
+    "analyzed_files": 11,
+    "skipped_files": 0
+  },
+  "rust_version": "1.71",
+  "profile": {
+    "findings": [
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/event/event.rs",
+          "line": 188,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/interest.rs",
+          "line": 29,
+          "column": 45
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/interest.rs",
+          "line": 32,
+          "column": 45
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/interest.rs",
+          "line": 44,
+          "column": 40
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/interest.rs",
+          "line": 48,
+          "column": 40
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/interest.rs",
+          "line": 52,
+          "column": 45
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/interest.rs",
+          "line": 69,
+          "column": 18
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

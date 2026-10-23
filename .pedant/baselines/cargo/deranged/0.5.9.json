@@ -1,0 +1,27 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "9f4e9973c9b9e7a545277470f2ad5b7cfa3a79e7be939f667d55d8956bd1fca8",
+  "crate_name": "deranged",
+  "crate_version": "0.5.9",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725569,
+  "analysis_completeness": {
+    "analyzed_files": 3,
+    "skipped_files": 0
+  },
+  "rust_version": "1.85.0",
+  "profile": {
+    "findings": [
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/unsafe_wrapper.rs",
+          "line": 18,
+          "column": 22
+        },
+        "evidence": "unsafe fn",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

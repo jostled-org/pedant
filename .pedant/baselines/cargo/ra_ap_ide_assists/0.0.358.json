@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "f33e5008356b9a64a2a5a76d6d1e0d02f72972bba7fe8849fc8f3fafd4f8687c",
+  "crate_name": "ra_ap_ide_assists",
+  "crate_version": "0.0.358",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725598,
+  "analysis_completeness": {
+    "analyzed_files": 142,
+    "skipped_files": 0
+  },
+  "rust_version": "1.98",
+  "profile": {
+    "findings": []
+  }
+}

@@ -4,7 +4,7 @@
   "crate_name": "inotify-sys",
   "crate_version": "0.1.8",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344429,
+  "timestamp": 1792725575,
   "analysis_completeness": {
     "analyzed_files": 2,
     "skipped_files": 0

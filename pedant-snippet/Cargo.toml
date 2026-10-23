@@ -2,7 +2,7 @@
 name = "pedant-snippet"
 version = "0.5.1"
 edition = "2024"
-rust-version = "1.96"
+rust-version = "1.98"
 description = "Repository code intelligence as a library, CLI, and MCP server"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/jostled-org/pedant"
@@ -72,7 +72,7 @@ pedant-core = { version = "0.24.1", path = "../pedant-core", default-features = 
 # default-off, so `graph-rust` alone links no Go grammar.
 pedant-graph = { version = "0.5.1", path = "../pedant-graph", default-features = false, optional = true }
 clap = { version = "4", features = ["derive"] }
-rmcp = { version = "2", features = ["server", "transport-io"] }
+rmcp = { version = "3", features = ["server", "transport-io"] }
 # `rc` is what lets an answer serialize the shared handles it already holds.
 # Without it every `Arc` in a response would have to be deep-copied into an
 # owned twin on the way out, which is the allocation the sharing exists to

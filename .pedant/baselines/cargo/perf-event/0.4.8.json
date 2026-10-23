@@ -4,7 +4,7 @@
   "crate_name": "perf-event",
   "crate_version": "0.4.8",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344432,
+  "timestamp": 1792725589,
   "analysis_completeness": {
     "analyzed_files": 3,
     "skipped_files": 0

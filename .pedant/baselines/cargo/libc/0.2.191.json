@@ -1,0 +1,59 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "19a45c2f4f8dddd2f298500f0098e00d8b0c799095c830bea3ed782317300cab",
+  "crate_name": "libc",
+  "crate_version": "0.2.191",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725576,
+  "analysis_completeness": {
+    "analyzed_files": 14,
+    "skipped_files": 0
+  },
+  "rust_version": "1.65",
+  "profile": {
+    "findings": [
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./build.rs",
+          "line": 2,
+          "column": 1
+        },
+        "evidence": "std::process::Command",
+        "origin": "import",
+        "execution_context": "build_hook"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./build.rs",
+          "line": 2,
+          "column": 1
+        },
+        "evidence": "std::process::Output",
+        "origin": "import",
+        "execution_context": "build_hook"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/new/common/linux_like/pthread.rs",
+          "line": 3,
+          "column": 1
+        },
+        "evidence": "extern block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/new/common/posix/pthread.rs",
+          "line": 7,
+          "column": 1
+        },
+        "evidence": "extern block",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

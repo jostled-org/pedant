@@ -250,7 +250,27 @@ pub(super) fn record_type_path(extractor: &mut IrExtractor, node: &syn::TypePath
     let Some(range) = path_range(&node.path) else {
         return;
     };
-    let raw = path_segments(&node.path);
+    push_type_mention(extractor, path_segments(&node.path), range);
+}
+
+/// Record the `Self` a shorthand receiver names without writing it.
+///
+/// `self`, `&self` and `&mut self` carry no type in the syntax tree, so the
+/// mention is stated here, at the `self` token. A typed receiver such as
+/// `self: Box<Self>` writes its type, and the type visit records that.
+pub(super) fn record_receiver(extractor: &mut IrExtractor, node: &syn::Receiver) {
+    if matches!(node.kind, syn::ReceiverKind::Typed(..)) {
+        return;
+    }
+    push_type_mention(
+        extractor,
+        Box::new([Box::from(SELF_SEGMENT)]),
+        range_of(node.self_token.span),
+    );
+}
+
+/// Record one type mention: the path as written, resolved through `Self`.
+fn push_type_mention(extractor: &mut IrExtractor, raw: Box<[Box<str>]>, range: IrRange) {
     let text = path_text(&raw);
     let segments = qualified(extractor, raw);
     push_reference(
@@ -307,7 +327,7 @@ pub(super) fn record_struct_literal(extractor: &mut IrExtractor, node: &syn::Exp
 
 /// Record the trait an `impl` block implements.
 pub(super) fn record_implementation(extractor: &mut IrExtractor, node: &syn::ItemImpl) {
-    let Some((_, path, _)) = node.trait_.as_ref() else {
+    let Some((path, _)) = node.trait_.as_ref() else {
         return;
     };
     let Some(range) = path_range(path) else {

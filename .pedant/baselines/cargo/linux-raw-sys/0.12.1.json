@@ -4,7 +4,7 @@
   "crate_name": "linux-raw-sys",
   "crate_version": "0.12.1",
   "analysis_tier": "syntactic",
-  "timestamp": 1786296212,
+  "timestamp": 1792725588,
   "analysis_completeness": {
     "analyzed_files": 462,
     "skipped_files": 0

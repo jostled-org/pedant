@@ -252,7 +252,7 @@ pub(crate) fn get_type_span_start(ty: &Type) -> LineColumn {
             .first()
             .map(get_type_param_bound_span)
             .unwrap_or_else(|| LineColumn { line: 1, column: 0 }),
-        Type::BareFn(bf) => bf.fn_token.span.start(),
+        Type::FnPtr(fp) => fp.fn_token.span.start(),
         Type::Never(tn) => tn.bang_token.span.start(),
         Type::Infer(ti) => ti.underscore_token.span.start(),
         Type::Macro(tm) => tm

@@ -84,6 +84,7 @@ pub const TIER1_SOURCES: &[&str] = &[
     "ir/extract/use_paths.rs",
     "ir/extract/visitor/implementation.rs",
     "ir/extract/visitor/mod.rs",
+    "ir/extract/visitor/rows.rs",
     "ir/facts.rs",
     "ir/mod.rs",
     "ir/sites/declaration.rs",

@@ -113,7 +113,7 @@ pub(in crate::ir::semantic) fn format_type(
 /// Extract the simple binding name from a pattern (e.g., `let key = ...` → `"key"`).
 pub(in crate::ir::semantic) fn extract_binding_name(pat: &ast::Pat) -> Option<Box<str>> {
     match pat {
-        ast::Pat::IdentPat(ident) => ident.name().map(|n| Box::from(n.text().as_str())),
+        ast::Pat::IdentPat(ident) => ident.name().map(|n| Box::from(n.text())),
         _ => None,
     }
 }
@@ -152,9 +152,7 @@ pub(in crate::ir::semantic) fn direct_path_name(expr: &ast::Expr) -> Option<Box<
     };
     let path = pe.path()?;
     path.qualifier().is_none().then_some(())?;
-    path.segment()?
-        .name_ref()
-        .map(|n| Box::from(n.text().as_str()))
+    path.segment()?.name_ref().map(|n| Box::from(n.text()))
 }
 
 // ---------------------------------------------------------------------------

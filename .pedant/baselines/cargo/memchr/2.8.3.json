@@ -4,7 +4,7 @@
   "crate_name": "memchr",
   "crate_version": "2.8.3",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344431,
+  "timestamp": 1792725589,
   "analysis_completeness": {
     "analyzed_files": 45,
     "skipped_files": 0

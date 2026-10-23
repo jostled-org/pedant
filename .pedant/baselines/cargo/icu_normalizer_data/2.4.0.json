@@ -1,0 +1,28 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "7bb3c1f044edda3724621dd25bad2d02810c252b7838036c33d09a4c3c129263",
+  "crate_name": "icu_normalizer_data",
+  "crate_version": "2.4.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725573,
+  "analysis_completeness": {
+    "analyzed_files": 2,
+    "skipped_files": 0
+  },
+  "rust_version": "1.88",
+  "profile": {
+    "findings": [
+      {
+        "capability": "env_access",
+        "location": {
+          "file": "./build.rs",
+          "line": 6,
+          "column": 8
+        },
+        "evidence": "std::env::var",
+        "origin": "import",
+        "execution_context": "build_hook"
+      }
+    ]
+  }
+}

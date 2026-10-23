@@ -2,7 +2,7 @@
 name = "pedant-core"
 version = "0.24.1"
 edition = "2024"
-rust-version = "1.96"
+rust-version = "1.98"
 description = "Analysis engine for pedant: IR extraction, style checks, and capability detection"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/jostled-org/pedant"
@@ -35,7 +35,7 @@ semantic = [
 ]
 
 [dependencies]
-syn = { version = "2", features = ["full", "visit", "parsing"] }
+syn = { version = "3", features = ["full", "visit", "parsing"] }
 # The Cargo project model parses manifests directly and validates the versions
 # it resolves, so both are substrate dependencies.
 toml = "1"
@@ -56,12 +56,12 @@ pedant-syntax = { version = "0.6.0", path = "../pedant-syntax", default-features
 ], optional = true }
 thiserror = "2"
 sha2 = "0.11"
-ra_ap_ide = { version = "0.0.342", optional = true }
-ra_ap_hir = { version = "0.0.342", optional = true }
-ra_ap_vfs = { version = "0.0.342", optional = true }
-ra_ap_project_model = { version = "0.0.342", optional = true }
-ra_ap_syntax = { version = "0.0.342", optional = true }
-ra_ap_load-cargo = { version = "0.0.342", optional = true }
+ra_ap_ide = { version = "0.0.358", optional = true }
+ra_ap_hir = { version = "0.0.358", optional = true }
+ra_ap_vfs = { version = "0.0.358", optional = true }
+ra_ap_project_model = { version = "0.0.358", optional = true }
+ra_ap_syntax = { version = "0.0.358", optional = true }
+ra_ap_load-cargo = { version = "0.0.358", optional = true }
 line-index = { version = "0.1.2", optional = true }
 
 [dev-dependencies]
@@ -70,7 +70,7 @@ tempfile = "3"
 # tests/substrate.rs parses Cargo.toml and lib.rs. `syn` is stated here so a
 # later gate on it cannot silently break these tests; `toml` is a substrate
 # dependency above and needs no dev copy.
-syn = { version = "2", features = ["full", "visit", "parsing"] }
+syn = { version = "3", features = ["full", "visit", "parsing"] }
 
 [package.metadata.docs.rs]
 all-features = true

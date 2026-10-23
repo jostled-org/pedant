@@ -4,7 +4,7 @@
   "crate_name": "perf-event-open-sys",
   "crate_version": "4.0.0",
   "analysis_tier": "syntactic",
-  "timestamp": 1786296225,
+  "timestamp": 1792725590,
   "analysis_completeness": {
     "analyzed_files": 4,
     "skipped_files": 0

@@ -5,4 +5,6 @@
 //! (functions, loops, branches, impls) bracket that delegation with the
 //! extractor's scaffolding so nesting state unwinds correctly.
 
+#[macro_use]
+mod rows;
 mod implementation;

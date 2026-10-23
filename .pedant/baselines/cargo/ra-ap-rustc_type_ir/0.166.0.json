@@ -1,0 +1,26 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "f41a979d66a52604507ee469a77c84d37ea4a47caef7a6c5750e7d17c1da15b8",
+  "crate_name": "ra-ap-rustc_type_ir",
+  "crate_version": "0.166.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725593,
+  "analysis_completeness": {
+    "analyzed_files": 41,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": [
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/fold.rs",
+          "line": 267,
+          "column": 5
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

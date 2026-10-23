@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "838b556cb72403366504b672d00849664521933772c63c04f69f8f282515fafc",
+  "crate_name": "darling",
+  "crate_version": "0.24.1",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725569,
+  "analysis_completeness": {
+    "analyzed_files": 2,
+    "skipped_files": 0
+  },
+  "rust_version": "1.88.0",
+  "profile": {
+    "findings": []
+  }
+}

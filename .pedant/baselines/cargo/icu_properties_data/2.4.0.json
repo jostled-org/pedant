@@ -1,0 +1,28 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "f1aa40caf748b11184e1118bf6f150459d6600da7806e6dfb49bdf38f60caed5",
+  "crate_name": "icu_properties_data",
+  "crate_version": "2.4.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725574,
+  "analysis_completeness": {
+    "analyzed_files": 2,
+    "skipped_files": 0
+  },
+  "rust_version": "1.88",
+  "profile": {
+    "findings": [
+      {
+        "capability": "env_access",
+        "location": {
+          "file": "./build.rs",
+          "line": 6,
+          "column": 8
+        },
+        "evidence": "std::env::var",
+        "origin": "import",
+        "execution_context": "build_hook"
+      }
+    ]
+  }
+}

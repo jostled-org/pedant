@@ -26,7 +26,7 @@ pub(super) fn impl_fact(
 fn trait_name(node: &syn::ItemImpl) -> Option<Box<str>> {
     node.trait_
         .as_ref()
-        .and_then(|(_, path, _)| path.segments.last())
+        .and_then(|(path, _)| path.segments.last())
         .map(|segment| segment.ident.to_string().into_boxed_str())
 }
 

@@ -4,7 +4,7 @@
   "crate_name": "tree-sitter-bash",
   "crate_version": "0.25.1",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344444,
+  "timestamp": 1792725616,
   "analysis_completeness": {
     "analyzed_files": 2,
     "skipped_files": 0

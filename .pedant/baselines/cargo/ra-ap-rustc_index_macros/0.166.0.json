@@ -1,0 +1,26 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "6feb04053ed39c884ebaaf8f2727a1801601725f6790acf05c48a2b8f809c40a",
+  "crate_name": "ra-ap-rustc_index_macros",
+  "crate_version": "0.166.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725592,
+  "analysis_completeness": {
+    "analyzed_files": 2,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": [
+      {
+        "capability": "proc_macro",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 35,
+          "column": 1
+        },
+        "evidence": "#[proc_macro]",
+        "origin": "attribute"
+      }
+    ]
+  }
+}

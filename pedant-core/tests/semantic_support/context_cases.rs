@@ -55,6 +55,54 @@ fn test_semantic_load_overrides_inherited_target_dir() {
     );
 }
 
+/// Analysis reads a workspace and writes nothing into it. A workspace that
+/// commits no lockfile still has none after a load resolved its dependencies.
+#[test]
+fn test_semantic_load_writes_no_lockfile_into_workspace() {
+    let workspace = semantic_workspace();
+
+    crate::fixtures::load_fresh_semantic_context(workspace.path()).expect("workspace should load");
+
+    assert!(
+        !workspace.path().join("Cargo.lock").exists(),
+        "semantic load should leave the analyzed workspace without a lockfile"
+    );
+}
+
+/// Loading a member resolves the whole workspace at its root. A lockfile the
+/// member directory holds is not the one cargo reads, so it is no evidence that
+/// the root already has one to resolve into.
+#[test]
+fn test_semantic_load_of_member_writes_no_lockfile_into_workspace_root() {
+    let workspace = tempfile::tempdir().expect("temporary workspace root should exist");
+    let member = workspace.path().join("member");
+    std::fs::create_dir_all(member.join("src")).expect("member source should exist");
+    std::fs::write(
+        workspace.path().join("Cargo.toml"),
+        "[workspace]\nmembers = [\"member\"]\nresolver = \"2\"\n",
+    )
+    .expect("workspace manifest should be writable");
+    std::fs::write(
+        member.join("Cargo.toml"),
+        "[package]\nname = \"semantic-member\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .expect("member manifest should be writable");
+    std::fs::write(
+        member.join("src").join("lib.rs"),
+        "pub fn value() -> u8 { 1 }\n",
+    )
+    .expect("member source should be writable");
+    std::fs::write(member.join("Cargo.lock"), "version = 4\n")
+        .expect("stray member lockfile should be writable");
+
+    crate::fixtures::load_fresh_semantic_context(&member).expect("member should load");
+
+    assert!(
+        !workspace.path().join("Cargo.lock").exists(),
+        "semantic load of a member should leave the workspace root without a lockfile"
+    );
+}
+
 fn semantic_workspace() -> tempfile::TempDir {
     let workspace = tempfile::tempdir().expect("temporary semantic workspace should exist");
     std::fs::create_dir(workspace.path().join("src")).expect("workspace source should exist");

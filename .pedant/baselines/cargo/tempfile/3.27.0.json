@@ -4,7 +4,7 @@
   "crate_name": "tempfile",
   "crate_version": "3.27.0",
   "analysis_tier": "syntactic",
-  "timestamp": 1786296377,
+  "timestamp": 1792725614,
   "analysis_completeness": {
     "analyzed_files": 14,
     "skipped_files": 0

@@ -1,0 +1,37 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "a009508e9f95525ce69388202604f859c2a90a541db44c9024d49db394d4f4bc",
+  "crate_name": "writeable",
+  "crate_version": "0.6.4",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725621,
+  "analysis_completeness": {
+    "analyzed_files": 11,
+    "skipped_files": 0
+  },
+  "rust_version": "1.82",
+  "profile": {
+    "findings": [
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/to_string_or_borrow.rs",
+          "line": 49,
+          "column": 27
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/to_string_or_borrow.rs",
+          "line": 52,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

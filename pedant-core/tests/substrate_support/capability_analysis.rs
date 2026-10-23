@@ -317,7 +317,7 @@ fn assert_owner_reads_are_complete(closure: &[(PathBuf, syn::File)]) {
 
 /// The fact type one `impl CapabilitySourceFact for …` block names.
 fn implemented_owner(block: &syn::ItemImpl) -> Option<Box<str>> {
-    let (_, path, _) = block.trait_.as_ref()?;
+    let (path, _) = block.trait_.as_ref()?;
     let named = path.segments.last()?;
     if named.ident != OWNER_TRAIT {
         return None;

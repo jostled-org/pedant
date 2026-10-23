@@ -1,0 +1,77 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "24fe9ae2ce3eda3817bf4f95cec806875db86c69bb7a8832282166727c9ae9ab",
+  "crate_name": "ra_ap_test_utils",
+  "crate_version": "0.0.358",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725602,
+  "analysis_completeness": {
+    "analyzed_files": 4,
+    "skipped_files": 0
+  },
+  "rust_version": "1.98",
+  "profile": {
+    "findings": [
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/bench_fixture.rs",
+          "line": 3,
+          "column": 1
+        },
+        "evidence": "std::fs",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 15,
+          "column": 1
+        },
+        "evidence": "std::fs",
+        "origin": "import"
+      },
+      {
+        "capability": "env_access",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 398,
+          "column": 24
+        },
+        "evidence": "std::env::var",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 489,
+          "column": 11
+        },
+        "evidence": "std::fs::read_to_string",
+        "origin": "import"
+      },
+      {
+        "capability": "file_write",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 504,
+          "column": 17
+        },
+        "evidence": "std::fs::create_dir_all",
+        "origin": "import"
+      },
+      {
+        "capability": "file_write",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 506,
+          "column": 5
+        },
+        "evidence": "std::fs::write",
+        "origin": "import"
+      }
+    ]
+  }
+}

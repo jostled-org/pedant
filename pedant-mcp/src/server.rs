@@ -3,7 +3,7 @@ use std::sync::{Arc, RwLock};
 
 use rmcp::ServerHandler;
 use rmcp::model::{
-    CallToolRequestParams, CallToolResult, ListToolsResult, ServerCapabilities, ServerInfo,
+    CallToolRequestParams, CallToolResponse, ListToolsResult, ServerCapabilities, ServerConfig,
 };
 use rmcp::service::RequestContext;
 use rmcp::service::RoleServer;
@@ -25,8 +25,8 @@ impl PedantServer {
 }
 
 impl ServerHandler for PedantServer {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
     }
 
     fn list_tools(
@@ -42,11 +42,11 @@ impl ServerHandler for PedantServer {
         &self,
         request: CallToolRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> impl Future<Output = Result<CallToolResult, rmcp::ErrorData>> + Send + '_ {
+    ) -> impl Future<Output = Result<CallToolResponse, rmcp::ErrorData>> + Send + '_ {
         let result = match self.index.read() {
             Ok(index) => registry::dispatch(&request.name, request.arguments.as_ref(), &index),
             Err(_) => tools::error_result("internal error: index lock poisoned"),
         };
-        future::ready(Ok(result))
+        future::ready(Ok(result.into()))
     }
 }

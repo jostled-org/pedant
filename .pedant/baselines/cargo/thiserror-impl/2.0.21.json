@@ -1,0 +1,27 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "b6505b7d189324fe9a5785df41bb33a4ee0afc96b5923eb51b0b4f286c743e88",
+  "crate_name": "thiserror-impl",
+  "crate_version": "2.0.21",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725614,
+  "analysis_completeness": {
+    "analyzed_files": 11,
+    "skipped_files": 0
+  },
+  "rust_version": "1.77",
+  "profile": {
+    "findings": [
+      {
+        "capability": "proc_macro",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 39,
+          "column": 1
+        },
+        "evidence": "#[proc_macro_derive]",
+        "origin": "attribute"
+      }
+    ]
+  }
+}

@@ -4,7 +4,7 @@
   "crate_name": "wasi",
   "crate_version": "0.11.1+wasi-snapshot-preview1",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344445,
+  "timestamp": 1792725619,
   "analysis_completeness": {
     "analyzed_files": 2,
     "skipped_files": 0

@@ -148,7 +148,7 @@ impl IrExtractor {
     ) -> usize {
         let name: Box<str> = sig.ident.to_string().into_boxed_str();
         let span = span_from(sig.ident.span().start());
-        let is_unsafe = sig.unsafety.is_some();
+        let is_unsafe = matches!(sig.safety, syn::Safety::Unsafe(_));
 
         let params: Box<[ParamFact]> = sig
             .inputs

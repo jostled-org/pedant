@@ -237,10 +237,25 @@ impl SemanticContext {
 }
 
 /// Minimal `CargoConfig` — no build scripts, no proc macros.
+///
+/// Cargo output goes under `target/pedant-semantic`, and so does dependency
+/// resolution. rust-analyzer resolves a workspace that has a lockfile against a
+/// temporary copy of it, and that copy overrides this path. A workspace without
+/// one resolves here instead, so `cargo metadata` writes no `Cargo.lock` into
+/// the analyzed tree. The workspace root is cargo's to find, possibly above
+/// `workspace_root`, so the redirect is stated whether or not a lockfile exists.
 #[cfg(feature = "semantic")]
 fn cargo_config_minimal(workspace_root: &Path) -> Option<CargoConfig> {
     let target_path = workspace_root.join("target").join("pedant-semantic");
     let workspace_target = target_path.to_str()?.to_owned();
+    let resolver_lockfile = target_path.join("Cargo.lock").to_str()?.to_owned();
+    let extra_env = [
+        ("CARGO_TARGET_DIR", workspace_target),
+        ("CARGO_RESOLVER_LOCKFILE_PATH", resolver_lockfile),
+    ]
+    .into_iter()
+    .map(|(name, value)| (String::from(name), Some(value)))
+    .collect();
 
     Some(CargoConfig {
         all_targets: false,
@@ -254,9 +269,7 @@ fn cargo_config_minimal(workspace_root: &Path) -> Option<CargoConfig> {
         wrap_rustc_in_build_scripts: false,
         run_build_script_command: None,
         extra_args: Vec::new(),
-        extra_env: [(String::from("CARGO_TARGET_DIR"), Some(workspace_target))]
-            .into_iter()
-            .collect(),
+        extra_env,
         invocation_strategy: Default::default(),
         target_dir_config: Default::default(),
         set_test: false,

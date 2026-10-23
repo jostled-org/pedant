@@ -376,7 +376,7 @@ fn body_type<'source>(
 /// states, and one binding several does not.
 fn identifiers<'tree>(list: Node<'tree>) -> Box<[Node<'tree>]> {
     let mut cursor = list.walk();
-    named_nodes(list, &mut cursor)
+    named_nodes(&list, &mut cursor)
         .filter(|child| child.kind() == "identifier")
         .collect()
 }

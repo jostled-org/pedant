@@ -4,7 +4,7 @@
   "crate_name": "redox_syscall",
   "crate_version": "0.5.18",
   "analysis_tier": "syntactic",
-  "timestamp": 1786296312,
+  "timestamp": 1792725603,
   "analysis_completeness": {
     "analyzed_files": 23,
     "skipped_files": 0

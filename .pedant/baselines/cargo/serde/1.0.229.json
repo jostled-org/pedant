@@ -1,0 +1,39 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "717e88ec38180b0bc6288d0c48a9054824e0e45d2a9d1a6c989788486a69cc9a",
+  "crate_name": "serde",
+  "crate_version": "1.0.229",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725609,
+  "analysis_completeness": {
+    "analyzed_files": 5,
+    "skipped_files": 0
+  },
+  "rust_version": "1.56",
+  "profile": {
+    "findings": [
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./build.rs",
+          "line": 2,
+          "column": 1
+        },
+        "evidence": "std::fs",
+        "origin": "import",
+        "execution_context": "build_hook"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./build.rs",
+          "line": 4,
+          "column": 1
+        },
+        "evidence": "std::process::Command",
+        "origin": "import",
+        "execution_context": "build_hook"
+      }
+    ]
+  }
+}

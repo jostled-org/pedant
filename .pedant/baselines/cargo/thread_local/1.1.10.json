@@ -4,7 +4,7 @@
   "crate_name": "thread_local",
   "crate_version": "1.1.10",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344442,
+  "timestamp": 1792725614,
   "analysis_completeness": {
     "analyzed_files": 3,
     "skipped_files": 0

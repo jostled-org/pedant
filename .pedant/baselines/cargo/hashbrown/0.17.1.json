@@ -4,7 +4,7 @@
   "crate_name": "hashbrown",
   "crate_version": "0.17.1",
   "analysis_tier": "syntactic",
-  "timestamp": 1786296088,
+  "timestamp": 1792725572,
   "analysis_completeness": {
     "analyzed_files": 24,
     "skipped_files": 0

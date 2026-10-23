@@ -2,7 +2,7 @@
 name = "pedant-graph"
 version = "0.5.1"
 edition = "2024"
-rust-version = "1.96"
+rust-version = "1.98"
 description = "Deterministic code topology projected from pedant's symbol-resolution results"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/jostled-org/pedant"
@@ -38,5 +38,5 @@ serde_json = "1"
 # tests/graph.rs parses this crate's own production sources for the ownership
 # and wiring proofs, and renders parsed bodies back to text.
 quote = "1"
-syn = { version = "2", features = ["full", "visit", "parsing"] }
+syn = { version = "3", features = ["full", "visit", "parsing"] }
 tempfile = "3"

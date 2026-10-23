@@ -1,0 +1,117 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "3159b7315088eddeab9815dae1c0b807367b28c686a5967d70729419014355e1",
+  "crate_name": "schemars",
+  "crate_version": "1.2.3",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725609,
+  "analysis_completeness": {
+    "analyzed_files": 34,
+    "skipped_files": 0
+  },
+  "rust_version": "1.74",
+  "profile": {
+    "findings": [
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/consts.rs",
+          "line": 9,
+          "column": 31
+        },
+        "evidence": "http://json-schema.org/draft-07/schema#",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/consts.rs",
+          "line": 13,
+          "column": 36
+        },
+        "evidence": "https://json-schema.org/draft/2019-09/schema",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/consts.rs",
+          "line": 17,
+          "column": 36
+        },
+        "evidence": "https://json-schema.org/draft/2020-12/schema",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/consts.rs",
+          "line": 25,
+          "column": 9
+        },
+        "evidence": "https://spec.openapis.org/oas/3.0/schema/2024-10-18#/definitions/Schema",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/json_schema_impls/primitives.rs",
+          "line": 77,
+          "column": 5
+        },
+        "evidence": "std::net::IpAddr",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/json_schema_impls/primitives.rs",
+          "line": 77,
+          "column": 5
+        },
+        "evidence": "std::net::Ipv4Addr",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/json_schema_impls/primitives.rs",
+          "line": 77,
+          "column": 5
+        },
+        "evidence": "std::net::Ipv6Addr",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/json_schema_impls/primitives.rs",
+          "line": 77,
+          "column": 5
+        },
+        "evidence": "std::net::SocketAddr",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/json_schema_impls/primitives.rs",
+          "line": 77,
+          "column": 5
+        },
+        "evidence": "std::net::SocketAddrV4",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/json_schema_impls/primitives.rs",
+          "line": 77,
+          "column": 5
+        },
+        "evidence": "std::net::SocketAddrV6",
+        "origin": "import"
+      }
+    ]
+  }
+}

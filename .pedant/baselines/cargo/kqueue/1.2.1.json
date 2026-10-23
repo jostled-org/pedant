@@ -1,0 +1,396 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "70b485b34a660207883d12c37ca4b00c9c9462dbf93d66519599872e9ed748ae",
+  "crate_name": "kqueue",
+  "crate_version": "1.2.1",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725576,
+  "analysis_completeness": {
+    "analyzed_files": 8,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": [
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/event.rs",
+          "line": 297,
+          "column": 5
+        },
+        "evidence": "std::time::Instant",
+        "origin": "import"
+      },
+      {
+        "capability": "file_write",
+        "location": {
+          "file": "./src/event.rs",
+          "line": 332,
+          "column": 19
+        },
+        "evidence": "tempfile::tempfile",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/event.rs",
+          "line": 104,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/event.rs",
+          "line": 115,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/time.rs",
+          "line": 3,
+          "column": 1
+        },
+        "evidence": "libc::c_long",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/time.rs",
+          "line": 3,
+          "column": 1
+        },
+        "evidence": "libc::time_t",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/time.rs",
+          "line": 3,
+          "column": 1
+        },
+        "evidence": "libc::timespec",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/types.rs",
+          "line": 5,
+          "column": 1
+        },
+        "evidence": "libc::pid_t",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 3,
+          "column": 1
+        },
+        "evidence": "std::fs::File",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 13,
+          "column": 1
+        },
+        "evidence": "libc::close",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 408,
+          "column": 52
+        },
+        "evidence": "libc::close",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 417,
+          "column": 5
+        },
+        "evidence": "std::fs::self",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 417,
+          "column": 5
+        },
+        "evidence": "std::fs::File",
+        "origin": "import"
+      },
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 417,
+          "column": 5
+        },
+        "evidence": "std::fs::Permissions",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 423,
+          "column": 5
+        },
+        "evidence": "std::process::Command",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 428,
+          "column": 5
+        },
+        "evidence": "libc::pid_t",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 435,
+          "column": 5
+        },
+        "evidence": "std::process",
+        "origin": "import"
+      },
+      {
+        "capability": "file_write",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 439,
+          "column": 20
+        },
+        "evidence": "tempfile::NamedTempFile::new",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 454,
+          "column": 33
+        },
+        "evidence": "libc::dup",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 470,
+          "column": 31
+        },
+        "evidence": "libc::fcntl",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 470,
+          "column": 52
+        },
+        "evidence": "libc::F_GETFD",
+        "origin": "import"
+      },
+      {
+        "capability": "file_write",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 485,
+          "column": 20
+        },
+        "evidence": "tempfile::tempfile",
+        "origin": "import"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 514,
+          "column": 23
+        },
+        "evidence": "time::Duration::from_secs",
+        "origin": "import"
+      },
+      {
+        "capability": "file_write",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 875,
+          "column": 19
+        },
+        "evidence": "tempfile::tempdir",
+        "origin": "import"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 904,
+          "column": 23
+        },
+        "evidence": "time::Duration::from_millis",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 981,
+          "column": 31
+        },
+        "evidence": "libc::nanosleep",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 55,
+          "column": 21
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 63,
+          "column": 24
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 148,
+          "column": 17
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 193,
+          "column": 19
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 256,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 324,
+          "column": 19
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 408,
+          "column": 43
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 454,
+          "column": 24
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 457,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 470,
+          "column": 22
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 475,
+          "column": 22
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/watcher.rs",
+          "line": 972,
+          "column": 25
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

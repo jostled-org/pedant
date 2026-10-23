@@ -1,0 +1,36 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "9513f9ca3bf414c95ded8fe6557dd3a81c78ac070a5c73b0aaeb737a9e7a5710",
+  "crate_name": "lazy_static",
+  "crate_version": "1.5.1",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725576,
+  "analysis_completeness": {
+    "analyzed_files": 3,
+    "skipped_files": 0
+  },
+  "profile": {
+    "findings": [
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/inline_lazy.rs",
+          "line": 36,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/inline_lazy.rs",
+          "line": 40,
+          "column": 1
+        },
+        "evidence": "unsafe impl",
+        "origin": "code_site"
+      }
+    ]
+  }
+}

@@ -37,7 +37,7 @@ pub(super) fn record_unsafe_impl(
 
 /// Record an `unsafe fn` declaration, when the signature states one.
 pub(super) fn record_unsafe_fn(extractor: &mut IrExtractor, sig: &Signature) {
-    if let Some(token) = sig.unsafety {
+    if let syn::Safety::Unsafe(token) = sig.safety {
         let declared = extractor.next_fn_index();
         push(
             extractor,

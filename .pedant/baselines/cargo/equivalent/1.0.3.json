@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "d03cb89befd1b113c2579c766781772a76b2e4b5a758f10978b15a58b4205dec",
+  "crate_name": "equivalent",
+  "crate_version": "1.0.3",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725570,
+  "analysis_completeness": {
+    "analyzed_files": 1,
+    "skipped_files": 0
+  },
+  "rust_version": "1.6",
+  "profile": {
+    "findings": []
+  }
+}

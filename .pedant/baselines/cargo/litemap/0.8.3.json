@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "b38e82a919252ec56a8101ce9bcbb7a42761882d28425da621f21db18b5e8156",
+  "crate_name": "litemap",
+  "crate_version": "0.8.3",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725588,
+  "analysis_completeness": {
+    "analyzed_files": 9,
+    "skipped_files": 0
+  },
+  "rust_version": "1.82",
+  "profile": {
+    "findings": []
+  }
+}

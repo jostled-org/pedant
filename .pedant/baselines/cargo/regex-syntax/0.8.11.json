@@ -4,7 +4,7 @@
   "crate_name": "regex-syntax",
   "crate_version": "0.8.11",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344439,
+  "timestamp": 1792725605,
   "analysis_completeness": {
     "analyzed_files": 33,
     "skipped_files": 0

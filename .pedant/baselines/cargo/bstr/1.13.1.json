@@ -4,7 +4,7 @@
   "crate_name": "bstr",
   "crate_version": "1.13.1",
   "analysis_tier": "syntactic",
-  "timestamp": 1787670588,
+  "timestamp": 1792725565,
   "analysis_completeness": {
     "analyzed_files": 27,
     "skipped_files": 0

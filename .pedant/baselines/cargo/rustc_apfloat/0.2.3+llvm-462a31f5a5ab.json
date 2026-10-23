@@ -4,7 +4,7 @@
   "crate_name": "rustc_apfloat",
   "crate_version": "0.2.3+llvm-462a31f5a5ab",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344440,
+  "timestamp": 1792725607,
   "analysis_completeness": {
     "analyzed_files": 4,
     "skipped_files": 0

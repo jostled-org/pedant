@@ -88,13 +88,13 @@ pub(super) fn name_count(node: Node<'_>) -> usize {
 
 /// Every named child of one node, in source order.
 ///
-/// The cursor belongs to the caller, because a tree-sitter child iterator
-/// borrows the cursor it walks and cannot outlive one this function owned. One
+/// The cursor and the node belong to the caller, because a tree-sitter child
+/// iterator borrows both and cannot outlive either one this function owned. One
 /// owner all the same: a parameter list's members and an expression list's
 /// identifiers are read through the same traversal rather than through a cursor
 /// each reader opens against its own idea of what a child is.
 pub(super) fn named_nodes<'tree, 'cursor>(
-    node: Node<'tree>,
+    node: &'cursor Node<'tree>,
     cursor: &'cursor mut TreeCursor<'tree>,
 ) -> impl Iterator<Item = Node<'tree>> + 'cursor {
     node.named_children(cursor)

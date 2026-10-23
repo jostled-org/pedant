@@ -85,9 +85,7 @@ fn extract_clone_receiver(expr: &ast::Expr) -> Option<Box<str>> {
     let ast::Expr::MethodCallExpr(mc) = expr else {
         return None;
     };
-    let is_clone = mc
-        .name_ref()
-        .is_some_and(|name| name.text().as_str() == "clone");
+    let is_clone = mc.name_ref().is_some_and(|name| name.text() == "clone");
     if !is_clone {
         return None;
     }
@@ -99,7 +97,7 @@ fn extract_clone_receiver(expr: &ast::Expr) -> Option<Box<str>> {
     path.qualifier().is_none().then_some(())?;
     path.segment()
         .and_then(|seg| seg.name_ref())
-        .map(|n| Box::from(n.text().as_str()))
+        .map(|n| Box::from(n.text()))
 }
 
 // --- Allocation in loop detection ---
@@ -158,9 +156,7 @@ fn detect_redundant_collects(ctx: &FnContext<'_, '_>, out: &mut Vec<DataFlowFact
 /// Check whether an expression ends with a `.collect()` method call.
 fn ends_with_collect(expr: &ast::Expr) -> bool {
     match expr {
-        ast::Expr::MethodCallExpr(mc) => mc
-            .name_ref()
-            .is_some_and(|name| name.text().as_str() == "collect"),
+        ast::Expr::MethodCallExpr(mc) => mc.name_ref().is_some_and(|name| name.text() == "collect"),
         _ => false,
     }
 }

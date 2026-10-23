@@ -1,0 +1,16 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "a3e8c9f4ed22909f2fd8be97345dd81f8438af149e7107953aa572e35475c7ce",
+  "crate_name": "serde_derive_internals",
+  "crate_version": "0.30.0",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725610,
+  "analysis_completeness": {
+    "analyzed_files": 11,
+    "skipped_files": 0
+  },
+  "rust_version": "1.71",
+  "profile": {
+    "findings": []
+  }
+}

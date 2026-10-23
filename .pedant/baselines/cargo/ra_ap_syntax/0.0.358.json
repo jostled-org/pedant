@@ -1,0 +1,37 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "d0858def227f511dc02f68958a4923c1f0e0dbf7d53ac2180db52c20eb281564",
+  "crate_name": "ra_ap_syntax",
+  "crate_version": "0.0.358",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725601,
+  "analysis_completeness": {
+    "analyzed_files": 32,
+    "skipped_files": 0
+  },
+  "rust_version": "1.98",
+  "profile": {
+    "findings": [
+      {
+        "capability": "file_read",
+        "location": {
+          "file": "./src/tests.rs",
+          "line": 1,
+          "column": 1
+        },
+        "evidence": "std::fs",
+        "origin": "import"
+      },
+      {
+        "capability": "env_access",
+        "location": {
+          "file": "./src/tests.rs",
+          "line": 30,
+          "column": 8
+        },
+        "evidence": "std::env::var",
+        "origin": "import"
+      }
+    ]
+  }
+}

@@ -105,7 +105,7 @@ fn sole_result<'tree>(result: Node<'tree>) -> Option<Node<'tree>> {
 /// no single result at all.
 fn sole_parameter_type<'tree>(list: Node<'tree>) -> Option<Node<'tree>> {
     let mut cursor = list.walk();
-    let mut members = named_nodes(list, &mut cursor);
+    let mut members = named_nodes(&list, &mut cursor);
     let declared = members
         .next()
         .filter(|held| held.kind() == "parameter_declaration")?;

@@ -139,7 +139,7 @@ impl<'a, 'db> FnContext<'a, 'db> {
         let binding_method_in_tail = build_binding_method_in_tail(tail_expr.as_ref());
 
         // Function entry metadata.
-        let fn_name = Box::from(name_node.text().as_str());
+        let fn_name = Box::from(name_node.text());
         let range = fn_node.syntax().text_range();
         let start_lc = pf.line_index.line_col(range.start());
         let end_lc = pf.line_index.line_col(range.end());

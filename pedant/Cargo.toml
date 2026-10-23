@@ -2,7 +2,7 @@
 name = "pedant"
 version = "0.30.1"
 edition = "2024"
-rust-version = "1.96"
+rust-version = "1.98"
 description = "An opinionated Rust linter, with special focus on AI-generated code"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/jostled-org/pedant"

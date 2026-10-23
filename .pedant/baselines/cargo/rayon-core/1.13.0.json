@@ -4,7 +4,7 @@
   "crate_name": "rayon-core",
   "crate_version": "1.13.0",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344438,
+  "timestamp": 1792725602,
   "analysis_completeness": {
     "analyzed_files": 27,
     "skipped_files": 0

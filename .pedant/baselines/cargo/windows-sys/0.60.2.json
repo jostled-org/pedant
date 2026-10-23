@@ -4,7 +4,7 @@
   "crate_name": "windows-sys",
   "crate_version": "0.60.2",
   "analysis_tier": "syntactic",
-  "timestamp": 1784344446,
+  "timestamp": 1792725619,
   "analysis_completeness": {
     "analyzed_files": 3,
     "skipped_files": 0

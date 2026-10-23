@@ -1,0 +1,97 @@
+{
+  "spec_version": "0.1.0",
+  "source_hash": "3f0e40763e39b120f45c3ca4681bb9f4454e5402eb883d4c471ff3a9b60b5e8e",
+  "crate_name": "ra_ap_ide",
+  "crate_version": "0.0.358",
+  "analysis_tier": "syntactic",
+  "timestamp": 1792725597,
+  "analysis_completeness": {
+    "analyzed_files": 77,
+    "skipped_files": 0
+  },
+  "rust_version": "1.98",
+  "profile": {
+    "findings": [
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/expand_macro.rs",
+          "line": 258,
+          "column": 19
+        },
+        "evidence": "std::process::Command::new",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/expand_macro.rs",
+          "line": 263,
+          "column": 16
+        },
+        "evidence": "std::process::Stdio::piped",
+        "origin": "import"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/interpret.rs",
+          "line": 3,
+          "column": 1
+        },
+        "evidence": "std::time::Instant",
+        "origin": "import"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 222,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/moniker.rs",
+          "line": 370,
+          "column": 26
+        },
+        "evidence": "https://github.com/rust-lang/rust/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/moniker.rs",
+          "line": 375,
+          "column": 26
+        },
+        "evidence": "https://github.com/rust-lang/rust/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/moniker.rs",
+          "line": 378,
+          "column": 29
+        },
+        "evidence": "https://github.com/rust-lang/rust/library/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/syntax_highlighting/tests.rs",
+          "line": 1,
+          "column": 1
+        },
+        "evidence": "std::time::Instant",
+        "origin": "import"
+      }
+    ]
+  }
+}

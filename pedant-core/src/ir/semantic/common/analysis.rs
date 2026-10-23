@@ -142,7 +142,7 @@ pub(super) fn process_method_call(
     let is_mut = mc
         .receiver()
         .zip(mc.name_ref())
-        .filter(|(_, method)| is_mutation_method(method.text().as_str()));
+        .filter(|(_, method)| is_mutation_method(method.text()));
     if let Some((recv, _)) = is_mut {
         mutated.insert(recv.syntax().text().to_string().into_boxed_str());
     }
@@ -298,7 +298,7 @@ pub(super) fn is_allocation_call(call: &ast::CallExpr) -> bool {
     };
     ALLOC_CONSTRUCTORS
         .iter()
-        .any(|(f, t)| fn_name.as_str() == *f && *qual == **t)
+        .any(|(f, t)| fn_name == *f && *qual == **t)
 }
 
 /// Check whether a node is inside a loop body by walking ancestors.
@@ -341,7 +341,7 @@ pub(super) fn build_binding_method_calls(stmts: &[ast::Stmt]) -> BindingMethodIn
             .filter_map(|mc| {
                 mc.receiver()
                     .and_then(|recv| direct_path_name(&recv))
-                    .zip(mc.name_ref().map(|n| Box::from(n.text().as_str())))
+                    .zip(mc.name_ref().map(|n| Box::from(n.text())))
             });
         for (binding, method) in entries {
             map.entry(binding).or_default().push((i, method));
@@ -368,7 +368,7 @@ pub(super) fn build_binding_method_in_tail(
         let entry = mc
             .receiver()
             .and_then(|recv| direct_path_name(&recv))
-            .zip(mc.name_ref().map(|n| Box::from(n.text().as_str())));
+            .zip(mc.name_ref().map(|n| Box::from(n.text())));
         if let Some((binding, method)) = entry {
             result.entry(binding).or_insert(method);
         }
@@ -439,7 +439,7 @@ pub(in crate::ir::semantic) fn lock_receiver_name(expr: &ast::Expr) -> Option<Bo
         .filter_map(ast::MethodCallExpr::cast)
         .filter(|mc| {
             mc.name_ref()
-                .is_some_and(|n| LOCK_METHODS.contains(&n.text().as_str()))
+                .is_some_and(|n| LOCK_METHODS.contains(&n.text()))
         })
         .filter(|mc| !is_inside_block_expr(mc.syntax(), &root))
         .find_map(|mc| extract_lock_receiver(&mc))
@@ -463,5 +463,5 @@ pub(super) fn extract_lock_receiver(mc: &ast::MethodCallExpr) -> Option<Box<str>
     pe.path()?
         .segment()?
         .name_ref()
-        .map(|n| Box::from(n.text().as_str()))
+        .map(|n| Box::from(n.text()))
 }

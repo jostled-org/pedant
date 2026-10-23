@@ -15,8 +15,8 @@ use std::sync::Arc;
 
 use pedant_snippet::{CodeIntelligenceState, LiveCodeIntelligenceIndex, QueryFailure, RootWatcher};
 use rmcp::model::{
-    CallToolRequestParams, CallToolResult, ContentBlock, Implementation, ListToolsResult,
-    PaginatedRequestParams, ServerCapabilities, ServerInfo, Tool,
+    CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, Implementation,
+    ListToolsResult, PaginatedRequestParams, ServerCapabilities, ServerConfig, Tool,
 };
 use rmcp::service::{QuitReason, RequestContext, RoleServer};
 use rmcp::transport::io::stdio;
@@ -47,8 +47,8 @@ impl ServerHandler for NavigationServer {
     /// `CARGO_PKG_VERSION`, and those expand where rmcp is compiled, not where
     /// it is used — so the default names the transport library and its release.
     /// Every client would then see `rmcp` as the server it is talking to.
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_server_info(
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_server_info(
             Implementation::new(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")),
         )
     }
@@ -69,8 +69,11 @@ impl ServerHandler for NavigationServer {
         &self,
         request: CallToolRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> impl Future<Output = Result<CallToolResult, ErrorData>> + Send + '_ {
-        future::ready(self.called(&request.name, request.arguments))
+    ) -> impl Future<Output = Result<CallToolResponse, ErrorData>> + Send + '_ {
+        future::ready(
+            self.called(&request.name, request.arguments)
+                .map(CallToolResponse::from),
+        )
     }
 }
 

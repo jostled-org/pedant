@@ -4,7 +4,7 @@
   "crate_name": "shlex",
   "crate_version": "2.0.1",
   "analysis_tier": "syntactic",
-  "timestamp": 1786296364,
+  "timestamp": 1792725610,
   "analysis_completeness": {
     "analyzed_files": 3,
     "skipped_files": 0

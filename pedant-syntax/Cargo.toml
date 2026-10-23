@@ -2,7 +2,7 @@
 name = "pedant-syntax"
 version = "0.6.0"
 edition = "2024"
-rust-version = "1.96"
+rust-version = "1.98"
 description = "Language classification, parser selection, and enclosing-declaration extraction for pedant"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/jostled-org/pedant"
@@ -46,7 +46,7 @@ serde = { version = "1", features = ["derive"] }
 # links only this crate must not pay for `syn`'s derive, clone, and proc-macro
 # surfaces to extract a declaration. `printing` stays: `syn::spanned::Spanned`
 # is gated on `parsing` and `printing` together.
-syn = { version = "2", default-features = false, features = [
+syn = { version = "3", default-features = false, features = [
   "full",
   "visit",
   "parsing",
@@ -55,7 +55,7 @@ syn = { version = "2", default-features = false, features = [
 proc-macro2 = { version = "1", default-features = false, features = [
   "span-locations",
 ], optional = true }
-tree-sitter = { version = "0.26", optional = true }
+tree-sitter = { version = "0.27", optional = true }
 tree-sitter-python = { version = "0.25", optional = true }
 tree-sitter-javascript = { version = "0.25", optional = true }
 tree-sitter-typescript = { version = "0.23", optional = true }

@@ -3,7 +3,7 @@
 //! An item's first and last tokens carry the two points needed for its extent.
 
 use proc_macro2::Span;
-use syn::{AttrStyle, Attribute, Signature, Visibility};
+use syn::{AttrStyle, Attribute, Safety, Signature, Visibility};
 
 use crate::ir::sites::IrRange;
 
@@ -66,12 +66,12 @@ declaration_extents! {
     syn::ItemTrait => |item| (
         visibility(&item.vis)
             .or_else(|| item.unsafety.map(|token| token.span))
-            .or_else(|| item.auto_token.map(|token| token.span))
+            .or_else(|| item.modifiers.auto_token.map(|token| token.span))
             .unwrap_or(item.trait_token.span),
         item.brace_token.span.close()
     );
     syn::ItemImpl => |item| (
-        item.defaultness
+        item.modifiers.defaultness
             .map(|token| token.span)
             .or_else(|| item.unsafety.map(|token| token.span))
             .unwrap_or(item.impl_token.span),
@@ -84,15 +84,15 @@ declaration_extents! {
         module_tail(item)
     );
     syn::ImplItemFn => |item| (
-        associated_head(&item.vis, item.defaultness, signature_head(&item.sig)),
+        associated_head(&item.vis, item.modifiers.defaultness, signature_head(&item.sig)),
         item.block.brace_token.span.close()
     );
     syn::ImplItemConst => |item| (
-        associated_head(&item.vis, item.defaultness, item.const_token.span),
+        associated_head(&item.vis, item.modifiers.defaultness, item.const_token.span),
         item.semi_token.span
     );
     syn::ImplItemType => |item| (
-        associated_head(&item.vis, item.defaultness, item.type_token.span),
+        associated_head(&item.vis, item.modifiers.defaultness, item.type_token.span),
         item.semi_token.span
     );
     syn::TraitItemFn => |item| (signature_head(&item.sig), trait_fn_tail(item));
@@ -141,7 +141,10 @@ fn signature_head(sig: &Signature) -> Span {
     sig.constness
         .map(|token| token.span)
         .or_else(|| sig.asyncness.map(|token| token.span))
-        .or_else(|| sig.unsafety.map(|token| token.span))
+        .or(match sig.safety {
+            Safety::Unsafe(token) => Some(token.span),
+            _ => None,
+        })
         .or_else(|| sig.abi.as_ref().map(|abi| abi.extern_token.span))
         .unwrap_or(sig.fn_token.span)
 }

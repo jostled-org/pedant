@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0](https://github.com/jostled-org/pedant/compare/pedant-lang-v0.7.2...pedant-lang-v0.8.0) - 2026-10-24
+
+### Other
+
+- *(deps)* [**breaking**] update workspace dependencies and raise MSRV to 1.98
+
 ## [0.7.2](https://github.com/jostled-org/pedant/compare/pedant-lang-v0.7.1...pedant-lang-v0.7.2) - 2026-08-30
 
 ### Other

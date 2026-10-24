@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0](https://github.com/jostled-org/pedant/compare/pedant-mcp-v0.15.1...pedant-mcp-v0.16.0) - 2026-10-24
+
+### Other
+
+- *(deps)* [**breaking**] update workspace dependencies and raise MSRV to 1.98
+
 ## [0.15.1](https://github.com/jostled-org/pedant/compare/pedant-mcp-v0.15.0...pedant-mcp-v0.15.1) - 2026-08-31
 
 ### Other

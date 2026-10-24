@@ -1,6 +1,8 @@
 [![crates.io](https://img.shields.io/crates/v/pedant-types)](https://crates.io/crates/pedant-types)
 [![docs.rs](https://img.shields.io/docsrs/pedant-types)](https://docs.rs/pedant-types)
 [![CI](https://github.com/jostled-org/pedant/actions/workflows/ci.yml/badge.svg)](https://github.com/jostled-org/pedant/actions/workflows/ci.yml)
+[![downloads](https://img.shields.io/crates/d/pedant-types)](https://crates.io/crates/pedant-types)
+[![dependencies](https://deps.rs/crate/pedant-types/latest/status.svg)](https://deps.rs/crate/pedant-types)
 [![license](https://img.shields.io/crates/l/pedant-types)](https://crates.io/crates/pedant-types)
 
 You want to consume pedant's capability analysis output without pulling in the linter.

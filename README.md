@@ -1,6 +1,8 @@
 [![crates.io](https://img.shields.io/crates/v/pedant)](https://crates.io/crates/pedant)
 [![docs.rs](https://img.shields.io/docsrs/pedant-core)](https://docs.rs/pedant-core)
 [![CI](https://github.com/jostled-org/pedant/actions/workflows/ci.yml/badge.svg)](https://github.com/jostled-org/pedant/actions/workflows/ci.yml)
+[![downloads](https://img.shields.io/crates/d/pedant)](https://crates.io/crates/pedant)
+[![dependencies](https://deps.rs/crate/pedant/latest/status.svg)](https://deps.rs/crate/pedant)
 [![license](https://img.shields.io/crates/l/pedant)](LICENSE-MIT)
 
 **pedant** maps what code can do — network access, filesystem operations, crypto, process execution — across Rust, Python, JavaScript/TypeScript, Go, and Bash. It hashes dependency source on every build and alerts when capabilities change. A supply chain attack that adds `file_read` or `env_access` to a library is caught before the compromised code runs.

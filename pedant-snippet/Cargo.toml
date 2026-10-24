@@ -72,7 +72,11 @@ pedant-core = { version = "0.24.1", path = "../pedant-core", default-features = 
 # default-off, so `graph-rust` alone links no Go grammar.
 pedant-graph = { version = "0.5.1", path = "../pedant-graph", default-features = false, optional = true }
 clap = { version = "4", features = ["derive"] }
-rmcp = { version = "3", features = ["server", "transport-io"] }
+# `transport-async-rw`, not `transport-io`: from rmcp 3.6 the stdio feature
+# selects tokio's `net` to reopen FIFO streams, a socket capability a
+# read-only product has no reason to hold. The server reads and writes
+# tokio's own standard streams through the async read/write transport.
+rmcp = { version = "3", features = ["server", "transport-async-rw"] }
 # `rc` is what lets an answer serialize the shared handles it already holds.
 # Without it every `Arc` in a response would have to be deep-copied into an
 # owned twin on the way out, which is the allocation the sharing exists to
@@ -85,10 +89,12 @@ thiserror = "2"
 # to pull the feature in leaves this binary one semver-compatible release away
 # from panicking on every clean exit.
 #
-# `rt` and `time` are the whole selection. `process`, `net`, and `fs` are one
-# list entry away and would each hand a read-only product a capability it has
-# no reason to hold.
-tokio = { version = "1", features = ["rt", "time"] }
+# `io-std` is the standard streams the transport serves over.
+#
+# `rt`, `time`, and `io-std` are the whole selection. `process`, `net`, and
+# `fs` are one list entry away and would each hand a read-only product a
+# capability it has no reason to hold.
+tokio = { version = "1", features = ["rt", "time", "io-std"] }
 # The root watcher the live index publishes from. notify's FSEvents backend
 # registers macOS temporary roots successfully but misses ordinary create,
 # modify, and rename events in them, so this repository selects kqueue for the

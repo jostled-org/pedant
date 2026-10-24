@@ -19,7 +19,6 @@ use rmcp::model::{
     ListToolsResult, PaginatedRequestParams, ServerCapabilities, ServerConfig, Tool,
 };
 use rmcp::service::{QuitReason, RequestContext, RoleServer};
-use rmcp::transport::io::stdio;
 use rmcp::{ErrorData, ServerHandler, ServiceExt};
 
 use crate::CommandError;
@@ -197,7 +196,7 @@ async fn serve(
         tools: Arc::clone(tools),
     };
     let running = server
-        .serve(stdio())
+        .serve((tokio::io::stdin(), tokio::io::stdout()))
         .await
         .map_err(|failure| CommandError::ServerStart(Box::new(failure)))?;
     let reason = running.waiting().await.map_err(CommandError::ServerStop)?;

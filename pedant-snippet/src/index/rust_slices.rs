@@ -25,6 +25,7 @@ use super::project::ProjectKey;
 use super::provider::ScopedSources;
 use super::retained::RetainedGraph;
 use super::reuse::GraphReuse;
+use super::seal::AdmittedAuthority;
 use super::slice::{PendingSlice, Selection, SliceFailure, beneath, directory_of, graph_failure};
 use super::store::RepositorySourceStore;
 use std::sync::Arc;
@@ -89,9 +90,17 @@ pub(crate) fn select(
         .iter()
         .map(|package| beneath(directory, package.manifest_path()))
         .collect();
+    let parsed = project
+        .manifest_digests()
+        .map(|(relative, digest)| AdmittedAuthority {
+            path: beneath(directory, relative),
+            digest: *digest,
+        })
+        .collect();
     let mut selection = Selection {
         slices: Vec::new(),
         claimed,
+        parsed,
         failures: Vec::new(),
     };
     for target in project.targets().iter().filter(|target| compiled(target)) {
@@ -206,12 +215,11 @@ fn resolve(
         Err(error) => {
             let provider = scoped.take_capacity();
             let stated = snapshot_capacity(&error, limits.rust);
-            return Err(SliceFailure::from_provider(
-                IssueStage::Snapshot,
-                provider,
-                stated,
-                error,
-            ));
+            let edited = matches!(error, RustSnapshotError::ProjectManifestsChanged { .. });
+            return Err(
+                SliceFailure::from_provider(IssueStage::Snapshot, provider, stated, error)
+                    .edited_during_build(edited),
+            );
         }
     };
     let sources = scoped.reached();

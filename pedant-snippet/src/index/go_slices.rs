@@ -22,6 +22,7 @@ use super::path::CanonicalRoot;
 use super::project::ProjectKey;
 use super::provider::ScopedSources;
 use super::retained::RetainedGraph;
+use super::seal::AdmittedAuthority;
 use super::slice::{PendingSlice, Selection, SliceFailure, beneath, directory_of, graph_failure};
 use super::store::RepositorySourceStore;
 
@@ -46,6 +47,13 @@ pub(crate) fn select(
         .modules()
         .map(|module| beneath(directory, module.manifest()))
         .collect();
+    let parsed = project
+        .modules()
+        .map(|module| AdmittedAuthority {
+            path: beneath(directory, module.manifest()),
+            digest: *module.manifest_digest(),
+        })
+        .collect();
     let key = ProjectKey::new(
         Language::Go,
         Arc::clone(authority),
@@ -59,6 +67,7 @@ pub(crate) fn select(
     Selection {
         slices,
         claimed,
+        parsed,
         failures,
     }
 }

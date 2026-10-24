@@ -20,6 +20,7 @@ pub struct GoModule {
     pub(super) path: Arc<str>,
     pub(super) directory: Arc<str>,
     pub(super) manifest: Arc<str>,
+    pub(super) digest: [u8; 32],
     pub(super) depth: u32,
 }
 
@@ -43,6 +44,15 @@ impl GoModule {
     /// The module's `go.mod`, repository-relative and `/`-separated.
     pub fn manifest(&self) -> &str {
         &self.manifest
+    }
+
+    /// SHA-256 of exactly the `go.mod` bytes the load parsed.
+    ///
+    /// A caller that states the manifests it indexed states this digest rather
+    /// than reading the file again: a second read can see an edit made after
+    /// the load, and would pair this module with bytes it never parsed.
+    pub fn manifest_digest(&self) -> &[u8; 32] {
+        &self.digest
     }
 
     /// How many local replacement hops separate this module from the main

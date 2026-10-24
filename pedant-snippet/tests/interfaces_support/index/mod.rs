@@ -30,6 +30,7 @@ complete_profile_modules!(
     owners,
     sources,
     state_identity,
+    torn_reads,
 );
 
 #[cfg(feature = "test-support")]

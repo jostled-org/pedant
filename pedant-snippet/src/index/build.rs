@@ -184,6 +184,7 @@ fn selected_projects(
         }
         let path: Arc<str> = Arc::from(authority.path());
         let mut selection = select_one(store, root, authority, &path, (reuse, &mut budget));
+        edited_refusal(&selection, &path)?;
         if let Some(error) = fatal_capacity(&mut selection, authority, explicit) {
             return Err(error);
         }
@@ -198,17 +199,37 @@ fn selected_projects(
                 Arc::from(&*failure.reason),
             ));
         }
-        record_authorities(
-            root,
-            &selection.claimed,
-            &path,
-            limits,
-            &mut claimed,
-            &mut records,
-        );
+        record_authorities(root, &selection, &path, limits, &mut claimed, &mut records);
         slices.extend(selection.slices);
     }
     super::slice::sealed(slices, limits)
+}
+
+/// The refusal of a build that a manifest edit landed in.
+///
+/// The loader parsed one version of a manifest and the snapshot found another.
+/// Degrading the project would publish an index of no tree that ever existed:
+/// one project missing for a reason the repository does not hold. A live index
+/// that then refused its next rebuild would keep that index as its last good
+/// one. Refused instead, the build publishes nothing, a live index keeps the
+/// index it already had, and the edit's own event asks for the next rebuild.
+#[cfg(any(feature = "graph-rust", feature = "graph-go"))]
+fn edited_refusal(
+    selection: &super::slice::Selection,
+    authority: &str,
+) -> Result<(), CodeIntelligenceError> {
+    match selection
+        .failures
+        .iter()
+        .find(|failure| failure.is_edited_during_build())
+    {
+        Some(failure) => Err(CodeIntelligenceError::Project {
+            authority: Box::from(authority),
+            stage: failure.stage,
+            reason: Box::from(&*failure.reason),
+        }),
+        None => Ok(()),
+    }
 }
 
 /// A capacity that must end the build rather than degrade one automatic project.
@@ -332,40 +353,55 @@ fn select_one(
         _ => super::slice::Selection {
             slices: Vec::new(),
             claimed: Box::new([]),
+            parsed: Box::new([]),
             failures: Vec::new(),
         },
     }
 }
 
-/// Read and hash every authority one selection accounts for, each one once.
+/// Check and record every authority one selection accounts for, each one once.
 ///
 /// A claimed package manifest and the authority that selected the project are
 /// the same path whenever the authority sits at its own package's root, which
 /// is the ordinary case for a root `Cargo.toml` or `go.mod`. The claim set
-/// answers whether this build already read a path, so one selected authority
-/// costs one file read and one digest rather than two of each — and states one
-/// issue rather than two when it cannot be read at all.
+/// answers whether this build already recorded a path, so one selected
+/// authority costs one check rather than two — and states one issue rather than
+/// two when it cannot be read at all.
 #[cfg(any(feature = "graph-rust", feature = "graph-go"))]
 fn record_authorities(
     root: &CanonicalRoot,
-    manifests: &[Arc<str>],
+    selection: &super::slice::Selection,
     authority: &Arc<str>,
     limits: CodeIntelligenceLimits,
     claimed: &mut BTreeSet<Arc<str>>,
     records: &mut BuildRecords<'_>,
 ) {
-    for path in manifests.iter().chain([authority]) {
+    for path in selection.claimed.iter().chain([authority]) {
         if claimed.insert(Arc::clone(path)) {
-            record_authority(root, path, limits, records);
+            let parsed = selection
+                .parsed
+                .iter()
+                .find(|manifest| manifest.path == *path)
+                .map(|manifest| &manifest.digest);
+            record_authority(root, path, parsed, limits, records);
         }
     }
 }
 
-/// Read one selected authority file and retain the digest of its exact bytes.
+/// Check one selected authority file and retain the digest of the bytes the
+/// index was built from.
 ///
 /// The manifests are part of the index's identity: a workspace member added to
 /// a `[workspace]` list changes which sources the project reaches without
 /// changing one byte of any source that was already admitted.
+///
+/// The read here checks the file: that it resolves inside the root and fits
+/// the byte ceiling. Its bytes are the identity only of a manifest no loader
+/// parsed. A manifest the loader parsed is identified by the digest of the
+/// bytes it parsed, because this read comes later and can see an edit made in
+/// between — and a revision of the edited bytes over slices of the original
+/// ones names a tree that never existed. A live index that then refuses the
+/// next rebuild keeps that revision as its last good one.
 ///
 /// The stage is pinned and the code is the refusal's own. `resolve` and
 /// `bounded` state four different things — an escaping link, a malformed path,
@@ -377,6 +413,7 @@ fn record_authorities(
 fn record_authority(
     root: &CanonicalRoot,
     path: &Arc<str>,
+    parsed: Option<&[u8; 32]>,
     limits: CodeIntelligenceLimits,
     records: &mut BuildRecords<'_>,
 ) {
@@ -386,7 +423,7 @@ fn record_authority(
     match read {
         Ok(bytes) => records.admitted.push(AdmittedAuthority {
             path: Arc::clone(path),
-            digest: read::digest(&bytes),
+            digest: parsed.copied().unwrap_or_else(|| read::digest(&bytes)),
         }),
         Err(error) => records.issues.push(IndexIssue::recorded(
             IssueScope::Project {

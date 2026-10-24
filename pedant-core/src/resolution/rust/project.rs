@@ -61,6 +61,18 @@ impl RustProject {
         &self.packages
     }
 
+    /// Every manifest this project was loaded from, as its root-relative path
+    /// and the SHA-256 of exactly the bytes the load parsed.
+    ///
+    /// A caller that states the manifests it indexed states these digests
+    /// rather than reading the files again: a second read can see an edit made
+    /// after the load, and would pair this project with bytes it never parsed.
+    pub fn manifest_digests(&self) -> impl Iterator<Item = (&str, &[u8; 32])> {
+        self.manifests
+            .iter()
+            .map(|manifest| (&*manifest.relative, &manifest.digest))
+    }
+
     /// Only the packages the workspace declares as members.
     pub fn workspace_members(&self) -> impl Iterator<Item = &RustPackage> {
         self.packages

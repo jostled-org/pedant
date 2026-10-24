@@ -48,6 +48,13 @@ check_mixed_concerns = false
 [overrides."pedant-core/src/checks.rs"]
 check_mixed_concerns = false
 
+# RustProject states the manifests it loaded beside the model it built from
+# them: a caller that records a project's identity needs the digest of the
+# bytes the load parsed, and a virtual workspace root's manifest belongs to no
+# package. That is the sixteenth accessor.
+[overrides."pedant-core/src/resolution/rust/project.rs"]
+max_methods = 16
+
 [gate]
 # A scanner necessarily contains the patterns it scans for: pedant's own
 # detector embeds '-----BEGIN ' (capabilities.rs, string_analysis.rs) and

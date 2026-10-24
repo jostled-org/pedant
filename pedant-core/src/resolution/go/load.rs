@@ -350,6 +350,7 @@ impl<'a> Loader<'a> {
                 path: module.path,
                 directory: module.directory,
                 manifest: module.manifest,
+                digest: module.digest,
                 depth: module.depth,
             });
         let Some(main) = modules.next() else {

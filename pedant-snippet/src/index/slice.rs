@@ -23,6 +23,7 @@ use super::error::{CapacityCollection, CapacityOwner, CodeIntelligenceError, cap
 use super::issue::{IssueCode, IssueStage};
 use super::limits::CodeIntelligenceLimits;
 use super::project::{ProjectId, ProjectKey, ProjectSlice};
+use super::seal::AdmittedAuthority;
 
 /// One resolved slice, before it is given its dense identity.
 pub(crate) struct PendingSlice {
@@ -49,6 +50,9 @@ pub(crate) struct SliceFailure {
     required_manifest: Option<Arc<str>>,
     /// The typed capacity refusal hidden by a loader's fault vocabulary.
     capacity: Option<CodeIntelligenceError>,
+    /// A manifest changed between the load that parsed it and the snapshot
+    /// that checked it, so the build read two versions of one file.
+    edited: bool,
 }
 
 impl SliceFailure {
@@ -64,6 +68,7 @@ impl SliceFailure {
             reason: reason.to_string().into_boxed_str(),
             required_manifest: None,
             capacity: None,
+            edited: false,
         }
     }
 
@@ -75,6 +80,7 @@ impl SliceFailure {
             reason: error.to_string().into_boxed_str(),
             required_manifest: None,
             capacity: Some(error),
+            edited: false,
         }
     }
 
@@ -134,6 +140,21 @@ impl SliceFailure {
         self
     }
 
+    /// State whether this refusal is an edit that landed during the build.
+    ///
+    /// It is when the loader parsed one version of a manifest and the snapshot
+    /// found another, so no tree ever held what this build read.
+    #[cfg(feature = "graph-rust")]
+    pub(crate) fn edited_during_build(mut self, edited: bool) -> Self {
+        self.edited = edited;
+        self
+    }
+
+    /// Whether this refusal is an edit that landed during the build.
+    pub(crate) fn is_edited_during_build(&self) -> bool {
+        self.edited
+    }
+
     /// The package manifest whose unit produced this refusal, when known.
     pub(crate) fn required_manifest(&self) -> Option<&str> {
         self.required_manifest.as_deref()
@@ -151,6 +172,11 @@ pub(crate) struct Selection {
     /// loaded project in one pass and nothing appends to it afterwards, so the
     /// spare capacity a `Vec` keeps is capacity no writer will ever use.
     pub(crate) claimed: Box<[Arc<str>]>,
+    /// Every manifest the loader parsed, with the digest of the bytes it
+    /// parsed. The build states these digests for the manifests it records, so
+    /// an edit landing after the load cannot pair these slices with bytes the
+    /// loader never read.
+    pub(crate) parsed: Box<[AdmittedAuthority]>,
     /// Every unit of this authority that refused.
     pub(crate) failures: Vec<SliceFailure>,
 }
@@ -161,6 +187,7 @@ impl Selection {
         Self {
             slices: Vec::new(),
             claimed: Box::new([]),
+            parsed: Box::new([]),
             failures: vec![failure],
         }
     }

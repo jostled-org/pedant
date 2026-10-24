@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1](https://github.com/jostled-org/pedant/compare/pedant-snippet-v0.6.0...pedant-snippet-v0.6.1) - 2026-10-24
+
+### Fixed
+
+- *(snippet)* never publish an index of a tree that never existed
+
+### Other
+
+- add downloads and dependencies badges to the readmes
+
 ## [0.6.0](https://github.com/jostled-org/pedant/compare/pedant-snippet-v0.5.1...pedant-snippet-v0.6.0) - 2026-10-24
 
 ### Fixed

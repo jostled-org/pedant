@@ -452,8 +452,10 @@ fn assert_foreign_nodes_refuse(graph: &CodeGraph, analysis: &GraphAnalysis<'_>) 
     ];
     for refused in refusals {
         assert_eq!(
-            refused.map(|error: GraphAnalysisError| error.to_string()),
-            Some(expected.clone()),
+            refused
+                .map(|error: GraphAnalysisError| error.to_string())
+                .as_deref(),
+            Some(expected.as_str()),
             "an unknown node refuses before any walk"
         );
     }

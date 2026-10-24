@@ -19,6 +19,7 @@
 //! the one route into the traversal, so every production parse is observed
 //! wherever it was requested from.
 
+mod call_forms;
 #[cfg(feature = "semantic")]
 mod enrich;
 mod extent;

@@ -4,7 +4,7 @@
   "crate_name": "log",
   "crate_version": "0.4.34",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725588,
+  "timestamp": 1792804176,
   "analysis_completeness": {
     "analyzed_files": 9,
     "skipped_files": 0
@@ -12,6 +12,186 @@
   "rust_version": "1.71.0",
   "profile": {
     "findings": [
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/kv/value.rs",
+          "line": 397,
+          "column": 5
+        },
+        "evidence": "std::net::IpAddr",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/kv/value.rs",
+          "line": 398,
+          "column": 5
+        },
+        "evidence": "std::net::Ipv4Addr",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/kv/value.rs",
+          "line": 399,
+          "column": 5
+        },
+        "evidence": "std::net::Ipv6Addr",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/kv/value.rs",
+          "line": 400,
+          "column": 5
+        },
+        "evidence": "std::net::SocketAddr",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/kv/value.rs",
+          "line": 401,
+          "column": 5
+        },
+        "evidence": "std::net::SocketAddrV4",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/kv/value.rs",
+          "line": 402,
+          "column": 5
+        },
+        "evidence": "std::net::SocketAddrV6",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/kv/value.rs",
+          "line": 1286,
+          "column": 13
+        },
+        "evidence": "std::net::Ipv4Addr::new",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/kv/value.rs",
+          "line": 1292,
+          "column": 13
+        },
+        "evidence": "std::net::Ipv6Addr::from_str",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/kv/value.rs",
+          "line": 1299,
+          "column": 13
+        },
+        "evidence": "std::net::IpAddr::V4",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/kv/value.rs",
+          "line": 1305,
+          "column": 13
+        },
+        "evidence": "std::net::IpAddr::V6",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/kv/value.rs",
+          "line": 1311,
+          "column": 13
+        },
+        "evidence": "std::net::SocketAddrV4::new",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/kv/value.rs",
+          "line": 1317,
+          "column": 13
+        },
+        "evidence": "std::net::SocketAddrV6::new",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/kv/value.rs",
+          "line": 1328,
+          "column": 13
+        },
+        "evidence": "std::net::SocketAddr::V4",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/kv/value.rs",
+          "line": 1337,
+          "column": 13
+        },
+        "evidence": "std::net::SocketAddr::V6",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/kv/value.rs",
+          "line": 1314,
+          "column": 13
+        },
+        "evidence": "192.168.10.100:12345",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/kv/value.rs",
+          "line": 1325,
+          "column": 13
+        },
+        "evidence": "[f33c::1]:12345",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/kv/value.rs",
+          "line": 1334,
+          "column": 13
+        },
+        "evidence": "192.168.10.100:12345",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/kv/value.rs",
+          "line": 1345,
+          "column": 13
+        },
+        "evidence": "[f33c::1]:12345",
+        "origin": "string_literal"
+      },
       {
         "capability": "unsafe_code",
         "location": {

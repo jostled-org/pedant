@@ -4,7 +4,7 @@
   "crate_name": "rustix",
   "crate_version": "1.1.5",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725609,
+  "timestamp": 1792804179,
   "analysis_completeness": {
     "analyzed_files": 312,
     "skipped_files": 0
@@ -2303,6 +2303,16 @@
           "file": "./src/backend/libc/net/read_sockaddr.rs",
           "line": 201,
           "column": 24
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/backend/libc/net/read_sockaddr.rs",
+          "line": 224,
+          "column": 17
         },
         "evidence": "unsafe block",
         "origin": "code_site"
@@ -8958,6 +8968,126 @@
         "origin": "code_site"
       },
       {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/backend/linux_raw/param/libc_auxv.rs",
+          "line": 181,
+          "column": 67
+        },
+        "evidence": "libc::_SC_PAGESIZE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/backend/linux_raw/param/libc_auxv.rs",
+          "line": 182,
+          "column": 66
+        },
+        "evidence": "libc::_SC_CLK_TCK",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/backend/linux_raw/param/libc_auxv.rs",
+          "line": 183,
+          "column": 63
+        },
+        "evidence": "libc::AT_HWCAP",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/backend/linux_raw/param/libc_auxv.rs",
+          "line": 184,
+          "column": 64
+        },
+        "evidence": "libc::AT_HWCAP2",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/backend/linux_raw/param/libc_auxv.rs",
+          "line": 185,
+          "column": 64
+        },
+        "evidence": "libc::AT_EXECFN",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/backend/linux_raw/param/libc_auxv.rs",
+          "line": 186,
+          "column": 64
+        },
+        "evidence": "libc::AT_SECURE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/backend/linux_raw/param/libc_auxv.rs",
+          "line": 187,
+          "column": 70
+        },
+        "evidence": "libc::AT_SYSINFO_EHDR",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/backend/linux_raw/param/libc_auxv.rs",
+          "line": 188,
+          "column": 69
+        },
+        "evidence": "libc::AT_MINSIGSTKSZ",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/backend/linux_raw/param/libc_auxv.rs",
+          "line": 190,
+          "column": 62
+        },
+        "evidence": "libc::AT_PHDR",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/backend/linux_raw/param/libc_auxv.rs",
+          "line": 192,
+          "column": 63
+        },
+        "evidence": "libc::AT_PHNUM",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/backend/linux_raw/param/libc_auxv.rs",
+          "line": 194,
+          "column": 63
+        },
+        "evidence": "libc::AT_ENTRY",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/backend/linux_raw/param/libc_auxv.rs",
+          "line": 196,
+          "column": 64
+        },
+        "evidence": "libc::AT_RANDOM",
+        "origin": "import"
+      },
+      {
         "capability": "unsafe_code",
         "location": {
           "file": "./src/backend/linux_raw/param/libc_auxv.rs",
@@ -9676,6 +9806,76 @@
         },
         "evidence": "unsafe block",
         "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/backend/linux_raw/process/wait.rs",
+          "line": 114,
+          "column": 44
+        },
+        "evidence": "libc::WIFSTOPPED",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/backend/linux_raw/process/wait.rs",
+          "line": 115,
+          "column": 42
+        },
+        "evidence": "libc::WSTOPSIG",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/backend/linux_raw/process/wait.rs",
+          "line": 116,
+          "column": 46
+        },
+        "evidence": "libc::WIFCONTINUED",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/backend/linux_raw/process/wait.rs",
+          "line": 117,
+          "column": 45
+        },
+        "evidence": "libc::WIFSIGNALED",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/backend/linux_raw/process/wait.rs",
+          "line": 118,
+          "column": 42
+        },
+        "evidence": "libc::WTERMSIG",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/backend/linux_raw/process/wait.rs",
+          "line": 119,
+          "column": 43
+        },
+        "evidence": "libc::WIFEXITED",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/backend/linux_raw/process/wait.rs",
+          "line": 120,
+          "column": 45
+        },
+        "evidence": "libc::WEXITSTATUS",
+        "origin": "import"
       },
       {
         "capability": "unsafe_code",
@@ -11060,6 +11260,16 @@
       {
         "capability": "unsafe_code",
         "location": {
+          "file": "./src/buffer.rs",
+          "line": 415,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
           "file": "./src/event/epoll.rs",
           "line": 213,
           "column": 16
@@ -12101,7 +12311,7 @@
         "capability": "ffi",
         "location": {
           "file": "./src/kernel_sigset.rs",
-          "line": 213,
+          "line": 167,
           "column": 49
         },
         "evidence": "libc::SIGRTMIN",
@@ -12111,7 +12321,7 @@
         "capability": "ffi",
         "location": {
           "file": "./src/kernel_sigset.rs",
-          "line": 215,
+          "line": 169,
           "column": 49
         },
         "evidence": "libc::SIGRTMAX",
@@ -12125,6 +12335,16 @@
           "column": 26
         },
         "evidence": "libc::sigemptyset",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/kernel_sigset.rs",
+          "line": 268,
+          "column": 17
+        },
+        "evidence": "libc::memcmp",
         "origin": "import"
       },
       {
@@ -12153,6 +12373,36 @@
           "file": "./src/kernel_sigset.rs",
           "line": 105,
           "column": 23
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/kernel_sigset.rs",
+          "line": 167,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/kernel_sigset.rs",
+          "line": 168,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/kernel_sigset.rs",
+          "line": 169,
+          "column": 13
         },
         "evidence": "unsafe block",
         "origin": "code_site"
@@ -12241,6 +12491,26 @@
         "capability": "unsafe_code",
         "location": {
           "file": "./src/kernel_sigset.rs",
+          "line": 267,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/kernel_sigset.rs",
+          "line": 280,
+          "column": 17
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/kernel_sigset.rs",
           "line": 289,
           "column": 21
         },
@@ -12251,8 +12521,38 @@
         "capability": "unsafe_code",
         "location": {
           "file": "./src/kernel_sigset.rs",
+          "line": 292,
+          "column": 17
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/kernel_sigset.rs",
+          "line": 303,
+          "column": 17
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/kernel_sigset.rs",
           "line": 312,
           "column": 21
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/kernel_sigset.rs",
+          "line": 315,
+          "column": 17
         },
         "evidence": "unsafe block",
         "origin": "code_site"
@@ -13038,6 +13338,16 @@
         "origin": "code_site"
       },
       {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/net/types.rs",
+          "line": 2137,
+          "column": 51
+        },
+        "evidence": "libc::ucred",
+        "origin": "import"
+      },
+      {
         "capability": "unsafe_code",
         "location": {
           "file": "./src/net/types.rs",
@@ -13303,6 +13613,26 @@
           "file": "./src/pid.rs",
           "line": 72,
           "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/pid.rs",
+          "line": 157,
+          "column": 58
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/pid.rs",
+          "line": 160,
+          "column": 61
         },
         "evidence": "unsafe block",
         "origin": "code_site"
@@ -14038,6 +14368,126 @@
         "origin": "code_site"
       },
       {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/runtime_448b8ad740e2a26f.rs",
+          "line": 801,
+          "column": 17
+        },
+        "evidence": "libc::SIGSYS",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/runtime_448b8ad740e2a26f.rs",
+          "line": 802,
+          "column": 36
+        },
+        "evidence": "libc::SIGRTMIN",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/runtime_448b8ad740e2a26f.rs",
+          "line": 811,
+          "column": 36
+        },
+        "evidence": "libc::SIGRTMAX",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/runtime_448b8ad740e2a26f.rs",
+          "line": 825,
+          "column": 53
+        },
+        "evidence": "libc::siginfo_t",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/runtime_448b8ad740e2a26f.rs",
+          "line": 845,
+          "column": 51
+        },
+        "evidence": "libc::stack_t",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/runtime_448b8ad740e2a26f.rs",
+          "line": 909,
+          "column": 13
+        },
+        "evidence": "libc::SA_NOCLDSTOP",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/runtime_448b8ad740e2a26f.rs",
+          "line": 913,
+          "column": 13
+        },
+        "evidence": "libc::SA_NOCLDWAIT",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/runtime_448b8ad740e2a26f.rs",
+          "line": 916,
+          "column": 20
+        },
+        "evidence": "libc::SA_NODEFER",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/runtime_448b8ad740e2a26f.rs",
+          "line": 917,
+          "column": 20
+        },
+        "evidence": "libc::SA_ONSTACK",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/runtime_448b8ad740e2a26f.rs",
+          "line": 919,
+          "column": 13
+        },
+        "evidence": "libc::SA_RESETHAND",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/runtime_448b8ad740e2a26f.rs",
+          "line": 922,
+          "column": 20
+        },
+        "evidence": "libc::SA_RESTART",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/runtime_448b8ad740e2a26f.rs",
+          "line": 923,
+          "column": 20
+        },
+        "evidence": "libc::SA_SIGINFO",
+        "origin": "import"
+      },
+      {
         "capability": "unsafe_code",
         "location": {
           "file": "./src/runtime_448b8ad740e2a26f.rs",
@@ -14196,6 +14646,36 @@
         },
         "evidence": "unsafe fn",
         "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/signal.rs",
+          "line": 516,
+          "column": 42
+        },
+        "evidence": "libc::SIGHUP",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/signal.rs",
+          "line": 535,
+          "column": 47
+        },
+        "evidence": "libc::SIGRTMIN",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/signal.rs",
+          "line": 536,
+          "column": 47
+        },
+        "evidence": "libc::SIGRTMAX",
+        "origin": "import"
       },
       {
         "capability": "unsafe_code",
@@ -14748,6 +15228,26 @@
         "origin": "code_site"
       },
       {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/termios/types.rs",
+          "line": 1456,
+          "column": 48
+        },
+        "evidence": "libc::cc_t",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/termios/types.rs",
+          "line": 1457,
+          "column": 61
+        },
+        "evidence": "libc::tcflag_t",
+        "origin": "import"
+      },
+      {
         "capability": "unsafe_code",
         "location": {
           "file": "./src/termios/types.rs",
@@ -15260,11 +15760,41 @@
       {
         "capability": "ffi",
         "location": {
-          "file": "./src/weak.rs",
-          "line": 144,
-          "column": 5
+          "file": "./src/timespec.rs",
+          "line": 459,
+          "column": 44
         },
-        "evidence": "libc::dlsym",
+        "evidence": "libc::time_t",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/ugid.rs",
+          "line": 190,
+          "column": 52
+        },
+        "evidence": "libc::uid_t",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/ugid.rs",
+          "line": 191,
+          "column": 52
+        },
+        "evidence": "libc::gid_t",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/weak.rs",
+          "line": 135,
+          "column": 42
+        },
+        "evidence": "libc::RTLD_DEFAULT",
         "origin": "import"
       },
       {
@@ -15272,9 +15802,9 @@
         "location": {
           "file": "./src/weak.rs",
           "line": 144,
-          "column": 17
+          "column": 5
         },
-        "evidence": "libc::RTLD_DEFAULT",
+        "evidence": "libc::dlsym",
         "origin": "import"
       },
       {

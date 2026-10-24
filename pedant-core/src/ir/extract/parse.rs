@@ -6,6 +6,10 @@
 //! that reparsed a source instead of reusing its stored `FileIr` is therefore
 //! visible even when it reparses through the lint pipeline. Other crates own
 //! their own trees and cannot reach this route, which is `pub(crate)`.
+//!
+//! A macro invocation found among the tokens of another macro's arguments is
+//! read here too, but it is no source parse and records none: its tokens come
+//! from a tree this route already parsed and counted.
 
 use proc_macro2::{Group, Ident, TokenStream, TokenTree};
 
@@ -50,6 +54,11 @@ pub(crate) fn parse_source_for_edition(
         Err(error) if permits_bare_callable_traits => repair_legacy_callable_traits(source, error),
         Err(error) => Err(error),
     }
+}
+
+/// Read `tokens` as one macro invocation, `path ! group`.
+pub(crate) fn parse_macro_invocation(tokens: TokenStream) -> Option<syn::ExprMacro> {
+    syn::parse2(tokens).ok()
 }
 
 fn repair_legacy_callable_traits(

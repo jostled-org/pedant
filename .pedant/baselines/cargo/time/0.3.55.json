@@ -4,7 +4,7 @@
   "crate_name": "time",
   "crate_version": "0.3.55",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725615,
+  "timestamp": 1792804180,
   "analysis_completeness": {
     "analyzed_files": 100,
     "skipped_files": 0
@@ -625,6 +625,96 @@
       {
         "capability": "unsafe_code",
         "location": {
+          "file": "./src/formatting/formattable.rs",
+          "line": 725,
+          "column": 47
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/formatting/formattable.rs",
+          "line": 740,
+          "column": 47
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/formatting/formattable.rs",
+          "line": 745,
+          "column": 69
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/formatting/formattable.rs",
+          "line": 777,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/formatting/formattable.rs",
+          "line": 784,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/formatting/formattable.rs",
+          "line": 833,
+          "column": 69
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/formatting/formattable.rs",
+          "line": 840,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/formatting/formattable.rs",
+          "line": 892,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/formatting/formattable.rs",
+          "line": 900,
+          "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
           "file": "./src/formatting/iso8601.rs",
           "line": 41,
           "column": 61
@@ -756,7 +846,27 @@
         "capability": "unsafe_code",
         "location": {
           "file": "./src/formatting/mod.rs",
+          "line": 511,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/formatting/mod.rs",
           "line": 534,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/formatting/mod.rs",
+          "line": 560,
           "column": 9
         },
         "evidence": "unsafe block",
@@ -818,6 +928,16 @@
           "file": "./src/formatting/mod.rs",
           "line": 809,
           "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/formatting/mod.rs",
+          "line": 851,
+          "column": 9
         },
         "evidence": "unsafe block",
         "origin": "code_site"

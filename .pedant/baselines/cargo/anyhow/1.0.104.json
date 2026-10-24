@@ -4,7 +4,7 @@
   "crate_name": "anyhow",
   "crate_version": "1.0.104",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725565,
+  "timestamp": 1792804172,
   "analysis_completeness": {
     "analyzed_files": 13,
     "skipped_files": 0
@@ -814,6 +814,16 @@
           "column": 16
         },
         "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/fmt.rs",
+          "line": 8,
+          "column": 25
+        },
+        "evidence": "unsafe block",
         "origin": "code_site"
       },
       {

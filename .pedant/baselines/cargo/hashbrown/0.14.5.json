@@ -4,7 +4,7 @@
   "crate_name": "hashbrown",
   "crate_version": "0.14.5",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725572,
+  "timestamp": 1792804173,
   "analysis_completeness": {
     "analyzed_files": 21,
     "skipped_files": 0
@@ -980,6 +980,46 @@
           "column": 9
         },
         "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/map.rs",
+          "line": 8877,
+          "column": 24
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/map.rs",
+          "line": 8878,
+          "column": 24
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/map.rs",
+          "line": 8945,
+          "column": 24
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/map.rs",
+          "line": 8946,
+          "column": 24
+        },
+        "evidence": "unsafe block",
         "origin": "code_site"
       },
       {
@@ -2490,6 +2530,26 @@
           "column": 13
         },
         "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/raw/mod.rs",
+          "line": 4803,
+          "column": 20
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/raw/mod.rs",
+          "line": 4804,
+          "column": 20
+        },
+        "evidence": "unsafe block",
         "origin": "code_site"
       },
       {

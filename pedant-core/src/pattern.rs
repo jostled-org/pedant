@@ -1,4 +1,4 @@
-use syn::{Attribute, ExprMethodCall, Macro, Type};
+use syn::{Attribute, ExprMethodCall, Ident, Macro, Type};
 
 /// Test whether `text` matches a glob pattern (`*` matches any characters).
 pub fn matches_pattern(text: &str, pattern: &str) -> bool {
@@ -152,7 +152,12 @@ pub fn extract_type_text(ty: &Type) -> Box<str> {
 
 /// Render a method call as `.method_name()` for pattern matching.
 pub fn extract_method_call_text(call: &ExprMethodCall) -> Box<str> {
-    format!(".{}()", call.method).into_boxed_str()
+    method_call_text(&call.method)
+}
+
+/// Render a call to `method`, however it is written, as `.method()`.
+pub fn method_call_text(method: &Ident) -> Box<str> {
+    format!(".{method}()").into_boxed_str()
 }
 
 /// Render a macro invocation as `name!` (e.g., `println!`) for pattern matching.

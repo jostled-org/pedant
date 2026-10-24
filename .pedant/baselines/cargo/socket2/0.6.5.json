@@ -4,7 +4,7 @@
   "crate_name": "socket2",
   "crate_version": "0.6.5",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725611,
+  "timestamp": 1792804180,
   "analysis_completeness": {
     "analyzed_files": 6,
     "skipped_files": 0
@@ -1183,6 +1183,16 @@
         "origin": "code_site"
       },
       {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sockref.rs",
+          "line": 105,
+          "column": 27
+        },
+        "evidence": "windows_sys::Win32::Networking::WinSock::INVALID_SOCKET",
+        "origin": "import"
+      },
+      {
         "capability": "unsafe_code",
         "location": {
           "file": "./src/sockref.rs",
@@ -2046,6 +2056,46 @@
         "capability": "ffi",
         "location": {
           "file": "./src/sys/unix.rs",
+          "line": 458,
+          "column": 5
+        },
+        "evidence": "libc::AF_INET",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 459,
+          "column": 5
+        },
+        "evidence": "libc::AF_INET6",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 461,
+          "column": 5
+        },
+        "evidence": "libc::AF_UNIX",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 466,
+          "column": 5
+        },
+        "evidence": "libc::AF_UNSPEC",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
           "line": 489,
           "column": 23
         },
@@ -2060,6 +2110,156 @@
           "column": 23
         },
         "evidence": "libc::SOCK_CLOEXEC",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 537,
+          "column": 5
+        },
+        "evidence": "libc::SOCK_STREAM",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 538,
+          "column": 5
+        },
+        "evidence": "libc::SOCK_DGRAM",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 540,
+          "column": 5
+        },
+        "evidence": "libc::SOCK_DCCP",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 547,
+          "column": 5
+        },
+        "evidence": "libc::SOCK_RAW",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 555,
+          "column": 5
+        },
+        "evidence": "libc::SOCK_RDM",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 557,
+          "column": 5
+        },
+        "evidence": "libc::SOCK_SEQPACKET",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 585,
+          "column": 5
+        },
+        "evidence": "libc::IPPROTO_ICMP",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 587,
+          "column": 5
+        },
+        "evidence": "libc::IPPROTO_ICMPV6",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 588,
+          "column": 5
+        },
+        "evidence": "libc::IPPROTO_TCP",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 589,
+          "column": 5
+        },
+        "evidence": "libc::IPPROTO_UDP",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 591,
+          "column": 5
+        },
+        "evidence": "libc::IPPROTO_MPTCP",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 593,
+          "column": 5
+        },
+        "evidence": "libc::IPPROTO_DCCP",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 595,
+          "column": 5
+        },
+        "evidence": "libc::IPPROTO_SCTP",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 605,
+          "column": 5
+        },
+        "evidence": "libc::IPPROTO_UDPLITE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 607,
+          "column": 5
+        },
+        "evidence": "libc::IPPROTO_DIVERT",
         "origin": "import"
       },
       {
@@ -2100,16 +2300,6 @@
           "column": 18
         },
         "evidence": "libc::MSG_DONTROUTE",
-        "origin": "import"
-      },
-      {
-        "capability": "ffi",
-        "location": {
-          "file": "./src/sys/unix.rs",
-          "line": 744,
-          "column": 30
-        },
-        "evidence": "libc::AF_UNIX",
         "origin": "import"
       },
       {
@@ -2160,6 +2350,16 @@
           "column": 79
         },
         "evidence": "libc::POLLERR",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 1038,
+          "column": 24
+        },
+        "evidence": "libc::F_DUPFD_CLOEXEC",
         "origin": "import"
       },
       {
@@ -2256,16 +2456,6 @@
         "capability": "ffi",
         "location": {
           "file": "./src/sys/unix.rs",
-          "line": 1285,
-          "column": 33
-        },
-        "evidence": "libc::IPPROTO_TCP",
-        "origin": "import"
-      },
-      {
-        "capability": "ffi",
-        "location": {
-          "file": "./src/sys/unix.rs",
           "line": 1311,
           "column": 56
         },
@@ -2280,6 +2470,46 @@
           "column": 56
         },
         "evidence": "libc::TCP_KEEPCNT",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 1472,
+          "column": 17
+        },
+        "evidence": "libc::SOL_IP",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 1473,
+          "column": 17
+        },
+        "evidence": "libc::SO_ORIGINAL_DST",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 1493,
+          "column": 17
+        },
+        "evidence": "libc::SOL_IPV6",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 1494,
+          "column": 17
+        },
+        "evidence": "libc::IP6T_SO_ORIGINAL_DST",
         "origin": "import"
       },
       {
@@ -2310,6 +2540,16 @@
           "column": 17
         },
         "evidence": "libc::FD_CLOEXEC",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 1611,
+          "column": 13
+        },
+        "evidence": "libc::SO_PEERCRED",
         "origin": "import"
       },
       {
@@ -2426,6 +2666,26 @@
         "capability": "ffi",
         "location": {
           "file": "./src/sys/unix.rs",
+          "line": 1944,
+          "column": 13
+        },
+        "evidence": "libc::SO_BINDTODEVICE",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 1992,
+          "column": 13
+        },
+        "evidence": "libc::SO_SETFIB",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
           "line": 2036,
           "column": 51
         },
@@ -2487,16 +2747,6 @@
         "location": {
           "file": "./src/sys/unix.rs",
           "line": 2298,
-          "column": 48
-        },
-        "evidence": "libc::SOL_IP",
-        "origin": "import"
-      },
-      {
-        "capability": "ffi",
-        "location": {
-          "file": "./src/sys/unix.rs",
-          "line": 2298,
           "column": 62
         },
         "evidence": "libc::IP_FREEBIND",
@@ -2507,19 +2757,19 @@
         "location": {
           "file": "./src/sys/unix.rs",
           "line": 2335,
-          "column": 48
+          "column": 64
         },
-        "evidence": "libc::SOL_IPV6",
+        "evidence": "libc::IPV6_FREEBIND",
         "origin": "import"
       },
       {
         "capability": "ffi",
         "location": {
           "file": "./src/sys/unix.rs",
-          "line": 2335,
-          "column": 64
+          "line": 2528,
+          "column": 13
         },
-        "evidence": "libc::IPV6_FREEBIND",
+        "evidence": "libc::SF_CLOSE",
         "origin": "import"
       },
       {
@@ -2580,6 +2830,16 @@
           "column": 62
         },
         "evidence": "libc::IPV6_TCLASS",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 2707,
+          "column": 13
+        },
+        "evidence": "libc::TCP_CONGESTION",
         "origin": "import"
       },
       {
@@ -2670,6 +2930,16 @@
           "column": 17
         },
         "evidence": "libc::DCCP_SOCKOPT_QPOLICY_TXQLEN",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/sys/unix.rs",
+          "line": 2928,
+          "column": 13
+        },
+        "evidence": "libc::DCCP_SOCKOPT_AVAILABLE_CCIDS",
         "origin": "import"
       },
       {
@@ -4980,6 +5250,36 @@
           "column": 5
         },
         "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/sys/windows.rs",
+          "line": 1151,
+          "column": 16
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/sys/windows.rs",
+          "line": 1157,
+          "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/sys/windows.rs",
+          "line": 1177,
+          "column": 16
+        },
+        "evidence": "unsafe block",
         "origin": "code_site"
       },
       {

@@ -4,7 +4,7 @@
   "crate_name": "rustversion",
   "crate_version": "1.0.23",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725609,
+  "timestamp": 1792804179,
   "analysis_completeness": {
     "analyzed_files": 15,
     "skipped_files": 0
@@ -44,6 +44,26 @@
         "evidence": "std::process::Command",
         "origin": "import",
         "execution_context": "build_hook"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/bound.rs",
+          "line": 28,
+          "column": 9
+        },
+        "evidence": "time::today",
+        "origin": "import"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/date.rs",
+          "line": 26,
+          "column": 61
+        },
+        "evidence": "time::today",
+        "origin": "import"
       },
       {
         "capability": "proc_macro",

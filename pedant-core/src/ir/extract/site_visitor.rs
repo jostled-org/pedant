@@ -421,7 +421,7 @@ fn last_segment(path: &syn::Path) -> Option<Arc<str>> {
         .map(|segment| Arc::from(segment.ident.to_string().as_str()))
 }
 
-fn type_name(ty: &syn::Type) -> Option<Arc<str>> {
+pub(super) fn type_name(ty: &syn::Type) -> Option<Arc<str>> {
     match ty {
         syn::Type::Path(path) => last_segment(&path.path),
         syn::Type::Reference(reference) => type_name(&reference.elem),

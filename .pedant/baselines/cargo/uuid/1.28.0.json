@@ -4,7 +4,7 @@
   "crate_name": "uuid",
   "crate_version": "1.28.0",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725618,
+  "timestamp": 1792804181,
   "analysis_completeness": {
     "analyzed_files": 23,
     "skipped_files": 0
@@ -127,6 +127,16 @@
         "location": {
           "file": "./src/non_nil.rs",
           "line": 89,
+          "column": 20
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/non_nil.rs",
+          "line": 152,
           "column": 20
         },
         "evidence": "unsafe block",

@@ -4,7 +4,7 @@
   "crate_name": "miow",
   "crate_version": "0.6.1",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725589,
+  "timestamp": 1792804176,
   "analysis_completeness": {
     "analyzed_files": 6,
     "skipped_files": 0
@@ -1201,6 +1201,16 @@
         },
         "evidence": "unsafe block",
         "origin": "code_site"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/net.rs",
+          "line": 1015,
+          "column": 14
+        },
+        "evidence": "127.0.0.1:0",
+        "origin": "string_literal"
       },
       {
         "capability": "ffi",

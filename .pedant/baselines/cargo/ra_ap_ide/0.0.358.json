@@ -4,7 +4,7 @@
   "crate_name": "ra_ap_ide",
   "crate_version": "0.0.358",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725597,
+  "timestamp": 1792804177,
   "analysis_completeness": {
     "analyzed_files": 77,
     "skipped_files": 0
@@ -12,6 +12,256 @@
   "rust_version": "1.98",
   "profile": {
     "findings": [
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/doc_links.rs",
+          "line": 574,
+          "column": 44
+        },
+        "evidence": "https://doc.rust-lang.org/{channel}/core/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/doc_links.rs",
+          "line": 592,
+          "column": 35
+        },
+        "evidence": "https://doc.rust-lang.org/{channel}/{origin}",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/doc_links.rs",
+          "line": 597,
+          "column": 27
+        },
+        "evidence": "https://doc.rust-lang.org/{channel}/nightly-rustc/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/doc_links.rs",
+          "line": 609,
+          "column": 21
+        },
+        "evidence": "https://docs.rs/{krate}/{version}/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/doc_links.rs",
+          "line": 625,
+          "column": 21
+        },
+        "evidence": "https://docs.rs/{krate}/{version}/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/doc_links/tests.rs",
+          "line": 139,
+          "column": 23
+        },
+        "evidence": "https://doc.rust-lang.org/nightly/core/primitive.u32.html",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/doc_links/tests.rs",
+          "line": 155,
+          "column": 23
+        },
+        "evidence": "https://docs.rs/foo/*/foo/index.html",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/doc_links/tests.rs",
+          "line": 169,
+          "column": 22
+        },
+        "evidence": "https://doc.rust-lang.org/stable/std/index.html",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/doc_links/tests.rs",
+          "line": 183,
+          "column": 23
+        },
+        "evidence": "https://docs.rs/foo/*/foo/struct.Foo.html",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/doc_links/tests.rs",
+          "line": 197,
+          "column": 23
+        },
+        "evidence": "https://docs.rs/foo/*/foo/struct.Foo.html",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/doc_links/tests.rs",
+          "line": 211,
+          "column": 23
+        },
+        "evidence": "https://docs.rs/foo/*/foo/struct.Foo.html",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/doc_links/tests.rs",
+          "line": 227,
+          "column": 23
+        },
+        "evidence": "https://docs.rs/foo/*/foo/struct.Foo.html#structfield.field",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/doc_links/tests.rs",
+          "line": 241,
+          "column": 23
+        },
+        "evidence": "https://docs.rs/foo/*/foo/fn.foo.html",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/doc_links/tests.rs",
+          "line": 258,
+          "column": 23
+        },
+        "evidence": "https://docs.rs/foo/*/foo/struct.Foo.html#method.method",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/doc_links/tests.rs",
+          "line": 271,
+          "column": 23
+        },
+        "evidence": "https://docs.rs/foo/*/foo/struct.Foo.html#associatedconstant.CONST",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/doc_links/tests.rs",
+          "line": 291,
+          "column": 23
+        },
+        "evidence": "https://docs.rs/foo/*/foo/struct.Foo.html#method.method",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/doc_links/tests.rs",
+          "line": 307,
+          "column": 23
+        },
+        "evidence": "https://docs.rs/foo/*/foo/struct.Foo.html#associatedconstant.CONST",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/doc_links/tests.rs",
+          "line": 323,
+          "column": 23
+        },
+        "evidence": "https://docs.rs/foo/*/foo/struct.Foo.html#associatedtype.Type",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/doc_links/tests.rs",
+          "line": 339,
+          "column": 23
+        },
+        "evidence": "https://docs.rs/foo/*/foo/trait.Foo.html#tymethod.method",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/doc_links/tests.rs",
+          "line": 351,
+          "column": 23
+        },
+        "evidence": "https://docs.rs/foo/*/foo/trait.Foo.html#associatedconstant.CONST",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/doc_links/tests.rs",
+          "line": 363,
+          "column": 23
+        },
+        "evidence": "https://docs.rs/foo/*/foo/trait.Foo.html#associatedtype.Type",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/doc_links/tests.rs",
+          "line": 377,
+          "column": 23
+        },
+        "evidence": "https://docs.rs/foo/*/foo/trait.Trait.html",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/doc_links/tests.rs",
+          "line": 393,
+          "column": 23
+        },
+        "evidence": "https://docs.rs/foo/*/foo/foo/bar/index.html",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/doc_links/tests.rs",
+          "line": 417,
+          "column": 23
+        },
+        "evidence": "https://docs.rs/foo/*/foo/wrapper/module/struct.Item.html",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/doc_links/tests.rs",
+          "line": 441,
+          "column": 23
+        },
+        "evidence": "https://docs.rs/foo/*/foo/macro.my_macro.html",
+        "origin": "string_literal"
+      },
       {
         "capability": "process_exec",
         "location": {
@@ -66,6 +316,16 @@
         "capability": "network",
         "location": {
           "file": "./src/moniker.rs",
+          "line": 371,
+          "column": 34
+        },
+        "evidence": "https://github.com/rust-lang/rust/compiler/{name}",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/moniker.rs",
           "line": 375,
           "column": 26
         },
@@ -80,6 +340,16 @@
           "column": 29
         },
         "evidence": "https://github.com/rust-lang/rust/library/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/moniker.rs",
+          "line": 380,
+          "column": 41
+        },
+        "evidence": "https://github.com/rust-lang/rust/library/{lang}",
         "origin": "string_literal"
       },
       {

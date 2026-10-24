@@ -4,7 +4,7 @@
   "crate_name": "crossbeam-epoch",
   "crate_version": "0.9.21",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725569,
+  "timestamp": 1792804172,
   "analysis_completeness": {
     "analyzed_files": 13,
     "skipped_files": 0
@@ -830,6 +830,16 @@
           "column": 5
         },
         "evidence": "unsafe fn",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/internal.rs",
+          "line": 605,
+          "column": 21
+        },
+        "evidence": "unsafe block",
         "origin": "code_site"
       },
       {

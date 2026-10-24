@@ -119,7 +119,7 @@ pub(super) fn check_clone_in_loop(
         if mc.loop_depth == 0 || &*mc.method_name != "clone" {
             continue;
         }
-        let is_refcounted = mc
+        let is_refcounted_binding = mc
             .receiver_ident
             .as_deref()
             .and_then(|recv| {
@@ -128,6 +128,8 @@ pub(super) fn check_clone_in_loop(
                     .map(|set| set.contains(recv))
             })
             .unwrap_or(false);
+        let is_refcounted =
+            is_refcounted_binding || mc.receiver_type.as_deref().is_some_and(names_refcount);
         if is_refcounted {
             continue;
         }
@@ -139,4 +141,12 @@ pub(super) fn check_clone_in_loop(
             ".clone() inside loop body allocates per iteration",
         );
     }
+}
+
+/// `true` when a receiver type names a reference-counted pointer: `Arc`,
+/// `Rc`, or a path or instantiation of either, such as `std::sync::Arc<str>`.
+fn names_refcount(receiver_type: &str) -> bool {
+    let base = receiver_type.split('<').next().unwrap_or(receiver_type);
+    let name = base.rsplit("::").next().unwrap_or(base);
+    name == "Arc" || name == "Rc"
 }

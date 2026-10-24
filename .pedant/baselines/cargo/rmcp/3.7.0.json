@@ -4,7 +4,7 @@
   "crate_name": "rmcp",
   "crate_version": "3.7.0",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725607,
+  "timestamp": 1792804179,
   "analysis_completeness": {
     "analyzed_files": 66,
     "skipped_files": 0
@@ -48,6 +48,36 @@
         "capability": "network",
         "location": {
           "file": "./src/model.rs",
+          "line": 5884,
+          "column": 33
+        },
+        "evidence": "https://example.com/icon.png",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/model.rs",
+          "line": 5919,
+          "column": 26
+        },
+        "evidence": "https://example.com/icon.png",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/model.rs",
+          "line": 5925,
+          "column": 26
+        },
+        "evidence": "https://example.com/icon.svg",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/model.rs",
           "line": 5931,
           "column": 31
         },
@@ -58,10 +88,70 @@
         "capability": "network",
         "location": {
           "file": "./src/model.rs",
+          "line": 5937,
+          "column": 40
+        },
+        "evidence": "https://example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/model.rs",
+          "line": 5939,
+          "column": 45
+        },
+        "evidence": "https://example.com/icon.png",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/model.rs",
+          "line": 5974,
+          "column": 26
+        },
+        "evidence": "https://example.com/server.png",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/model.rs",
           "line": 5979,
           "column": 35
         },
         "evidence": "https://docs.example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/model.rs",
+          "line": 5989,
+          "column": 13
+        },
+        "evidence": "https://example.com/server.png",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/model.rs",
+          "line": 5993,
+          "column": 54
+        },
+        "evidence": "https://docs.example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/model.rs",
+          "line": 6087,
+          "column": 29
+        },
+        "evidence": "https://example.com/form",
         "origin": "string_literal"
       },
       {
@@ -108,8 +198,28 @@
         "capability": "network",
         "location": {
           "file": "./src/model/elicitation_schema.rs",
+          "line": 1953,
+          "column": 18
+        },
+        "evidence": "https://json-schema.org/draft/2020-12/schema",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/model/elicitation_schema.rs",
           "line": 1977,
           "column": 26
+        },
+        "evidence": "https://json-schema.org/draft/2020-12/schema",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/model/elicitation_schema.rs",
+          "line": 1981,
+          "column": 13
         },
         "evidence": "https://json-schema.org/draft/2020-12/schema",
         "origin": "string_literal"
@@ -163,6 +273,26 @@
         },
         "evidence": "chrono::Utc::now",
         "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/model/resource.rs",
+          "line": 268,
+          "column": 22
+        },
+        "evidence": "https://example.com/icon.png",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/model/resource.rs",
+          "line": 276,
+          "column": 45
+        },
+        "evidence": "https://example.com/icon.png",
+        "origin": "string_literal"
       },
       {
         "capability": "system_time",
@@ -448,10 +578,30 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 4533,
+          "column": 32
+        },
+        "evidence": "http://{}/redirect",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 4565,
           "column": 52
         },
         "evidence": "127.0.0.1:0",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4566,
+          "column": 27
+        },
+        "evidence": "http://{}/mcp",
         "origin": "string_literal"
       },
       {
@@ -498,6 +648,56 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 4741,
+          "column": 45
+        },
+        "evidence": "https://auth.example.com/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4744,
+          "column": 18
+        },
+        "evidence": "https://mcp.example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4751,
+          "column": 26
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4757,
+          "column": 26
+        },
+        "evidence": "https://mcp.example.com/.well-known/oauth-protected-resource",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4763,
+          "column": 26
+        },
+        "evidence": "https://auth.example.com/.well-known/oauth-authorization-server",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 4821,
           "column": 13
         },
@@ -518,6 +718,16 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 4871,
+          "column": 19
+        },
+        "evidence": "https://mcp.example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 4897,
           "column": 13
         },
@@ -528,10 +738,80 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 4916,
+          "column": 22
+        },
+        "evidence": "https://auth.example.com/tenant1",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4917,
+          "column": 17
+        },
+        "evidence": "https://auth.example.com/tenant1/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4919,
+          "column": 21
+        },
+        "evidence": "https://mcp.example.com/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4920,
+          "column": 21
+        },
+        "evidence": "https://mcp.example.com/.well-known/oauth-protected-resource",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4921,
+          "column": 21
+        },
+        "evidence": "https://auth.example.com/.well-known/oauth-authorization-server/tenant1",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 4948,
           "column": 13
         },
         "evidence": "https://mcp.example.com/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4962,
+          "column": 22
+        },
+        "evidence": "https://auth.example.com/tenant1/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 4963,
+          "column": 22
+        },
+        "evidence": "https://auth.example.com/.well-known/oauth-authorization-server/tenant1",
         "origin": "string_literal"
       },
       {
@@ -592,6 +872,46 @@
           "column": 49
         },
         "evidence": "https://mcp.example.com/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5040,
+          "column": 13
+        },
+        "evidence": "https://auth.example.com/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5041,
+          "column": 13
+        },
+        "evidence": "https://auth.example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5044,
+          "column": 13
+        },
+        "evidence": "https://auth.example.com/tenant1/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5045,
+          "column": 13
+        },
+        "evidence": "https://auth.example.com/tenant1",
         "origin": "string_literal"
       },
       {
@@ -738,10 +1058,140 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 5169,
+          "column": 17
+        },
+        "evidence": "https://auth.example.com/tenant1/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5171,
+          "column": 21
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5172,
+          "column": 21
+        },
+        "evidence": "https://mcp.example.com/custom/metadata/location.json",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5173,
+          "column": 21
+        },
+        "evidence": "https://auth.example.com/.well-known/oauth-authorization-server/tenant1",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5174,
+          "column": 21
+        },
+        "evidence": "https://auth.example.com/.well-known/openid-configuration/tenant1",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5175,
+          "column": 21
+        },
+        "evidence": "https://auth.example.com/tenant1/.well-known/openid-configuration",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 5202,
           "column": 13
         },
         "evidence": "https://legacy.example.com/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5224,
+          "column": 17
+        },
+        "evidence": "https://legacy.example.com/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5225,
+          "column": 17
+        },
+        "evidence": "https://legacy.example.com/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5226,
+          "column": 22
+        },
+        "evidence": "https://legacy.example.com/register",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5228,
+          "column": 21
+        },
+        "evidence": "https://legacy.example.com/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5229,
+          "column": 21
+        },
+        "evidence": "https://legacy.example.com/.well-known/oauth-protected-resource",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5230,
+          "column": 21
+        },
+        "evidence": "https://legacy.example.com/.well-known/oauth-authorization-server",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5231,
+          "column": 21
+        },
+        "evidence": "https://legacy.example.com/.well-known/openid-configuration",
         "origin": "string_literal"
       },
       {
@@ -758,10 +1208,40 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 5281,
+          "column": 17
+        },
+        "evidence": "https://auth.example.com/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 5306,
           "column": 13
         },
         "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5328,
+          "column": 17
+        },
+        "evidence": "https://auth.example.com/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5331,
+          "column": 22
+        },
+        "evidence": "https://mcp.example.com/custom/prm.json",
         "origin": "string_literal"
       },
       {
@@ -778,10 +1258,40 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 5377,
+          "column": 17
+        },
+        "evidence": "https://auth.example.com/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5379,
+          "column": 21
+        },
+        "evidence": "https://prm.example.net/.well-known/oauth-protected-resource/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 5405,
           "column": 13
         },
         "evidence": "https://mcp.corp/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5426,
+          "column": 22
+        },
+        "evidence": "https://10.0.0.9/.well-known/oauth-protected-resource/mcp",
         "origin": "string_literal"
       },
       {
@@ -808,10 +1318,40 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 5491,
+          "column": 17
+        },
+        "evidence": "https://mcp.example.com/oauth/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 5523,
           "column": 13
         },
         "evidence": "https://mcp.example.com/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5538,
+          "column": 17
+        },
+        "evidence": "https://auth.example.com/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5543,
+          "column": 32
+        },
+        "evidence": "https://mcp.example.com/.well-known/oauth-protected-resource",
         "origin": "string_literal"
       },
       {
@@ -828,10 +1368,30 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 5588,
+          "column": 17
+        },
+        "evidence": "https://mcp.example.com/oauth/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 5625,
           "column": 13
         },
         "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5640,
+          "column": 17
+        },
+        "evidence": "https://auth.example.com/token",
         "origin": "string_literal"
       },
       {
@@ -868,10 +1428,50 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 5736,
+          "column": 17
+        },
+        "evidence": "https://auth.example.com/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5741,
+          "column": 32
+        },
+        "evidence": "https://mcp.example.com/mcp/.well-known/oauth-protected-resource",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 5783,
           "column": 13
         },
         "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5798,
+          "column": 17
+        },
+        "evidence": "https://auth.example.com/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5803,
+          "column": 32
+        },
+        "evidence": "https://mcp.example.com/mcp/.well-known/oauth-protected-resource",
         "origin": "string_literal"
       },
       {
@@ -908,10 +1508,110 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 5903,
+          "column": 17
+        },
+        "evidence": "https://mcp.example.com/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5904,
+          "column": 17
+        },
+        "evidence": "https://mcp.example.com/.well-known/oauth-protected-resource",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5905,
+          "column": 17
+        },
+        "evidence": "https://auth.example.com/.well-known/oauth-authorization-server",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5906,
+          "column": 17
+        },
+        "evidence": "https://auth.example.com/.well-known/openid-configuration",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 5934,
           "column": 13
         },
         "evidence": "https://mcp.example.com/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5954,
+          "column": 17
+        },
+        "evidence": "https://mcp.example.com/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5955,
+          "column": 17
+        },
+        "evidence": "https://mcp.example.com/.well-known/oauth-protected-resource",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5956,
+          "column": 17
+        },
+        "evidence": "https://auth.example.com/.well-known/oauth-authorization-server",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5957,
+          "column": 17
+        },
+        "evidence": "https://auth.example.com/.well-known/openid-configuration",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5958,
+          "column": 17
+        },
+        "evidence": "https://sso.example.com/.well-known/oauth-authorization-server",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 5959,
+          "column": 17
+        },
+        "evidence": "https://sso.example.com/.well-known/openid-configuration",
         "origin": "string_literal"
       },
       {
@@ -932,6 +1632,66 @@
           "column": 13
         },
         "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6049,
+          "column": 17
+        },
+        "evidence": "https://auth.example.com/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6060,
+          "column": 17
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6061,
+          "column": 17
+        },
+        "evidence": "https://mcp.example.com/.well-known/oauth-protected-resource/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6062,
+          "column": 17
+        },
+        "evidence": "https://mcp.example.com/prm",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6063,
+          "column": 17
+        },
+        "evidence": "https://mcp.example.com/mcp/.well-known/oauth-protected-resource",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6064,
+          "column": 17
+        },
+        "evidence": "https://auth.example.com/.well-known/oauth-authorization-server",
         "origin": "string_literal"
       },
       {
@@ -972,6 +1732,26 @@
           "column": 49
         },
         "evidence": "http://localhost:8080/callback",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6181,
+          "column": 18
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6185,
+          "column": 13
+        },
+        "evidence": "https://mcp.example.com/mcp?oauth=initialize",
         "origin": "string_literal"
       },
       {
@@ -1032,6 +1812,16 @@
           "column": 49
         },
         "evidence": "http://localhost:8080/callback",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6289,
+          "column": 46
+        },
+        "evidence": "https://mcp.example.com/metadata",
         "origin": "string_literal"
       },
       {
@@ -1130,6 +1920,16 @@
           "file": "./src/transport/auth.rs",
           "line": 6444,
           "column": 39
+        },
+        "evidence": "https://client.example.com/client-metadata.json",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6460,
+          "column": 13
         },
         "evidence": "https://client.example.com/client-metadata.json",
         "origin": "string_literal"
@@ -1278,6 +2078,36 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 6661,
+          "column": 21
+        },
+        "evidence": "https://mcp.example.com/start",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6662,
+          "column": 21
+        },
+        "evidence": "https://mcp.example.com/redirected",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6671,
+          "column": 13
+        },
+        "evidence": "http://169.254.169.254/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 6674,
           "column": 13
         },
@@ -1328,10 +2158,80 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 6710,
+          "column": 26
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6714,
+          "column": 25
+        },
+        "evidence": "http://[::1]:3000/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6714,
+          "column": 50
+        },
+        "evidence": "http://[::1]:8080/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 6721,
           "column": 29
         },
         "evidence": "https://mcp.corp/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6727,
+          "column": 26
+        },
+        "evidence": "https://10.0.0.9/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6728,
+          "column": 25
+        },
+        "evidence": "https://10.0.0.9/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6729,
+          "column": 26
+        },
+        "evidence": "https://169.254.169.254/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6730,
+          "column": 26
+        },
+        "evidence": "https://127.0.0.1/",
         "origin": "string_literal"
       },
       {
@@ -1348,10 +2248,90 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 6784,
+          "column": 17
+        },
+        "evidence": "https://auth.example.com/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6786,
+          "column": 21
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6787,
+          "column": 21
+        },
+        "evidence": "https://mcp.example.com/.well-known/oauth-protected-resource",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6788,
+          "column": 21
+        },
+        "evidence": "https://auth.example.com/.well-known/oauth-authorization-server",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 6823,
           "column": 13
         },
         "evidence": "http://localhost/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6841,
+          "column": 22
+        },
+        "evidence": "http://127.0.0.1:8080/tenant1",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6843,
+          "column": 21
+        },
+        "evidence": "http://localhost/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6844,
+          "column": 21
+        },
+        "evidence": "http://localhost/custom-metadata.json",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6845,
+          "column": 21
+        },
+        "evidence": "http://127.0.0.1:8080/.well-known/oauth-authorization-server/tenant1",
         "origin": "string_literal"
       },
       {
@@ -1372,6 +2352,326 @@
           "column": 13
         },
         "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6925,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6926,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6929,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6930,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6933,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6934,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6937,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp/tools",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6938,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6941,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp?query=param",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6942,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp?query=param",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6945,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp?oauth=initialize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6946,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6949,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6950,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp?query=value1",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6953,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp?query=value1",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6954,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp?query=value2",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6957,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp/tools?oauth=initialize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6958,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp?query=value1",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6962,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6963,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6966,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp-tools",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6967,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6970,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6971,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp-tools",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6974,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6975,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp/tools",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6978,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6979,
+          "column": 25
+        },
+        "evidence": "https://real.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6982,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp-tools?oauth=initialize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6983,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp?query=value1",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6986,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp?oauth=initialize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 6987,
+          "column": 25
+        },
+        "evidence": "https://real.example.com/mcp?oauth=initialize",
         "origin": "string_literal"
       },
       {
@@ -1428,10 +2728,120 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 7068,
+          "column": 17
+        },
+        "evidence": "https://auth.example.com/register",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 7069,
+          "column": 17
+        },
+        "evidence": "https://auth.example.com/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 7070,
+          "column": 17
+        },
+        "evidence": "https://auth.example.com/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 7090,
+          "column": 30
+        },
+        "evidence": "https://example.com/client-metadata.json",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 7091,
+          "column": 30
+        },
+        "evidence": "https://example.com/metadata?version=1",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 7092,
+          "column": 31
+        },
+        "evidence": "https://example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 7093,
+          "column": 31
+        },
+        "evidence": "https://example.com/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 7094,
+          "column": 31
+        },
+        "evidence": "https://",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 7095,
+          "column": 31
+        },
+        "evidence": "http://example.com/metadata",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 7152,
           "column": 35
         },
         "evidence": "https://auth.example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 7157,
+          "column": 13
+        },
+        "evidence": "https://auth.example.com/.well-known/oauth-authorization-server",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 7161,
+          "column": 13
+        },
+        "evidence": "https://auth.example.com/.well-known/openid-configuration",
         "origin": "string_literal"
       },
       {
@@ -1448,6 +2858,46 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 7169,
+          "column": 13
+        },
+        "evidence": "https://auth.example.com/.well-known/oauth-authorization-server/tenant1",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 7173,
+          "column": 13
+        },
+        "evidence": "https://auth.example.com/.well-known/openid-configuration/tenant1",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 7177,
+          "column": 13
+        },
+        "evidence": "https://auth.example.com/tenant1/.well-known/openid-configuration",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 7181,
+          "column": 13
+        },
+        "evidence": "https://auth.example.com/.well-known/oauth-authorization-server",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 7184,
           "column": 35
         },
@@ -1458,10 +2908,90 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 7189,
+          "column": 13
+        },
+        "evidence": "https://auth.example.com/.well-known/oauth-authorization-server/v1/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 7193,
+          "column": 13
+        },
+        "evidence": "https://auth.example.com/.well-known/openid-configuration/v1/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 7197,
+          "column": 13
+        },
+        "evidence": "https://auth.example.com/v1/mcp/.well-known/openid-configuration",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 7201,
+          "column": 13
+        },
+        "evidence": "https://auth.example.com/.well-known/oauth-authorization-server",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 7204,
           "column": 35
         },
         "evidence": "https://auth.example.com/tenant1/subtenant",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 7209,
+          "column": 13
+        },
+        "evidence": "https://auth.example.com/.well-known/oauth-authorization-server/tenant1/subtenant",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 7213,
+          "column": 13
+        },
+        "evidence": "https://auth.example.com/.well-known/openid-configuration/tenant1/subtenant",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 7217,
+          "column": 13
+        },
+        "evidence": "https://auth.example.com/tenant1/subtenant/.well-known/openid-configuration",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 7221,
+          "column": 13
+        },
+        "evidence": "https://auth.example.com/.well-known/oauth-authorization-server",
         "origin": "string_literal"
       },
       {
@@ -1498,6 +3028,16 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 7289,
+          "column": 13
+        },
+        "evidence": "https://example.com/.well-known/oauth-protected-resource/api",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 7296,
           "column": 31
         },
@@ -1508,10 +3048,30 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 7300,
+          "column": 13
+        },
+        "evidence": "https://example.com/.well-known/oauth-protected-resource/api",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 7307,
           "column": 31
         },
         "evidence": "https://example.com/api",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 7311,
+          "column": 13
+        },
+        "evidence": "https://prm.example.net/.well-known/oauth-protected-resource/api",
         "origin": "string_literal"
       },
       {
@@ -1532,6 +3092,16 @@
           "column": 31
         },
         "evidence": "https://10.0.0.1/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 7339,
+          "column": 13
+        },
+        "evidence": "https://10.0.0.1/custom/prm.json",
         "origin": "string_literal"
       },
       {
@@ -1568,6 +3138,16 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 7413,
+          "column": 13
+        },
+        "evidence": "http://127.0.0.1:9000/.well-known/oauth-protected-resource",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 7420,
           "column": 31
         },
@@ -1588,6 +3168,16 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 7434,
+          "column": 13
+        },
+        "evidence": "https://example.com/.well-known/oauth-protected-resource",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 7444,
           "column": 31
         },
@@ -1602,6 +3192,16 @@
           "column": 31
         },
         "evidence": "https://example.com/api",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 7465,
+          "column": 13
+        },
+        "evidence": "https://example.com/.well-known/oauth-protected-resource",
         "origin": "string_literal"
       },
       {
@@ -1639,6 +3239,16 @@
         "location": {
           "file": "./src/transport/auth.rs",
           "line": 7538,
+          "column": 18
+        },
+        "evidence": "https://auth.example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 7547,
           "column": 18
         },
         "evidence": "https://auth.example.com",
@@ -1978,6 +3588,16 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 8077,
+          "column": 18
+        },
+        "evidence": "https://mcp.example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 8083,
           "column": 24
         },
@@ -2012,6 +3632,16 @@
           "column": 13
         },
         "evidence": "http://localhost/callback?code=abc&state=csrf&iss=https%3A%2F%2Fauth.example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 8117,
+          "column": 53
+        },
+        "evidence": "https://auth.example.com",
         "origin": "string_literal"
       },
       {
@@ -2060,6 +3690,16 @@
           "file": "./src/transport/auth.rs",
           "line": 8253,
           "column": 26
+        },
+        "evidence": "https://auth.example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 8274,
+          "column": 18
         },
         "evidence": "https://auth.example.com",
         "origin": "string_literal"
@@ -2172,6 +3812,16 @@
           "column": 13
         },
         "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 8622,
+          "column": 46
+        },
+        "evidence": "https://mcp.example.com/metadata",
         "origin": "string_literal"
       },
       {
@@ -2418,6 +4068,46 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 9049,
+          "column": 33
+        },
+        "evidence": "http://localhost/callback",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 9064,
+          "column": 33
+        },
+        "evidence": "http://localhost/callback",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 9081,
+          "column": 33
+        },
+        "evidence": "http://localhost/callback",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 9096,
+          "column": 33
+        },
+        "evidence": "http://localhost/callback",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 9111,
           "column": 65
         },
@@ -2468,6 +4158,16 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 9136,
+          "column": 30
+        },
+        "evidence": "https://auth.example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 9143,
           "column": 37
         },
@@ -2500,6 +4200,16 @@
           "file": "./src/transport/auth.rs",
           "line": 9151,
           "column": 18
+        },
+        "evidence": "https://legacy.example.com/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 9155,
+          "column": 30
         },
         "evidence": "https://legacy.example.com/token",
         "origin": "string_literal"
@@ -2648,10 +4358,40 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 9384,
+          "column": 44
+        },
+        "evidence": "https://example.com",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 9427,
           "column": 54
         },
         "evidence": "127.0.0.1:0",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 9432,
+          "column": 45
+        },
+        "evidence": "http://{addr}/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 9433,
+          "column": 37
+        },
+        "evidence": "http://{addr}/token",
         "origin": "string_literal"
       },
       {
@@ -2668,10 +4408,50 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 9569,
+          "column": 45
+        },
+        "evidence": "http://{addr}/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 9570,
+          "column": 37
+        },
+        "evidence": "http://{addr}/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 9633,
           "column": 54
         },
         "evidence": "127.0.0.1:0",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 9638,
+          "column": 45
+        },
+        "evidence": "http://{addr}/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 9639,
+          "column": 37
+        },
+        "evidence": "http://{addr}/token",
         "origin": "string_literal"
       },
       {
@@ -2688,6 +4468,26 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 9722,
+          "column": 45
+        },
+        "evidence": "http://{addr}/authorize",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 9723,
+          "column": 37
+        },
+        "evidence": "http://{addr}/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 9774,
           "column": 54
         },
@@ -2698,10 +4498,40 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth.rs",
+          "line": 9778,
+          "column": 18
+        },
+        "evidence": "http://{}",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 9851,
+          "column": 18
+        },
+        "evidence": "http://localhost/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
           "line": 9997,
           "column": 54
         },
         "evidence": "127.0.0.1:0",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth.rs",
+          "line": 10000,
+          "column": 32
+        },
+        "evidence": "http://{}",
         "origin": "string_literal"
       },
       {
@@ -2837,6 +4667,16 @@
       {
         "capability": "network",
         "location": {
+          "file": "./src/transport/auth/enterprise_tests.rs",
+          "line": 523,
+          "column": 28
+        },
+        "evidence": "https://mcp.example",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
           "file": "./src/transport/auth/metadata_resolver.rs",
           "line": 13,
           "column": 1
@@ -2928,6 +4768,96 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 136,
+          "column": 25
+        },
+        "evidence": "http://{proxy}",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 297,
+          "column": 26
+        },
+        "evidence": "2606:4700::1111",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 309,
+          "column": 26
+        },
+        "evidence": "64:ff9b::a9fe:a9fe",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 310,
+          "column": 26
+        },
+        "evidence": "2002:a9fe:a9fe::",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 312,
+          "column": 26
+        },
+        "evidence": "2002:7f00:1::",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 313,
+          "column": 26
+        },
+        "evidence": "64:ff9b::a00:9",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 314,
+          "column": 26
+        },
+        "evidence": "64:ff9b::5db8:d822",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 315,
+          "column": 26
+        },
+        "evidence": "2001:0:4136:e378::1",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 316,
+          "column": 26
+        },
+        "evidence": "64:ff9b:1::a9fe:a9fe",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
           "line": 328,
           "column": 33
         },
@@ -2998,6 +4928,116 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 389,
+          "column": 25
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 394,
+          "column": 13
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 395,
+          "column": 13
+        },
+        "evidence": "https://93.184.216.35/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 398,
+          "column": 13
+        },
+        "evidence": "https://mcp.example.com/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 399,
+          "column": 13
+        },
+        "evidence": "https://auth.example.com/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 402,
+          "column": 13
+        },
+        "evidence": "http://127.0.0.1:3000/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 403,
+          "column": 13
+        },
+        "evidence": "http://127.0.0.2:8080/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 406,
+          "column": 13
+        },
+        "evidence": "http://0.0.0.0:3000/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 407,
+          "column": 13
+        },
+        "evidence": "http://0.0.0.0:3000/register",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 410,
+          "column": 13
+        },
+        "evidence": "http://0.0.0.0:3000/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 411,
+          "column": 13
+        },
+        "evidence": "http://169.254.169.254/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
           "line": 422,
           "column": 31
         },
@@ -3012,6 +5052,16 @@
           "column": 33
         },
         "evidence": "http://localhost:3000/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 430,
+          "column": 48
+        },
+        "evidence": "http://169.254.169.254/",
         "origin": "string_literal"
       },
       {
@@ -3108,10 +5158,100 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 537,
+          "column": 32
+        },
+        "evidence": "http://{RESOURCE_HOST}:{}/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 581,
+          "column": 33
+        },
+        "evidence": "http://{RESOURCE_HOST}:{}/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 605,
+          "column": 21
+        },
+        "evidence": "http://127.0.0.1:{}/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 614,
+          "column": 21
+        },
+        "evidence": "http://{INTERNAL_HOST}:{}/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 623,
+          "column": 21
+        },
+        "evidence": "http://{INTERNAL_HOST}:{}/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 634,
+          "column": 44
+        },
+        "evidence": "http://{RESOURCE_HOST}/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 672,
+          "column": 25
+        },
+        "evidence": "http://127.0.0.1:{}/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 684,
+          "column": 30
+        },
+        "evidence": "http://127.0.0.1:{}/token",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
           "line": 689,
           "column": 54
         },
         "evidence": "127.0.0.1:0",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/auth/metadata_resolver.rs",
+          "line": 696,
+          "column": 25
+        },
+        "evidence": "http://{RESOURCE_HOST}:{}/token",
         "origin": "string_literal"
       },
       {
@@ -3298,6 +5438,26 @@
         "capability": "network",
         "location": {
           "file": "./src/transport/common/reqwest/streamable_http_client.rs",
+          "line": 246,
+          "column": 13
+        },
+        "evidence": "reqwest::StatusCode::ACCEPTED",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/reqwest/streamable_http_client.rs",
+          "line": 246,
+          "column": 45
+        },
+        "evidence": "reqwest::StatusCode::NO_CONTENT",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/reqwest/streamable_http_client.rs",
           "line": 250,
           "column": 22
         },
@@ -3322,6 +5482,26 @@
           "column": 5
         },
         "evidence": "reqwest::redirect::Policy::custom",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/reqwest/streamable_http_client.rs",
+          "line": 443,
+          "column": 13
+        },
+        "evidence": "reqwest::StatusCode::TEMPORARY_REDIRECT",
+        "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/reqwest/streamable_http_client.rs",
+          "line": 443,
+          "column": 55
+        },
+        "evidence": "reqwest::StatusCode::PERMANENT_REDIRECT",
         "origin": "import"
       },
       {
@@ -3383,6 +5563,76 @@
         },
         "evidence": "std::net::SocketAddr",
         "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/reqwest/streamable_http_client.rs",
+          "line": 545,
+          "column": 42
+        },
+        "evidence": "http://{addr}/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/reqwest/streamable_http_client.rs",
+          "line": 643,
+          "column": 35
+        },
+        "evidence": "http://{redirected_addr}/capture",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/reqwest/streamable_http_client.rs",
+          "line": 667,
+          "column": 42
+        },
+        "evidence": "http://{redirect_addr}/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/reqwest/streamable_http_client.rs",
+          "line": 758,
+          "column": 32
+        },
+        "evidence": "http://{addr}/v2/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/reqwest/streamable_http_client.rs",
+          "line": 809,
+          "column": 42
+        },
+        "evidence": "http://{addr}/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/reqwest/streamable_http_client.rs",
+          "line": 880,
+          "column": 42
+        },
+        "evidence": "http://{addr}/mcp",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/common/reqwest/streamable_http_client.rs",
+          "line": 915,
+          "column": 42
+        },
+        "evidence": "http://{addr}/mcp",
+        "origin": "string_literal"
       },
       {
         "capability": "network",
@@ -3555,6 +5805,16 @@
         "origin": "import"
       },
       {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/transport/io.rs",
+          "line": 284,
+          "column": 77
+        },
+        "evidence": "std::process::id",
+        "origin": "import"
+      },
+      {
         "capability": "file_write",
         "location": {
           "file": "./src/transport/io.rs",
@@ -3562,6 +5822,16 @@
           "column": 17
         },
         "evidence": "std::fs::remove_file",
+        "origin": "import"
+      },
+      {
+        "capability": "process_exec",
+        "location": {
+          "file": "./src/transport/io.rs",
+          "line": 287,
+          "column": 13
+        },
+        "evidence": "std::process::Command::new",
         "origin": "import"
       },
       {
@@ -3613,6 +5883,56 @@
         },
         "evidence": "std::time::Instant",
         "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/streamable_http_server/tower.rs",
+          "line": 1122,
+          "column": 34
+        },
+        "evidence": "https://client.example:*",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/streamable_http_server/tower.rs",
+          "line": 1130,
+          "column": 34
+        },
+        "evidence": "http://[::1]:*",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/streamable_http_server/tower.rs",
+          "line": 1138,
+          "column": 34
+        },
+        "evidence": "https://client.example",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/streamable_http_server/tower.rs",
+          "line": 1146,
+          "column": 34
+        },
+        "evidence": "https://client.example:8443",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/transport/streamable_http_server/tower.rs",
+          "line": 1153,
+          "column": 41
+        },
+        "evidence": "https://client.example:443:*",
+        "origin": "string_literal"
       }
     ]
   }

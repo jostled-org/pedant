@@ -4,7 +4,7 @@
   "crate_name": "libc",
   "crate_version": "0.2.191",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725576,
+  "timestamp": 1792804174,
   "analysis_completeness": {
     "analyzed_files": 14,
     "skipped_files": 0
@@ -33,6 +33,46 @@
         "evidence": "std::process::Output",
         "origin": "import",
         "execution_context": "build_hook"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/macros.rs",
+          "line": 1282,
+          "column": 20
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/macros.rs",
+          "line": 1283,
+          "column": 28
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/macros.rs",
+          "line": 1442,
+          "column": 20
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/macros.rs",
+          "line": 1488,
+          "column": 20
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
       },
       {
         "capability": "ffi",

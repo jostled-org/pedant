@@ -4,7 +4,7 @@
   "crate_name": "ignore",
   "crate_version": "0.4.33",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725574,
+  "timestamp": 1792804173,
   "analysis_completeness": {
     "analyzed_files": 9,
     "skipped_files": 0
@@ -60,6 +60,16 @@
           "column": 9
         },
         "evidence": "std::fs::create_dir_all",
+        "origin": "import"
+      },
+      {
+        "capability": "file_write",
+        "location": {
+          "file": "./src/dir.rs",
+          "line": 1599,
+          "column": 17
+        },
+        "evidence": "std::fs::remove_file",
         "origin": "import"
       },
       {

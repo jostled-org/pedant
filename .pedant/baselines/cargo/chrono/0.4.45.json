@@ -4,7 +4,7 @@
   "crate_name": "chrono",
   "crate_version": "0.4.45",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725567,
+  "timestamp": 1792804172,
   "analysis_completeness": {
     "analyzed_files": 41,
     "skipped_files": 0
@@ -41,6 +41,16 @@
         },
         "evidence": "std::time::SystemTime",
         "origin": "import"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/format/formatting.rs",
+          "line": 739,
+          "column": 13
+        },
+        "evidence": "23:59:60",
+        "origin": "string_literal"
       },
       {
         "capability": "network",
@@ -83,6 +93,96 @@
         "origin": "string_literal"
       },
       {
+        "capability": "network",
+        "location": {
+          "file": "./src/format/strftime.rs",
+          "line": 966,
+          "column": 49
+        },
+        "evidence": "00:34:60",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/format/strftime.rs",
+          "line": 967,
+          "column": 49
+        },
+        "evidence": "00:34:60",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/format/strftime.rs",
+          "line": 1042,
+          "column": 74
+        },
+        "evidence": "00:34:60",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/format/strftime.rs",
+          "line": 1043,
+          "column": 74
+        },
+        "evidence": "00:34:60",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/format/strftime.rs",
+          "line": 1044,
+          "column": 74
+        },
+        "evidence": "00:34:60",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/format/strftime.rs",
+          "line": 1155,
+          "column": 75
+        },
+        "evidence": "06:54:32",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/format/strftime.rs",
+          "line": 1156,
+          "column": 75
+        },
+        "evidence": "18:54:32",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/format/strftime.rs",
+          "line": 1159,
+          "column": 75
+        },
+        "evidence": "06:54:32",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/format/strftime.rs",
+          "line": 1160,
+          "column": 75
+        },
+        "evidence": "18:54:32",
+        "origin": "string_literal"
+      },
+      {
         "capability": "unsafe_code",
         "location": {
           "file": "./src/naive/date/mod.rs",
@@ -91,6 +191,26 @@
         },
         "evidence": "unsafe block",
         "origin": "code_site"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/naive/datetime/tests.rs",
+          "line": 204,
+          "column": 43
+        },
+        "evidence": "12:34:56",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/naive/time/tests.rs",
+          "line": 223,
+          "column": 9
+        },
+        "evidence": "23:59:60",
+        "origin": "string_literal"
       },
       {
         "capability": "network",
@@ -160,6 +280,26 @@
           "column": 9
         },
         "evidence": "09:08:00000000007",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/offset/local/mod.rs",
+          "line": 346,
+          "column": 28
+        },
+        "evidence": "15:02:60",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/offset/local/mod.rs",
+          "line": 346,
+          "column": 53
+        },
+        "evidence": "15:03:00",
         "origin": "string_literal"
       },
       {

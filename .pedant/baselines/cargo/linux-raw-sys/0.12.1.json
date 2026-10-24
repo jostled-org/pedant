@@ -4,7 +4,7 @@
   "crate_name": "linux-raw-sys",
   "crate_version": "0.12.1",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725588,
+  "timestamp": 1792804175,
   "analysis_completeness": {
     "analyzed_files": 462,
     "skipped_files": 0
@@ -13251,6 +13251,136 @@
         },
         "evidence": "unsafe fn",
         "origin": "code_site"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 76,
+          "column": 56
+        },
+        "evidence": "libc::c_char",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 77,
+          "column": 61
+        },
+        "evidence": "libc::c_schar",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 78,
+          "column": 61
+        },
+        "evidence": "libc::c_uchar",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 79,
+          "column": 61
+        },
+        "evidence": "libc::c_short",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 80,
+          "column": 62
+        },
+        "evidence": "libc::c_ushort",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 81,
+          "column": 59
+        },
+        "evidence": "libc::c_int",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 82,
+          "column": 60
+        },
+        "evidence": "libc::c_uint",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 83,
+          "column": 60
+        },
+        "evidence": "libc::c_long",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 84,
+          "column": 61
+        },
+        "evidence": "libc::c_ulong",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 85,
+          "column": 64
+        },
+        "evidence": "libc::c_longlong",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 86,
+          "column": 65
+        },
+        "evidence": "libc::c_ulonglong",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 87,
+          "column": 61
+        },
+        "evidence": "libc::c_float",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 88,
+          "column": 62
+        },
+        "evidence": "libc::c_double",
+        "origin": "import"
       },
       {
         "capability": "unsafe_code",

@@ -4,7 +4,7 @@
   "crate_name": "hashbrown",
   "crate_version": "0.17.1",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725572,
+  "timestamp": 1792804173,
   "analysis_completeness": {
     "analyzed_files": 24,
     "skipped_files": 0
@@ -1018,6 +1018,46 @@
           "file": "./src/map.rs",
           "line": 6527,
           "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/map.rs",
+          "line": 6809,
+          "column": 24
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/map.rs",
+          "line": 6810,
+          "column": 24
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/map.rs",
+          "line": 6878,
+          "column": 24
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/map.rs",
+          "line": 6879,
+          "column": 24
         },
         "evidence": "unsafe block",
         "origin": "code_site"
@@ -3458,6 +3498,26 @@
           "file": "./src/raw.rs",
           "line": 4515,
           "column": 17
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/raw.rs",
+          "line": 4616,
+          "column": 20
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/raw.rs",
+          "line": 4617,
+          "column": 20
         },
         "evidence": "unsafe block",
         "origin": "code_site"

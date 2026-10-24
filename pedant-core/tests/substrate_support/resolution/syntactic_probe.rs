@@ -59,6 +59,7 @@ const TIER1_MODULES: &[&str] = &["ir", "observe", "resolution"];
 pub const TIER1_SOURCES: &[&str] = &[
     "ir/cfg.rs",
     "ir/dataflow.rs",
+    "ir/extract/call_forms.rs",
     "ir/extract/enrich.rs",
     "ir/extract/extent.rs",
     "ir/extract/extractor/entry.rs",

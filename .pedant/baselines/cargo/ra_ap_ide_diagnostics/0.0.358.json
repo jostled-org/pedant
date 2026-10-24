@@ -4,7 +4,7 @@
   "crate_name": "ra_ap_ide_diagnostics",
   "crate_version": "0.0.358",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725600,
+  "timestamp": 1792804178,
   "analysis_completeness": {
     "analyzed_files": 82,
     "skipped_files": 0
@@ -16,10 +16,50 @@
         "capability": "network",
         "location": {
           "file": "./src/lib.rs",
+          "line": 152,
+          "column": 25
+        },
+        "evidence": "https://doc.rust-lang.org/stable/error_codes/{e}.html",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/lib.rs",
           "line": 155,
           "column": 30
         },
         "evidence": "https://doc.rust-lang.org/stable/reference/",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 158,
+          "column": 25
+        },
+        "evidence": "https://doc.rust-lang.org/rustc/?search={e}",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 161,
+          "column": 25
+        },
+        "evidence": "https://rust-lang.github.io/rust-clippy/master/#/{e}",
+        "origin": "string_literal"
+      },
+      {
+        "capability": "network",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 164,
+          "column": 25
+        },
+        "evidence": "https://rust-analyzer.github.io/book/diagnostics.html#{e}",
         "origin": "string_literal"
       }
     ]

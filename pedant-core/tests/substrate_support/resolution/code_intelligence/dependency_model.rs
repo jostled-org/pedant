@@ -274,12 +274,20 @@ pub(crate) const ADMITTED_DEPENDENCIES: &[AdmittedDependency] = &[
             features: &[],
         },
         capability: DependencyCapability::SourceRead,
-        accepted_findings: &[AcceptedFinding {
-            capability: Capability::FileWrite,
-            file: "./src/dir.rs",
-            evidence: "std::fs::create_dir_all",
-            reason: TEST_SCAFFOLDING,
-        }],
+        accepted_findings: &[
+            AcceptedFinding {
+                capability: Capability::FileWrite,
+                file: "./src/dir.rs",
+                evidence: "std::fs::create_dir_all",
+                reason: TEST_SCAFFOLDING,
+            },
+            AcceptedFinding {
+                capability: Capability::FileWrite,
+                file: "./src/dir.rs",
+                evidence: "std::fs::remove_file",
+                reason: TEST_SCAFFOLDING,
+            },
+        ],
     },
     AdmittedDependency {
         edge: DeclaredEdge {

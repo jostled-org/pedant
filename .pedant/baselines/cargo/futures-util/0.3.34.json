@@ -4,7 +4,7 @@
   "crate_name": "futures-util",
   "crate_version": "0.3.34",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725571,
+  "timestamp": 1792804173,
   "analysis_completeness": {
     "analyzed_files": 182,
     "skipped_files": 0
@@ -398,6 +398,16 @@
           "file": "./src/future/try_maybe_done.rs",
           "line": 77,
           "column": 9
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/io/allow_std.rs",
+          "line": 196,
+          "column": 44
         },
         "evidence": "unsafe block",
         "origin": "code_site"

@@ -26,6 +26,9 @@ mod analyze_identity;
 #[path = "ir_extraction_support/fingerprints.rs"]
 mod fingerprints;
 
+#[path = "ir_extraction_support/call_forms.rs"]
+mod call_forms;
+
 #[cfg(feature = "semantic")]
 #[path = "ir_extraction_support/semantic_enrichment.rs"]
 mod semantic_enrichment;

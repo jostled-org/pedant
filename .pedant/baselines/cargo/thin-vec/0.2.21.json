@@ -4,7 +4,7 @@
   "crate_name": "thin-vec",
   "crate_version": "0.2.21",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725614,
+  "timestamp": 1792804180,
   "analysis_completeness": {
     "analyzed_files": 1,
     "skipped_files": 0
@@ -958,6 +958,36 @@
           "file": "./src/lib.rs",
           "line": 4036,
           "column": 17
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 4043,
+          "column": 20
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 4045,
+          "column": 20
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 4047,
+          "column": 20
         },
         "evidence": "unsafe block",
         "origin": "code_site"

@@ -4,7 +4,7 @@
   "crate_name": "crossbeam-utils",
   "crate_version": "0.8.23",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725569,
+  "timestamp": 1792804173,
   "analysis_completeness": {
     "analyzed_files": 14,
     "skipped_files": 0
@@ -98,6 +98,86 @@
           "file": "./src/atomic/atomic_cell.rs",
           "line": 346,
           "column": 13
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/atomic/atomic_cell.rs",
+          "line": 859,
+          "column": 25
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/atomic/atomic_cell.rs",
+          "line": 864,
+          "column": 29
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/atomic/atomic_cell.rs",
+          "line": 895,
+          "column": 25
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/atomic/atomic_cell.rs",
+          "line": 900,
+          "column": 29
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/atomic/atomic_cell.rs",
+          "line": 928,
+          "column": 25
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/atomic/atomic_cell.rs",
+          "line": 933,
+          "column": 29
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/atomic/atomic_cell.rs",
+          "line": 961,
+          "column": 25
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/atomic/atomic_cell.rs",
+          "line": 966,
+          "column": 29
         },
         "evidence": "unsafe block",
         "origin": "code_site"

@@ -4,7 +4,7 @@
   "crate_name": "cc",
   "crate_version": "1.9.0",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725566,
+  "timestamp": 1792804172,
   "analysis_completeness": {
     "analyzed_files": 23,
     "skipped_files": 0
@@ -460,6 +460,36 @@
           "column": 21
         },
         "evidence": "libc::c_long::from",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/parallel/reactor/unix.rs",
+          "line": 142,
+          "column": 22
+        },
+        "evidence": "libc::ENOSYS",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/parallel/reactor/unix.rs",
+          "line": 142,
+          "column": 37
+        },
+        "evidence": "libc::EPERM",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/parallel/reactor/unix.rs",
+          "line": 142,
+          "column": 51
+        },
+        "evidence": "libc::EACCES",
         "origin": "import"
       },
       {

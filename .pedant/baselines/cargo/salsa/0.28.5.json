@@ -4,7 +4,7 @@
   "crate_name": "salsa",
   "crate_version": "0.28.5",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725609,
+  "timestamp": 1792804179,
   "analysis_completeness": {
     "analyzed_files": 54,
     "skipped_files": 0
@@ -1448,6 +1448,16 @@
           "file": "./src/interned.rs",
           "line": 911,
           "column": 22
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/interned.rs",
+          "line": 931,
+          "column": 13
         },
         "evidence": "unsafe block",
         "origin": "code_site"

@@ -4,7 +4,7 @@
   "crate_name": "lock_api",
   "crate_version": "0.4.14",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725588,
+  "timestamp": 1792804176,
   "analysis_completeness": {
     "analyzed_files": 4,
     "skipped_files": 0
@@ -2056,6 +2056,16 @@
         "capability": "unsafe_code",
         "location": {
           "file": "./src/rwlock.rs",
+          "line": 2214,
+          "column": 16
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rwlock.rs",
           "line": 2219,
           "column": 11
         },
@@ -2068,6 +2078,16 @@
           "file": "./src/rwlock.rs",
           "line": 2234,
           "column": 12
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rwlock.rs",
+          "line": 2237,
+          "column": 20
         },
         "evidence": "unsafe block",
         "origin": "code_site"
@@ -2116,6 +2136,16 @@
         "capability": "unsafe_code",
         "location": {
           "file": "./src/rwlock.rs",
+          "line": 2322,
+          "column": 20
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rwlock.rs",
           "line": 2327,
           "column": 20
         },
@@ -2128,6 +2158,16 @@
           "file": "./src/rwlock.rs",
           "line": 2351,
           "column": 12
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rwlock.rs",
+          "line": 2354,
+          "column": 20
         },
         "evidence": "unsafe block",
         "origin": "code_site"
@@ -2296,6 +2336,16 @@
         "capability": "unsafe_code",
         "location": {
           "file": "./src/rwlock.rs",
+          "line": 2590,
+          "column": 16
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rwlock.rs",
           "line": 2595,
           "column": 11
         },
@@ -2308,6 +2358,16 @@
           "file": "./src/rwlock.rs",
           "line": 2610,
           "column": 12
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rwlock.rs",
+          "line": 2613,
+          "column": 20
         },
         "evidence": "unsafe block",
         "origin": "code_site"
@@ -2376,6 +2436,16 @@
         "capability": "unsafe_code",
         "location": {
           "file": "./src/rwlock.rs",
+          "line": 2704,
+          "column": 20
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rwlock.rs",
           "line": 2709,
           "column": 20
         },
@@ -2388,6 +2458,16 @@
           "file": "./src/rwlock.rs",
           "line": 2733,
           "column": 12
+        },
+        "evidence": "unsafe block",
+        "origin": "code_site"
+      },
+      {
+        "capability": "unsafe_code",
+        "location": {
+          "file": "./src/rwlock.rs",
+          "line": 2736,
+          "column": 20
         },
         "evidence": "unsafe block",
         "origin": "code_site"

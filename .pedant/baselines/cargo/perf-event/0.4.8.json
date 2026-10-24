@@ -4,7 +4,7 @@
   "crate_name": "perf-event",
   "crate_version": "0.4.8",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725589,
+  "timestamp": 1792804176,
   "analysis_completeness": {
     "analyzed_files": 3,
     "skipped_files": 0
@@ -89,6 +89,16 @@
           "column": 1
         },
         "evidence": "std::fs::File",
+        "origin": "import"
+      },
+      {
+        "capability": "ffi",
+        "location": {
+          "file": "./src/lib.rs",
+          "line": 1076,
+          "column": 53
+        },
+        "evidence": "libc::EINVAL",
         "origin": "import"
       },
       {

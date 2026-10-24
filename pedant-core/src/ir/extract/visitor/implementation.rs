@@ -3,18 +3,19 @@ use syn::spanned::Spanned;
 use syn::visit::Visit;
 use syn::{ExprIf, Signature, Type};
 
-use crate::ir::type_introspection::{
-    first_type_name, for_each_pat_ident, get_type_span_start, iter_expr_ident,
-};
+use crate::ir::type_introspection::{first_type_name, for_each_pat_ident, get_type_span_start};
 use pedant_types::SymbolKind;
 
-use crate::pattern::{extract_attribute_text, extract_macro_text, extract_method_call_text};
+use crate::pattern::{extract_attribute_text, extract_macro_text};
 
 use crate::ir::facts::{
     AttributeFact, BranchContext, ControlFlowKind, ElseInfo, ExternBlockFact, MacroFact,
-    MethodCallFact, ModuleFact, StringLitFact, TypeAliasFact, TypeDefKind, TypeRefContext,
+    ModuleFact, StringLitFact, TypeAliasFact, TypeDefKind, TypeRefContext,
 };
 
+use super::super::call_forms::{
+    CallSite, push_method_call, receiver_ident, record_method_path, visit_macro_arguments,
+};
 use super::super::extent::DeclarationExtent;
 use super::super::extractor::{IrExtractor, TypeDefinition, ValueItem};
 use super::super::impls::impl_fact;
@@ -269,6 +270,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
         let callee = match node.func.as_ref() {
             syn::Expr::Path(path) => {
                 record_expression_path(self, &path.path, true);
+                record_method_path(self, path, node.args.first());
                 true
             }
             _ => false,
@@ -281,7 +283,10 @@ impl<'ast> Visit<'ast> for IrExtractor {
     fn visit_expr_path(&mut self, node: &'ast syn::ExprPath) {
         match self.in_callee {
             true => self.in_callee = false,
-            false => record_expression_path(self, &node.path, false),
+            false => {
+                record_expression_path(self, &node.path, false);
+                record_method_path(self, node, None);
+            }
         }
         syn::visit::visit_expr_path(self, node);
     }
@@ -364,23 +369,16 @@ impl<'ast> Visit<'ast> for IrExtractor {
 
     fn visit_expr_method_call(&mut self, node: &'ast syn::ExprMethodCall) {
         record_method_call(self, node);
-        let text = extract_method_call_text(node);
-        let span = span_from(node.dot_token.span.start());
-        let receiver_span = span_from(node.receiver.span().start());
-        let method_name: Box<str> = node.method.to_string().into_boxed_str();
-        let recv = iter_expr_ident(&node.receiver).map(|i| i.to_string().into_boxed_str());
-
-        self.method_calls.push(MethodCallFact {
-            method_name,
-            text,
-            span,
-            receiver_ident: recv,
-            receiver_span,
-            loop_depth: self.loop_depth,
-            containing_fn: self.fn_scope.current(),
-            receiver_type: None,
-            is_copy_receiver: false,
-        });
+        push_method_call(
+            self,
+            CallSite {
+                method: &node.method,
+                span: span_from(node.dot_token.span.start()),
+                receiver_ident: receiver_ident(&node.receiver),
+                receiver_span: span_from(node.receiver.span().start()),
+                receiver_type: None,
+            },
+        );
 
         syn::visit::visit_expr_method_call(self, node);
     }
@@ -396,6 +394,7 @@ impl<'ast> Visit<'ast> for IrExtractor {
         self.macro_invocations.push(MacroFact { text, span });
 
         syn::visit::visit_macro(self, node);
+        visit_macro_arguments(self, node);
     }
 
     fn visit_expr_lit(&mut self, node: &'ast syn::ExprLit) {

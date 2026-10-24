@@ -370,8 +370,8 @@ pub struct MethodCallFact {
     pub loop_depth: usize,
     /// Index into `FileIr::functions`; links to enclosing function.
     pub containing_fn: Option<usize>,
-    /// Filled by semantic enrichment; canonical receiver type shared across
-    /// calls on the same binding.
+    /// The receiver's type: the type a `Type::method` path states, or, after
+    /// semantic enrichment, the canonical type of the receiver binding.
     pub receiver_type: Option<Arc<str>>,
     /// Filled by semantic enrichment; suppresses clone-in-loop for `Copy` types.
     pub is_copy_receiver: bool,

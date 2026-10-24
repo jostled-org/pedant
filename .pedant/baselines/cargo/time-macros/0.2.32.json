@@ -4,7 +4,7 @@
   "crate_name": "time-macros",
   "crate_version": "0.2.32",
   "analysis_tier": "syntactic",
-  "timestamp": 1792725615,
+  "timestamp": 1792804180,
   "analysis_completeness": {
     "analyzed_files": 21,
     "skipped_files": 0
@@ -61,6 +61,26 @@
         },
         "evidence": "#[proc_macro]",
         "origin": "attribute"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/serde_format_description.rs",
+          "line": 151,
+          "column": 38
+        },
+        "evidence": "time::parsing::Parsable",
+        "origin": "import"
+      },
+      {
+        "capability": "system_time",
+        "location": {
+          "file": "./src/serde_format_description.rs",
+          "line": 152,
+          "column": 38
+        },
+        "evidence": "time::formatting::Formattable",
+        "origin": "import"
       },
       {
         "capability": "system_time",

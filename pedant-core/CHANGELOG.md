@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.0](https://github.com/jostled-org/pedant/compare/pedant-core-v0.24.1...pedant-core-v0.25.0) - 2026-10-24
+
+### Other
+
+- *(deps)* [**breaking**] update workspace dependencies and raise MSRV to 1.98
+
 ## [0.24.1](https://github.com/jostled-org/pedant/compare/pedant-core-v0.24.0...pedant-core-v0.24.1) - 2026-08-31
 
 ### Fixed

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1](https://github.com/jostled-org/pedant/compare/pedant-syntax-v0.7.0...pedant-syntax-v0.7.1) - 2026-10-24
+
+### Other
+
+- add downloads and dependencies badges to the readmes
+
 ## [0.7.0](https://github.com/jostled-org/pedant/compare/pedant-syntax-v0.6.0...pedant-syntax-v0.7.0) - 2026-10-24
 
 ### Other
